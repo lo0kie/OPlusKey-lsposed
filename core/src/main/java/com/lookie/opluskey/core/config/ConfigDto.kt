@@ -721,9 +721,10 @@ internal data class ComboDto(
      */
     val windowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
     /**
-     * **触发方式**（`ComboKey.mode`）—— `0` 窗口内先后按下 / `1` 先按住第一颗 / `2` 先按住第二颗。
+     * **触发方式**（`ComboKey.mode`）—— `0` 窗口内先后按下 / `1` 按住（首键 = `keys` 第一颗）。
      *
-     *  `null` = **老文件**（v57 及以前没有这一位），由 [toCombo] 按下面那几个遗留字段推出来。
+     *  `2` 是**旧编号**（= 先按住第二颗），现在只剩读旧文件时出现：见 [toCombo] 里那条迁移。
+     *  `null` = **更老的文件**（v57 及以前没有这一位），由 [toCombo] 按下面那几个遗留字段推出来。
      */
     val mode: Int? = null,
     /**
@@ -764,12 +765,26 @@ internal data class ComboDto(
         //  老文件没有 `mode`：触发方式与它当年用的那对动作槽由 `LegacyCombo` 推一次（`null` = 新文件）
         val legacy = legacySlot()
         val resolved = legacy?.mode ?: mode ?: ComboKey.MODE_WAIT
+        //  ## 旧编号 2（= 先按住第二颗）的迁移
+        //
+        //  现在「谁先按住」由 `keys` 的第一位表达，不再有第二个模式位。所以读到 2 就把**第二颗提到
+        //  首位**、模式归一成 [ComboKey.MODE_HOLD] —— 于是 `[A, B]` + 2 与 `[B, A]` + 1 变成同一份
+        //  数据，界面、判定、日志三处都不必再各分一次叉。
+        //
+        //  `LegacyCombo` 也可能给出 2（它把 v57 的「加过哪种顺序」推成这一位）：那条路一并在这里
+        //  归一。它算出来的动作槽（`singleA` / `singleB`）与键序无关，所以先取动作、后动键序是安全的。
+        val ordered =
+            if (resolved == ComboKey.MODE_HOLD_SECOND) {
+                members.take(2).reversed() + members.drop(2)
+            } else {
+                members
+            }
         return ComboKey(
             id = id,
-            keys = members.take(ComboKey.MAX_JUDGE_KEYS),
+            keys = ordered.take(ComboKey.MAX_JUDGE_KEYS),
             enabled = enabled,
-            //  触发方式：`modeFor` 把三颗及以上的按住挡回窗口那条（那种形态按不出来）
-            mode = ComboKey.modeFor(resolved, members.size),
+            //  触发方式：成员够两颗就两种都认（按住那一档不再限于两颗，见 `ComboKey.modeFor`）
+            mode = ComboKey.modeFor(resolved, ordered.size),
             //  老文件把按住那一套动作放在 `singleA`/`longA`（或 B）上，已在 `LegacyCombo` 里搬进
             //  这一对通用槽；新文件（`mode` 有值）一律读通用的那两位 —— 不看遗留槽，就不会两套同时生效。
             single = legacy?.single ?: Action.parse(single),

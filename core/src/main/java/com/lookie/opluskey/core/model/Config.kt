@@ -1718,8 +1718,10 @@ data class Config(
      */
     fun widerComboOf(base: List<KeyId>): ComboKey? =
         liveCombos()
-            //  「更宽的那一档」只可能是多成员那一档，而多成员只走窗口那条判据 —— 按住那两档
-            //  只对两颗成立，永远不会是「更宽」的候选。
+            //  「更宽的那一档」只可能是多成员那一档，而多成员里**只有等待档**靠整串跨度判 ——
+            //  按住那一档的后续成员各有一个写死的接收窗口、首键按多久都行，它没有「还差几颗、
+            //  再等一会儿」这回事（见 `ComboDetector.HOLD_FOLLOWER_WINDOW_MS`）。
+            //  所以按住档永远不是「更宽」的候选：等它只会把等待档的派发白压一拍。
             .filter { c -> c.keys.size > base.size && base.all { k -> k.id in c.keys } && c.isWait }
             .maxByOrNull { it.keys.size }
 

@@ -402,6 +402,9 @@ private fun SettingsPage.profileRows(
         }
         MenuEntry.Row(
             title = item.displayName,
+            //  默认那一行补一句小字：它是升级时落下的退路（改不了名、删不掉），光看名字读不出这回事 ——
+            //  「为什么这两行灰着」原来只在点下去之后才说。其余几份是用户自己起的名字，没有要解释的。
+            summary = if (item.isDefault) I18n.get(Strings.PROFILE_DEFAULT_SUMMARY, "无法改名或删除") else null,
             icon =
                 if (item.isDefault) {
                     PageIcons.Profiles

@@ -85,6 +85,12 @@ object Strings {
     const val BINDING_CREATE_CUSTOM_COMMAND_DESC = "binding.create_custom_command_desc"
     const val BINDING_DELETE_KEY = "binding.delete_key"
 
+    /** 「删除按键」被挡住时那个窗的标题（这颗键还在组合里）。 */
+    const val BINDING_DELETE_KEY_BLOCKED_TITLE = "binding.delete_key_blocked_title"
+
+    /** 上面那个窗的正文：`%d` 是它还在几档组合里。 */
+    const val BINDING_DELETE_KEY_BLOCKED_BODY = "binding.delete_key_blocked_body"
+
     /** 按键菜单里那一行：把这颗自定义键**停用**（键还在，只是不接管）。 */
     const val BINDING_DISABLE_KEY = "binding.disable_key"
 
@@ -452,22 +458,18 @@ object Strings {
     const val COMBO_LONG = "combo.long"
 
     /**
-     * 「触发方式」那一窗 —— 一档组合**怎么触发**：等窗口 / 先按住第一颗 / 先按住第二颗。
+     * 「触发方式」那一窗 —— 一档组合**怎么触发**：等窗口 / 按住某颗再补其余。
      *
-     *  它是这一档的**身份**（`ComboKey.mode`），不是可切换的几套动作：三种方式共用 `single` /
-     *  `long` 那一对槽。三颗及以上只有「等窗口」（没有唯一起点），窗里也就只列那一行。
+     *  它是这一档的**身份**（`ComboKey.mode`），不是可切换的几套动作：两种方式共用 `single` /
+     *  `long` 那一对槽。按住那一类**每个成员都能当首键**，所以窗里列的是「按住 A 后再按 B、C」
+     *  这样的 N 行，而不是固定的两三行。
      *
-     *  `_wait` / `_hold` 的格式串里是**成员键名**（第一颗、第二颗；先按住第二颗那一行两个参数
-     *  对调）：光写「先按 A」，人得先记住成员顺序才知道 A 是谁。
+     *  `_hold` 里是**两段**：`%1$s` 首键、`%2$s` 后续成员那一段（调用方按颗数展开成
+     *  `%s × %s`）。`_wait` 只有一个 `%s`（那一串成员）—— 三颗时念作「按下 A × B × C 后等另一颗」。
      */
     const val COMBO_MODE_TITLE = "combo.mode_title"
     const val COMBO_MODE_WAIT = "combo.mode_wait"
     const val COMBO_MODE_HOLD = "combo.mode_hold"
-
-    /** 三种方式各自那一句**短名**（只给 ⋮ 菜单那一行用，不带键名）。 */
-    const val COMBO_MODE_WAIT_SHORT = "combo.mode_wait_short"
-    const val COMBO_MODE_HOLD_FIRST = "combo.mode_hold_first"
-    const val COMBO_MODE_HOLD_SECOND = "combo.mode_hold_second"
 
     /**
      * 「已切换触发方式：」—— 换一档之后那条回执的**前缀**，后面接上面两份模板之一。
@@ -1067,6 +1069,9 @@ object Strings {
     const val COMMON_CONFIRM = "common.confirm"
     const val COMMON_DELETE = "common.delete"
 
+    /** 「到此为止」的说明窗那一颗按钮（`知道了`）—— 与组合那两条同义，但那两条挂在组合名下。 */
+    const val COMMON_GOT_IT = "common.got_it"
+
     /** 停用确认窗上那颗按钮 —— 与 [COMMON_DELETE] 同一档：一颗动词，不带宾语。 */
     const val COMMON_DISABLE = "common.disable"
     const val COMMON_DISCARD = "common.discard"
@@ -1177,6 +1182,14 @@ object Strings {
     /** 「重置模块」确认窗（首页 `⋮` 菜单那一项）。 */
     const val DIALOG_RESET_MODULE_CONFIRM = "dialog.reset_module_confirm"
     const val DIALOG_RESET_MODULE_MESSAGE = "dialog.reset_module_message"
+
+    /**
+     * 「重置模块」确认窗的第二行：**不可恢复**（单独一条是为了让它单独居中）。
+     *
+     *  与 [DIALOG_RESET_MODULE_MESSAGE] 拆开：那一句说明「重置了什么」（左对齐、可能折行），
+     *  这一句是代价，短、居中。
+     */
+    const val DIALOG_RESET_MODULE_IRREVERSIBLE = "dialog.reset_module_irreversible"
     const val DIALOG_RESET_MODULE_TITLE = "dialog.reset_module_title"
 
     /** 「重启服务」确认窗：动作（按钮上的那个词）。 */
@@ -1202,6 +1215,9 @@ object Strings {
 
     /** 多配置：默认 */
     const val PROFILE_DEFAULT = "profile.default"
+
+    /** 多配置：默认那一行标题下面那行小字（它是升级时落下的退路，改不了名也删不掉）。 */
+    const val PROFILE_DEFAULT_SUMMARY = "profile.default_summary"
 
     /** 多配置：文件读不出来的那一份在列表里的名字（仍然可点、可删）。 */
     const val PROFILE_BROKEN = "profile.broken"
@@ -1460,6 +1476,17 @@ object Strings {
     /** 首页 `⋮` 菜单那一项 —— 重置**整个模块**（当前配置 + 命令库 + 变量），与「重置配置」是两个入口。 */
     const val MENU_RESET_MODULE = "menu.reset_module"
     const val MENU_RESTART_SERVICE = "menu.restart_service"
+
+    /** 「重启服务」那一行的副标题：宿主进程已经跑了多久（`%s` 是那句时长）。 */
+    const val MENU_RESTART_UPTIME = "menu.restart_uptime"
+
+    /** 时长的三种写法（「重启服务」副标题用）：一小时以上 / 一分钟以上 / 不到一分钟。 */
+    const val MENU_UPTIME_HOUR_MIN = "menu.uptime_hour_min"
+    const val MENU_UPTIME_MIN = "menu.uptime_min"
+    const val MENU_UPTIME_SEC = "menu.uptime_sec"
+
+    /** 「导出日志」那一行的副标题：缓冲多少行、来自几个进程。 */
+    const val MENU_LOG_BUFFER = "menu.log_buffer"
     const val MENU_SHOW_INVALID_APPS = "menu.show_invalid_apps"
     const val MENU_SHOW_SYSTEM_APPS = "menu.show_system_apps"
 

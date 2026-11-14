@@ -33,6 +33,16 @@ private const val COMBO_REPEAT_MAX_MS = 30_000L
 private const val MULTI_MIN_KEYS = ComboKey.MIN_KEYS + 1
 
 /**
+ * 按住组合里**后续成员**的接收窗口（毫秒）—— **写死**（用户口径「这个窗口先写死」）。
+ *
+ *  与 `ComboKey.windowMs` 分开：那个数是等待组合的「相邻两颗最多隔多久」，也是「参与组合的键
+ *  按下后要等多久才回落单击」——一个数管两件事，调它是为了单击手感，不该被按住档借走。
+ *  按住档这一条只判「后续那一颗是不是紧接着落下的」，150ms 够人手一颗一颗按下去，
+ *  又不至于把「按完 B 过一会儿再按 C」也算进来。
+ */
+private const val HOLD_FOLLOWER_WINDOW_MS = 150L
+
+/**
  * 组合键的判定 —— **几颗已接管的键**在窗口内先后按下，就当作一次组合，不再各自判单击 / 长按。
  *
  *  判出组合之后执行什么，由装配方决定（`onCombo`）：这里只回答「哪一档 + 短按还是长按」。
@@ -198,6 +208,15 @@ internal class ComboDetector(
      *  **按住那两档的成员不算**：它们不等窗口（判据是「另一颗先按着」），压一个窗口换不来任何东西。
      */
     private val joinsCombo: (KeyId) -> Boolean,
+    /**
+     * 这颗键是**任何一档**组合（含按住档）的成员吗 —— 多成员那条路的头道闸
+     * （`ConfigChannel.inAnyCombo`）。
+     *
+     *  与 [joinsCombo] 分开：那个答「按下之后要不要压一个窗口」（只有等待档要），
+     *  这个只答「归不归组合管」。按住档的后续成员不等窗口，但它照样要能凑齐 ——
+     *  拿 [joinsCombo] 挡的话，按住组合的三颗以上永远凑不成。
+     */
+    private val inAnyCombo: (KeyId) -> Boolean,
     /**
      * 某一档组合**整串**的容忍跨度（毫秒，= 相邻两颗的窗口 × (成员数-1)，见 `Config.comboSpanFor`）
      * —— 多成员那条路按它判「凑没凑齐」：三颗按一个窗口算的话，三根手指得几乎同时落下，
@@ -848,33 +867,64 @@ internal class ComboDetector(
         now: Long,
         window: Long,
     ): Hit? {
-        //  不参与任何组合的键不可能是多成员组合的成员 —— 这一位比扫一遍候选便宜得多
-        if (!joinsCombo(id)) return null
+        //  不归任何组合管的键不可能是多成员组合的成员 —— 这一位比扫一遍候选便宜得多。
+        //  **用 `inAnyCombo` 而不是 `joinsCombo`**：后者的语义是「按下后要压一个窗口」（只有
+        //  等待档要），拿它挡会把按住档的后续成员整条挡在门外。
+        if (!inAnyCombo(id)) return null
+        //  候选 = 这一下 + 窗口内按下过的（含刚松手的：顺序按下也算凑齐，见 [recent] 的注释）
+        //        + **仍按着的**（按住档的首键可能已经按了很久，早就不在窗口里了）
         var count = 1
         for ((key, at) in recent.entries) {
-            if (key != id && now - at <= window) count++
+            if (key != id && (now - at <= window || down.containsKey(key))) count++
         }
         if (count < MULTI_MIN_KEYS) return null
-        //  候选 = 这一下 + 窗口内按下过的那些（含刚松手的：顺序按下也算凑齐，见 [recent] 的注释）
         val pool = arrayListOf(id)
         for ((key, at) in recent.entries) {
-            if (key != id && now - at <= window) pool.add(key)
+            if (key != id && (now - at <= window || down.containsKey(key))) pool.add(key)
         }
         //  「成员多的在前」「同数按配置顺序」都在 `Config.combosFor` 里，这一层不重复判。
         //  比 [MULTI_MIN_KEYS] 小的结果不接：那说明这是一档**两颗**的组合，本该由 [pairFor]
         //  认出来（它带着「按下时刻最近」的挑法），走到这里还认成两颗只会挑错成员。
         //
-        //  多成员这一条**只走窗口那条判据**：不认窗口的那几档（按住那两种）没有「哪一颗先按住」
-        //  这个唯一起点，四颗以上更是如此 —— 挑第一张「够大且认窗口」的。
-        val hit = bindingsFor(pool).firstOrNull { it.keys.size >= MULTI_MIN_KEYS && it.isWait } ?: return null
+        //  **两类都认**（等待档 + 按住档）：按住那一档不再是「只两颗」——首键一颗、后续任意多颗。
+        val hit =
+            bindingsFor(pool).firstOrNull { c ->
+                c.keys.size >= MULTI_MIN_KEYS && (c.isWait || holdReady(c, pool, now))
+            } ?: return null
         //  成员按**命中那一档自己的清单**取：候选里夹的别的键不算成员（它们还得自己走单键判定）
         val members = List(hit.keys.size) { i -> pool.first { it.id == hit.keys[i] } }
         //  间隔按**成员**里最早那一颗算（候选里可能夹着不相干的键，那是别人的按下时刻）
-        val span = now - members.minOf { recent[it] ?: now }
+        val span = now - (recent[members.first()] ?: now)
+        if (hit.isHold) {
+            //  按住档：**首键按多久都行**（下限由 [holdReady] 管），但后续成员每颗都得是
+            //  窗口内刚落下的 —— 那个窗口是常量（见 [HOLD_FOLLOWER_WINDOW_MS]），
+            //  不跟这一档的 `windowMs`（那是等待档的数，调宽它只会让首键的单击变钝）。
+            val fresh = members.drop(1).all { (now - (recent[it] ?: now)) <= HOLD_FOLLOWER_WINDOW_MS }
+            return Hit(hit, members, span).takeIf { fresh }
+        }
         //  这一档自己的**整串跨度**复核：扫的时候按最宽的那一档扫，算不算数由它自己说了算
         //  （不成立就整条作废，所以是 `takeIf` 而不是再补一个 `return null`）。
         //  用 `spanFor` 而不是 `windowFor`：n 颗的容忍跨度是 (n-1) 个窗口（见函数注释）。
         return Hit(hit, members, span).takeIf { span <= spanFor(hit) }
+    }
+
+    /**
+     * 按住那一档的**首键条件**成立吗（成员是否齐全由调用方先按 `bindingsFor` 筛过）。
+     *
+     *  三条：首键**还按着**、按满 [holdMinFor]、且它的长按**还没判出来**（判过就已经执行过
+     *  自己的动作，再认组合就是一次按压两个动作）。与 `pairFor` 里那颗「先前按下的键」用的是
+     *  同一套判据 —— 两颗与多颗的分叉只在「成员怎么凑齐」，不在「首键合不合格」。
+     */
+    private fun holdReady(
+        c: ComboKey,
+        pool: List<KeyId>,
+        now: Long,
+    ): Boolean {
+        val starterId = pool.firstOrNull { it.id == c.starterKey } ?: return false
+        val at = recent[starterId] ?: return false
+        return down.containsKey(starterId) &&
+            now - at >= holdMinFor(c) &&
+            !longPressPassed(starterId, at, now)
     }
 
     /**

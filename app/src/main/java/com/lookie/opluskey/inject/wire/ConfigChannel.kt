@@ -221,6 +221,18 @@ internal object ConfigChannel {
     }
 
     /**
+     * 这颗键是**任何一档**组合（含按住档）的成员吗 —— 多成员判定那条路的头道闸。
+     *
+     *  与 [joinsCombo] 分开：那个答「按下之后要不要压一个窗口」，只有等待档要；
+     *  这个只答「归不归组合管」。按住档的后续成员不等窗口，但它照样可能凑成某一档 ——
+     *  拿 [joinsCombo] 挡，按住组合的三颗以上就永远凑不齐（第一颗不配、第三颗进不来）。
+     */
+    fun inAnyCombo(id: KeyId): Boolean {
+        val members = arrived?.combos?.allMembers ?: return false
+        return id.id in members
+    }
+
+    /**
      * 这一颗键**可能是某一组按住组合里先按住的那一颗**吗 —— 是就把它按下那一下压到抬手。
      *
      *  只服务「只参与组合」那条路（见 `ComboOnlyNative`）。判据为什么是「先按住的那一颗」
@@ -374,6 +386,13 @@ private val NO_COMBOS: List<ComboKey> = emptyList()
  */
 private class ComboDerived(
     val windowMembers: Set<String>,
+    /**
+     * **任何一档**（含按住档）的成员 —— 与 [windowMembers] 分开：那一张只回答「按下之后要不要
+     * 压一个窗口」（只有等待档要），这一张只回答「这颗键归不归组合管」。
+     * 多成员判定那条路要先过这一道闸（见 `ComboDetector.multiFor`）——按住档的第三颗虽然不等
+     * 窗口，但它照样可能凑成某一档，拿 [windowMembers] 挡就把按住档的多成员整条挡死了。
+     */
+    val allMembers: Set<String>,
     val holdWindows: Map<String, Long>,
     val holdStarters: Set<String>,
 )
@@ -396,9 +415,12 @@ private class ComboDerived(
  */
 private fun deriveCombos(fresh: Config): ComboDerived {
     val members = HashSet<String>(fresh.combos.size * 4)
+    val all = HashSet<String>(fresh.combos.size * 4)
     val windows = HashMap<String, Long>(fresh.combos.size * 4)
     val starters = HashSet<String>(fresh.combos.size * 2)
     for (c in fresh.liveCombos()) {
+        //  任何一档的成员都收进这张表（判定多成员时要先知道「这颗归不归组合」）
+        all += c.keys
         if (c.isWait) {
             members += c.keys
             val span = fresh.comboSpanFor(c).toLong()
@@ -409,7 +431,7 @@ private fun deriveCombos(fresh: Config): ComboDerived {
             c.starterKey?.let { starters += it }
         }
     }
-    return ComboDerived(members, windows, starters)
+    return ComboDerived(members, all, windows, starters)
 }
 
 // 配置到达时那三行**判据级日志** —— 从 `ConfigChannel` 分出来一支：那边已经贴着 detekt 的

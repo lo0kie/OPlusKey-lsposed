@@ -3,7 +3,10 @@ package com.lookie.opluskey.ui.hook
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.wire.registerLocalReceiver
@@ -31,18 +34,40 @@ internal object LogPull {
     private const val WAIT_MS = 700L
 
     /**
+     * 一次收集的结果 —— 不只是正文，还有「这一侧是哪次构建、缓冲里几行」。
+     *
+     *  后两项进导出文件头（见 `LogHeader`）：三个进程的版本可以不一致（换包没重启时
+     *  `system_server` 里还是旧的），而「某进程没起来」与「它在跑但没日志」也得分开 ——
+     *  前者没回包，后者回了一片空的。
+     */
+    class Pulled(
+        /** 进程标识 → 正文。 */
+        val text: Map<String, String>,
+        /** 进程标识 → 它报的 `ModuleInfo.BUILD_ID`（老版本注入侧不带这一位时缺项）。 */
+        val build: Map<String, String>,
+        /** 进程标识 → 它缓冲里一共几行。 */
+        val lines: Map<String, Int>,
+    ) {
+        /** 回过包的进程（含「在跑但没日志」那种：它也发了一片空的）。 */
+        val answered: Set<String> get() = text.keys
+    }
+
+    /**
      * 收另外两个进程的日志。
      *
-     * @return 进程标识（`system` / `host`）→ 该进程的日志正文；没人应答就是空表
+     * @return 三个进程各自的正文 / 构建标识 / 行数；没人应答就是空表
      */
     fun collect(
         context: Context,
         pkg: String,
-    ): Map<String, String> {
+    ): Pulled {
         // 序号 → 那一片的正文；按进程分组。用并发容器：回调在主线程、读取在这次调用的线程上。
         val chunks = ConcurrentHashMap<String, MutableMap<Int, String>>()
         // 发送方声明的总片数：只用来**核对完整性**，不拿它当结束条件（见类注释）。
         val totals = ConcurrentHashMap<String, Int>()
+        //  这两张表同样是并发容器：每片都带（只有第一次写入生效），后写的覆盖同值无妨
+        val builds = ConcurrentHashMap<String, String>()
+        val counts = ConcurrentHashMap<String, Int>()
         val receiver =
             object : BroadcastReceiver() {
                 override fun onReceive(
@@ -55,6 +80,10 @@ internal object LogPull {
                     val index = intent.getIntExtra(ModuleWire.EXTRA_LOG_INDEX, 0)
                     val total = intent.getIntExtra(ModuleWire.EXTRA_LOG_TOTAL, -1)
                     if (total > 0) totals[proc] = total
+                    //  构建标识与行数由**每一片**都带（见 `LogWire.reply`），这里后到覆盖先到 —— 同值
+                    intent.getStringExtra(ModuleWire.EXTRA_LOG_BUILD)?.let { builds[proc] = it }
+                    val lines = intent.getIntExtra(ModuleWire.EXTRA_LOG_LINES, -1)
+                    if (lines >= 0) counts[proc] = lines
                     runCatching {
                         chunks.getOrPut(proc) { ConcurrentHashMap() }[index] = text
                     }.onFailure { XLog.w("导出日志：收到 $proc 的分片但存不下（忽略）：${it.javaClass.simpleName}") }
@@ -92,7 +121,24 @@ internal object LogPull {
             if (chunks[proc] == null) XLog.w("导出日志：$proc 声明了 ${totals[proc]} 片，但一片都没收到")
         }
         XLog.w("导出日志：收到 ${out.size} 个进程的回包（${out.map { "${it.key}=${it.value.lines().size} 行" }}）")
-        return out
+        return Pulled(out, builds, counts)
+    }
+
+    /**
+     * 「导出日志」那一行副标题要的那一句：缓冲区现在多少行、来自几个进程。
+     *
+     *  与 [collect] 走同一条路（真把几份收上来再数），所以**慢** —— 最多等 `WAIT_MS`。
+     *  调用方必须放在 IO 上，且只在菜单打开那一刻取一次，不能进组合期。
+     *
+     * @return `null` = 连本进程都是空的（这时候没什么可导的），那一行就不带副标题
+     */
+    fun summary(context: Context): String? {
+        val remote = collect(context, HostApp.PACKAGE).text
+        val local = XLog.lines().count { it.isNotBlank() }
+        val remoteLines = remote.values.sumOf { text -> text.lines().count { it.isNotBlank() } }
+        val lines = local + remoteLines
+        if (lines <= 0) return null
+        return I18n.format(Strings.MENU_LOG_BUFFER, lines)
     }
 
     /**

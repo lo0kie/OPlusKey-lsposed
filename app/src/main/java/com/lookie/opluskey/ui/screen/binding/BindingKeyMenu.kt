@@ -1,14 +1,21 @@
 package com.lookie.opluskey.ui.screen.binding
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.withKeyName
@@ -28,16 +35,22 @@ import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.text.BRANCHES_TITLE
+import com.lookie.opluskey.ui.row.ChipFlow
+import com.lookie.opluskey.ui.row.ChipSentence
+import com.lookie.opluskey.ui.row.chipLook
 import com.lookie.opluskey.ui.screen.combo.KeysAskDialog
+import com.lookie.opluskey.ui.screen.combo.holdSentenceTemplate
 import com.lookie.opluskey.ui.screen.combo.keyRowIcon
 import com.lookie.opluskey.ui.screen.command.scenarioMenuSummary
 import com.lookie.opluskey.ui.state.binding.KeyWatchState
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.state.page.SettingsTarget
 import com.lookie.opluskey.ui.state.page.SettingsTargetState
+import com.lookie.opluskey.ui.style.EmphasisText
 import com.lookie.opluskey.ui.write.write
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 「按键绑定」页顶栏右侧的菜单按钮 + 浮层菜单 —— 对**当前这一颗键**动手的地方。
@@ -128,7 +141,16 @@ internal fun SettingsPage.BindingKeyMenu() {
                             },
                             onDelete = {
                                 open = false
-                                dialog = KeyMenuDialog.DELETE
+                                //  **先反查组合**：还在组合里的键不能直接删 —— 删了那一档组合会指向
+                                //  一颗不存在的键（执行侧认不出，组合静默失效）。先拦下来点名，
+                                //  让用户自己去组合页删那几档。
+                                val used = combosUsing(configState.config.value, editing)
+                                dialog =
+                                    if (used.isEmpty()) {
+                                        KeyMenuDialog.DELETE
+                                    } else {
+                                        KeyMenuDialog.DELETE_BLOCKED
+                                    }
                             },
                         ),
                 ).takeIf { open }
@@ -205,6 +227,14 @@ private enum class KeyMenuDialog {
 
     /** 停用这一颗键的确认窗（启用不弹，直接写）。 */
     DISABLE,
+
+    /**
+     * 删不掉的说明窗：这颗键还在组合里。
+     *
+     *  与 [DELETE] 分开一档：那一条是「确认之后真删」，这一条**到此为止**（没有可以替用户做的
+     *  补救 —— 替他删掉那几档组合？他只是想删一颗键）。所以动作项只有「知道了」。
+     */
+    DELETE_BLOCKED,
 }
 
 /**
@@ -393,6 +423,55 @@ private fun SettingsPage.KeyMenuDialogHost(
             onDismiss()
         },
     )
+    //  「这颗键还在组合里」—— 删不掉的说明窗（动作项只有「知道了」）。
+    //  正文点名那几档组合（键名照旧是名字框，与列表行同一套），用户照着去组合页删。
+    val inCombos = if (dialog == KeyMenuDialog.DELETE_BLOCKED) combosUsing(config, selected) else emptyList()
+    ConfirmDialog(
+        show = dialog == KeyMenuDialog.DELETE_BLOCKED,
+        title = I18n.get(Strings.BINDING_DELETE_KEY_BLOCKED_TITLE, "无法删除"),
+        action = I18n.get(Strings.COMMON_GOT_IT, "知道了"),
+        positiveDanger = false,
+        //  这一条没有「确认之后做点什么」—— 两颗按钮都只是把窗关掉
+        onDismiss = onDismiss,
+        onConfirm = onDismiss,
+        body = {
+            EmphasisText(
+                text = I18n.format(Strings.BINDING_DELETE_KEY_BLOCKED_BODY, inCombos.size),
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            //  每一档**水平居中**；两类写法分开（与组合列表同一套）：
+            //  等待组合是一串框（`[A]×[B]`），按住组合是一句话（`按住 [A] 后再按 [B]`）——
+            //  只摆一串框读不出「谁先按住」，那正是那一档的判据。
+            val textStyle = COUITheme.textStyles.body2
+            val textColor = COUITheme.colorScheme.onBackgroundVariant
+            val look = chipLook(color = textColor, enabled = true)
+            inCombos.forEach { combo ->
+                val names = combo.keys.mapNotNull { id -> config.keyIdOf(id)?.let(::keyName) }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (combo.isHold) {
+                        ChipSentence(
+                            template = holdSentenceTemplate(names.size - 1),
+                            names = names,
+                            look = look,
+                            style = textStyle,
+                            color = textColor,
+                            //  这一句自己撑满整行（它是 `BasicText`），外层那个 `Arrangement.Center`
+                            //  只摆得动盒子、摆不动盒子里的字 —— 按住组合那几档得在这里点名居中
+                            textAlign = TextAlign.Center,
+                        )
+                    } else {
+                        ChipFlow(names = names, look = look)
+                    }
+                }
+            }
+        },
+    )
+
     //  启停 / 连带的那一问「含它的组合要不要一起停 / 一起开」—— 与按键列表那颗开关共用
     //  同一个待确认对象与同一个组件（用户口径：两处完全一样的检查与提示）。
     KeysAskDialog()
@@ -459,3 +538,14 @@ private fun SettingsPage.confirmRenameKey(
         chips = listOf(name),
     )
 }
+
+/**
+ * 这一颗键被哪几档组合用着 —— 删键之前的**反查**（空表 = 可以删）。
+ *
+ *  判据只比 id：组合成员存的是键 id（`ComboKey.keys`），删掉之后那几档组合会指向一颗不存在的键，
+ *  执行侧认不出、静默失效 —— 所以宁可在删之前拦一道，也不让配置留下这种死引用。
+ */
+private fun combosUsing(
+    config: Config,
+    key: KeyId,
+): List<ComboKey> = config.combos.filter { key.id in it.keys }

@@ -2,6 +2,7 @@ package com.lookie.opluskey.core.wire
 
 import android.content.Context
 import android.content.Intent
+import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.log.XLog
 
 /**
@@ -37,7 +38,8 @@ object LogWire {
         pkg: String,
         proc: String,
     ) {
-        val chunks = chunk(XLog.lines())
+        val lines = XLog.lines()
+        val chunks = chunk(lines)
         chunks.forEachIndexed { index, text ->
             PageWire.send(
                 context,
@@ -46,11 +48,15 @@ object LogWire {
                     .putExtra(ModuleWire.EXTRA_LOG_PROC, proc)
                     .putExtra(ModuleWire.EXTRA_LOG_INDEX, index)
                     .putExtra(ModuleWire.EXTRA_LOG_TOTAL, chunks.size)
-                    .putExtra(ModuleWire.EXTRA_LOG_TEXT, text),
+                    .putExtra(ModuleWire.EXTRA_LOG_TEXT, text)
+                    //  这两项每片都带（只有第一片会被采纳）：收方要的是「这一侧是哪次构建、
+                    //  有多少行」，而不是逐片的账 —— 分开传反而要在收方再拼一次。
+                    .putExtra(ModuleWire.EXTRA_LOG_BUILD, ModuleInfo.BUILD_ID)
+                    .putExtra(ModuleWire.EXTRA_LOG_LINES, lines.size),
             )
         }
         // 一条 W：导出这件事本身要留痕（收方拿到几片、发方发了什么，对不上时先看这两行）
-        XLog.w("导出日志：已回 $proc 的缓冲 ${chunks.size} 片")
+        XLog.w("导出日志：已回 $proc 的缓冲 ${chunks.size} 片（${lines.size} 行 / ${ModuleInfo.BUILD_ID}）")
     }
 
     /** 按行累积到 [CHUNK_CHARS] 就切一片；单行本身就超长时让它独占一片，绝不切在行中间。 */

@@ -1,14 +1,22 @@
 package com.lookie.opluskey.ui.screen.home
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.HostApp
+import com.lookie.opluskey.core.wire.ModuleWire
+import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.HeaderMenuButton
 import com.lookie.opluskey.ui.chrome.openStockPage
@@ -17,10 +25,14 @@ import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.dialog.MenuEntry
 import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.style.EmphasisText
 import com.lookie.opluskey.ui.wire.linkReady
 import com.lookie.opluskey.ui.write.resetModule
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 首页顶栏右侧的菜单按钮 + 浮层菜单 —— 四项：「默认界面」「重启服务」「导出日志」「重置模块」。
@@ -65,6 +77,30 @@ internal fun SettingsPage.HomeHeaderMenu() {
     val preciseClick = rememberPreciseClickState()
     val rowsEnabled = linkReady && !configState.readOnly
 
+    //  两行副标题都要**现取**：宿主运行时长读 `link.hostProcStart`（宿主报活时带过来的墙钟时刻），
+    //  日志缓冲要跨进程收一次（几百毫秒）。两样都在打开菜单那一刻异步算，绝不进组合期。
+    var hostUptime by remember { mutableStateOf<String?>(null) }
+    var logSummary by remember { mutableStateOf<String?>(null) }
+    //  键里带上 `hostProcStart`：菜单可能在这一趟自检还没回来时就打开了（那时它是 0），
+    //  宿主一答上就重算一遍，副标题跟着出现 —— 只盯 `open` 的话会一直空着。
+    LaunchedEffect(open, link.hostProcStart) {
+        if (!open) return@LaunchedEffect
+        val start = link.hostProcStart
+        if (start <= 0) {
+            //  还没拿到宿主的启动时刻（这一趟自检没回来 / 宿主刚重启）—— 现问一声。
+            //  问完那一趟会把 `hostProcStart` 填上，键跟着变、这个 effect 自己再跑一遍。
+            PageWire.send(context, HostApp.PACKAGE, Intent(ModuleWire.ACTION_HOST_SERVICE_QUERY))
+        }
+        //  日志缓冲只取一次：跨进程收一次要几百毫秒，没必要每秒重来。
+        logSummary = withContext(Dispatchers.IO) { runCatching { hooks.logBufferSummary?.invoke() }.getOrNull() }
+        //  运行时长**每秒重算**：菜单开着的时候它得像秒表一样走（关掉菜单这一趟就被取消）。
+        //  一分钟以上那两档文案不会变，重算出来的串与上一帧相同，Compose 不会重组。
+        while (true) {
+            hostUptime = if (start > 0) uptimeText(System.currentTimeMillis() - start) else null
+            delay(UPTIME_TICK_MS)
+        }
+    }
+
     Box {
         // 触发键同样是库的 IconButton，只是多挂 `preciseClickAnchor`：浮层弹在按下的那一点
         HeaderMenuButton(preciseClick) { open = true }
@@ -90,6 +126,9 @@ internal fun SettingsPage.HomeHeaderMenu() {
                     //  与上面「默认界面」同档：这两条是逃生口，不吃任何闸。
                     MenuEntry.Row(
                         title = I18n.get(Strings.MENU_RESTART_SERVICE, "重启服务"),
+                        //  副标题写**宿主进程已经跑了多久**（重启服务重启的就是它）——
+                        //  这一句同时是「你按重启之前，它是不是刚重启过」的证据。
+                        summary = hostUptime?.let { I18n.format(Strings.MENU_RESTART_UPTIME, it) },
                         icon = PageIcons.ModuleRestart,
                         enabled = true,
                     ) {
@@ -99,6 +138,8 @@ internal fun SettingsPage.HomeHeaderMenu() {
                     // 第三项：导出日志 —— 同样跟着 [rowsEnabled]
                     MenuEntry.Row(
                         title = I18n.get(Strings.MENU_EXPORT_LOG, "导出日志"),
+                        //  副标题是这次会导出去多少（几个进程的缓冲合起来）
+                        summary = logSummary,
                         icon = PageIcons.MenuExport,
                         enabled = rowsEnabled,
                     ) {
@@ -160,7 +201,20 @@ private fun SettingsPage.HomeHeaderConfirmDialogs() {
     ConfirmDialog(
         show = overlays.confirmResetModule,
         title = I18n.get(Strings.DIALOG_RESET_MODULE_TITLE, "重置模块"),
-        summary = I18n.get(Strings.DIALOG_RESET_MODULE_MESSAGE, "配置（含列表）、命令与变量、界面状态回到出厂。\n**不可恢复**。"),
+        //  正文两行、对齐方式不同：第一行说明「重置了什么」（左对齐，长了会折行），
+        //  第二行是代价（短，**居中**）—— 所以走 `body` 槽自己排，不用 `summary` 那一整段。
+        body = {
+            EmphasisText(
+                text = I18n.get(Strings.DIALOG_RESET_MODULE_MESSAGE, "配置（含列表）、命令与变量、界面状态回到出厂。"),
+                textAlign = TextAlign.Start,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            EmphasisText(
+                text = I18n.get(Strings.DIALOG_RESET_MODULE_IRREVERSIBLE, "**不可恢复**。"),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
         action = I18n.get(Strings.DIALOG_RESET_MODULE_CONFIRM, "重置"),
         onDismiss = { overlays.confirmResetModule = false },
         onConfirm = {
@@ -168,4 +222,22 @@ private fun SettingsPage.HomeHeaderConfirmDialogs() {
             scope.launch { resetModule() }
         },
     )
+}
+
+/** 「已运行」那一行多久重算一次（毫秒）—— 一秒一跳，与秒表的读感一致。 */
+private const val UPTIME_TICK_MS = 1_000L
+
+/**
+ * 「已运行 2 小时 13 分」那种写法 —— 只服务「重启服务」那一行的副标题。
+ *
+ *  三档就够：一小时以上给「小时 + 分」，一分钟以上给「分」，再短给「秒」。
+ *  与 `durationText`（滑杆那一档，毫秒 / 秒）不是一件事：那里量的是几十毫秒到几秒。
+ */
+private fun uptimeText(ms: Long): String {
+    val seconds = (ms / 1000).coerceAtLeast(0)
+    return when {
+        seconds >= 3600 -> I18n.format(Strings.MENU_UPTIME_HOUR_MIN, seconds / 3600, (seconds % 3600) / 60)
+        seconds >= 60 -> I18n.format(Strings.MENU_UPTIME_MIN, seconds / 60)
+        else -> I18n.format(Strings.MENU_UPTIME_SEC, seconds)
+    }
 }

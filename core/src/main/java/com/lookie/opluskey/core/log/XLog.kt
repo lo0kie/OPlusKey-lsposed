@@ -61,6 +61,9 @@ object XLog {
     /** 导出用的内存环形缓冲：只留最近 [BUFFER_MAX] 条（**本进程**的日志）。 */
     private const val BUFFER_MAX = 2000
 
+    /** [lastStack] 最多留这么多字符 —— 一条栈通常一两千字符，这个上限够放下半个深链。 */
+    private const val LAST_STACK_MAX = 8_000
+
     /**
      * 缓冲本体 —— **`ArrayDeque` + 一把锁**，不用并发队列。
      *
@@ -74,6 +77,29 @@ object XLog {
     private val stamp =
         java.time.format.DateTimeFormatter
             .ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
+
+    /**
+     * 缓冲本体的**溢出计数** —— 从进程起来到现在，被 [BUFFER_MAX] 挤掉了多少条。
+     *
+     *  导出时写进文件头（见 `LogPull.header`）：一份长日志缺了开头时，得能看出是「没发生过」
+     *  还是「发生过但被裁了」。原先这件事静默无痕，排查时最容易被误读。
+     */
+    private var dropped = 0L
+
+    /**
+     * 最近一次带异常的日志那一份**完整堆栈**（缓冲里只留「类型 + message」，见 [write]）。
+     *
+     *  另存一格而不是塞进缓冲：一条栈动辄几百行，进环形缓冲会把整段判据行挤掉；而真出异常时
+     *  那一条栈恰恰是最需要看的。导出时附在文件末尾（见 `LogPull.header` / `ConfigTransfer`）。
+     */
+    @Volatile
+    private var lastStack: String? = null
+
+    /** 被挤掉的条数（见 [dropped]）。 */
+    fun droppedLines(): Long = synchronized(buffer) { dropped }
+
+    /** 最近一次异常的完整堆栈；`null` = 这个进程里还没出过带 `Throwable` 的日志。 */
+    fun lastStack(): String? = lastStack
 
     /** 导出用：把缓冲拼成文本（**本进程**）。另外两个进程那份由 `wire/LogWire` 一问一答收上来。 */
     fun snapshot(): String = synchronized(buffer) { buffer.joinToString("\n") }
@@ -108,8 +134,15 @@ object XLog {
             //  （高频 `d` 路径尤其明显）。所以这里在**同一把锁**里加与裁 —— 计数与裁剪是一件事。
             synchronized(buffer) {
                 buffer.addLast("${level(priority)} ${java.time.LocalDateTime.now().format(stamp)} $text")
-                while (buffer.size > BUFFER_MAX) buffer.removeFirst()
+                while (buffer.size > BUFFER_MAX) {
+                    buffer.removeFirst()
+                    //  裁掉的那一条要计数（见 [dropped]）：没有这个数，导出时看不出开头缺了一截
+                    dropped += 1
+                }
             }
+            //  完整堆栈另存一格（见 [lastStack]）。取栈有成本，但这条路径只在真出异常时走一次，
+            //  而缓冲里那一行只有「类型 + message」—— 没有这一份，栈就彻底没了。
+            if (tr != null) lastStack = "$msg\n${Log.getStackTraceString(tr)}".take(LAST_STACK_MAX)
         }
         runCatching { Log.println(priority, TAG, text) }
         module?.let { m ->

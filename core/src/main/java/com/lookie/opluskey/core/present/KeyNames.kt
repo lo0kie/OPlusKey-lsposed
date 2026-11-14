@@ -77,10 +77,16 @@ fun comboLabel(
     combo: ComboKey,
 ): String {
     val names = comboKeyNames(cfg, combo)
-    //  按住那两档：名字按**按下的顺序**排（「先按住第二颗」= 第二颗在前），再套进那句模板
+    //  按住那一档：**首键在前、后续成员跟一句**（`按住 [侧键] 后再按 [电量 +]×[相机]`）。
+    //  首键就是 `keys` 第一位（迁移之后老配置也已经是这个形状），所以这里不再有「要不要倒过来」。
+    //
+    //  不写成 `I18n.format(…)`：那条按顺序填占位，模板里只有两个 `%s`，第三颗会被静默丢掉；
+    //  这里按段替换，后续成员有几个就连几个。
     if (combo.isHold) {
-        val ordered = if (combo.mode == ComboKey.MODE_HOLD_SECOND) names.reversed() else names
-        return I18n.format(Strings.COMBO_MODE_HOLD, *ordered.map(::chipOrBare).toTypedArray())
+        return I18n
+            .get(Strings.COMBO_MODE_HOLD, "按住 %1\$s 后再按 %2\$s")
+            .replace("%1\$s", chipOrBare(names.firstOrNull().orEmpty()))
+            .replace("%2\$s", names.drop(1).map(::chipOrBare).joinToString(" $COMBO_PAIR_SEPARATOR "))
     }
     return comboLabelOf(names)
 }

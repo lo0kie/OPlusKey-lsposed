@@ -21,8 +21,17 @@ package com.lookie.opluskey.core.model
  *  两个上限分开：界面只造得出三颗，而判定侧从三颗起就走「多成员凑齐」那条路
  *  （`ComboDetector.multiFor`），再多也跑得通 —— 手改配置文件写进来的四颗以上照常生效。
  *
- *  **按住那两种只对两颗成立**（三颗没有「哪一颗先按住」这个唯一起点）：读回来时由
- *  [modeFor] 夹回 [MODE_WAIT]，所以这一档不会出现「三颗 + 按住」这种按不出来的形态。
+ * ## 按住那一档：**首键一颗 + 后续成员任意多颗**
+ *
+ *  按住那一档的 [keys] 是**有序**的：第一颗是**首键**（要先按住的那一颗），其余是后续成员。
+ *  「谁先按住」不再是一个独立的模式位 —— 它就是把那颗键摆在 [keys] 第一位。
+ *  于是「按住 A 后再按 B、C」与「按住 B 后再按 A、C」是**两档不同的组合**（首键不同），
+ *  而「先按住第二颗」这个老模式在读配置时被折成「键序反转」（见 `ComboDto`）。
+ *
+ *  后续成员**没有顺序要求**：首键按住之后，它们在窗口内陆续按下就凑齐（判定见 `ComboDetector`）。
+ *  三颗时先按 C 再按 B 与先按 B 再按 C 是同一档 —— 人手做不到「三根手指排好队落下」。
+ *
+ *  [MODE_HOLD_SECOND] 因此**只剩读旧配置这一个用途**：迁移之后配置里不会再写出它。
  *
  * ## 只支持短按与长按
  *
@@ -47,17 +56,17 @@ data class ComboKey(
     val keys: List<String>,
     val enabled: Boolean = true,
     /**
-     * 这一档**怎么触发** —— [MODE_WAIT] / [MODE_HOLD_FIRST] / [MODE_HOLD_SECOND]。
+     * 这一档**怎么触发** —— [MODE_WAIT] / [MODE_HOLD]（外加只在读旧配置时出现的
+     * [MODE_HOLD_SECOND]）。
      *
      *  · [MODE_WAIT]：成员在 [windowMs] 之内先后按下（默认，老配置全是这一档）；
-     *  · [MODE_HOLD_FIRST]：**先按住 [keys] 的第一颗**，再按第二颗；
-     *  · [MODE_HOLD_SECOND]：先按住第二颗，再按第一颗。
+     *  · [MODE_HOLD]：**先按住 [keys] 的第一颗**，其余成员在窗口内陆续按下。
      *
-     *  按住那两档的判据是「那一颗还按着」，不看隔了多久；上界是它自己的长按（判过长按就已经
+     *  按住那一档的判据是「首键还按着」，不看隔了多久；上界是它自己的长按（判过长按就已经
      *  执行过自己的动作，再认组合就是一次按压两个动作），下限是 [holdMinMs]（把「一起按」
-     *  与「真的按住一颗再补另一颗」分开）。
+     *  与「真的按住一颗再补另一颗」分开）。**后续成员只要求按下、不要求按住**。
      *
-     *  三颗及以上只有 [MODE_WAIT]：读回来时由 [modeFor] 夹回去。
+     *  「谁先按住」由 [keys] 的顺序表达，不是另一套模式位（见类注释）。
      */
     val mode: Int = MODE_WAIT,
     /** 短按：按下之后在 [longPressMs] 之内松开。 */
@@ -170,29 +179,27 @@ data class ComboKey(
     /** 这一档靠「窗口内先后按下」触发吗（[MODE_WAIT]）。 */
     val isWait: Boolean get() = mode == MODE_WAIT
 
-    /** 这一档靠「先按住一颗、再按另一颗」触发吗（[MODE_HOLD_FIRST] / [MODE_HOLD_SECOND]）。 */
+    /** 这一档靠「先按住一颗、再补其余」触发吗（[MODE_HOLD]）。 */
     val isHold: Boolean get() = mode != MODE_WAIT
 
     /**
-     * 这一档的**起点键**（按住那两档才有）—— `MODE_HOLD_FIRST` 是成员里的第一颗，
-     * `MODE_HOLD_SECOND` 是第二颗。窗口那一档回 `null`。
+     * 这一档的**首键**（按住那一档才有）—— 就是 [keys] 的第一颗。窗口那一档回 `null`。
+     *
+     *  一颗按键能当几个按住档的首键？**不设限**：`A` 当首键的 `{A,B}` 与 `{A,B,C}` 是两档，
+     *  它们各自的 [keys] 第一位都是 `A`。所以「首键」不是身份的唯一位，`(首键, 其余成员集合)`
+     *  才是。
      */
     val starterKey: String?
-        get() =
-            when (mode) {
-                MODE_HOLD_FIRST -> keys.getOrNull(0)
-                MODE_HOLD_SECOND -> keys.getOrNull(1)
-                else -> null
-            }
+        get() = if (isHold) keys.firstOrNull() else null
 
-    /** 这一档的另一颗（按住那两档才有）—— 后补的那一下。窗口那一档回 `null`。 */
-    val partnerKey: String?
-        get() =
-            when (mode) {
-                MODE_HOLD_FIRST -> keys.getOrNull(1)
-                MODE_HOLD_SECOND -> keys.getOrNull(0)
-                else -> null
-            }
+    /**
+     * **后续成员**（按住那一档才有）—— 除首键之外的全部，按配置顺序排。
+     *
+     *  顺序**不进判据**：它们在窗口内陆续按下就凑齐（用户口径「成员没有顺序要求」）。
+     *  存着顺序只为界面摆文案与日志好读。
+     */
+    val followers: List<String>
+        get() = if (isHold) keys.drop(1) else emptyList()
 
     /**
      * [trigger] 这一档的动作。
@@ -288,32 +295,40 @@ data class ComboKey(
         const val HOLD_MIN_FOLLOW_GLOBAL = 0
 
         /**
-         * 三种**触发方式**（[mode]）。
+         * 触发方式（[mode]）。
          *
          *  数字进线格式（`ComboDto` / `ComboWire` 各一格），所以只有「加在末尾」这一种改法；
          *  0 是窗口那条，与这一位出现之前写下的配置同义。
+         *
+         *  2026-11-14 起按住只剩**一种**（[MODE_HOLD]）：首键由 [keys] 第一位表达，
+         *  「先按住第二颗」这个老模式在配置迁移时被折成「键序反转 + [MODE_HOLD]」。
+         *  所以 [MODE_HOLD_SECOND] 只在**读旧文件**时出现，写出去的值里不会再有它。
          */
         const val MODE_WAIT = 0
-        const val MODE_HOLD_FIRST = 1
+        const val MODE_HOLD = 1
+
+        /** 旧编号（= 先按住第二颗）—— 只用于读迁移前的配置，见 [MODE_HOLD] 的说明。 */
         const val MODE_HOLD_SECOND = 2
 
         /**
          * [raw] 这一档在 [keyCount] 颗成员下**真正能用**的触发方式。
          *
-         *  三颗及以上只认窗口那条（没有「哪一颗先按住」这个唯一起点），认不出的取值也退回窗口 ——
+         *  成员够两颗就两种都允许 —— 按住那一档不再限于两颗（首键一颗 + 后续任意多颗）。
+         *  认不出的取值一律当 [MODE_HOLD]：老配置里的 2 已经在 `ComboDto` 里迁移成
+         *  「键序反转 + 1」，走到这一层还见到非 0 就只能当按住。
+         *
          *  夹这一道的地方只有三处：两个解析入口（`ComboDto` / `ComboWire`）与界面改成员那一步。
-         *  于是判定侧不会再遇到「三颗 + 按住」这种按不出来的形态，`ComboPlan.judgeable` 也就
-         *  不必再额外判它。
          */
         fun modeFor(
             raw: Int,
             keyCount: Int,
-        ): Int = if (keyCount != MIN_KEYS) MODE_WAIT else raw.coerceIn(MODE_WAIT, MODE_HOLD_SECOND)
+        ): Int = if (keyCount < MIN_KEYS || raw == MODE_WAIT) MODE_WAIT else MODE_HOLD
 
         /**
          * 成员上限：**三颗**（用户口径）。两颗仍是最常见的那一档，三颗是给「三键齐按」留的口子。
          *
-         *  这是**界面与收集**那一侧的上限：收集入口（`ComboActions` / `KeysScreen`）按它拦，
+         *  这是**界面与收集**那一侧的上限，两类共用：等待组合是「三颗一起按下」，按住组合是
+         *  「首键一颗 + 后续两颗」。收集入口（`ComboActions` / `KeysScreen`）按它拦，
          *  「最多 %d 颗」那条提示也用它。判定侧不吃这个数 —— 那边认到 [MAX_JUDGE_KEYS]。
          *
          *  两个上限为什么分开：判定侧从三颗起就走「多成员凑齐」那条路（`ComboDetector.multiFor`），

@@ -33,9 +33,10 @@ internal class LegacyComboSlot(
  * 1. 认窗口（`windowOn` 缺省或为真）⇒ [ComboKey.MODE_WAIT]。窗口那条从组合键第一天起就有、
  *    而且是默认开，所以「没写过这一位」与「写过 true」同解；
  * 2. 不认窗口、也没认按住 ⇒ 那一档本来永远不成立，落到窗口那条（至少能编辑）；
- * 3. 只认按住 ⇒ 看加过哪一种顺序：只有「先按住第二颗」才算 [ComboKey.MODE_HOLD_SECOND]，
- *    其余（含两种都加过）取 [ComboKey.MODE_HOLD_FIRST] —— 老模型里两种并存的组合现在只能留
- *    一种，另一种得再建一档。
+ * 3. 只认按住 ⇒ 看加过哪一种顺序：只有「先按住第二颗」才推成 [ComboKey.MODE_HOLD_SECOND]，
+ *    其余（含两种都加过）取 [ComboKey.MODE_HOLD]。**后者要由调用方把键序反过来** —— 现在
+ *    「先按住哪一颗」由 `keys` 第一位表达，不再有第二个模式位（见 `ComboDto.toCombo`）。
+ *    老模型里两种并存的组合只能留一种，另一种得再建一档。
  *
  * @return `null` = 新文件（[ComboDto.mode] 有值），调用点照常读 `single` / `long`
  */
@@ -56,10 +57,10 @@ private fun ComboDto.built(): LegacyComboSlot {
             holdOn != true -> ComboKey.MODE_WAIT
 
             //  只加了「先按住第二颗」
-            ComboKey.MODE_HOLD_SECOND in holdOrders && ComboKey.MODE_HOLD_FIRST !in holdOrders -> ComboKey.MODE_HOLD_SECOND
+            ComboKey.MODE_HOLD_SECOND in holdOrders && ComboKey.MODE_HOLD !in holdOrders -> ComboKey.MODE_HOLD_SECOND
 
             //  加过第一颗（含两种都加过）
-            ComboKey.MODE_HOLD_FIRST in holdOrders -> ComboKey.MODE_HOLD_FIRST
+            ComboKey.MODE_HOLD in holdOrders -> ComboKey.MODE_HOLD
 
             else -> ComboKey.MODE_WAIT
         }
@@ -67,7 +68,7 @@ private fun ComboDto.built(): LegacyComboSlot {
         //  窗口那一档当年就用通用那两位，不必从 A / B 槽搬
         return LegacyComboSlot(ComboKey.MODE_WAIT, Action.parse(single), Action.parse(long))
     }
-    val first = resolved == ComboKey.MODE_HOLD_FIRST
+    val first = resolved == ComboKey.MODE_HOLD
     return LegacyComboSlot(
         resolved,
         Action.parse(if (first) singleA else singleB),

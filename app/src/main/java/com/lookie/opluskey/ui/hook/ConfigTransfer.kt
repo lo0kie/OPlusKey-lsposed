@@ -12,7 +12,6 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.ui.PendingImport
-import com.lookie.opluskey.ui.chrome.appVersionText
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.text.UNKNOWN_CONFIG_FORMAT
 import com.lookie.opluskey.ui.write.dedupeByName
@@ -183,7 +182,16 @@ internal object ConfigTransfer {
                 val remote = LogPull.collect(ctx, HostApp.PACKAGE)
                 mainHandler.post {
                     try {
-                        openExportPicker(activity, LogPull.compose(XLog.snapshot(), remote))
+                        //  **头部在收集之后拼**：它要写三个进程各回没回包、各几行，
+                        //  还要写本进程被裁掉多少条 —— 那都是这次收集之后才有的事实。
+                        val now = java.time.LocalDateTime.now()
+                        val head = HostSession.page?.logHeader(remote, now.format(HEADER_STAMP)).orEmpty()
+                        val body = LogPull.compose(XLog.snapshot(), remote.text)
+                        //  异常栈附在正文之后：缓冲里那一行只有「类型 + message」，
+                        //  完整栈是另存的一格（见 `XLog.lastStack`）
+                        val stack =
+                            XLog.lastStack()?.let { "\n==== 最近一次异常 ====\n$it\n" }.orEmpty()
+                        openExportPicker(activity, head + body + stack, now)
                     } catch (e: Throwable) {
                         XLog.w("导出日志：拼文本 / 弹选择器失败（已忽略）：${e.javaClass.simpleName}", e)
                     }
@@ -202,6 +210,7 @@ internal object ConfigTransfer {
     private fun openExportPicker(
         activity: android.app.Activity,
         body: String,
+        now: java.time.LocalDateTime,
     ) {
         if (body.isEmpty()) {
             HostSession.page?.hint(I18n.get(Strings.TOAST_LOG_EMPTY, "暂无日志"))
@@ -211,18 +220,12 @@ internal object ConfigTransfer {
             XLog.w("导出日志：上一次导出还没收尾（保存位置选择器还开着？），这次点击忽略")
             return
         }
-        val now = java.time.LocalDateTime.now()
-        // 文件头带版本 + 当前时间：日志发出来时不用再问「哪个版本、什么时候的」
-        val text =
-            buildString {
-                append("OPlusKey ").append(HostSession.page?.appVersionText().orEmpty())
-                append(" | ").append(now.format(HEADER_STAMP))
-                append("\n\n").append(body).append('\n')
-            }
+        //  **全文由调用方拼好**（头部 + 正文 + 异常栈），时间戳也由它给：文件头里那个时刻
+        //  与文件名必须对得上，这一层各取一次会差几百毫秒。
         //  后缀要跟下面那个 `type` 对得上：「保存到」按 MIME 决定扩展名，`text/plain` 对应 `.txt`
         // —— 写 `.log` 也会被对话框换成 `.txt`（同 [EXPORT_MIME] 注释里那条实测）。
         val name = "OPlusKey-" + now.format(FILE_STAMP) + ".txt"
-        pendingExport = text
+        pendingExport = body
         exportInFlight = true
         armExportWatchdog.invoke()
         val intent =

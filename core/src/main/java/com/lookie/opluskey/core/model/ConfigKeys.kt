@@ -43,7 +43,19 @@ fun Config.withCustomKey(key: KeyId): Config =
         customKeys = customKeys.filterNot { it.id == key.id } + key,
     )
 
-/** 删掉一颗键（只对自定义键有意义）；两处一起摘，理由同 [withCustomKey]。 */
+/**
+ * 删掉一颗键（只对自定义键有意义）；三处一起摘，理由同 [withCustomKey]。
+ *
+ * ## 为什么连组合一起摘
+ *
+ *  组合的成员存的是**键 id**（`ComboKey.keys`）。只摘 `keys` 与 `customKeys` 的话，含这颗键的
+ *  那几档会留下一个指向不存在键的 id —— 执行侧按 id 找键，找不到就是**静默失效**：那一档永远
+ *  凑不成，而界面上还画得好好的。
+ *
+ *  界面那条删除路径已经先反查过、有组合就拦下来弹「无法删除」（见 `combosUsing`），所以正常
+ *  使用不会走到「删掉的键还在组合里」。这一句是给**将来别的调用点**兜底的：函数自己保证
+ *  不留下死引用，而不是把「调用前必须先反查」这条契约留在注释里靠人记。
+ */
 fun Config.withoutKey(id: String): Config {
     val target = keyIdOf(id) ?: return this
     // 内置键**不给删**：删掉 `plus` 等于把侧键整条从 keys 里抹掉，读回来退回默认配置，
@@ -52,6 +64,8 @@ fun Config.withoutKey(id: String): Config {
     return copy(
         keys = keys - target,
         customKeys = customKeys.filterNot { it.id == target.id },
+        //  连带摘掉含它的组合：它们已经不可能凑成了
+        combos = combos.filterNot { target.id in it.keys },
     )
 }
 

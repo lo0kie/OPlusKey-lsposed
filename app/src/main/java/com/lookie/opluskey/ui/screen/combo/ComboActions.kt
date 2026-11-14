@@ -7,11 +7,13 @@ import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.present.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.row.CHIP_SLOT
 import com.lookie.opluskey.ui.row.chipsOfNames
 import com.lookie.opluskey.ui.row.namesToChipsTemplate
 import com.lookie.opluskey.ui.screen.binding.ComboModeAsk
@@ -34,13 +36,45 @@ import com.lookie.opluskey.ui.write.write
 internal const val MAX_COMBOS = 9
 
 /**
- * 同一组键最多能有几种触发方式 —— 等待 / 先按住第一颗 / 先按住第二颗，三档
- * （[ComboKey.MODE_WAIT] / `MODE_HOLD_FIRST` / `MODE_HOLD_SECOND`）。
+ * 一组键最多能有几种触发方式 —— **等待一档 + 每个成员各当一次首键**。
  *
- *  回执里「N 种触发方式都已添加」那个 N 就是它；三颗成员的组合只有等待那一档
- *  （见 `ComboKey.modeFor`），所以**只有两颗的那一组**能走到上限。
+ *  回执里「N 种触发方式都已添加」那个 N 就是它。成员越多，按住那一类能配的档越多：
+ *  三颗时是「等待 + 按住 A + 按住 B + 按住 C」四种。所以它是个函数，不是一个常量 ——
+ *  写死成 3 的话，三颗的组合补到第三档就会说「都已添加」，而其实还差一档。
  */
-internal const val COMBO_MODE_TOTAL = 3
+internal fun comboModeTotal(keyCount: Int): Int = 1 + keyCount.coerceAtLeast(0)
+
+/**
+ * 按住那一档那句话的**模板** —— 「按住 [首键] 后再按 [后续…]」。
+ *
+ *  后续成员**每颗各占一枚名字框**、之间用 [COMBO_PAIR_SEPARATOR] 连起来（与等待组合的
+ *  `A × B` 同一个分隔符）。成员数不定，所以这是一支函数而不是一条写死的文案：
+ *  模板里的槽数必须与调用点传进来的名字数一致，否则多出来的那几颗会被静默丢掉
+ *  （`HintText.plain()` 只按顺序填）。
+ *
+ *  文案本身只写 `%1$s` / `%2$s` 两个段：首键一段、后续那一段再按颗数展开。
+ *
+ * @param followers 后续成员的个数（按住档 = `keys.size - 1`）
+ */
+internal fun holdSentenceTemplate(followers: Int): String {
+    val slots = List(followers.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $COMBO_PAIR_SEPARATOR ")
+    return I18n
+        .get(Strings.COMBO_MODE_HOLD, "按住 %1\$s 后再按 %2\$s")
+        .replace("%1\$s", CHIP_SLOT)
+        .replace("%2\$s", slots)
+}
+
+/**
+ * 等待组合那句话的模板 —— 成员连起来（`A × B`），后面接同一句「后等另一颗」。
+ *
+ *  与 [holdSentenceTemplate] 同一个形状：文案里只有一个 `%s`（那一串成员），按颗数展开。
+ *  原先那句写的是「按下 %s 或 %s」—— 三颗时第三个名字会被丢掉，而「或」在两颗以上也不对
+ *  （它们是**一起**按的，不是二选一）。
+ */
+internal fun waitSentenceTemplate(count: Int): String {
+    val slots = List(count.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $COMBO_PAIR_SEPARATOR ")
+    return I18n.get(Strings.COMBO_MODE_WAIT, "按下 %s 后等另一颗").replace(CHIP_SLOT, slots)
+}
 
 //  `COMBO_PAIR_SEPARATOR` / `comboLabel` / `keyName` 已挪到 `core/model/KeyNames.kt`：
 //  除了 UI（`ui/write/BindingTarget.kt` 的停用提示、顶栏副标题、列表行），**执行时提示**
@@ -48,33 +82,33 @@ internal const val COMBO_MODE_TOTAL = 3
 //  `tools/audit-coupling.py` 核）—— 一份实现要给两侧共用，只能落在两边都许引的 `core`。
 
 /**
- * 这组键在**这一类里**还排得下吗 —— 等待组合一档、按住组合两档（两种顺序各一档）。
+ * 这组键在**这一类里**还排得下吗 —— 等待组合一档、按住组合**每个成员各一档**（谁当首键）。
  *
  *  列表页把它拆成两列（等待 / 按住），添加时类别就已经定下，所以「还能不能再加一档」
  *  只在**同一类内部**问：另一类里的档不算占位。
  *
  *  这是「添加」按钮按不按得动的唯一判据（`KeysScreen` 的选键窗与 [addCombo] 共用）。
- *  按「具体哪一档已经有人」判（[usedComboModes]），不数条数 —— 同一档重复两次是废配置，
- *  数条数会把它当成「两档都占了」。
+ *  按「具体哪一档已经有人」判（[waitTaken] / [usedComboStarters]），不数条数 ——
+ *  同一档重复两次是废配置，数条数会把它当成「两档都占了」。
  */
 internal fun comboRoomLeft(
     cfg: Config,
     ids: List<String>,
     hold: Boolean,
-): Boolean {
-    val used = usedComboModes(cfg, ids)
-    return if (hold) {
-        ComboKey.MODE_HOLD_FIRST !in used || ComboKey.MODE_HOLD_SECOND !in used
+): Boolean =
+    if (hold) {
+        //  还有没当过首键的成员 ⇒ 这一类就还排得下
+        val used = usedComboStarters(cfg, ids)
+        ids.any { it !in used }
     } else {
-        ComboKey.MODE_WAIT !in used
+        !waitTaken(cfg, ids)
     }
-}
 
 /**
  * [comboRoomLeft] 的反面 —— 这一类里的触发方式**已经全占满了**。
  *
  *  单独起个名字只为读起来顺：被拦住时要说哪一句由它决定（见 `KeysScreen` 的选键窗与
- *  [writeNewCombo]）—— 按住那两种都加过时说「所有触发方式都已添加」，
+ *  [writeNewCombo]）—— 按住那一类里每个成员都当过首键时说「所有触发方式都已添加」，
  *  而不是笼统的「这组按键已经添加过了」：后者读起来像整组都加过，而另一类往往还能加。
  */
 internal fun comboAllModesTaken(
@@ -84,36 +118,53 @@ internal fun comboAllModesTaken(
 ): Boolean = !comboRoomLeft(cfg, ids, hold)
 
 /**
- * 这一组键（同一批成员）**眼下占掉了哪一档**（[ComboKey.MODE_WAIT] / `MODE_HOLD_FIRST` /
- * `MODE_HOLD_SECOND` 的集合）—— 选择窗据此把用不上的那几行置灰。
+ * 这一组键的**等待档**在不在 —— 同一批成员的等待档只可能有一档。
  *
- *  与 [comboRoomLeft] 同源、但答的不是同一个问题：那一条问「这一类里还排不排得下」，
- *  这一条问「具体是哪一档已经有人了」。界面要用后者，才能说出「两种都已经添加」。
- *
- *  只算**这一批成员完全一样**的档：同一批键的等待档只有一档、按住档有两种顺序各一档。
+ *  与 [usedComboStarters] 同源、分两个函数：一类一档、一类按成员各一档，
+ *  合成一个「返回集合」的接口反而要在调用点各拆一次。
  */
-internal fun usedComboModes(
+internal fun waitTaken(
     cfg: Config,
     ids: List<String>,
-): Set<Int> {
-    val want = ids.map { it }.sorted()
+): Boolean {
+    val want = ids.toSet()
+    return cfg.combos.any { it.isWait && it.keys.toSet() == want }
+}
+
+/**
+ * 这一组键里**已经当过首键**的那些成员（按住档）—— 选择窗据此把用不上的那几行置灰。
+ *
+ *  只算**这一批成员完全一样**的档：同一批键的等待档只有一档、按住档则是「每个成员各一档」。
+ *  判等用**集合**：按住档的 `keys` 第一颗是首键、顺序有含义，但「是不是同一批成员」仍只看集合 ——
+ *  首键之差由返回值本身区分（返回的是首键 id）。
+ */
+internal fun usedComboStarters(
+    cfg: Config,
+    ids: List<String>,
+): Set<String> {
+    val want = ids.toSet()
     return cfg.combos
-        .filter { it.keys.sorted() == want }
-        .mapTo(HashSet()) { it.mode }
+        .filter { it.isHold && it.keys.toSet() == want }
+        .mapNotNullTo(HashSet()) { it.starterKey }
 }
 
 /**
  * 这一组键的那一档选完之后，**这一组键一共占了几档**（含正要加的这一档）。
  *
- *  回执用它决定说「已添加 …」还是「%d 种触发方式都已添加 …」：同组键最多三档
- *  （等待 + 先按住第一颗 + 先按住第二颗），把三种都补齐时说清「这一组已经齐了」，
- *  比再说一次「已添加」有用 —— 用户补第二种 / 第三种时往往正是在凑齐。
+ *  回执用它决定说「已添加 …」还是「%d 种触发方式都已添加 …」：同一组键的档数上限是
+ *  「等待 + 每个成员当首键」（[comboModeTotal]），补齐时说清「这一组已经齐了」，
+ *  比再说一次「已添加」有用 —— 用户补最后一档时往往正是在凑齐。
+ *
+ *  @param starter 正要加的那一档的首键（`null` = 等待档）
  */
-internal fun comboModeCountAfter(
+internal fun comboCountAfter(
     cfg: Config,
     ids: List<String>,
-    mode: Int,
-): Int = (usedComboModes(cfg, ids) + mode).size
+    starter: KeyId?,
+): Int {
+    val used = usedComboStarters(cfg, ids) + listOfNotNull(starter?.id)
+    return used.size + if (waitTaken(cfg, ids)) 1 else 0
+}
 
 /**
  * 这颗键现在是**哪几档按住组合的起点**（空表 = 不是任何一档的起点）。
@@ -137,69 +188,60 @@ internal fun Config.holdCombosStartedBy(key: KeyId): List<ComboKey> =
 /**
  * 加一档组合（选键弹窗点了「添加」）。
  *
- *  **类别在添加那一刻定下来**（用户口径）：等待组合传 [ComboKey.MODE_WAIT]，按住组合传
- * 「先按住第一颗」或「先按住第二颗」。一档只认一种触发方式，所以以后想两种都有，
- * 就是两列里各建一档 —— 不再有「在一档上改方式」这条路。
+ *  **类别在添加那一刻定下来**（用户口径）：等待组合 [starter] 传 `null`，按住组合传**那颗首键**。
+ *  一档只认一种触发方式，所以以后想两种都有，就是两列里各建一档 —— 不再有「在一档上改方式」这条路。
  *
- * ## 按住那两档先问一句，**问的时候还什么都没写**
+ *  ## 按住那一档先问一句，**问的时候还什么都没写**
  *
- *  它们要求**起点键**是「松手时触发」：不是的话那一档永远不成立（判定侧把「已经执行过自己
+ *  它要求**首键**是「松手时触发」：不是的话那一档永远不成立（判定侧把「已经执行过自己
  *  动作」的键排除在按住之外）。所以先问（[ComboModeAsk]），**确认之后才连同添加一起落盘**。
  *
  *  早先的做法是「先写进配置、再问」——那一问于是只是做样子：点取消时那一档已经在列表里了，
  *  而起点键没改，它是一条死活不成立的废档（用户口径「那个 dialog 只是做样子，触发方式已经
  *  被真的添加了」）。
  *
+ * @param starter 按住档的**首键**（`keys` 里任意一颗）；`null` = 这一档是等待组合
  * @return 新那一档的 id。`null` = 没加：这一类排满了 / 成员数不对 / 超出上限 / 写盘失败 /
  *   **正在等那一问的回答**（确认之后由 `ComboModeAskDialog` 走 [writeNewCombo] 真正写下去）
  */
 internal fun SettingsPage.addCombo(
     keys: List<KeyId>,
-    mode: Int,
+    starter: KeyId?,
 ): String? {
     val cfg = configState.config.value
     val ids = keys.map { it.id }.distinct()
-    val resolved = ComboKey.modeFor(mode, ids.size)
-    if (resolved != ComboKey.MODE_WAIT) {
-        //  起点键是不是「松手时触发」—— 判据用 `ComboKey.starterKey`（顺序唯一来源），
-        //  这里拿一档临时对象去问，不必先落盘。
-        //
+    if (starter != null) {
         //  **「只参与组合」的键先拦一道**：那一档位的意思是「这颗键不判单键手势」，
         //  它自己的「松手时触发」开关在按键设置页是灰的（改不了）。所以这里不能再走
         //  下面那条「切换为松手时触发并添加」的问句 —— 用户点了也没有效果，只会落下
         //  一份 `combo_only=true` 又 `long_fire_on_release=true` 的自相矛盾配置。
         //  改为直接说明原因、不添加（用户口径「也 dialog 拦截」）。
-        val starter = ComboKey(id = "", keys = ids, enabled = true, mode = resolved).starterKey?.let { cfg.keyIdOf(it) }
-        if (starter != null && cfg.key(starter).comboOnly) {
-            XLog.w("组合键：${starter.label} 只参与组合，不能作为按住起点（${ids.joinToString("+")} / mode $resolved）")
+        if (cfg.key(starter).comboOnly) {
+            XLog.w("组合键：${starter.label} 只参与组合，不能作为按住起点（${ids.joinToString("+")}）")
             ComboStarterBlocked.ask(starter)
             return null
         }
-        if (starter != null && !cfg.key(starter).longFireOnRelease) {
-            XLog.w("组合键：${starter.label} 还不是「松手时触发」，先问一句再添加（${ids.joinToString("+")} / mode $resolved）")
-            ComboModeAsk.askAdd(listOf(starter), keys, resolved)
+        if (!cfg.key(starter).longFireOnRelease) {
+            XLog.w("组合键：${starter.label} 还不是「松手时触发」，先问一句再添加（${ids.joinToString("+")}）")
+            ComboModeAsk.askAdd(listOf(starter), keys, ComboKey.MODE_HOLD)
             return null
         }
     }
-    return writeNewCombo(keys, resolved, releaseKeys = emptyList())
+    return writeNewCombo(keys, starter, releaseKeys = emptyList())
 }
 
 /**
- * 「这一类最多几颗」那句话 —— **两类各一条**（用户口径）。
+ * 「这一类最多几颗」那句话 —— **两类各一条文案**（用户口径）。
  *
- *  等待组合 2~3 颗，按住组合只有 2 颗（两种顺序各算一档，都由两颗组成）。原先那一条
- *  「一个组合最多 N 颗按键」对按住是错的：它报的是 `MAX_KEYS`（3），而按住入口的第二颗之后
- *  就勾不上了 —— 用户会去找那颗根本不存在的第三颗。
- *
- *  两处调用共用这一份（选键窗勾满上限、[writeNewCombo] 的越界兜底）：各写一遍迟早有一处
- *  报错类。
+ *  两类的上限现在**是同一个数**（[ComboKey.MAX_KEYS]）：按住那一档也能到三颗了
+ *  （首键一颗 + 后续两颗）。文案仍分开写，因为主语不同 —— 「等待组合最多」与「按住组合最多」
+ *  说的是两种按法的容量，用户看到的那句话要能对上自己正在配的那一类。
  */
 internal fun comboMaxKeysHint(hold: Boolean): String =
-    if (hold) {
-        I18n.format(Strings.COMBO_MAX_KEYS_HOLD, ComboKey.MIN_KEYS)
-    } else {
-        I18n.format(Strings.COMBO_MAX_KEYS_WAIT, ComboKey.MAX_KEYS)
-    }
+    I18n.format(
+        if (hold) Strings.COMBO_MAX_KEYS_HOLD else Strings.COMBO_MAX_KEYS_WAIT,
+        ComboKey.MAX_KEYS,
+    )
 
 /**
  * 真正把新那一档写进配置（按住那两档可顺带把起点键改成「松手时触发」，同一次落盘）。
@@ -212,23 +254,23 @@ internal fun comboMaxKeysHint(hold: Boolean): String =
  */
 internal fun SettingsPage.writeNewCombo(
     keys: List<KeyId>,
-    mode: Int,
+    starter: KeyId?,
     releaseKeys: List<KeyId>,
 ): String? {
     val cfg = configState.config.value
-    val ids = keys.map { it.id }.distinct()
+    val picked = keys.map { it.id }.distinct()
+    //  **首键排到第一位**：按住档的 `keys` 第一位就是首键，判定（`ComboDetector`）、界面文案
+    //  （「按住 A 后再按 B」）、配置落盘三处都只读这一条，不另存一个「谁是首键」的字段。
+    val ids = if (starter != null) listOf(starter.id) + picked.filterNot { it == starter.id } else picked
     if (ids.size !in ComboKey.MIN_KEYS..ComboKey.MAX_KEYS) {
         //  界面那边颗数不对时「添加」是灰的（点一下会说原因），走不到这里；
         //  这一句是给**新增入口**兜底：判定侧认得更多成员，界面这一侧仍然只造到
         //  `MAX_KEYS`（三颗）—— 别让某个新入口绕过这条线。
         XLog.w("组合键：成员 ${ids.size} 颗不在 ${ComboKey.MIN_KEYS}..${ComboKey.MAX_KEYS} 之内，不添加（${ids.joinToString("+")}）")
-        //  按**这次要加的类**说数（见 `comboMaxKeysHint`）：越界走到这里时多半是等待那类，
-        //  但按住入口将来放宽也照样说得对
-        hint(comboMaxKeysHint(mode != ComboKey.MODE_WAIT), slot = HINT_SLOT_COMBO)
+        hint(comboMaxKeysHint(starter != null), slot = HINT_SLOT_COMBO)
         return null
     }
-    //  三类各自入列：成员数不对的（三颗走按住）先夹回等窗口，再按那一类自己算上限与判重
-    val resolved = ComboKey.modeFor(mode, ids.size)
+    val resolved = if (starter != null) ComboKey.MODE_HOLD else ComboKey.MODE_WAIT
     val hold = resolved != ComboKey.MODE_WAIT
     //  上限是**每一列各一个**：等待组合 9 档、按住组合 9 档（`MAX_COMBOS` 不跨类合计）
     if (cfg.combos.count { it.isHold == hold } >= MAX_COMBOS) {
@@ -271,14 +313,15 @@ internal fun SettingsPage.writeNewCombo(
     //  回执里每个键名各套一对括号（`已添加「侧键」+「电量 +」`）—— 整串再包一层会把两颗键
     //  读成一个名字。
     if (result == CommandsSave.Ok) {
-        //  这一组键的三种触发方式都补齐时换一种说法（见 `comboModeCountAfter`）：
-        //  补到第三种的人要的是「这组已经齐了」，再报一次「已添加」读起来像什么都没发生。
-        val count = comboModeCountAfter(cfg, ids, resolved)
+        //  这一组键的触发方式都补齐时换一种说法（见 `comboCountAfter`）：
+        //  补到最后一档的人要的是「这组已经齐了」，再报一次「已添加」读起来像什么都没发生。
+        //  上限随成员数走（[comboModeTotal]）：等待一档 + 每个成员各当一次首键。
+        val count = comboCountAfter(cfg, ids, starter)
         //  名字串按**逐个名字一枚框**展开（见 `namesToChipsTemplate`）：回执里那几颗键
         //  与列表行、顶栏副标题是同一种长相，不再是一串套着方括号的纯文字。
         val names = comboKeyNames(cfg, combo)
         val notice =
-            if (count >= COMBO_MODE_TOTAL) {
+            if (count >= comboModeTotal(ids.size)) {
                 namesToChipsTemplate(
                     I18n
                         .get(Strings.COMBO_ALL_MODES_ADDED, "%1\$d 种触发方式都已添加 %2\$s")

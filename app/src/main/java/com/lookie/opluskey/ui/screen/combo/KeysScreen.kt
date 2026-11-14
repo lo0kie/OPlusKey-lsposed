@@ -185,7 +185,7 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             ComboEditState.pendingKind = null
             when (kind) {
                 null -> Unit
-                ComboKey.MODE_WAIT -> comboWriteGuard("添加等待组合") { addCombo(keys, ComboKey.MODE_WAIT) != null }
+                ComboKey.MODE_WAIT -> comboWriteGuard("添加等待组合") { addCombo(keys, starter = null) != null }
                 else -> holdOrder = keys
             }
         },
@@ -209,22 +209,24 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
     val shown = (order ?: orderLast.value).takeIf { modeShown }
     if (shown != null && shown.isNotEmpty()) {
         val names = shown.map { keyName(it) }
-        val first = names.getOrNull(0).orEmpty()
-        val second = names.getOrNull(1).orEmpty()
-        val template = I18n.get(Strings.COMBO_MODE_HOLD, "按住 %s 后再按 %s")
-        //  这一组键**已经用过**哪种顺序 —— 用过的那一行置灰：同一类里同一种顺序只能有一档
+        //  **每个成员当首键就是一种选项**（用户口径）：三颗时列三行 ——
+        //  「按住 A 后再按 B、C」「按住 B 后再按 A、C」「按住 C 后再按 A、B」。
+        //  模板按成员数现算（`holdSentenceTemplate`），每一行的名字串都把那一颗排到最前。
+        val template = holdSentenceTemplate(names.size - 1)
+        //  这一组键里**已经当过首键**的那几颗 —— 用过的那一行置灰：同一种按法只能有一档
         //  （再来一档就是死配置，判定侧只会取配置里靠前的那个）。判据与 `comboRoomLeft` 同源。
         val ids = shown.map { it.id }
-        val used = remember(cfg.combos, ids) { usedComboModes(cfg, ids) }
+        val used = remember(cfg.combos, ids) { usedComboStarters(cfg, ids) }
         SinglePickerDialog(
             show = order != null,
             title = I18n.get(Strings.COMBO_MODE_TITLE, "触发方式"),
             options =
-                listOf(
-                    PickerOption(template, enabled = ComboKey.MODE_HOLD_FIRST !in used, chips = listOf(first, second)),
-                    PickerOption(template, enabled = ComboKey.MODE_HOLD_SECOND !in used, chips = listOf(second, first)),
-                ),
-            //  这一窗是「二选一新加一档」，不是在改某个已经选中的值 —— 哪一行都不打勾
+                shown.mapIndexed { at, key ->
+                    //  这一行：第 `at` 颗当首键，其余按原顺序跟成后续成员
+                    val ordered = listOf(names[at]) + names.filterIndexed { i, _ -> i != at }
+                    PickerOption(template, enabled = key.id !in used, chips = ordered)
+                },
+            //  这一窗是「新建一档」，不是在改某个已经选中的值 —— 哪一行都不打勾
             selectedIndex = -1,
             onDismiss = { holdOrder = null },
             onDismissFinished = {
@@ -233,8 +235,8 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             },
             onPick = { index ->
                 holdOrder = null
-                val mode = if (index == 0) ComboKey.MODE_HOLD_FIRST else ComboKey.MODE_HOLD_SECOND
-                comboWriteGuard("添加按住组合") { addCombo(shown, mode) != null }
+                val starter = shown.getOrNull(index)
+                comboWriteGuard("添加按住组合") { starter != null && addCombo(shown, starter) != null }
             },
             //  置灰那一行点下去**要有话说**（用户口径「禁用的条目点击没有消息提示」）：
             //  一句「这种触发方式已经添加过了」就够 —— 用户点的就是那一行，
@@ -409,7 +411,7 @@ private fun SettingsPage.KeysLeaveEditConfirm() {
 @Composable
 private fun SettingsPage.ComboKeysDialog(
     show: Boolean,
-    /** true = 这一趟加的是「按住组合」（成员只能两颗，顺序选完键再问）。 */
+    /** true = 这一趟加的是「按住组合」（选完键再问「按住哪一颗」——每个成员都能当首键）。 */
     hold: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (List<KeyId>) -> Unit,
@@ -420,7 +422,9 @@ private fun SettingsPage.ComboKeysDialog(
     var picked by remember(show) { mutableStateOf(emptySet<String>()) }
     //  这一组键在**这一类里**还有没有没占的触发方式：等待组合一档、按住组合两档（两种顺序）。
     //  判据与 `addCombo` 的去重同一条（`comboAllModesTaken`）。
-    val maxKeys = if (hold) ComboKey.MIN_KEYS else ComboKey.MAX_KEYS
+    //  两类都能选到 [`ComboKey.MAX_KEYS`] 颗：按住那一档不再是「只两颗」——首键一颗 +
+    //  后续成员任意多颗（上限与等待组合同一个数）。
+    val maxKeys = ComboKey.MAX_KEYS
     val pickedIds = picked.toList()
     val allModesTaken = picked.size >= ComboKey.MIN_KEYS && comboAllModesTaken(cfg, pickedIds, hold)
     //  「为什么还不能添加」只有一处判据：`null` = 可以加。点那颗灰按钮时由

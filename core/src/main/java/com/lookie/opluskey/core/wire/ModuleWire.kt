@@ -314,6 +314,22 @@ object ModuleWire {
     /** [ACTION_LOG_CHUNK] 里带「这一段的正文」。 */
     const val EXTRA_LOG_TEXT = "log_text"
 
+    /**
+     * [ACTION_LOG_CHUNK] 里带「回包这一侧跑的是**哪一次构建**」（`ModuleInfo.BUILD_ID`）。
+     *
+     *  三个进程的版本可以不一致 —— 换包没重启时 `system_server` 里还是上一版代码，而它照样
+     *  能回日志。收方把这一位写进导出文件头，「宿主 / 注入是旧版」于是不用再靠猜。
+     */
+    const val EXTRA_LOG_BUILD = "log_build"
+
+    /**
+     * [ACTION_LOG_CHUNK] 里带「这一侧缓冲一共几行」。
+     *
+     *  与「没回包」分开：0 行 = 这个进程在跑、只是还没打过日志；没回包 = 它压根没起来
+     *  （或没装模块）。两种情形在排查里含义完全不同。
+     */
+    const val EXTRA_LOG_LINES = "log_lines"
+
     // ── 快捷方式：请注入侧（system_server）读**快捷方式服务的活数据** ──
     //
     //  「选择界面」里那份清单在宿主进程读，而 `LauncherApps` 对「钉住」这一档按**调用方**过滤：

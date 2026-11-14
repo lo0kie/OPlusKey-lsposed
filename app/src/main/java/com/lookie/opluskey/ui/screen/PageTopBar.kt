@@ -43,6 +43,7 @@ import com.lookie.opluskey.ui.screen.binding.bindingTabBand
 import com.lookie.opluskey.ui.screen.binding.bindingTargetOff
 import com.lookie.opluskey.ui.screen.combo.ComboEditMenu
 import com.lookie.opluskey.ui.screen.combo.KeysHeaderEdit
+import com.lookie.opluskey.ui.screen.combo.holdSentenceTemplate
 import com.lookie.opluskey.ui.screen.command.BranchHeaderAdd
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
 import com.lookie.opluskey.ui.screen.command.CommandHeaderReset
@@ -625,11 +626,10 @@ private fun holdComboChips(
 ): @Composable () -> Unit =
     {
         val names = comboKeyNames(cfg, combo)
-        //  第二颗先按住那一档，句子里的顺序要对调（与列表同一处判据）
-        val ordered = if (combo.mode == ComboKey.MODE_HOLD_SECOND) names.reversed() else names
+        //  首键就是 `keys` 第一位（迁移之后老配置也已是这个形状），不再需要「要不要倒过来」
         ChipSentence(
-            template = I18n.get(Strings.COMBO_MODE_HOLD, "按住 %s 后再按 %s"),
-            names = ordered,
+            template = holdSentenceTemplate(names.size - 1),
+            names = names,
             look = ChipLook(COUITheme.textStyles.body2, color, enabled = true),
             style = COUITheme.textStyles.body2,
             color = color,

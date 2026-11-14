@@ -286,13 +286,13 @@ private fun SettingsPage.ComboTitle(
     )
     val names = combo.keys.mapNotNull { id -> cfg.keyIdOf(id)?.let(::keyName) }
     //  **按住组合写成一句话、键名自己仍是框**（用户口径：「按住 A 后再按 B」，名字用 tag 样式）：
-    //  那两档的判据就是「谁先按住」，只摆两枚框读不出顺序，而顺序正是这两档的区分所在；
+    //  那一档的判据就是「谁先按住」，只摆一串框读不出顺序，而顺序正是它的区分所在；
     //  但名字也不该退化成纯文字 —— 同一颗键在这一列里要一直是同一枚框。
+    //  首键就是 `keys` 第一位，后续成员每颗各占一枚框（见 `holdSentenceTemplate`）。
     if (combo.isHold) {
-        val ordered = if (combo.mode == ComboKey.MODE_HOLD_SECOND) names.reversed() else names
         ChipSentence(
-            template = I18n.get(Strings.COMBO_MODE_HOLD, "按住 %s 后再按 %s"),
-            names = ordered,
+            template = holdSentenceTemplate(names.size - 1),
+            names = names,
             look = chipLook(color = color, enabled = writable),
             style = style,
             color = color,
@@ -401,7 +401,7 @@ private fun SettingsPage.addComboRow(
                 else -> null
             },
         onClick = {
-            ComboEditState.pendingKind = if (hold) ComboKey.MODE_HOLD_FIRST else ComboKey.MODE_WAIT
+            ComboEditState.pendingKind = if (hold) ComboKey.MODE_HOLD else ComboKey.MODE_WAIT
         },
     )
 }

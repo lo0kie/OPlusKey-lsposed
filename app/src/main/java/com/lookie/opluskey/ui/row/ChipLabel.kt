@@ -502,6 +502,14 @@ internal fun ChipSentence(
     style: TextStyle,
     color: Color,
     modifier: Modifier = Modifier,
+    /**
+     * 这句话在整行里怎么对齐。
+     *
+     *  默认左对齐（列表行里那一句要从行首读起）；摆进**居中的那一段**（如「无法删除」弹窗里
+     *  每一档组合各占一行）时传 [TextAlign.Center] —— 这个组件自己撑满宽度，光靠外层的
+     *  `Arrangement.Center` 居中不了它里面的字。
+     */
+    textAlign: TextAlign = TextAlign.Start,
 ) {
     val parts = template.split("%s")
     //  模板与名字数对不上、或者**有一个名字是空的**时，退回纯文字：`appendInlineContent` 的
@@ -513,7 +521,7 @@ internal fun ChipSentence(
         BasicText(
             text = AnnotatedString(parts.joinToString("")),
             modifier = modifier.fillMaxWidth(),
-            style = style.copy(color = color),
+            style = style.copy(color = color, textAlign = textAlign),
         )
         return
     }
@@ -559,7 +567,7 @@ internal fun ChipSentence(
     BasicText(
         text = text,
         modifier = modifier.fillMaxWidth(),
-        style = style.copy(color = color),
+        style = style.copy(color = color, textAlign = textAlign),
         inlineContent = inline,
     )
 }

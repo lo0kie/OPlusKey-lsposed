@@ -37,6 +37,14 @@ internal class PageHooks {
     var onExportLog: (() -> Unit)? = null
 
     /**
+     * 「导出日志」那一行的副标题：缓冲区现在有多少行、来自几个进程（`menu.log_buffer`）。
+     *
+     *  要跨进程收一次（最多等几百毫秒），所以是 **suspend**：调用方必须放在 IO 上，
+     *  且只在菜单打开那一刻取一次。`null` = 没有 hook 侧（调试建页），那一行就不带副标题。
+     */
+    var logBufferSummary: (suspend () -> String?)? = null
+
+    /**
      * 「更多 → 导出配置」—— hook 侧实现：弹系统的「保存到」选择器，把**这份配置 + 它的命令库**
      * 写成一份文件。
      *

@@ -585,8 +585,15 @@ private fun SettingsPage.MenuRow(
     //  禁用行落到库默认的**不透明** `containerColor` —— 磨砂半透明面板上会现出一块实色底。
     val baseColors = DropdownDefaults.dropdownColors()
     val frostedColors =
-        remember(baseColors) {
-            baseColors.copy(containerColor = Color.Transparent)
+        remember(baseColors, row.enabled) {
+            baseColors.copy(
+                containerColor = Color.Transparent,
+                //  **禁用行的副标题也要压暗**：库那一套里只有 `disabledContentColor`（管标题与行首），
+                //  摘要那两格（`summaryColor` / `selectedSummaryColor`）没有对应的禁用档 ——
+                //  不换的话禁用行的副标题比它自己的标题还亮，读起来像「这一行还能点」。
+                summaryColor = if (row.enabled) baseColors.summaryColor else baseColors.disabledContentColor,
+                selectedSummaryColor = if (row.enabled) baseColors.selectedSummaryColor else baseColors.disabledContentColor,
+            )
         }
     //  **直放**：中间套一层 `Box` 会让库收不到点击（见 [MenuPopup] 的警告）。
     DropdownImpl(

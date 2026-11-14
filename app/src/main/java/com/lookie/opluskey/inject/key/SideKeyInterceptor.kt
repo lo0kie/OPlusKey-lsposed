@@ -130,6 +130,9 @@ internal class SideKeyInterceptor(
             widerFor = { keys -> ConfigChannel.config.widerComboOf(keys) },
             //  只有参与某组已启用组合的键才先等一个窗口，其余键一点不受影响
             joinsCombo = { id -> ConfigChannel.joinsCombo(id) },
+            //  多成员判定那条路的头道闸：**任何一档**（含按住档）的成员都算 —— 按住档的
+            //  后续成员不等窗口，但它照样要能凑齐（见 `ConfigChannel.inAnyCombo`）
+            inAnyCombo = { id -> ConfigChannel.inAnyCombo(id) },
             //  「先按住这颗、再按另一颗」的上界：这颗键的长按判出来之后，它已经执行过自己的
             //  长按动作了，再认组合就是一次按压两个动作。判定层读不到 `KeyConfig`，所以由这里
             //  按那颗键自己的阈值算。「只参与组合」的键恒为 false —— 它压根不判单键。

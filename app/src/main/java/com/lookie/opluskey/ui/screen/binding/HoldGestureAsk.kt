@@ -23,6 +23,8 @@ import com.lookie.opluskey.ui.feedback.writeAndNotice
 import com.lookie.opluskey.ui.row.ChipFlow
 import com.lookie.opluskey.ui.row.ChipLook
 import com.lookie.opluskey.ui.row.ChipSentence
+import com.lookie.opluskey.ui.screen.combo.holdSentenceTemplate
+import com.lookie.opluskey.ui.screen.combo.waitSentenceTemplate
 import com.lookie.opluskey.ui.screen.combo.writeNewCombo
 import com.lookie.opluskey.ui.state.signal.PendingAsk
 import com.lookie.opluskey.ui.style.EmphasisText
@@ -167,39 +169,35 @@ private fun SettingsPage.writeComboMode(
             if (keys.isNotEmpty()) append(" fire_on_release=${keys.joinToString(",") { it.id }}")
         }
     val combo = next.combos.firstOrNull { it.id == comboId }
-    writeAndNotice(next, what, slot = HINT_SLOT_COMBO, chips = { modeNames(mode, next, combo) }) {
-        I18n.get(Strings.COMBO_MODE_SWITCHED, "已切换触发方式：") + modeText(mode)
+    writeAndNotice(next, what, slot = HINT_SLOT_COMBO, chips = { modeNames(next, combo) }) {
+        I18n.get(Strings.COMBO_MODE_SWITCHED, "已切换触发方式：") + modeText(mode, combo)
     }
 }
 
 /**
- * 回执里那一段「按住 A 后再按 B」—— **模板**（`%s` 逐颗名字），名字由 [modeNames] 给。
+ * 回执里那一段「按住 A 后再按 B、C」—— **模板**（`%s` 逐颗名字），名字由 [modeNames] 给。
  *
  *  与 `writeAndNotice` 的 chips 是同一句话的两半：模板里 `%s` 的个数必须与名字个数一致，
- *  所以顺序只在一处（[modeNames]）定，模板这边只管语序。
+ *  所以顺序只在一处（[modeNames]）定，模板这边只管语序 —— 成员数不定，模板按 [combo] 的
+ *  颗数现算（[holdSentenceTemplate] / [waitSentenceTemplate]）。
  */
-private fun modeText(mode: Int): String =
-    when (mode) {
-        ComboKey.MODE_HOLD_FIRST, ComboKey.MODE_HOLD_SECOND -> {
-            I18n.get(Strings.COMBO_MODE_HOLD, "按住 %s 后再按 %s")
-        }
-
-        else -> {
-            I18n.get(Strings.COMBO_MODE_WAIT, "按下 %s 或 %s 后等另一颗")
-        }
-    }
-
-/** [modeText] 模板里那两枚框各是哪个名字（按住第二种时两颗倒过来，见 `ComboKey.mode`）。 */
-private fun modeNames(
+private fun modeText(
     mode: Int,
+    combo: ComboKey?,
+): String {
+    val count = combo?.keys?.size ?: ComboKey.MIN_KEYS
+    return if (mode == ComboKey.MODE_HOLD) {
+        holdSentenceTemplate(count - 1)
+    } else {
+        waitSentenceTemplate(count)
+    }
+}
+
+/** [modeText] 模板里那几枚框各是哪个名字 —— 按住档首键在前（`keys` 第一位就是首键）。 */
+private fun modeNames(
     cfg: Config,
     combo: ComboKey?,
-): List<String> {
-    val names = combo?.let { comboKeyNames(cfg, it) }.orEmpty()
-    val first = names.getOrNull(0).orEmpty()
-    val second = names.getOrNull(1).orEmpty()
-    return if (mode == ComboKey.MODE_HOLD_SECOND) listOf(second, first) else listOf(first, second)
-}
+): List<String> = combo?.let { comboKeyNames(cfg, it) }.orEmpty()
 
 /**
  * 「这一种触发方式需要起点键松手时触发」那一问 —— 只在**组合动作页**挂一次。
@@ -238,8 +236,9 @@ internal fun SettingsPage.ComboModeAskDialog() {
             ComboModeAsk.clear()
             if (mode != ComboKey.MODE_WAIT) {
                 when {
-                    //  **添加那条路**：这一档至此才真正写进配置（连同起点键的长按时机，一笔落盘）
-                    addKeys != null -> writeNewCombo(addKeys, mode, releaseKeys = keys)
+                    //  **添加那条路**：这一档至此才真正写进配置（连同起点键的长按时机，一笔落盘）。
+                    //  第二参是**首键**：`keys` 里那一颗就是刚才要改「松手时触发」的起点键。
+                    addKeys != null -> writeNewCombo(addKeys, keys.firstOrNull(), releaseKeys = keys)
 
                     //  改已有那一档的方式：只改方式 + 键
                     target != null -> writeComboMode(keys, target, mode)
