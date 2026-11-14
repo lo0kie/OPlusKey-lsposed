@@ -3,10 +3,8 @@ package com.lookie.opluskey.core.wire
 import android.content.Intent
 import android.os.Bundle
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
-import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
@@ -143,7 +141,8 @@ object ConfigBroadcast {
         for (k in keys) {
             intent.putExtra(extraName(k.id, ConfigFields.KEY_CODE_EXTRA), k.keyCode)
             intent.putExtra(extraName(k.id, ConfigFields.KEY_NAME_EXTRA), k.label)
-            val stored = config.key(k).fieldValues()
+            //  传 `global`：单击那三项没开「使用独立设置」时读公共那一份（见 `fieldValues` 的 KDoc）
+            val stored = config.key(k).fieldValues(config.global)
             // `longIsSerial` 是发送侧**现算**的一位，**每颗键都要算**：自定义键同样能绑
             //  `cmd:名字`，只算侧键那一份的话，注入侧会把它的串行命令当成单条动作，
             //  连发闸门（`longIsSerial`）对自定义键恒不生效。
@@ -159,18 +158,12 @@ object ConfigBroadcast {
                         (ConfigFields.F_SCENE_CHAIN_RELEASE to config.key(k).scenes.any { it.hasChainRelease }) +
                         //  「单击后长按这一档有没有人配」：同上，注入侧看不到场景表，而它要靠这一位
                         //  回答「这一档是不是无操作」（见 `KeyConfig.clickThenLongCounts`）。
-                        (
-                            ConfigFields.F_SCENE_CHAIN to
-                                config.key(k).scenes.any {
-                                    (it.actions[GestureTrigger.ClickThenLong] ?: Action.None).isBound
-                                }
-                        ) +
+                        //  **只认启用中的块**（`SceneRule.chainBound`）：停用的块命中不了，
+                        //  它配的动作不该让这一档在判定侧「算数」。
+                        (ConfigFields.F_SCENE_CHAIN to config.key(k).scenes.any { it.chainBound }) +
                         //  「长按这一档有没有人要」：注入侧看不到场景表，而
                         //  「长按无操作时松手那一刀没有主语」要靠它判（见 `KeyConfig.longActionExists`）
-                        (
-                            ConfigFields.F_SCENE_LONG to
-                                config.key(k).scenes.any { (it.actions[GestureTrigger.LongPress] ?: Action.None).isBound }
-                        ),
+                        (ConfigFields.F_SCENE_LONG to config.key(k).scenes.any { it.longBound }),
                 )
             putFields(intent, v, ConfigFields.KEY_FIELDS, keyPrefix(k.id))
         }
@@ -320,8 +313,8 @@ object ConfigBroadcast {
  *
  *  `Bundle.get()` 拿到的是对象本身，直接拼进指纹用的是它的 `toString()` —— 对 `Bundle` /
  *  `ArrayList` 这类对象那是**身份哈希**，收发两端各建一份必然不相等，指纹于是恒不等、
- * 「设置生效」永远报不出来。所以：标量用值；其余用类型名 + 长度 / 有序键这类与身份无关的
- * 信息（两边从同一条广播解出来的副本，这些量是一致的）。
+ * 「设置生效」永远报不出来。所以：标量用值；其余用类型名 + 长度 + **内容摘要**（两边从同一条
+ * 广播解出来的副本，这些量都一致；摘要而不是逐元素拼接，是为了不让指纹随配置一起变长）。
  *
  *  写成文件级私有函数而不是 [ConfigBroadcast] 的成员：那个对象的函数条数贴着 detekt
  *  `TooManyFunctions` 那一档。
@@ -329,24 +322,73 @@ object ConfigBroadcast {
 private fun describeExtra(value: Any?): String {
     if (value == null) return "null"
     return when (value) {
-        is CharSequence -> value.toString()
+        is CharSequence -> {
+            value.toString()
+        }
 
-        is Number -> value.toString()
+        is Number -> {
+            value.toString()
+        }
 
-        is Boolean -> value.toString()
+        is Boolean -> {
+            value.toString()
+        }
 
-        is Char -> value.toString()
+        is Char -> {
+            value.toString()
+        }
 
-        is Array<*> -> value.javaClass.name + "/" + value.size
+        //  复合类型：类型名 + 长度**+ 内容摘要**。只记长度的话，同长度换内容（改了一个包名 /
+        //  换了一条命令）指纹不变，「设置生效」就会把一次真的改动报成「没变」。
+        //  摘要用 `String.hashCode`：Java 规格里写死了算法，跨进程 / 跨版本都一致。
+        is Array<*> -> {
+            value.javaClass.name + "/" + value.size + digestOf(value.asSequence().map { describeExtra(it) })
+        }
 
-        is Collection<*> -> value.javaClass.name + "/" + value.size
+        is Collection<*> -> {
+            value.javaClass.name + "/" + value.size + digestOf(value.asSequence().map { describeExtra(it) })
+        }
 
-        is Map<*, *> -> value.javaClass.name + "/" + value.keys.map { it.toString() }.sorted()
+        is Map<*, *> -> {
+            value.javaClass.name + "/" + value.size +
+                digestOf(
+                    value.entries
+                        .sortedBy { it.key.toString() }
+                        .asSequence()
+                        .map { "${describeExtra(it.key)}=${describeExtra(it.value)}" },
+                )
+        }
 
-        is Bundle -> value.javaClass.name + "/" + value.size()
+        is Bundle -> {
+            value.javaClass.name + "/" + value.size() +
+                digestOf(
+                    value
+                        .keySet()
+                        .sorted()
+                        .asSequence()
+                        .map { "$it=${describeExtra(bundleValue(value, it))}" },
+                )
+        }
 
         //  其余（Parcelable 等）：没有任何跨进程稳定的值表示，只留类型名 —— 至少不会把
         //  对象身份混进指纹。
-        else -> value.javaClass.name
+        else -> {
+            value.javaClass.name
+        }
     }
 }
+
+/** [describeExtra] 里复合类型的内容摘要 —— 元素已经是稳定表示时把它们拼起来取哈希。 */
+private fun digestOf(items: Sequence<String>): String = "#" + items.joinToString(",").hashCode()
+
+/**
+ * 取一个 extra 的原值（`Bundle.get` 在 API 33 被标成废弃，理由只是「请按类型取」）。
+ *
+ *  这里要的正是「不管什么类型都给我原值」：按类型取的那一套遇到没登记的类型直接抛，
+ *  而指纹要的是一个**不会因为类型没登记就失效**的表示。
+ */
+@Suppress("DEPRECATION")
+private fun bundleValue(
+    bundle: Bundle,
+    key: String,
+): Any? = bundle.get(key)

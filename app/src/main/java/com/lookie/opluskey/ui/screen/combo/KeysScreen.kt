@@ -27,6 +27,7 @@ import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
 import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.chrome.PageFabIcon
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.dialog.ConfirmDialog
@@ -44,7 +45,6 @@ import com.lookie.opluskey.ui.screen.binding.ComboStarterBlockedDialog
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.binding.ComboEditState
 import com.lookie.opluskey.ui.state.binding.KeysEditState
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -301,7 +301,7 @@ private fun BoxScope.KeysEditFabs(
                 //  **图标跟着这一下要做什么，而不是「现在是什么状态」**（之前正好接反了：
                 //  该停用时画对勾、该启用时画叉）。启用用 `ToggleRight`（开关语义），
                 //  不用对勾 —— 对勾在这一版界面里表示「已选中」，摆在「启用」上会被读成勾选。
-                Icon(
+                PageFabIcon(
                     if (turningOn) PageIcons.MasterSwitch else PageIcons.Cancel,
                     contentDescription =
                         if (turningOn) {
@@ -309,7 +309,6 @@ private fun BoxScope.KeysEditFabs(
                         } else {
                             I18n.get(Strings.KEYS_DISABLE, "停用")
                         },
-                    tint = COUITheme.colorScheme.onPrimary,
                 )
             }
             PageFabButton(
@@ -318,7 +317,7 @@ private fun BoxScope.KeysEditFabs(
                 //  两颗都是实心圆时只靠字形区分，拇指扫过来先看到的颜色才是那道保险。
                 containerColor = COUITheme.colorScheme.error,
             ) {
-                Icon(
+                PageFabIcon(
                     PageIcons.CommandDelete,
                     contentDescription = I18n.get(Strings.COMMON_DELETE, "删除"),
                     //  `onError` 而不是写死白色：Monet 深色档的 `error` 是一档浅红，配白字会糊

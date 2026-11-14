@@ -97,19 +97,28 @@ internal fun readPageLoadSnapshot(context: Context): PageLoadSnapshot =
         )
     } catch (e: Throwable) {
         XLog.w("建页读盘失败（两份都进只读、界面用默认值）：${e.message}", e)
+        //  **别把「注入侧活过没有」一起抹成 false**：这一页已经是「默认值 + 只读」，
+        //  再把这一位断言成 false，首页就会指着「去勾作用域」—— 而用户本来可能就勾着。
+        //  单独再读一次那几位；读不到就按「不知情」算（true = 不指控作用域）。
+        val prefs = runCatching { UiState.readPrefs() }.getOrNull()
         PageLoadSnapshot(
             configRead = ConfigRead(Config.DEFAULT, readOnly = true),
             commands = emptyList(),
             commandsReadOnly = true,
             prefs =
                 UiPrefs(
-                    showSystemApps = false,
-                    showUnopenable = false,
-                    injectEverAlive = false,
-                    injectAliveBoot = 0L,
-                    skipUpdateVersion = null,
+                    showSystemApps = prefs?.showSystemApps ?: false,
+                    showUnopenable = prefs?.showUnopenable ?: false,
+                    injectEverAlive = prefs?.injectEverAlive ?: true,
+                    injectAliveBoot = prefs?.injectAliveBoot ?: 0L,
+                    skipUpdateVersion = prefs?.skipUpdateVersion,
                 ),
-            linkBaseline = LinkBaseline(installedAt = 0L, injectEverAlive = false, injectAliveBoot = 0L),
+            linkBaseline =
+                LinkBaseline(
+                    installedAt = 0L,
+                    injectEverAlive = prefs?.injectEverAlive ?: true,
+                    injectAliveBoot = prefs?.injectAliveBoot ?: 0L,
+                ),
         )
     }
 

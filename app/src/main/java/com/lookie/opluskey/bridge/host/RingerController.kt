@@ -106,7 +106,13 @@ internal class RingerController(
                 //  **档位不动，但那颗胶囊还是要弹**：流体云是 ColorOS 接口弹的（[SeedlingClient]），
                 //  不是我们执行动作时的通用提示 —— 只有这里主动发一条它才出来。已经在目标档时
                 //  系统自身不会弹，用户按下去就只剩「什么都看不见」，所以补发同一条事件。
-                if (isColorOsApi()) SeedlingClient.notifyRingMode(ctx, target)
+                if (isColorOsApi()) {
+                    SeedlingClient.notifyRingMode(ctx, target)
+                    //  **档位没变也要有那一下触觉**：ColorOS 接口开着时调用方不再放通用振动
+                    //  （见 [hapticOnSwitched] 的注释），这里不补就变成「按了、弹了胶囊、
+                    //  手上什么都没有」—— 与「胶囊照样弹」是同一条理由。
+                    hapticOnSwitched(ctx, target)
+                }
                 return
             }
             val landed = applyMode(am, current, target, zen, ctx)
@@ -134,7 +140,12 @@ internal class RingerController(
             XLog.w("响铃触觉：跳过（振动反馈关着）")
             return
         }
-        RingerHaptics.play(ctx, mode)
+        //  `false` = 两条马达通道在这台机器上都没放出去（非 ColorOS / 没有线性马达 / 服务拿不到）：
+        //  这一档就**没有触觉**了。只记一行，不补普通振动 —— 那会与「系统自己切档那一下」重复，
+        //  而这正是 [RingerHaptics] 存在的意义（复刻系统那一下，而不是多振一下）。
+        if (!RingerHaptics.play(ctx, mode)) {
+            XLog.w("响铃触觉：两条通道都放不出来（mode=$mode），这一下没有触觉")
+        }
     }
 
     /**

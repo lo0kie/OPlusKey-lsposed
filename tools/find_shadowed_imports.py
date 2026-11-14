@@ -19,7 +19,11 @@ ROOT = sys.argv[1] if len(sys.argv) > 1 else 'app/src/main/java/com/lookie/oplus
 #  那一条的「名字」是接收者类型，不是新声明，按它判会把每个 `fun SettingsPage.xxx` 都算成遮蔽。
 DECL_RE = re.compile(
     r'^(?:internal |private |public |abstract |open |sealed |data )*'
-    r'(?:(?:val|var|class|object|interface|typealias)\s+([A-Za-z_]\w*)(?!\s*\.)'
+    #  `(?![\w.])` 而不是 `(?!\s*\.)`：`\w*` 是贪婪的，遇到 `val CommonCommands.Brand.icon`
+    #  会先吃到 `CommonCommands`、被点号否掉，然后**回溯**成 `CommonCommand` 让前瞻通过 ——
+    #  于是扩展声明被当成「顶层声明了一个 CommonCommand」，报出一条假阳性（删掉那个 import 就编译不过）。
+    #  要求名字后面既不是词字符也不是点，回溯到短名字同样会被挡住。
+    r'(?:(?:val|var|class|object|interface|typealias)\s+([A-Za-z_]\w*)(?![\w.])'
     r'|fun\s+([A-Za-z_]\w*)\s*[(<])',
     re.M,
 )

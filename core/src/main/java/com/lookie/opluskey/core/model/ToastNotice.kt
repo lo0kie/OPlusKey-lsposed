@@ -69,7 +69,9 @@ object ToastNotice {
      *
      *  @param template 用户写的模板（空 = 用 [DEFAULT_TEMPLATE]）
      *  @param action 这一次执行的动作（整句 + 拆开的三段，见 [ActionReading]）
-     *  @return 拼好的整句；**不会是空串**（模板只剩空白 / 全是不认识的占位符时退回默认那句）
+     *  @return 拼好的整句；**不会是空串**（模板被删成空白时退回默认那句）。
+     *    **认不出的占位符原样留在句子里**：那是用户自己打的字，替他改掉反而看不出打错了
+     *    （要对照「有哪些占位符」看界面那一行变量清单，见 [PLACEHOLDERS]）。
      */
     fun render(
         template: String,

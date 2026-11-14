@@ -9,7 +9,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.lookie.opluskey.core.config.ConfigProfiles
-import com.lookie.opluskey.core.config.isDefaultProfile
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -216,12 +215,11 @@ internal fun SettingsPage.ThemeMenu(
  */
 @Composable
 internal fun SettingsPage.ProfileMenu(ui: AboutUiState) {
-    //  到上限了没有 —— **与 `ConfigProfiles.createAs` 内部那把尺子同一个**（按**槽位数**，
-    //  不按「有名字的份数」）。名字丢过的那几份同样是占着槽位的配置，按名字数会算少，
-    //  菜单里于是不灰、点下去才报「最多三份配置」（真机踩过）。
-    //  `ui.profiles` 是本层菜单打开时刚读的那一份，`remember` 的 key 就是它 —— 每次打开重算一次，
-    //  不是每帧读盘。
-    val full = remember(ui.profiles) { ConfigProfiles.isFull() }
+    //  到上限了没有 —— 与 `ConfigProfiles.isFull()` **同一把尺子**（`MAX_PROFILES`，按**槽位数**，
+    //  不按「有名字的份数」；名字丢过的那几份同样占着槽位）。
+    //  但这里**不再调那个函数**：它要扫一遍目录，而 `ui.profiles` 就是刚读出来的那份清单 ——
+    //  在组合期扫目录就是一次主线程磁盘 IO，每次打开菜单都来一遍。
+    val full = ui.profiles.count { !it.isCurrent } >= ConfigProfiles.MAX_PROFILES
     //  管理那几行里「新建配置」要先数一遍现有份数（`ConfigProfiles.list()` 是扫目录），
     //  那一下放到这个 scope 的 IO 上去（见 [profileManageRows]）。
     val scope = rememberCoroutineScope()
@@ -268,7 +266,10 @@ private fun SettingsPage.profileManageRows(
     val canReset = linkReady && !configState.readOnly
     //  默认配置是升级时落下的退路，**不许改名、不许删除**（用户口径）。这两行直接灰掉并说明，
     //  而不是点了再被拒 —— 拦在门口比事后报错省一轮。
-    val isDefault = configState.config.value.isDefaultProfile
+    //  **判据取列表里那一项的身份**（`Item.isDefault`，按 id），不按名字形态：两份都「名字空 +
+    //  位次 0」时（名字被抹过两次）形态判据会把当前那份也当成默认 —— 它明明显示成「未命名」，
+    //  却既不能改名也不能删，那一格就再也动不了。
+    val isDefault = ui.profiles.firstOrNull { it.isCurrent }?.isDefault == true
     return listOf(
         MenuEntry.Row(
             title = I18n.get(Strings.PROFILE_NEW, "新建配置"),

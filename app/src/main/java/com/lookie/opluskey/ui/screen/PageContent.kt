@@ -40,7 +40,6 @@ import com.lookie.opluskey.ui.chrome.onDebugCommand
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.LocalDisabledHint
-import com.lookie.opluskey.ui.feedback.LocalHint
 import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
@@ -141,7 +140,11 @@ internal fun SettingsPage.PageContent() {
     //  （同一个坑见 `LocalHeaderBoxHeight` 那条注释：在那里 `error()` 过一次）。在 `popupHost`
     //  里面调 `statusBarsPadding()` 拿到的是 **0**，提示条于是画到 y=0 —— 真机视频里它盖住了
     //  系统状态栏的时间与电量。所以在这一层（页面级、Scaffold 之外）读好，按 Dp 传下去。
-    val statusBarTop = with(LocalDensity.current) { WindowInsets.statusBars.getTop(this).toDp() }
+    //
+    //  **必须用 `pageDensity` 换算**：这个 Dp 是在 `LocalDensity provides pageDensity` 那一层里
+    //  被消费的（提示条自己那层）。用宿主密度算、再在页面密度下转回像素，开了「页面缩放」之后
+    //  就差一个倍率（跟随系统字号时更明显）。
+    val statusBarTop = with(pageDensity) { WindowInsets.statusBars.getTop(this).toDp() }
     val iconTint = rememberIconTint(global.iconTintSeed, night)
     COUITheme(
         colors = colorsOf(night, palette, theme, LocalContext.current),
@@ -164,7 +167,6 @@ internal fun SettingsPage.PageContent() {
             //  原因取**点击那一刻**的结论，不是组合期快照：禁用期间链路可能刚好恢复。
             //  `remember` 住：与下面那条 `LocalDisabledClick` 同一个理由 ——
             //  `hint` 在**调用那一刻**才读，每次重组换一个新实例会让所有读它的控件白白重组一遍。
-            LocalHint provides remember { { hint(it) } },
             //  卡片行的「这一行为什么不能点」—— **与整页那条同一个槽位**：
             //  行级说法与本页原因共用一个位，连点几行只会改同一条提示里的字，不叠条。
             LocalDisabledHint provides

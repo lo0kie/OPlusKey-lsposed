@@ -152,6 +152,9 @@ object ActionCatalog {
         /** 截屏。 */
         Screenshot,
 
+        /** 「计时器」那一格 —— 沙漏（等一段时间、往下漏）。 */
+        Timer,
+
         /** 系统导航 · 主屏幕。 */
         Home,
 
@@ -498,6 +501,9 @@ object ActionCatalog {
             Spec(name = Strings.CATALOG_RECORDING_STOP, token = RECORDING_STOP, glyph = Glyph.Record),
         )
 
+    //  「计时」那一族（秒表 / 倒计时）不在这张表里：它自带一份清单与取值形态，单独放在
+    //  `ClockCatalog` —— 理由（体量 + 归属）写在那个文件的类注释里。
+
     /**
      * 相机 / 计算器 —— 走的是**锁屏快捷功能**那两条入口（左下 / 右下角那两颗）。
      *
@@ -785,6 +791,10 @@ object ActionCatalog {
                 listOfNotNull(
                     // 取值是 KSU 的 `service call`，模块侧换成注入 `KEYCODE_SYSRQ`
                     Spec(name = Strings.CATALOG_SCREENSHOT, token = SCREENSHOT, glyph = Glyph.Screenshot),
+                    // 计时器：**格子本身就是那个动作**（点它直接挑时长，落成 `timer:<秒>`）——
+                    //  与录屏 / 录音同一个形态，中间不再夹一层只写着同一句的小标题。
+                    //  标记 token 永不写进配置。
+                    ClockCatalog.TILE_SPEC,
                     // 锁屏快捷：相机 / 计算器收在这一格后面（点它弹 [KEYGUARD_MODES]）。两档各是一个
                     //  真取值，格子代表不了其中任何一个 ⇒ 与 [AI_TILE] 同类，是**标记格**，永不写进配置。
                     Spec(name = Strings.CATALOG_KEYGUARD, token = KEYGUARD_TILE, glyph = Glyph.Keyguard),
@@ -1077,6 +1087,7 @@ object ActionCatalog {
             SCREEN_TRANSLATE_TILE to SCREEN_TRANSLATE_MODES,
             KEYGUARD_TILE to KEYGUARD_MODES,
             APP_CONTROL_TILE to APP_CONTROL_MODES,
+            //  「计时器」不在这张表里：它**没有下一层菜单**（点格子就是挑时长，见 `ClockCatalog`）
         )
 
     /**
@@ -1228,8 +1239,8 @@ object ActionCatalog {
             //  按整串比，与其余叶子同一把尺子。
             if (nested.size == leaves.size && nested.isNotEmpty()) return nested.any { isBound(it, action) }
         }
-        //  「亮度 / 音量」这两族先判：它们比的是**占位写法的符号**，不是整串（见 [percentRowBound]）。
-        percentRowBound(spec.token, action)?.let { return it }
+        //  「亮度 / 音量 / 倒计时」这几行先判：它们比的是**占位写法的符号**，不是整串（见 [placeholderRowBound]）。
+        placeholderRowBound(spec.token, action)?.let { return it }
         //  「应用控制」那两行不是取值（`appctl:open` / `appctl:stop`），比的是**绑的是哪一族**：
         //  打开那行认 `app:` / `window:` / `appshortcut:`，结束那行认 `proc:stop:`。菜单里的勾靠它。
         //
@@ -1267,16 +1278,16 @@ object ActionCatalog {
     }
 
     /**
-     * 「屏幕亮度」「音量」「铃声音量」这几组的判定 —— 三行是**占位写法**（`bright:+` / `-` / `=`，不带数值），
-     * 真正落盘的是 `bright:+15` 这种带数值的串。按整串比的话，绑过之后菜单一行都不打勾、
-     * 格子里也没有小字，所以这两族**只比符号、不比数值**。
+     * 「屏幕亮度」「音量」「铃声音量」「倒计时」这几行的判定 —— 行是**占位写法**（`bright:+` / `-` / `=`，
+     * 不带数值），真正落盘的是 `bright:+15` / `timer:300` 这种带数值的串。按整串比的话，绑过之后
+     * 菜单一行都不打勾、格子里也没有小字，所以这两族**只比符号、不比数值**。
      *
      *  必须走在 [canonicalToken] 之前：占位写法 `Action.parse` 认不出，它被解析一次就会刷一行
-     *  「百分比认不出」的日志，而 `isBound` 是每格每次重组都会走的地方。
+     *  「百分比 / 秒数认不出」的日志，而 `isBound` 是每格每次重组都会走的地方。
      *
-     * @return `null` = 这一行不归这两族管，交给调用方接着判
+     * @return `null` = 这一行不归这几族管，交给调用方接着判
      */
-    private fun percentRowBound(
+    private fun placeholderRowBound(
         token: String,
         action: Action,
     ): Boolean? =
@@ -1292,6 +1303,12 @@ object ActionCatalog {
             //  铃声音量那一族同理（两个前缀互不为前缀，先后无所谓）
             token.startsWith(Action.RINGER_VOLUME_PREFIX) -> {
                 (action as? Action.RingerVolume)?.let { token == ringerRowOf(it.mode) } ?: false
+            }
+
+            //  计时器那一格：只要绑的是**一条带时长的倒计时**，这一格就算绑上了 —— 具体多少秒
+            //  是它的取值，不是它的身份（`clock:` 只是这一格的标记，永不写进配置）。
+            token == ClockCatalog.TILE -> {
+                action is Action.Timer && action.seconds != null
             }
 
             else -> {
@@ -1514,12 +1531,22 @@ object ActionCatalog {
      * 「开关的 token」那么几个 —— 按 token 记一份，返回的 List 只读，调用方不要改。
      */
     private fun buildSwitchStates(token: String): List<Spec> {
+        //  **开关 id 只能由 `SystemSwitches.kindOf` 定**（它走 `Action.parse`，认得状态写法）：
+        //  直接 `removePrefix` 遇到「状态 token」（`setting:wifi:on`）会把 id 取成 `wifi:on`，
+        //  再拼一次就成了 `setting:wifi:on:on` —— 这种行点下去谁也认不出。
+        val isSetting = token.startsWith(Action.SETTING_PREFIX)
+        val id = if (isSetting) SystemSwitches.kindOf(token) else token
         //  三档共用同一颗**种类**字形（蓝牙就是蓝牙、WIFI 就是 WIFI）：
         //  「打开 / 关闭」不换字形，状态由行首那句「打开蓝牙 / 关闭蓝牙」说。
-        val kind = GlyphSource.BySwitchKind(SystemSwitches.kindOf(token))
-        val toggle = Spec(name = Strings.CATALOG_MODE_TOGGLE, token = token, glyph = kind)
-        if (!token.startsWith(Action.SETTING_PREFIX)) return listOf(toggle)
-        val id = token.removePrefix(Action.SETTING_PREFIX)
+        val kind = GlyphSource.BySwitchKind(id)
+        //  「切换」那一行的 token 也归一：传进来的是状态写法时，它该回到「切换」语义
+        val toggle =
+            Spec(
+                name = Strings.CATALOG_MODE_TOGGLE,
+                token = if (isSetting) Action.Setting(id).token else token,
+                glyph = kind,
+            )
+        if (!isSetting) return listOf(toggle)
         return listOf(
             toggle,
             Spec(name = Strings.CATALOG_MODE_TURN_ON, token = Action.Setting(id, on = true).token, glyph = kind),
@@ -1677,8 +1704,8 @@ object ActionCatalog {
         /** 原地弹一行一档的**单选弹窗** —— 这一格本身就是那个动作（录屏 / 录音）。 */
         STATE,
 
-        /** 原地弹**百分比**弹窗（亮度 / 音量的「增加 / 减少 / 设定」那几行）。 */
-        PERCENT,
+        /** 原地弹**数值**弹窗 —— 一根滑杆 + 一行实时文案（亮度 / 音量的百分比、倒计时的时长）。 */
+        NUMBER,
 
         /** 原地弹**开关三态**弹窗（系统开关的「切换 / 打开 / 关闭」那几行）。 */
         SWITCH,
@@ -1698,7 +1725,7 @@ object ActionCatalog {
      *     **去向还不一样** —— 合成一个 `PAGE` 的话，界面还得回去判 token 才知道跳哪一页）；
      *   · 再是「这一格就是那个动作」的状态弹窗 —— 它**也有** [modeMenu]（三行档位），
      *     所以要排在 [modeMenu] 之前，否则会被当成「还有一层菜单」；
-     *   · 百分比 / 开关三态都是**菜单行**的后续，判据在各自那张表上；
+     *   · 百分比 / 开关三态 / 时长都是**菜单行**的后续，判据在各自那张表上；
      *   · 最后才是「这一格自己有菜单」。判据用 `modeMenu(spec.token) != null` —— 那正是
      *     「这一格」的定义。**不要换成 [hasDeeperLevel]**：它是为「媒体控制 / 响铃状态的首行与
      *     格子共用同一串 token」设的自指闸，拿它判**格子**会把这两格判成「点一下就落盘」
@@ -1712,21 +1739,29 @@ object ActionCatalog {
             spec.token == VARS_TILE -> ClickKind.PAGE_VARS
             spec.token == APP_CONTROL_OPEN || spec.token == APP_CONTROL_STOP -> ClickKind.PAGE_APP
             stateChoices(spec.token) != null -> ClickKind.STATE
-            isPercentRow(spec.token) -> ClickKind.PERCENT
+            isNumberRow(spec.token) -> ClickKind.NUMBER
             modeMenu(spec.token) != null -> ClickKind.MENU
             stateMenu(spec.token) != null -> ClickKind.SWITCH
             else -> ClickKind.DIRECT
         }
 
     /**
-     * 这一行是不是「还要再问一个百分比」的那三档之一（亮度 / 媒体音量 / 铃声音量）。
+     * 这一格 / 这一行是不是「还要再问一个数」的那几档（亮度 / 媒体音量 / 铃声音量的百分比、
+     * 计时器的时长）。
      *
-     *  三族的判据各自成表（[brightnessModeOf] / [volumeModeOf] / [ringerVolumeModeOf]），
-     *  这里只是把「有没有落在其中任何一张表上」合成一个布尔 —— [clickKind] 那一支原先写的是
-     *  两条 `!= null` 并联，再加一族就顶破行长，收在这里读起来也更像一句话。
+     *  各族判据各自成表（[brightnessModeOf] / [volumeModeOf] / [ringerVolumeModeOf] /
+     *  `ClockCatalog.isTimerTile`），这里只是把「有没有落在其中任何一张表上」合成一个布尔 ——
+     *  [clickKind] 那一支原先写的是两条 `!= null` 并联，再加一族就顶破行长，收在这里读起来
+     *  也更像一句话。
+     *
+     *  这几族的共同点只有一条：**行 / 格本身写不出结论**，还差一个数（`bright:+`、`clock:`）——
+     *  所以界面弹的是同一个「滑杆 + 一句实时文案」的弹窗，只是量程与念法不同。
      */
-    private fun isPercentRow(token: String): Boolean =
-        brightnessModeOf(token) != null || volumeModeOf(token) != null || ringerVolumeModeOf(token) != null
+    private fun isNumberRow(token: String): Boolean =
+        brightnessModeOf(token) != null ||
+            volumeModeOf(token) != null ||
+            ringerVolumeModeOf(token) != null ||
+            ClockCatalog.isTimerTile(token)
 
     /**
      * 这几格**点开直接弹一行一档的单选弹窗**（录屏 / 录音：开始 / 结束 / 切换）。

@@ -21,6 +21,7 @@ import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.host.action.app.AppLauncher
 import com.lookie.opluskey.host.action.app.AppShortcutLaunch
+import com.lookie.opluskey.host.action.clock.ClockAction
 import com.lookie.opluskey.host.action.condition.ConditionProbe
 import com.lookie.opluskey.host.action.notice.FluidAction
 import com.lookie.opluskey.host.action.notice.NotifyAction
@@ -315,6 +316,9 @@ internal class ActionRunner(
                 is Action.Shortcut -> launcher.runShortcut(act.shortcutId)
 
                 is Action.Flashlight -> flashlight.toggle()
+
+                //  倒计时：让时钟**开始**数（不自己计时，见 `ClockAction`）
+                is Action.Timer -> ClockAction.timer(context, act.seconds, ::notifyFailure)
 
                 is Action.Ringer -> ringer.setMode(act.mode)
 

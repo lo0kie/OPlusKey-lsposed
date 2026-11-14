@@ -23,6 +23,7 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.core.present.ClockCatalog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.LocalSheetBringIntoView
 import com.lookie.opluskey.ui.dialog.MenuEntry
@@ -390,6 +391,16 @@ internal fun SettingsPage.StepPickerSheet(
             //  「应用控制」也落在这一支 —— 它的打开 / 结束两档就在那层菜单里（见下面 `onPick`）。
             ActionCatalog.modeMenu(spec.token) != null -> {
                 XLog.w("抽屉：点 ${spec.label} → 开二级菜单")
+                subAnchor = anchor
+                subTile = spec
+            }
+
+            //  「计时器」那一格**没有菜单**，点它要弹的是时长弹窗 —— 但通道相同：把它当
+            //  `subTile` 交下去，`ModeMenuPopups` 认这一格就只弹弹窗、不列菜单（与网格那边
+            //  同一个分支）。直接落 `sheet.onPick(spec.token)` 会把标记 `clock:` 写进命令，
+            //  那是一条 `Action.parse` 认不出的废串。
+            ClockCatalog.isTimerTile(spec.token) -> {
+                XLog.w("抽屉：点 ${spec.label} → 挑时长")
                 subAnchor = anchor
                 subTile = spec
             }

@@ -126,6 +126,18 @@ data class SceneRule(
     val hasChainRelease: Boolean get() = enabled && chainReleaseOn && chainRelease.isBound
 
     /**
+     * 这一块**开着、且长按这一档配了动作** —— 「这一档到底有没有动作」只认这种块。
+     *
+     *  与 [hasRelease] 同一条纪律：停用的块命中不了（`matches` 里第一句就是它），它配的长按动作
+     *  也就不该让「松手额外动作」成立。算上它的话，判定侧会白等一个窗口并发一条 `Release`，
+     *  界面上「松手时触发」那一格还压不灰 —— 两处都指向一个不会发生的动作。
+     */
+    val longBound: Boolean get() = enabled && (actions[GestureTrigger.LongPress] ?: Action.None).isBound
+
+    /** 同上，这一块给「单击后长按」配了动作。 */
+    val chainBound: Boolean get() = enabled && (actions[GestureTrigger.ClickThenLong] ?: Action.None).isBound
+
+    /**
      * 配完了没有 —— 至少一条条件、且每一条都**认得出并且取值填了**（`isUsable`）。
      *
      *  「配完」只说明每一条都填了取值，不代表这块会命中：成不成立要看当时的系统状态

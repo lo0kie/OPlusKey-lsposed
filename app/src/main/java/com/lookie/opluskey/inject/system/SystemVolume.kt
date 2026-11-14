@@ -3,8 +3,6 @@ package com.lookie.opluskey.inject.system
 import android.content.Context
 import android.media.AudioManager
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.reflect.ActivityThreadCompat
-import com.lookie.opluskey.core.reflect.Reflect
 
 /**
  * 由 `system_server` 替宿主**把某一路流设到某一档**（`ModuleWire.ACTION_SET_VOLUME`）。
@@ -29,9 +27,6 @@ import com.lookie.opluskey.core.reflect.Reflect
  *     调用方（`inject/KeyHooks`）已经把它 post 到 worker 线程上，这里不再切线程。
  */
 internal object SystemVolume {
-    /** 系统 Context 缓存（拿到就不再取；拿不到下次再试）。 */
-    private var systemContext: Context? = null
-
     /**
      * 设为 [index] 档；任何一环失败都只记日志。
      *
@@ -69,14 +64,8 @@ internal object SystemVolume {
 
     /** `ActivityThread.getSystemContext()` —— 包名 `android` 的那一份。 */
     private fun context(loader: ClassLoader): Context? {
-        systemContext?.let { return it }
-        val at = ActivityThreadCompat.currentActivityThread(loader) ?: return null
-        val ctx =
-            Reflect.call(at, "getSystemContext") as? Context ?: run {
-                XLog.w("注入侧设音量：拿不到 system_server 的 SystemContext")
-                return null
-            }
-        systemContext = ctx
+        val ctx = SystemServerContext.get(loader)
+        if (ctx == null) XLog.w("注入侧设音量：拿不到 system_server 的 SystemContext")
         return ctx
     }
 }

@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.Reflect
+import com.lookie.opluskey.ui.style.systemNightOrNull
 
 // 宿主窗口的读取与包装：从宿主 Activity 取换页用的容器、深浅与页面 Context。
 //
@@ -76,21 +77,18 @@ internal const val THEME_LIGHT = "AppNoTitleTheme"
  */
 internal val HOST_PACKAGE: String get() = HostApp.PACKAGE
 
-/** 当前是不是深色（night）模式。 */
-internal fun isNight(context: android.content.Context): Boolean {
-    // 首选：系统全局配置（最准）
-    try {
-        val sys =
-            android.content.res.Resources
-                .getSystem()
-                .configuration.uiMode
-        return (sys and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-    } catch (e: Throwable) {
-        XLog.d("读系统全局 configuration 失败，退回 context 的值：${e.message}")
-    }
-    return (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-        Configuration.UI_MODE_NIGHT_YES
-}
+/**
+ * 当前是不是深色（night）模式。
+ *
+ *  判据走 [systemNightOrNull]（与页面那一侧同一处）—— 这里只是兜底不同：
+ *  读不出系统全局配置时退回这个 `Context` 自己的 `configuration`。
+ */
+internal fun isNight(context: android.content.Context): Boolean =
+    systemNightOrNull()
+        ?: (
+            (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
+        )
 
 /** 这个颜色是不是「浅色」（用于决定状态栏图标要深色还是浅色）。 */
 internal fun isLightColor(color: Int): Boolean {

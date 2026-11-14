@@ -171,7 +171,13 @@ internal class GestureForwarder(
         val intent = comboIntent(target, phase = "scene", repeat = false, sceneStage = stage)
         sender.post {
             try {
-                val ctx = context() ?: return@post
+                val ctx =
+                    context() ?: run {
+                        //  与上面那两条同一口径：借不到就明说。静默返回的后果是「按住组合的场景
+                        //  永远是按当时现判」—— 那是没人能从日志里推出来的形状（五、2）。
+                        XLog.w("没借到 Context，场景快照没发出去（$target $stage，退回按当时条件重判）")
+                        return@post
+                    }
                 wakeHost(ctx)
                 send(ctx, intent, delayMs = 0L, retry = false)
             } catch (e: Throwable) {

@@ -49,8 +49,8 @@ LANG_KEY = re.compile(r"(LANG|Lang|lang|language|effectiveLanguage)")
 # 「这一份与语言无关」的显式放行（写在语句那一行上）。
 LOCKED = "i18n-locked"
 
-REMEMBER = re.compile(r"\bremember\s*\(")
-REMEMBER_NO_KEY = re.compile(r"\bremember\s*\{")
+REMEMBER = re.compile(r"\bremember\s*([({])")
+#  `remember {` 那种无键形态由 [REMEMBER] 的 `{` 分组接住（原来单独一条正则从来没被用过）。
 
 # 表达式体函数的结束点：下一个顶层声明 / 注解 / 收类括号。
 DECL_BOUNDARY = re.compile(r"\n(?=@|private |internal |public |protected |fun |class |object |enum |})")
@@ -156,7 +156,7 @@ def scan_file(path: Path) -> list[str]:
     hits: list[str] = []
     for m in REMEMBER.finditer(clean):
         # 键：`remember(` 括号里那段（`remember {` 形式没有键）
-        if m.group(0).startswith("remember {"):
+        if m.group(0).startswith("remember {") or m.group(0).endswith("{"):
             keys = ""
             body_start = clean.index("{", m.start())
         else:

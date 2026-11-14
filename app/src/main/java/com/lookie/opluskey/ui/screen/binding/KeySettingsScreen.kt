@@ -39,6 +39,7 @@ import com.lookie.opluskey.ui.screen.combo.holdCombosStartedBy
 import com.lookie.opluskey.ui.screen.combo.setComboOwnHoldMin
 import com.lookie.opluskey.ui.screen.combo.setComboOwnWindow
 import com.lookie.opluskey.ui.screen.combo.updateCombo
+import com.lookie.opluskey.ui.screen.combo.waitCombosUsing
 import com.lookie.opluskey.ui.screen.settingsTargetLabel
 import com.lookie.opluskey.ui.state.page.SettingsTarget
 import com.lookie.opluskey.ui.state.page.SettingsTargetState
@@ -104,17 +105,6 @@ internal fun SettingsPage.KeySettingsScreen(
                 cfg = cfg,
                 enabled = pageEnabled,
             )
-
-            //  —— 单击那三行（判定时机 / 单击延迟 / 忽视无操作双击手势）——
-            //  原先挂在「按键绑定」页单击档下面（`BindingSections`），按用户口径整张挪到这里：
-            //  它们改的都是**这颗键怎么判单击**，与上面那组「有几档」是同一片页面的事。
-            //  一处入口也就顺带消掉了「同一个参数在绑定页和独立设置页各有一个能改的地方」。
-            //  「只参与组合按键」时跟着上面那张卡一起灰（这颗键不判单键手势，这些参数没处用）。
-            SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK, "单击"))
-            BindingSettingsCard(
-                keyId = target.id,
-                enabled = pageEnabled && !comboOnly,
-            )
         }
 
         //  一个小标题带一张卡（与「按键设置」页同构）—— 页面顶部不再另放一个与顶栏同名的
@@ -130,6 +120,19 @@ internal fun SettingsPage.KeySettingsScreen(
             enabled = pageEnabled && !comboOnly,
             titles = ownCardTitles(),
         ) { values, field -> commitOwnField(target, values, field) }
+
+        //  —— 单击（判定时机 + 等待窗口）——
+        //  **排在总开关下面**（用户口径）：这两项也吃那颗「使用独立设置」——
+        //  关着时跟随公共设置里那一份、这一页只把生效值摆出来并灰着。
+        //  又多一道「有没有多击手势」：这一页管的是「这颗键的多击怎么判」，一档都没开时
+        //  没有可判的东西（判据见 `BindingSettingsCard`）。
+        if (target is SettingsTarget.Key) {
+            SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK, "单击"))
+            BindingSettingsCard(
+                keyId = target.id,
+                enabled = pageEnabled && !comboOnly,
+            )
+        }
 
         //  —— 多击手势那两颗开关 ——
         //  **挪到页顶去了**（见 `KeySettingsScreen` 开头）：它们决定下面那张卡能管到几档 ——
@@ -229,19 +232,34 @@ private fun SettingsPage.comboOnlyRow(
         val cfgNow = configState.config.value
         //  只有在**打开**时才查：关掉这一项永远是安全的（矛盾那一端正是「开着」）
         val starters = if (on) cfgNow.holdCombosStartedBy(target.id) else emptyList()
-        if (starters.isNotEmpty()) {
-            //  可能不止一档（同一颗键可以是好几个按住组合的起点），日志把挡着的都列出来
-            XLog.w(
-                "只参与组合：${target.id.label} 是 ${starters.size} 档按住组合的起点" +
-                    "（${starters.joinToString { it.keys.joinToString("+") }}），拒绝开启",
-            )
-            ComboOnlyBlocked.ask(target.id)
-        } else {
-            val keyNow = cfgNow.key(target.id)
-            val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(comboOnly = on)))
-            val what = "own_settings target=${settingsTargetLabel(target)} combo_only=${if (on) 1 else 0}"
-            writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
-                switchNotice(I18n.get(Strings.BINDING_COMBO_ONLY, "只参与组合按键"), on)
+        //  另一头：这颗键已经是某档**等待组合**的成员 —— 那一档按下要吞一个窗口等第二颗，
+        //  与「不判单键手势」叠在一起就是「单击没了、原生还晚一个窗口」（见 `waitCombosUsing`）
+        val waits = if (on) cfgNow.waitCombosUsing(target.id) else emptyList()
+        when {
+            starters.isNotEmpty() -> {
+                //  可能不止一档（同一颗键可以是好几个按住组合的起点），日志把挡着的都列出来
+                XLog.w(
+                    "只参与组合：${target.id.label} 是 ${starters.size} 档按住组合的起点" +
+                        "（${starters.joinToString { it.keys.joinToString("+") }}），拒绝开启",
+                )
+                ComboOnlyBlocked.ask(target.id, ComboOnlyBlocked.Reason.HOLD_STARTER)
+            }
+
+            waits.isNotEmpty() -> {
+                XLog.w(
+                    "只参与组合：${target.id.label} 是 ${waits.size} 档等待组合的成员" +
+                        "（${waits.joinToString { it.keys.joinToString("+") }}），拒绝开启",
+                )
+                ComboOnlyBlocked.ask(target.id, ComboOnlyBlocked.Reason.WAIT_MEMBER)
+            }
+
+            else -> {
+                val keyNow = cfgNow.key(target.id)
+                val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(comboOnly = on)))
+                val what = "own_settings target=${settingsTargetLabel(target)} combo_only=${if (on) 1 else 0}"
+                writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
+                    switchNotice(I18n.get(Strings.BINDING_COMBO_ONLY, "只参与组合按键"), on)
+                }
             }
         }
     }

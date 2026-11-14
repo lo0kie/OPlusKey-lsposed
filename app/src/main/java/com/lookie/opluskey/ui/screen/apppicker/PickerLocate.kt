@@ -30,7 +30,9 @@ import androidx.compose.runtime.withFrameNanos
  *
  * @param index 列表里那一项的下标（**含**顶上那个「顶栏让位」占位项，见 `APP_LIST_HEADER_ITEMS`）
  * @param targetPx 这一项的顶边该落在视窗顶下方多少像素
- * @return 收完之后那一项的落点（px）；看不到那一项时返回 `-1`
+ * @return 收完之后那一项的落点（px）。**第一次就看不到**（这一项还没进视窗）返回 `-1`；
+ *   补滚一帧之后仍读不到时返回 [targetPx] —— 那是「按差值补过了」的估计值，
+ *   不是「没找到」（写 `-1` 的话调用方会把一次成功的定位当成失败）
  */
 internal suspend fun LazyListState.settleRowBelow(
     index: Int,

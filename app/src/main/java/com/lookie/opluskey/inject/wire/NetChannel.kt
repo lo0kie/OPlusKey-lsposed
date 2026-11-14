@@ -192,7 +192,14 @@ internal object NetChannel {
         var result: Pair<HttpURLConnection, Int>? = null
         while (result == null && hops <= MAX_REDIRECTS) {
             val conn = open(network, target) ?: break
-            val code = conn.responseCode
+            //  连上了但状态码读不出来（对端掐断 / TLS 失败）：这一跳的连接没人接管了，就地断开再抛
+            val code =
+                try {
+                    conn.responseCode
+                } catch (e: Throwable) {
+                    conn.disconnect()
+                    throw e
+                }
             val location = if (code in 300..399) conn.getHeaderField("Location") else null
             if (location == null) {
                 result = conn to code
@@ -276,17 +283,25 @@ internal object NetChannel {
         val limit = ModuleWire.NET_BODY_LIMIT
         val deadline = SystemClock.elapsedRealtime() + ModuleWire.NET_TIMEOUT_MS * 2
         val sb = StringBuilder(minOf(limit, READ_CHUNK))
+        var truncated = false
         conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
             val buf = CharArray(READ_CHUNK)
             while (sb.length < limit) {
-                if (SystemClock.elapsedRealtime() > deadline) return sb.toString() to true
+                if (SystemClock.elapsedRealtime() > deadline) {
+                    truncated = true
+                    break
+                }
                 val room = minOf(buf.size, limit - sb.length)
                 val n = reader.read(buf, 0, room)
                 if (n <= 0) break
                 sb.append(buf, 0, n)
             }
+            //  正文**恰好**等于上限时上面那个循环是「正常结束」的，分不出「读完了」与「还有」——
+            //  再要一个字符才判得出：拿得到 ⇒ 确实超长；拿到流尾（-1）⇒ 这份正文正好这么大。
+            //  只在贴上限这一种情况下多读一次，而那时流本来就已经在末尾。
+            if (!truncated && sb.length >= limit) truncated = reader.read() >= 0
         }
-        return sb.toString() to (sb.length >= limit)
+        return sb.toString() to truncated
     }
 
     /** 回包 —— 主线程发，整段兜住（这一层在 system_server 里）。 */

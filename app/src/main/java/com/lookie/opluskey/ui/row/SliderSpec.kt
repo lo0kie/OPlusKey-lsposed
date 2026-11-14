@@ -79,9 +79,14 @@ internal fun snapToStep(
     max: Int,
     step: Int,
 ): Int {
-    val span = (max - min).coerceAtLeast(1)
+    //  **上下限反了不能抛**：`coerceIn(min, max)` 在 `min > max` 时直接抛
+    //  `IllegalArgumentException`，而这两个数一路来自配置 / 调用方算出来的边界 ——
+    //  一处算错就是整页崩。交换一下继续算：它们描述的是同一个区间。
+    val lo = minOf(min, max)
+    val hi = maxOf(min, max)
+    val span = (hi - lo).coerceAtLeast(1)
     //  档数与 `Slider.steps` 同一处（见 [sliderTickCount]）：两边各算一份时会在「区间不整除」时差一档。
-    val ticks = sliderTickCount(min, max, step)
-    val idx = ((value.coerceIn(min, max) - min).toFloat() / span * ticks).roundToInt()
-    return (min + idx * span.toDouble() / ticks).roundToInt().coerceIn(min, max)
+    val ticks = sliderTickCount(lo, hi, step)
+    val idx = ((value.coerceIn(lo, hi) - lo).toFloat() / span * ticks).roundToInt()
+    return (lo + idx * span.toDouble() / ticks).roundToInt().coerceIn(lo, hi)
 }

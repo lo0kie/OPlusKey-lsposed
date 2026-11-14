@@ -37,6 +37,10 @@ internal object Framework {
      *   与侧键那条分开装：它不参与手势判定，只负责把 ROM 已经判好的「电源 + 音量」组合吞掉 ——
      *   policy 上吞掉的那一下到不了这里，所以侧键接管点再准也拦不住截图
      * @param chordEntries 组合键判定类上的入口方法名（精确匹配）
+     * @param observerCandidates **按键观察者**派发点（`OplusKeyEventUtil` 那两层，见
+     *   `inject/key/KeyObserverHooks` 的类注释）。它比侧键更靠上游：游戏里那条音量条由
+     *   `com.oplus.games` 自己注册的观察者喂，只有在这一层拦才是一次拦干净
+     * @param observerEntries 观察者派发点上的入口方法名（精确匹配，两处都是 `onKeyEvent`）
      * @param amsCandidate AMS 的广播入口 —— 本模块「主开关 / 配置 / 状态栏指令 / 小窗指令 /
      *   链路自检问」全从这里收
      * @param amsBroadcastEntries AMS 广播入口的方法名（精确匹配），**按优先级排列**：
@@ -75,6 +79,8 @@ internal object Framework {
         val pmEntries: Set<String>,
         val chordCandidates: List<String>,
         val chordEntries: Set<String>,
+        val observerCandidates: List<String>,
+        val observerEntries: Set<String>,
         val amsCandidate: String,
         val amsBroadcastEntries: Set<String>,
         val hostKeyService: String,
@@ -121,6 +127,14 @@ internal object Framework {
                 pmEntries = setOf("interceptKeyBeforeQueueing"),
                 chordCandidates = listOf("com.android.server.input.KeyGestureController"),
                 chordEntries = setOf("handleKeyGesture"),
+                //  两处都挂：外层 `OplusKeyEventUtil#onKeyEvent` 与逐条观察者的
+                //  `OnKeyEventObserver#onKeyEvent`。哪一层真被 ROM 走到，静态看不出来
+                observerCandidates =
+                    listOf(
+                        "com.android.server.am.OplusKeyEventUtil\$OnKeyEventObserver",
+                        "com.android.server.am.OplusKeyEventUtil",
+                    ),
+                observerEntries = setOf("onKeyEvent"),
                 amsCandidate = "com.android.server.am.ActivityManagerService",
                 amsBroadcastEntries = setOf("broadcastIntentWithFeature", "broadcastIntent"),
                 hostKeyService = "com.oplus.gesture.server.ActionButtonKeyService",
@@ -269,7 +283,14 @@ internal object Framework {
             XLog.w("没找到 ${hooks.amsCandidate} —— 广播入口接管点落空")
             return emptyList()
         }
-        val all = Reflect.methodsOf(cls).filter { !it.isSynthetic && !it.name.startsWith("access$") }
+        val scanned = Reflect.methodsOfOrNull(cls)
+        if (scanned == null) {
+            //  方法表这趟没读出来（不是「没有这个方法」）：Reflect 那边已经记了 W（在哪一层失败）。
+            //  写成「一个都没有」会把排查带到改类名 / 改 ROM 的方向去。
+            XLog.w("${hooks.amsCandidate} 的方法表这趟没读出来 ⇒ 广播入口接管点落空（不是「没有这个方法」）")
+            return emptyList()
+        }
+        val all = scanned.filter { !it.isSynthetic && !it.name.startsWith("access$") }
         val hit = all.filter { it.name in hooks.amsBroadcastEntries }
         if (hit.isEmpty()) {
             val near =
@@ -346,7 +367,12 @@ internal object Framework {
         for (name in hooks.chordCandidates) {
             val cls = Reflect.findClass(loader, name) ?: continue
             XLog.w("找到输入层组合键类：$name")
-            val all = Reflect.methodsOf(cls).filter { !it.isSynthetic && !it.name.startsWith("access$") }
+            val scanned = Reflect.methodsOfOrNull(cls)
+            if (scanned == null) {
+                XLog.w("${cls.name} 的方法表这趟没读出来 ⇒ 本候选跳过（不是「没有这个方法」）")
+                continue
+            }
+            val all = scanned.filter { !it.isSynthetic && !it.name.startsWith("access$") }
             val hit = all.filter { it.name in hooks.chordEntries }
             if (hit.isNotEmpty()) return hit.map { ChordPoint(cls, it) }
             val near = all.map { it.name }.filter { it.contains("KeyGesture") }.distinct()
@@ -363,6 +389,40 @@ internal object Framework {
                 "—— 电源 + 音量的组合仍由 ROM 执行",
         )
         return emptyList()
+    }
+
+    /**
+     * 系统那套「按键观察者」的派发点 —— 归模块管的音量键在这里就不往下发。
+     *
+     *  与 [findChordPoints] 同一档「并列、互不影响」：装不上只是游戏里照旧弹游戏空间的音量条，
+     *  音量键本身不受影响。
+     *
+     *  **候选逐个试、各自独立**：两个候选不是同一类的两种包名写法，而是两个不同的类
+     *  （外层派发 + 逐条观察者），各有各的作用，所以不像组合键那条「命中一个就停」。
+     *
+     * @return 命中的方法；一个都没命中返回空表（调用方记一行 w，不硬猜）
+     */
+    fun findObserverPoints(loader: ClassLoader): List<Method> {
+        val out = ArrayList<Method>(hooks.observerCandidates.size)
+        for (name in hooks.observerCandidates) {
+            val cls =
+                Reflect.findClass(loader, name) ?: run {
+                    XLog.w("没找到按键观察者派发类：$name —— 这一档不装")
+                    continue
+                }
+            //  按签名精确取：这个类上同名的还有别的重载（`onKeyEvent(KeyEvent, int)` 这类），
+            //  装错一个就等于「挂了但永远不进正文」
+            val method =
+                hooks.observerEntries.firstNotNullOfOrNull { entry ->
+                    Reflect.method(cls, entry, android.view.KeyEvent::class.java)
+                }
+            if (method == null) {
+                XLog.w("${cls.name} 上没有 ${hooks.observerEntries.joinToString("/")}(KeyEvent) —— 这一档不装")
+                continue
+            }
+            out += method
+        }
+        return out
     }
 
     /**
@@ -434,7 +494,14 @@ internal object Framework {
         entries: Set<String>,
         kind: InterceptionPoint.Kind,
     ) {
-        val all = Reflect.methodsOf(cls).filter { !it.isSynthetic && !it.name.startsWith("access$") }
+        val scanned = Reflect.methodsOfOrNull(cls)
+        if (scanned == null) {
+            //  与「类里没有这个方法」分开：这一趟扫不出来（Reflect 已记 W），本层只能跳过，
+            //  但日志不能写成「ROM 没有这个方法」（五、4）。
+            XLog.w("${cls.name} 的方法表这趟没读出来 ⇒ 本层跳过（不是「没有这个方法」）")
+            return
+        }
+        val all = scanned.filter { !it.isSynthetic && !it.name.startsWith("access$") }
         val hit = all.filter { it.name in entries }
         if (hit.isEmpty()) {
             val near = all.map { it.name }.filter { it.contains("ntercept") }.distinct()

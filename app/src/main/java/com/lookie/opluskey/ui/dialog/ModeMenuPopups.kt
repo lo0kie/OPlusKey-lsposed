@@ -10,6 +10,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.core.present.ClockCatalog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.icon.tileIcon
 import com.lookie.opluskey.ui.wire.boundAppName
@@ -66,17 +67,20 @@ internal fun SettingsPage.ModeMenuPopups(
     // 点开的是「还要挑一档」的那一行（灵感语音：开始 / 结束）—— 同一套：菜单先收、选择器再起
     var nestedEntry by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
 
-    //  这一格**本身就是那个动作**（录屏）—— 点开直接弹「开始 / 结束 / 切换」那个三行弹窗，
+    //  这一格**本身就是那个动作**（录屏 / 计时器）—— 点开直接弹它自己那个弹窗，
     //  中间不再夹一层只写着「录屏」的菜单：一个动作不该有两层入口（用户口径「网格 / 菜单里
-    //  视为一个动作，点击弹 dialog 选」）。判据在 `ActionCatalog.stateChoices`，界面不认 token。
+    //  视为一个动作，点击弹 dialog 选」「不用父子动作了」）。判据在清单里，界面不认 token。
     val stateTile = target?.tile?.takeIf { ActionCatalog.stateChoices(it.token) != null }
+
+    //  计时器那一格：点它直接挑时长（与录屏同一形态，只是弹的是滑杆而不是单选）
+    val timerTile = target?.tile?.takeIf { ClockCatalog.isTimerTile(it.token) }
 
     PageMenu(
         preciseClick = preciseClick,
         onDismiss = onDismiss,
         entries =
-            if (stateTile != null) {
-                //  这一格走弹窗：菜单这一层不许它露面（`PageMenu` 只按 entries 非空才显示）
+            if (stateTile != null || timerTile != null) {
+                //  这两格走弹窗：菜单这一层不许它露面（`PageMenu` 只按 entries 非空才显示）
                 emptyList()
             } else {
                 target
@@ -128,11 +132,12 @@ internal fun SettingsPage.ModeMenuPopups(
     )
 
     // 三条「点一行之后还有一问」的后续，各自一个弹窗组件（两块的退场处理、标题取法都各自独立）。
-    //  录屏那一档在**最前面**：它没有菜单那一层，点格子就是它自己的三行。
+    //  录屏 / 计时器那两档在**最前面**：它们没有菜单那一层，点格子就是它自己的弹窗。
     StateChoicesPopup(stateTile, current, onDismiss = onDismiss, onPick = onPick)
     SwitchStatePopup(stateEntry, current, onDismiss = { stateEntry = null }, onPick = onPick)
     BrightnessPopup(brightEntry, current, onDismiss = { brightEntry = null }, onPick = onPick)
     VolumePopup(volumeEntry, current, onDismiss = { volumeEntry = null }, onPick = onPick)
+    TimerPopup(timerTile, current, onDismiss = onDismiss, onPick = onPick)
     NestedPickerPopup(nestedEntry, current, onDismiss = { nestedEntry = null }, onPick = onPick)
 }
 
@@ -364,6 +369,42 @@ private const val DEFAULT_STEP_PERCENT = 10
 
 /** 亮度「设置为」的默认百分比。 */
 private const val DEFAULT_SET_PERCENT = 50
+
+/**
+ * 「计时器」那一格的后续 —— 挑一个时长（滑杆 + 一行 `5 分钟`）。
+ *
+ *  与 [BrightnessPopup] / [VolumePopup] 同一个形状，只是**没有菜单那一层**：格子本身写不出
+ *  结论（`clock:` 只是标记，永不写进配置），时长才是它的全部内容，所以点格子就是「去挑时长」，
+ *  落盘的是 `timer:300`（与录屏 / 录音「点格子直接弹单选」同一个形态）。
+ *
+ *  **初值读已绑的那一条**：同一格改过时长之后，再点开就停在原来那个位置 —— 每次都从 5 分钟
+ *  开始等于「改成 10 分钟，再微调」变成两步。
+ *
+ *  退场处理照最后画过的那一份画，理由见 [SwitchStatePopup]。
+ */
+@Composable
+private fun SettingsPage.TimerPopup(
+    tile: ActionCatalog.Spec?,
+    current: Action?,
+    onDismiss: () -> Unit,
+    onPick: (ActionCatalog.Spec) -> Unit,
+) {
+    val lastShown = remember { LastPick() }
+    tile?.let { lastShown.entry = it }
+    val shown = tile ?: lastShown.entry
+    //  `timer:` 不带时长那一档（老配置 / 只打开页面）没有可接着调的数，退到默认值
+    val initial = (current as? Action.Timer)?.seconds ?: TIMER_DEFAULT_SECONDS
+    TimerDialog(
+        show = tile != null,
+        initialSeconds = initial,
+        onDismiss = onDismiss,
+        onConfirm = { seconds ->
+            onDismiss()
+            //  shown 为空只可能是「退场途中又点了一次确定」，那种情况下什么都不落
+            if (shown != null) onPick(ClockCatalog.timerSpecOf(seconds))
+        },
+    )
+}
 
 /**
  * 退场期间要画的那一份（见 [ModeMenuPopups] 里那段说明）。

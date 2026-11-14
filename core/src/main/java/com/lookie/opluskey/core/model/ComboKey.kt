@@ -239,7 +239,7 @@ data class ComboKey(
      */
     override val releaseBound: Boolean
         get() =
-            (long.isBound || scenes.any { (it.actions[GestureTrigger.LongPress] ?: Action.None).isBound }) &&
+            (long.isBound || scenes.any { it.longBound }) &&
                 !longFireOnRelease &&
                 ((longReleaseOn && longRelease.isBound) || scenes.any { it.hasRelease })
 

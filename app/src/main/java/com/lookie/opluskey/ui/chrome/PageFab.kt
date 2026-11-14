@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,6 +20,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.page.FAB_SCROLL_DIRECTION_THRESHOLD
@@ -27,6 +29,7 @@ import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.theme.edgeSlideIn
 import com.lookie.opluskey.ui.model.theme.edgeSlideOut
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 右下角那颗 FAB 那一族：按钮本体、页面角落定位、按滚动方向显隐。
@@ -69,6 +72,35 @@ internal fun PageFabButton(
         containerColor = containerColor,
     ) { content() }
 }
+
+/**
+ * [PageFabButton] 上那颗**图标** —— 尺寸与字形色**走同一份**，各页共用。
+ *
+ *  库的 `FloatingActionButton` 只定容器（56dp），内容尺寸由调用点决定：`Icon` 自己默认 24dp，
+ *  摆在实心圆里偏小（圆的内接正方形还有 39dp 可用），所以统一抬到 [FAB_ICON_SIZE]。
+ *  **只放大图标、不动本体** —— 56dp 是库的 `FloatingActionButtonDefaults.MinWidth/MinHeight`，
+ *  连它一起改会连累右下角定位与两颗一摞的那档间距。
+ *
+ * @param icon 图标
+ * @param contentDescription 无障碍描述（纯装饰的图标传 `null`）
+ * @param tint 字形色，默认 `onPrimary`；底色不是主题色的那颗（删除）要显式传自己的那一对
+ */
+@Composable
+internal fun PageFabIcon(
+    icon: ImageVector,
+    contentDescription: String?,
+    tint: Color = COUITheme.colorScheme.onPrimary,
+) {
+    Icon(
+        imageVector = icon,
+        contentDescription = contentDescription,
+        modifier = Modifier.size(FAB_ICON_SIZE),
+        tint = tint,
+    )
+}
+
+/** 通用 FAB 上那颗图标的边长：56dp 的圆里比库默认的 24dp 大一档，又留得下圆边。 */
+private val FAB_ICON_SIZE = 28.dp
 
 /**
  * 页面**右下角那颗 FAB** —— 位置与显隐动画**走同一份**，各页共用。

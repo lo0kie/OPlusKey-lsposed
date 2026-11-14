@@ -627,13 +627,16 @@ private fun SettingsPage.LocateSelected(
         // 等一帧：折叠量在布局期才量得出来，进页那一次组合读到的是 0。
         withFrameNanos { }
         val index = shown.indexOfFirst { AppTarget.sameApp(it.target, selected) }
-        // 清单还没到（`shown` 空）不算定位过：等它到了再走这一次
-        if (shown.isEmpty()) return@LaunchedEffect
+        // **找不到就不算定位过**：清单还没到（`shown` 空）、或这一份里根本没有它（`显示系统应用`
+        //  关着、目标被过滤掉）时下标是 -1。拿 -1 去撞下面那个 `index <= 0` 会把一次性闸
+        //  `located` 置真，清单到齐 / 开关拨开之后就再也不会定位 —— 表现是「进页停在第一行」。
+        //  等它出现，这一次 effect 只当没发生过。
+        if (index < 0) return@LaunchedEffect
         // **已经完整可见就一动不动**（连顶栏都不折）—— 目标挤在头两三行时，硬按「落到挡板
         //  下面」去滚只会把它顶上去半截：先折顶栏（列表整体上移一截）再按展开时的高度补偿，
         //  两边对不上，表现出来就是「选中第二、第三行时那一行被 header 压掉一半多」。
         //  二级页（`LocateActivitySelected`）一直是这么判的，一级页这边原先漏了。
-        if (index <= 0 || listState.rowFullyVisible(index + APP_LIST_HEADER_ITEMS, expandedPx)) {
+        if (index == 0 || listState.rowFullyVisible(index + APP_LIST_HEADER_ITEMS, expandedPx)) {
             ui.located = true
             return@LaunchedEffect
         }

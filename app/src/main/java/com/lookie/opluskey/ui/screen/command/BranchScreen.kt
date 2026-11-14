@@ -17,6 +17,7 @@ import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
 import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.chrome.PageFabIcon
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.dialog.ConfirmDialog
@@ -33,7 +34,6 @@ import com.lookie.opluskey.ui.style.visibleAreaHeight
 import com.lookie.opluskey.ui.write.branchKeyNow
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「系统场景」页 —— 从「按键绑定」页顶栏 ⋮ 菜单进来。
 //
@@ -132,10 +132,9 @@ private fun SettingsPage.BranchSaveFab() {
             }
         },
     ) {
-        Icon(
+        PageFabIcon(
             PageIcons.Confirm,
             contentDescription = I18n.get(Strings.COMMON_CONFIRM, "确定"),
-            tint = COUITheme.colorScheme.onPrimary,
         )
     }
 }

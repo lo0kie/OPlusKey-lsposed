@@ -57,6 +57,21 @@ fun Config.mapActions(transform: (Action) -> Action): Config =
                     scenes = combo.scenes.map { it.mapActions(transform) },
                 )
             },
+        //  **「常用命令」也是动作位**：它存的是一条条指向动作的快捷方式（`CommonCommand.token`
+        //  是 token 原文，不是 `Action`）。不一起走的话，改名之后清单里那一条仍指着旧名 ——
+        //  点下去 NOT_FOUND，而界面上看不出任何悬空（与「五处动作位」漏掉时同一种形状）。
+        global =
+            global.copy(
+                commonCommands =
+                    global.commonCommands.map { row ->
+                        val action = Action.parse(row.token)
+                        val mapped = if (action is Action.None) action else transform(action)
+                        //  认不出的写法、以及换成「无操作」的那一档都**不动这一行**：
+                        //  `none` 不是清单能存的东西（加不进来），删命令那条路自己会把指向它的
+                        //  条目整条摘掉（见 `clearCommandBindings`）。
+                        if (mapped is Action.None) row else row.copy(token = mapped.token)
+                    },
+            ),
     )
 
 /**
@@ -83,6 +98,9 @@ fun Config.actionTokens(): List<String> =
             add(combo.longRelease.token)
             combo.scenes.forEach { it.actionTokens().forEach(::add) }
         }
+        //  「常用命令」那几条同样是动作位（见 [mapActions]）：删变量前的反查要能看进去，
+        //  否则一条写着 `${变量}` 的常用命令不会被算成引用，删变量时它就成了悬空的那一处。
+        global.commonCommands.forEach { add(it.token) }
     }
 
 /**

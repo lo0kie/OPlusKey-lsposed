@@ -149,12 +149,20 @@ internal object NotifyAction {
         nm.notify(id, notification)
     }
 
-    /** 渠道只在第一次用到时建；名字取宿主应用名（见类注释）。 */
+    /**
+     * 渠道**缺了才**建（名字取宿主应用名，见类注释）。
+     *
+     *  不能只建一次：用户在系统「通知设置」里把这个渠道删掉之后，`notify` 会**静默不显示**
+     *  （渠道不存在 ⇒ 那一条被丢掉），而调用方照旧报「已发出」—— 用户看到的是「提示功能坏了」，
+     *  日志上却一切正常。所以在建过一次之后仍要问一句「它还在不在」：那是一趟进程内查询，
+     *  比每次都 `createNotificationChannel` 便宜，也比「永远不查」可靠。
+     */
     private fun ensureChannel(
         nm: NotificationManager,
         name: String,
     ) {
-        if (channelReady) return
+        if (channelReady && nm.getNotificationChannel(CHANNEL_ID) != null) return
+        if (channelReady) XLog.w("通知渠道 $CHANNEL_ID 不在了（用户在系统设置里删过）⇒ 重新建一条")
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, name, NotificationManager.IMPORTANCE_DEFAULT),
         )

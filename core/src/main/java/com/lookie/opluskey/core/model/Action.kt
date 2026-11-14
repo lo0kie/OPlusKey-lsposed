@@ -130,6 +130,10 @@ sealed interface Action {
                 is Process -> false
 
                 is VarSet -> name.isBlank()
+
+                //  倒计时**本来就没有载荷**或载荷是可选的 —— 「只有前缀」正是它的完整写法，
+                //  不算没写完（见 `PREFIXES_WITHOUT_BODY`）
+                is Timer -> false
             }
 
     /**
@@ -242,15 +246,6 @@ sealed interface Action {
     ) : Action {
         override val token: String =
             Action.FLUID_PREFIX + (if (icon.isEmpty()) "" else icon + Action.FLUID_ICON_SEP) + message
-
-        /**
-         * 换一颗图标，**其余原样** —— 返回的还是 `fluid:` 这条动作，不是新的写法。
-         *
-         *  界面那一行「图标」把它当成唯一的写入路径（`ui/model/icon/FluidIconRow`）：无论这条
-         *  `fluid:` 原先长什么样、写在哪个槽里，点中一颗之后都从这里收成新的一份。
-         *  [icon] 给空串 = 退回「不给图标」（胶囊左边空着）。
-         */
-        fun withIcon(icon: String): Fluid = copy(icon = icon)
 
         companion object {
             /**
@@ -397,6 +392,23 @@ sealed interface Action {
     /** 切换手电筒（`flashlight`）：走 CameraManager 的 torch 接口而非 `/sys/class/leds`（后者需要 root）。 */
     data object Flashlight : Action {
         override val token: String = Action.FLASHLIGHT
+    }
+
+    /**
+     * **开始**倒计时（`timer:<秒>`；`timer:` 只把倒计时页调出来、由用户自己拨）。
+     *
+     *  [seconds] 非空 = 直接开始，**不弹确认页**（`AlarmClock.ACTION_SET_TIMER` +
+     *  `EXTRA_SKIP_UI`）；为空 = 只打开页面 —— 那一档没有时长可开始，只能等用户按。
+     *  两种落点不一样：带秒数那条走标准 API（`exported` 的 `HandleApiActivity`），
+     *  不带的那条得落到时钟自己的页面上（不导出，见 `ClockAction`）。
+     *
+     *  **秒表没有对应的动作**：ColorOS 没给秒表任何外部入口（清单里那条 action 没有任何代码读它，
+     *  真正起秒表的是个不导出的服务，且只处理已有会话），结论写在 `ClockCatalog` 的类注释里。
+     */
+    data class Timer(
+        val seconds: Int?,
+    ) : Action {
+        override val token: String = Action.TIMER_PREFIX + (seconds?.toString().orEmpty())
     }
 
     /**
@@ -644,6 +656,17 @@ sealed interface Action {
         const val SHORTCUT_PREFIX = "shortcut:"
 
         /**
+         * **倒计时**（`timer:<秒>`；只写 `timer:` 就只打开倒计时页）。
+         *
+         *  带秒数时走标准 `AlarmClock.ACTION_SET_TIMER`（ColorOS 的 `HandleApiActivity` 接它，
+         *  那个是导出的）；不带秒数才需要落到那个不导出的页面上。
+         */
+        const val TIMER_PREFIX = "timer:"
+
+        /** 倒计时的最大秒数 —— 24 小时。再长就不是「倒计时」了，写错一位也不至于等到明年。 */
+        const val TIMER_MAX_SECONDS = 24 * 60 * 60
+
+        /**
          * 应用的快捷方式（长按桌面图标那几个）。
          *
          *  与 [SHORTCUT_PREFIX] **只差开头四个字母**，`startsWith` 判定时谁先谁后都行
@@ -756,6 +779,9 @@ sealed interface Action {
          */
         fun parse(raw: String?): Action {
             val text = raw?.trim().orEmpty()
+            //  几条**没有参数**的短词（`flashlight` 与时钟那两条）先走一支：见 [parseTiny]。
+            //  放在 `return when` 外面是为了不占那个 `when` 的分支配额（它贴着 detekt 上限）。
+            parseTiny(text)?.let { return it }
             return when {
                 text.isEmpty() || text == NONE -> None
 
@@ -791,8 +817,6 @@ sealed interface Action {
 
                 // 进程控制（`proc:start:包名` / `proc:stop:包名`）：认不出就按不支持处理，不落 shell
                 text.startsWith(PROCESS_PREFIX) -> parseProcess(text)
-
-                text == FLASHLIGHT -> Flashlight
 
                 // 必须排在兜底之前，否则 `ringer:` 会被当成 shell 命令执行
                 text.startsWith(RINGER_PREFIX) -> Ringer(text.removePrefix(RINGER_PREFIX).trim())
@@ -846,7 +870,11 @@ sealed interface Action {
          *  而收益只是保住一条本来就执行不了的写法。
          */
         private fun unsupported(text: String): Action {
-            XLog.w("动作解析：这条写法没有支持的前缀，不执行；下次保存会归一成 none：${text.take(200)}")
+            XLog.w(
+                "动作解析：这条写法没有支持的前缀，不执行；下次保存会归一成 none：" +
+                    //  **脱敏**：这段正文可能是用户粘贴的一整条命令（带令牌 / 密码），日志会随导出包外发
+                    XLog.redactCommand(text),
+            )
             return None
         }
 
@@ -882,6 +910,8 @@ sealed interface Action {
             val text = raw?.trim().orEmpty()
             if (text.isEmpty()) return false
             val prefix = prefixOf(text) ?: return true
+            //  无参数的那两个前缀：后面空着也是完整的一条命令（见 [PREFIXES_WITHOUT_BODY]）
+            if (prefix in PREFIXES_WITHOUT_BODY) return true
             return text.removePrefix(prefix).trim().isNotEmpty()
         }
 
@@ -897,11 +927,20 @@ sealed interface Action {
         }
 
         /**
-         * 「命令详情」那一栏**只认这几种前缀** —— 就是界面上「支持的命令格式」卡列的那几行。
+         * 「命令详情」那一栏**认这几种前缀** —— 界面上「支持的命令格式」卡列的那七行是它删掉
+         * 两个「有图形入口」的档之后的结果，两个集合的关系如下。
          *
-         *  判据与那张卡是同一个集合（用户口径：只允许填列表里的）：能写的手写命令只有这几种，
-         *  卡片里每一行也正好对应其中一个。两边要改就一起改 —— 多一个这里不认的前缀，用户在
-         *  输入框里敲得进去、却存不下来；少一个，列表点一下填进来的东西自己过不了闸。
+         *  判据与那张卡基本是同一个集合（用户口径：只允许填列表里的）：能写的手写命令只有这几种。
+         *  两边要改就一起改 —— 多一个这里不认的前缀，用户在输入框里敲得进去、却存不下来；
+         *  少一个，列表点一下填进来的东西自己过不了闸。
+         *
+         *  ## 例外：有图形入口、但仍然要能存下来
+         *
+         *  倒计时（`timer:<秒>`）**不在那张卡上**（它的入口是「快捷功能」里那一格，见
+         *  `ClockCatalog`），可它在名单里：从格子里挑出来的动作还要能
+         *  当**单条自定义命令的正文**落盘（那一步只过 [hasSupportedFormat] 这一道闸，
+         *  它不认的写法当场就存不了）。所以「卡上列不列」与「这里认不认」不是同一个问题 ——
+         *  卡管**教不教手写**，这里管**存不存得下**。
          *
          *  ## 为什么不是 [parse] 认的全部
          *
@@ -928,7 +967,17 @@ sealed interface Action {
                 FLUID_PREFIX,
                 TOAST_PREFIX,
                 SHORTCUT_PREFIX,
+                TIMER_PREFIX,
             )
+
+        /**
+         * 这几个前缀**后面可以什么都不写** —— 动作本身没有参数（`timer:` 只把倒计时页调出来）。
+         * 其余前缀后面空着就是「还没写完」，不许存。
+         *
+         *  单独列一张表而不是在 [hasBody] 里写一个 `==` 比较：这张表与 [PREFIXES]
+         *  是同一族，将来再有「无参数的动作」照着加一行就够。
+         */
+        private val PREFIXES_WITHOUT_BODY: List<String> = listOf(TIMER_PREFIX)
 
         /**
          * 这段字能不能当**包名**用 —— 至少两段、每段字母开头、只含标识符字符。
@@ -969,16 +1018,53 @@ sealed interface Action {
             val body = text.removePrefix(SETVAR_PREFIX).trim()
             val (name, op, value) =
                 VarOp.split(body) ?: run {
-                    XLog.w("动作 setvar: 的写法认不出（按 none 处理）：$text")
+                    //  **只记脱敏后的形状**：这段正文是「名字 + 值」，值可能就是用户存的密码
+                    XLog.w("动作 setvar: 的写法认不出（按 none 处理）：${XLog.redactCommand(text)}")
                     return None
                 }
             //  名字要在**建的时候**就合法（见 `VariableName`）：这里只是提前挡一道，
             //  真正「有没有这一颗」由执行侧的变量表判
             if (VariableName.normalize(name) == null) {
-                XLog.w("动作 setvar: 的变量名不合法（按 none 处理）：$text")
+                //  名字是判据（要照着改），**值不记** —— `VarOp` 已经切出了三段，只打前两段
+                XLog.w("动作 setvar: 的变量名不合法（按 none 处理）：$name${op.symbol}")
                 return None
             }
             return VarSet(name, op, value)
+        }
+
+        /**
+         * 几条**没有参数**（或参数可省）的短词 —— `flashlight`、`timer:<秒>`。
+         *
+         *  **从 [parse] 的 `when` 里挪出来的**：那个 `when` 贴着 detekt 的
+         *  `CyclomaticComplexMethod` 上限（每加一格分支 +1，连 `||` 也算），再添几条当场压线。
+         *  这几条本来就同属一类（写不写载荷都成立），合一支正好。
+         *
+         *  不认识返回 `null`，交回 [parse] 的 `when` 继续按别的规则认。
+         *  放在 `when` 之前跑，天然满足「排在 shell 兜底之前」那条要求。
+         */
+        private fun parseTiny(text: String): Action? =
+            when {
+                text == FLASHLIGHT -> Flashlight
+                text.startsWith(TIMER_PREFIX) -> parseTimer(text)
+                else -> null
+            }
+
+        /**
+         * `timer:<秒>` 那一支 —— 与 [parseSetting] 同一个理由（[parse] 贴着长度上限）。
+         *
+         *  什么都不写 = [Timer] 的 `seconds` 为空（只打开倒计时页）；写了但不是正整数、
+         *  或超过 [TIMER_MAX_SECONDS]，按「认不出」处理（[None]，不执行、留一行日志）——
+         *  这是「起一个计时」的动作，猜错的后果（起一个时长离谱的倒计时）比不执行大。
+         */
+        private fun parseTimer(text: String): Action {
+            val body = text.removePrefix(TIMER_PREFIX).trim()
+            if (body.isEmpty()) return Timer(null)
+            val seconds = body.toIntOrNull()
+            if (seconds == null || seconds <= 0) {
+                XLog.w("动作 timer: 的秒数认不出（按 none 处理）：${XLog.redactToken(text)}")
+                return None
+            }
+            return Timer(seconds.coerceAtMost(TIMER_MAX_SECONDS))
         }
 
         /**
@@ -990,7 +1076,7 @@ sealed interface Action {
             val code = body.toIntOrNull()
             return when {
                 code == null -> {
-                    XLog.w("动作 keyevent: 的按键无法识别（按 none 处理）：$text")
+                    XLog.w("动作 keyevent: 的按键无法识别（按 none 处理）：${XLog.redactToken(text)}")
                     None
                 }
 
@@ -1004,7 +1090,7 @@ sealed interface Action {
                 //  「认不认这个码」只有 [KeyId.claimsBuiltin] 一份答案：注入前复核
                 //  （`ActionRunner.claimedByModule`）问的是同一句，两处各摊一遍就会漂。
                 KeyId.claimsBuiltin(code) || RomKeyFamilies.isFamilyCode(code) -> {
-                    XLog.w("动作 keyevent:$code 是模块自己认领的键码（会自持循环，按 none 处理）：$text")
+                    XLog.w("动作 keyevent:$code 是模块自己认领的键码（会自持循环，按 none 处理）：${XLog.redactToken(text)}")
                     None
                 }
 
@@ -1034,7 +1120,7 @@ sealed interface Action {
             val id = shortcutIdUnescape(plain.substringAfter('/', ""))
             if (pkg.isEmpty() || id.isEmpty()) {
                 if (plain.isNotEmpty()) {
-                    XLog.w("动作 appshortcut: 缺包名或快捷方式 id（按 none 处理）：$text")
+                    XLog.w("动作 appshortcut: 缺包名或快捷方式 id（按 none 处理）：${XLog.redactToken(text)}")
                 }
                 return None
             }
@@ -1072,12 +1158,12 @@ private fun splitPercent(
 private fun parseProcess(text: String): Action {
     val body = text.removePrefix(Action.PROCESS_PREFIX).trim()
     if (!body.startsWith(Action.STOP_SUFFIX)) {
-        XLog.w("动作 proc: 的档位认不出（只认 stop:，按 none 处理）：$text")
+        XLog.w("动作 proc: 的档位认不出（只认 stop:，按 none 处理）：${XLog.redactToken(text)}")
         return Action.None
     }
     val pkg = body.removePrefix(Action.STOP_SUFFIX).trim()
     if (!Action.isPackageName(pkg)) {
-        XLog.w("动作 proc: 的包名不像包名（按 none 处理）：$text")
+        XLog.w("动作 proc: 的包名不像包名（按 none 处理）：${XLog.redactToken(text)}")
         return Action.None
     }
     return Action.Process(pkg)
@@ -1094,7 +1180,7 @@ private fun parseProcess(text: String): Action {
 private fun parseBrightness(text: String): Action {
     val (sign, percent) =
         splitPercent(text, Action.BRIGHT_PREFIX) ?: run {
-            XLog.w("动作 bright: 的百分比认不出（按 none 处理）：$text")
+            XLog.w("动作 bright: 的百分比认不出（按 none 处理）：${XLog.redactToken(text)}")
             return Action.None
         }
     return when (sign) {
@@ -1111,7 +1197,7 @@ private fun parseBrightness(text: String): Action {
 private fun parseVolume(text: String): Action {
     val (sign, percent) =
         splitPercent(text, Action.VOLUME_PREFIX) ?: run {
-            XLog.w("动作 volume: 的百分比认不出（按 none 处理）：$text")
+            XLog.w("动作 volume: 的百分比认不出（按 none 处理）：${XLog.redactToken(text)}")
             return Action.None
         }
     return when (sign) {
@@ -1127,7 +1213,7 @@ private fun parseVolume(text: String): Action {
 private fun parseRingerVolume(text: String): Action {
     val (sign, percent) =
         splitPercent(text, Action.RINGER_VOLUME_PREFIX) ?: run {
-            XLog.w("动作 ringervolume: 的百分比认不出（按 none 处理）：$text")
+            XLog.w("动作 ringervolume: 的百分比认不出（按 none 处理）：${XLog.redactToken(text)}")
             return Action.None
         }
     return when (sign) {
@@ -1167,7 +1253,7 @@ private fun parseAppToken(text: String): Action {
     val stockAnim = raw.startsWith(Action.STOCK_ANIM_MARK)
     val body = if (stockAnim) raw.removePrefix(Action.STOCK_ANIM_MARK).trim() else raw
     if (body.isEmpty()) {
-        if (raw.isNotEmpty()) XLog.w("动作 app: 缺目标（按 none 处理）：$text")
+        if (raw.isNotEmpty()) XLog.w("动作 app: 缺目标（按 none 处理）：${XLog.redactToken(text)}")
         return Action.None
     }
     return Action.App(body, stockAnim)

@@ -28,6 +28,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
 import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.chrome.PageFabIcon
 import com.lookie.opluskey.ui.chrome.PageTabBand
 import com.lookie.opluskey.ui.chrome.addCommand
 import com.lookie.opluskey.ui.dialog.MAX_NAME_LENGTH
@@ -45,7 +46,6 @@ import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.state.command.CommandListEditState
 import com.lookie.opluskey.ui.state.command.CommandUiState
 import com.lookie.opluskey.ui.state.page.CommandForm
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollHorizontal
@@ -279,11 +279,7 @@ private fun SettingsPage.CommandFloatingButton(
                 },
             ) {
                 val face = fabFace(listEditing, sortingSteps)
-                Icon(
-                    face.first,
-                    contentDescription = face.second,
-                    tint = COUITheme.colorScheme.onPrimary,
-                )
+                PageFabIcon(face.first, contentDescription = face.second)
             }
         }
     }

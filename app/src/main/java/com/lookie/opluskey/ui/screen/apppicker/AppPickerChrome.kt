@@ -11,6 +11,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.chrome.PageFabIcon
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
@@ -20,7 +21,6 @@ import com.lookie.opluskey.ui.state.picker.PickedDetail
 import com.lookie.opluskey.ui.state.picker.PickerToggle
 import com.lookie.opluskey.ui.state.picker.ToggleBlock
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「选择应用」页那三块**浮在列表上**的东西：两句空态 / 转圈、那句话「为什么一条都没有」，
 // 以及右下角那颗确认键。
@@ -231,10 +231,9 @@ internal fun SettingsPage.AppConfirmFab(
             onPick(picked, picker.smallWindow.value)
         },
     ) {
-        Icon(
+        PageFabIcon(
             PageIcons.Confirm,
             contentDescription = I18n.get(Strings.APP_PICKER_CONFIRM_SELECTION, "确定选择"),
-            tint = COUITheme.colorScheme.onPrimary,
         )
     }
 }

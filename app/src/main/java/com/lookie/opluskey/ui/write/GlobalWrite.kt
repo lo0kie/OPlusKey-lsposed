@@ -48,6 +48,36 @@ internal fun SettingsPage.setVibrate(on: Boolean) =
     }
 
 /**
+ * 切**公共设置里的判定时机**（`GlobalConfig.waitMultiWindow`）—— 落的是「固定窗口起点」的反面。
+ *
+ *  与独立设置页那颗同一句文案、同一套语义（见 `waitMultiWindowRow`）：开关说「固定窗口起点」，
+ *  开着 = 一个窗口内收集、不随后续按压延长；关着 = 每次松手重新起算。
+ */
+internal fun SettingsPage.setGlobalWaitMultiWindow(on: Boolean) =
+    toggleGlobal(
+        "global_wait_multi_window=${if (on) 1 else 0}",
+        I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW, "固定窗口起点"),
+        on,
+    ) {
+        it.copy(waitMultiWindow = on)
+    }
+
+/**
+ * 写**公共设置里的窗口长度**（那一根滑杆）—— 按当前判定时机写对应那一格。
+ *
+ *  与逐键那一根同一个判据（`waitMultiWindow` 决定写 `multiWaitMs` 还是 `doubleClickMs`）：
+ *  两个值分开存，切回另一种判定时机时各自那份还在。
+ *
+ * @return 写盘成没成（滑杆失败时要拨回原值）
+ */
+internal fun SettingsPage.setGlobalClickWindow(v: Int): Boolean {
+    val cfg = configState.config.value
+    val g = cfg.global
+    val next = if (g.waitMultiWindow) g.copy(multiWaitMs = v) else g.copy(doubleClickMs = v)
+    return write(cfg.copy(global = next), "global_window_ms=$v") != CommandsSave.Failed
+}
+
+/**
  * 写**振动强度**（三档，见 [GlobalConfig.VIBRATE_STRENGTH_RANGE]）。
  *
  *  只改强度、不动 [GlobalConfig.vibrate]：那一行的开关管「振不振」，这一行管「振多重」，

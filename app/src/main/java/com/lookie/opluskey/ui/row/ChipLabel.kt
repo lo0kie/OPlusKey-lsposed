@@ -511,7 +511,7 @@ internal fun ChipSentence(
      */
     textAlign: TextAlign = TextAlign.Start,
 ) {
-    val parts = template.split("%s")
+    val parts = template.split(CHIP_SLOT)
     //  模板与名字数对不上、或者**有一个名字是空的**时，退回纯文字：`appendInlineContent` 的
     //  `alternateText` **不许为空串**（库直接抛 `IllegalArgumentException`，整页崩掉），
     //  而「这一条暂时还没有名字」是真实会发生的状态（弹窗退场那一帧载荷已经清了）。

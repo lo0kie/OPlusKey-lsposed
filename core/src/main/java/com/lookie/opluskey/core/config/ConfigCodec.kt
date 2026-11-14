@@ -185,8 +185,17 @@ object ConfigCodec {
      *       提到首位。老文件（v61 及以前）里 2 的那几档因此会被就地折成「键序反转 + 1」，
      *       写回时不再出现 2。
      *
+     *  63 = **「提示走流体云」成了 ColorOS 接口模式下的默认落点**（用户口径「使用 ColorOS 接口时
+     *       应该弹流体云」）。字段一个没动，抬的是**默认值与语义**：v62 及以前存下来的
+     *       `toast_fluid: false` 是那版的旧默认、不是用户的选择，由 [ConfigDto.toConfig] 就地折成开
+     *       （见 [VERSION_FLUID_DEFAULT]）；这一版之后关掉的那一位才算数。
+     *
      *  **这个数只往上加**：一旦某个编号随一次提交发布出去，它对应的那组字段就定死了。
      *
+     *  64 = `GlobalDto` 多了 `global_wait_multi_window` / `global_multi_wait_ms`（公共设置里的
+     *       「判定时机」与「等待窗口」）；`double_click_ms` 从「只读的迁移字段」变回**活字段**
+     *       （公共设置里的单击延迟）。三项都是 `null` 缺省，老文件读回来按默认 ——
+     *       与这一位出现之前完全一致。
      *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
@@ -194,7 +203,15 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 62
+    const val VERSION = 64
+
+    /**
+     * 「提示走流体云」由「可选增强」变成「默认落点」的那一版 —— 迁移只看「文件是不是比它旧」。
+     *
+     *  **不能写成 `< VERSION`**：那样下一次抬版本会把 v63 用户自己关掉的那一位又翻回来
+     *  （迁移会跟着版本号一起往前走）。
+     */
+    const val VERSION_FLUID_DEFAULT = 63
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

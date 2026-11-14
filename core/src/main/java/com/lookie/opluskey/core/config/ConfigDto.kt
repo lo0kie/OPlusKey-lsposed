@@ -114,8 +114,18 @@ internal data class ConfigDto(
             }
         //  「常用命令」清单不进字段表（它不参与广播，注入侧不认识它）——
         //  与 `appNames` / `combos` 同一条，只走落盘这一列。
+        //  **v63 的语义迁移**：「提示走流体云」从「可选增强、默认关」改成「ColorOS 接口模式下的
+        //  默认落点」（用户口径「使用 ColorOS 接口时应该弹流体云」）。老文件里存着的 `false`
+        //  是**旧默认**而不是用户的选择，所以就地折成开；这一版之后关掉的才算数（读到的版本
+        //  已经是 63，不再改）。
         val globalConfig =
-            GlobalConfig.ofFields(global.toValues()).copy(commonCommands = global.commonCommands.parsed())
+            GlobalConfig
+                .ofFields(global.toValues())
+                .copy(
+                    commonCommands = global.commonCommands.parsed(),
+                    toastFluid =
+                        if (version < ConfigCodec.VERSION_FLUID_DEFAULT) true else global.toastFluid,
+                )
         val parsedCombos = combos.mapNotNull { it.toCombo() }
         if (parsedCombos.size != combos.size) {
             //  与自定义键同一条：坏条目不能无声消失（组合键丢了 = 那一组按键整组失效）
@@ -367,7 +377,10 @@ internal data class KeyDto(
                 ConfigFields.F_COMBO_ONLY to (comboOnly ?: false),
                 ConfigFields.F_DOUBLE_CLICK_ON to (doubleClickOn ?: true),
                 ConfigFields.F_WAIT_MULTI_WINDOW to (waitMultiWindow ?: false),
-                ConfigFields.F_MULTI_WAIT_MS to (multiWaitMs ?: KeyConfig.FOLLOW_DOUBLE_CLICK_MS),
+                //  **与上面几档同一条纪律：上下限只定义在 `ConfigFields` 里**。不钳的话，手改出来的
+                //  `600000` 会原样成为判定窗口 —— 那颗键此后每按一次都要等十分钟才回落。
+                ConfigFields.F_MULTI_WAIT_MS to
+                    clamp(ConfigFields.F_MULTI_WAIT_MS, multiWaitMs ?: KeyConfig.FOLLOW_DOUBLE_CLICK_MS),
                 ConfigFields.F_OWN_SETTINGS to (useOwnSettings ?: false),
                 ConfigFields.F_KEY_COLOR_OS_API to (colorOsApi ?: GlobalConfig.DEFAULT_COLOR_OS_API),
                 ConfigFields.F_KEY_VIBRATE to (vibrate ?: false),
@@ -863,8 +876,26 @@ internal data class GlobalDto(
     /**
      * 老文件里「单击延迟 / 忽视无操作双击」在全局这一段 —— 现在归每颗键（[KeyDto]）。
      * 这两个字段只为**迁移**读一次，写出去时是 `null`（新文件不再有它们）。
+     *
+     *  **v65 起它又是「公共设置里的单击延迟」**：没开「使用独立设置」的键读这一份
+     *  （见 `KeyConfig.fieldValues(global)` 与 `GlobalConfig.doubleClickMs`）。老文件里它本来就
+     *  是全局单击延迟，语义正好接上；新文件里它是一个活字段，不再是 `null`。
      */
     val doubleClickMs: Int? = null,
+    /**
+     * 公共设置里的**判定时机**（`GlobalConfig.waitMultiWindow`）。
+     *
+     *  `null` = 老文件没有这一项 ⇒ 按默认（`false`，固定窗口起点）。
+     */
+    @SerialName("global_wait_multi_window")
+    val waitMultiWindow: Boolean? = null,
+    /**
+     * 公共设置里的**等待窗口**（`GlobalConfig.multiWaitMs`）。
+     *
+     *  `null` = 老文件没有这一项 ⇒ 0 = 跟随 [doubleClickMs]。
+     */
+    @SerialName("global_multi_wait_ms")
+    val multiWaitMs: Int? = null,
     /**
      * **模块总闸**。`null` = 这份文件是拆开之前写的 —— 那时「主开关」就是 `keys.plus.enabled`，
      * 迁移见 [ConfigDto.toConfig]；新写出来的文件一定是具体值。
@@ -875,7 +906,7 @@ internal data class GlobalDto(
     @SerialName("vibrate_strength")
     val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
     val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
-    /** 执行时提示走流体云 —— 老文件没有这一项，退回默认（关，走 Toast）。 */
+    /** 执行时提示走流体云 —— 老文件没有这一项，退回默认（开，见 v63 那次语义迁移）。 */
     @SerialName("toast_fluid")
     val toastFluid: Boolean = GlobalConfig.DEFAULT_TOAST_FLUID,
     /** 「执行时提示」的文案模板（见 `GlobalConfig.toastTemplate`）—— 老文件没有这一项，退回默认那句。 */
@@ -940,6 +971,10 @@ internal data class GlobalDto(
                 ConfigFields.F_COMBO_SCENE_ON_STARTER to comboSceneOnStarter,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
+                //  公共设置里的「单击」三项：老文件缺项按默认读（见各自字段的 KDoc）
+                ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS to (doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS),
+                ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to (waitMultiWindow ?: false),
+                ConfigFields.F_GLOBAL_MULTI_WAIT_MS to (multiWaitMs ?: KeyConfig.FOLLOW_DOUBLE_CLICK_MS),
             ),
         )
 
@@ -964,6 +999,10 @@ internal data class GlobalDto(
                 comboSceneOnStarter = g.comboSceneOnStarter,
                 iconTintSeed = g.iconTintSeed,
                 showCommonCommands = g.showCommonCommands,
+                //  公共设置里的「单击」三项（v65 起是活字段，不再是 `null`）
+                doubleClickMs = g.doubleClickMs,
+                waitMultiWindow = g.waitMultiWindow,
+                multiWaitMs = g.multiWaitMs,
                 //  `null` 原样留着（= 用默认那几条），不要在这里换成空表 —— 见这个字段的说明
                 commonCommands = g.commonCommands.map { CommonCommandDto.of(it) },
             )

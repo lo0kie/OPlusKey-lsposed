@@ -61,10 +61,12 @@ private const val HOLD_GUARD_MS = 10_000L
  *  按住的过程中真实重复事件也要转发：注入的 DOWN 不走 InputReader，系统自己产不出 repeat，
  *  而「按住连续调音量」正是靠 repeat 一档档往上走的。
  *
- * ## 四张表的分工
+ * ## 几张账本的分工
  *
  *  - [swallowed]：这一下按下被吞过 ⇒ 抬手要跟着吞（否则系统只收到半截，键卡在按住状态）；
  *  - [pending]：压住了、**等着窗口到点补发**，值兼作这一下的版本号；
+ *  - [released]：窗口没走完就松手了的那几颗 —— [pending] 的账**不能提前摘**，否则窗口到点那一枪
+ *    按 `downAt` 认不到这一笔，补发永远发不出去（快按一下什么都不发生）；
  *  - [holding]：**已经补发过 DOWN**、等真实抬手来收尾 —— 进这张表就意味着系统那边按着，
  *    所以离开它时必须补一条 UP（真实抬手、配置变更、兜底超时三个出口都走同一个函数）；
  *  - [deferred]：按住那条**先按住的那一颗**，**压到抬手**再补一对（没有窗口任务，见上面那段）。
@@ -100,6 +102,9 @@ internal class ComboOnlyNative(
 
     /** 压住了、等窗口到点补发 —— 键 id → 按下时刻（兼作版本号）。 */
     private val pending = ConcurrentHashMap<String, Long>()
+
+    /** [pending] 里那几笔**已经松手**的 —— 窗口到点按这一笔补一对 DOWN + UP（见类注释）。 */
+    private val released = ConcurrentHashMap.newKeySet<String>()
 
     /** 已经补发了原生 DOWN、等真实抬手来收尾 —— 键 id → 那一颗的键码。 */
     private val holding = ConcurrentHashMap<String, Int>()
@@ -193,6 +198,8 @@ internal class ComboOnlyNative(
             //  走到这里就是「这一下要压」（上面那两级判据已经排除掉不必压的）：先吞，
             //  凑成了永久吞、没凑成再由窗口到点或抬手还回去（用户口径：组合判定不该触发原生事件）。
             swallowed.add(id.id)
+            //  上一次那一下的「已松手」止于这次按下：新的一下从按下算起
+            released.remove(id.id)
             when {
                 taken -> {
                     pending.remove(id.id)
@@ -232,10 +239,20 @@ internal class ComboOnlyNative(
         val claimed = combo.onUp(id, short = !keyEvent.isCanceled)
         var heldCode: Int? = null
         var deferredCode: Int? = null
+        //  这一下还压着（窗口没走完就松手了）—— 抬手照样吞，等窗口到点补一对
+        var stillPending = false
         synchronized(lock) {
-            pending.remove(id.id)
             heldCode = holding.remove(id.id)
             deferredCode = deferred.remove(id.id)
+            if (claimed) {
+                pending.remove(id.id)
+            } else if (pending.containsKey(id.id)) {
+                //  **这里不能摘账**：窗口到点那一枪按 `downAt` 认这一笔，摘掉之后就对不上，
+                //  补发再也发不出去 —— 表现是「这颗键快按一下，原生动作为零、模块也不判单键」。
+                //  改记一笔「已松手」，到点补一对（系统只该看到一闪，见类注释）。
+                released.add(id.id)
+                stillPending = true
+            }
             //  补发过 DOWN ⇒ 抬手也跟着补，真实那条吞掉。**不能放行真实抬手**：系统收到的
             //  那个 DOWN 是我们注入的，两条事件的来源对不上，按同一颗键收尾会错位。
             //
@@ -254,12 +271,20 @@ internal class ComboOnlyNative(
         }
         when {
             heldCode != null -> {
+                //  这一下从此结清：留着这笔账会让「下一颗键按下照原样放行、抬手却被吞」
+                //  —— 系统那边那颗键就卡在按住状态。
+                swallowed.remove(id.id)
                 XLog.w("${id.label}（$point）：补发的原生按下已松开（只参与组合）")
                 return true
             }
 
             deferredCode != null && !claimed -> {
                 XLog.w("${id.label}（$point）：没凑成组合（只参与组合），抬手时把原生短按补发回去")
+                return true
+            }
+
+            stillPending -> {
+                XLog.w("${id.label}（$point）：窗口内就松手了（只参与组合），到点补一对原生短按")
                 return true
             }
         }
@@ -293,14 +318,23 @@ internal class ComboOnlyNative(
                 //  四种结局各自只做一件事，「改表」与「投递」在同一把锁里：
                 //  · 账已经换过（同一颗键又被按下）⇒ 什么都不做，别替新的那一下做主；
                 //  · 被组合认领了（晚到）⇒ 什么都不做；
-                //  · 还按着 ⇒ 补 DOWN，记进 holding，等真实抬手收尾；
-                //  · 已经松手 ⇒ 补一对（系统只该看到一闪）。
+                //  · 窗口内就松手了 ⇒ 补一对（系统只该看到一闪）；
+                //  · 还按着 ⇒ 补 DOWN，记进 holding，等真实抬手收尾。
                 var outcome = 0
                 synchronized(lock) {
                     if (pending.remove(id.id) == downAt) {
                         when {
                             combo.comboCovers(id) -> {
+                                swallowed.remove(id.id)
+                                released.remove(id.id)
                                 outcome = 1
+                            }
+
+                            released.remove(id.id) -> {
+                                swallowed.remove(id.id)
+                                forward(keyCode, KeyEvent.ACTION_DOWN, 0)
+                                forward(keyCode, KeyEvent.ACTION_UP, 0)
+                                outcome = 3
                             }
 
                             swallowed.contains(id.id) -> {
@@ -372,6 +406,7 @@ internal class ComboOnlyNative(
     fun reset() {
         synchronized(lock) {
             pending.clear()
+            released.clear()
             deferred.clear()
             swallowed.clear()
             val held = holding.values.toList()

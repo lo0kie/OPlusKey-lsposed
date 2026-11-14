@@ -377,6 +377,16 @@ data class Command(
          *  一边挤掉另一边。50 是「这一页还翻得动」的量级。
          */
         const val MAX_COMMANDS = 50
+
+        /**
+         * 这份命令表里**哪一类**已经越过上限（没越过时 `null`）。
+         *
+         *  每类各算各的（见 [MAX_COMMANDS]）。**判据只有这一处**：界面那条保存出口（含导入覆盖）
+         *  与导入那一刻（文件里可能装着 200 条）都要问同一句话 —— 各写一遍的话，
+         *  导入超限的那份库会让之后**每一次保存**都被拒，而用户看不到「为什么」。
+         */
+        fun overLimit(list: List<Command>): CommandKind? =
+            CommandKind.entries.firstOrNull { kind -> list.count { it.kind == kind } > MAX_COMMANDS }
     }
 }
 

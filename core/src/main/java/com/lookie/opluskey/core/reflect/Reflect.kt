@@ -126,6 +126,9 @@ object Reflect {
      */
     private val reportedMissing: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
+    /** 调用时抛过异常的方法（按 `类#方法` 去重）—— 见 [call] 的失败分支。 */
+    private val reportedInvokeFailures: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
     /**
      * 类名 -> 目标类；不存在时返回 null（不同 ROM 可能缺类，不能直接抛）。
      *
@@ -179,16 +182,19 @@ object Reflect {
         return cls
     }
 
-    /** 沿类链收集所有声明的方法（含父类）；用在「不知道方法叫什么」时先探一遍再按名字挑。 */
-    fun methodsOf(cls: Class<*>): List<Method> = methodsOrNull(cls).orEmpty()
+    /** 沿类链收集所有声明的方法（含父类）；按「扫不出来 = 空表」用（见 [methodsOfOrNull]）。 */
+    fun methodsOf(cls: Class<*>): List<Method> = methodsOfOrNull(cls).orEmpty()
 
     /**
      * 同 [methodsOf]，但**扫不成就返回 `null`**（不是空表）。
      *
      *  空表会被调用方当成「这个类一个方法都没有」并据此缓存负命中；`null` 让上层有机会
      *  按「这一趟不算数」处理（见 [ABORT] 与 [scanMethods]）。
+     *
+     *  公开给 `:app`：候选表（`Framework`）要靠它区分「类里没有这个方法」与「方法表没读出来」——
+     *  后者不能当成「ROM 没这个方法」写进安装日志（五、4：不许断言自己并不知道的事）。
      */
-    private fun methodsOrNull(cls: Class<*>): List<Method>? = methodsCache[cls] ?: scanMethods(cls)?.also { methodsCache[cls] = it }
+    fun methodsOfOrNull(cls: Class<*>): List<Method>? = methodsCache[cls] ?: scanMethods(cls)?.also { methodsCache[cls] = it }
 
     /**
      * 真的去扫一遍类链 —— **失败时不返回半份结果**，而是 `null`（= 这一趟不算数）。
@@ -292,7 +298,7 @@ object Reflect {
         arity: Int,
     ): Any? {
         // 方法表扫不出来 ⇒ 这一趟不算数（见 [ABORT]）：当成「没有」会把整个类的方法查找永久判死
-        val all = methodsOrNull(cls) ?: return ABORT
+        val all = methodsOfOrNull(cls) ?: return ABORT
         val candidates = all.filter { it.name == name && it.parameterTypes.size == arity }
         if (candidates.size != 1) {
             if (candidates.isNotEmpty()) {
@@ -322,7 +328,7 @@ object Reflect {
         params: Array<out Class<*>>,
     ): Any? {
         // 与 [pickByArity] 同一条：扫不出来就整趟作废，别把它记成「没有」
-        val all = methodsOrNull(cls) ?: return ABORT
+        val all = methodsOfOrNull(cls) ?: return ABORT
         val scored =
             all
                 .filter { it.name == name && it.parameterTypes.size == params.size }
@@ -499,8 +505,16 @@ object Reflect {
     ): Any? {
         if (receiver == null || method == null) return null
         return runCatching { method.invoke(receiver, *args) }
-            .onFailure { XLog.w("reflect invoke failed: ${method.name}", it) }
-            .getOrNull()
+            .onFailure { e ->
+                //  **同一条方法只报第一次**：这条在按键热路径上（每次按键都要问一次系统服务），
+                //  ROM 改了签名之后是「每次都抛」—— 不去重就是一条 W 刷满整个缓冲。
+                val key = "${receiver.javaClass.name}#${method.name}"
+                if (reportedInvokeFailures.add(key)) {
+                    XLog.w("reflect invoke failed: ${method.name}", e)
+                } else {
+                    XLog.d { "reflect invoke failed: ${method.name}（同类失败只报一次，见上一条 W）" }
+                }
+            }.getOrNull()
     }
 
     /** 调用目标类上的方法（按名字查找，自动缓存）。 */
@@ -552,7 +566,7 @@ object Reflect {
     ): Any? {
         val m =
             cachedValue<Method>(staticMethodCache, cls, ArityKey(name, args.size)) {
-                val all = methodsOrNull(cls) ?: return@cachedValue ABORT
+                val all = methodsOfOrNull(cls) ?: return@cachedValue ABORT
                 val candidates =
                     all.filter {
                         it.name == name && it.parameterTypes.size == args.size &&

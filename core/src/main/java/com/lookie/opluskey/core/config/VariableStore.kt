@@ -49,6 +49,15 @@ object VariableStore {
     /** 文件里的格式版本（认不出就整份不认，不猜）。 */
     private const val VERSION = 1
 
+    /**
+     * 老文件没有 `boot_id` 时，「同一次开机」按开机时刻比，容差这么多毫秒。
+     *
+     *  `ProcClock.bootWall()` 是「现在时间 − 开机时长」算出来的粗指纹，两次取差一秒很正常
+     *  （对时、毫秒进位都会）。严格相等会把同一次开机判成「重启过」，那一轮计数器就多重置一次。
+     *  真正的重启之间差得远不止一分钟（同一分钟内重启两次也不可能发生在这里）。
+     */
+    private const val BOOT_MATCH_TOLERANCE_MS = 60_000L
+
     private const val KEY_VERSION = "version"
 
     /** 开机标记（wall clock，老文件只有这一项；见 [bootId] 与类注释）。 */
@@ -253,8 +262,13 @@ object VariableStore {
             val sameBoot =
                 if (now.isNotEmpty() && loaded.snapshot.bootId.isNotEmpty()) {
                     loaded.snapshot.bootId == now
+                } else if (loaded.snapshot.boot > 0L) {
+                    //  **按容差比，不按严格相等**：这个数是算出来的粗指纹，差一秒就会把同一次开机
+                    //  判成「重启过」（见 [BOOT_MATCH_TOLERANCE_MS]）
+                    kotlin.math.abs(loaded.snapshot.boot - ProcClock.bootWall()) <= BOOT_MATCH_TOLERANCE_MS
                 } else {
-                    loaded.snapshot.boot == ProcClock.bootWall()
+                    //  老文件连 `boot` 都没记 ⇒ 只能当「重启过」处理一次，写盘之后就带上了
+                    false
                 }
             if (sameBoot) return@withCrossProcessLock true
             val before = loaded.snapshot.vars

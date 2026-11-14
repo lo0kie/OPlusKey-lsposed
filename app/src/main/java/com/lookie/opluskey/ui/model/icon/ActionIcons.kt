@@ -4,7 +4,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.core.model.SwitchKind
 import com.lookie.opluskey.core.model.SystemSwitches
@@ -51,6 +50,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.Eye
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
+import io.github.lyxnx.compose.ui.tablericons.outline.HourglassHigh
 import io.github.lyxnx.compose.ui.tablericons.outline.Language
 import io.github.lyxnx.compose.ui.tablericons.outline.LanguageOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Location
@@ -211,10 +211,9 @@ internal fun actionIcon(token: String): ImageVector =
             TablerIcons.Outline.Switch3
         }
 
-        //  「播放/暂停」那一档（`keyevent:85`，切换语义）：播放三角 + 右下角暂停两笔
-        Action.keyToken(KeyId.KEYCODE_MEDIA_PLAY_PAUSE) -> {
-            DrawnIcons.MediaPlayPause
-        }
+        //  「播放/暂停」那一档**没有单独一支**：它的 token 就是 [ActionCatalog.MEDIA_TILE]
+        //  （`keyevent:85`），上面那一支已经接住了 —— 原先这里再写一条同 token 的分支，
+        //  永远走不到（`when` 按顺序取第一个）。格子那枚的「音符」由 `specIcon` 按 spec 认领。
 
         // 把前台应用收成小窗 —— 展开档：竖窗口 + 正中一块小窗（`app-window-center` 逆时针转 90°）
         Action.ZOOM_MINI -> {
@@ -573,6 +572,9 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         ActionCatalog.Glyph.Calculator -> TablerIcons.Outline.Calculator
 
         ActionCatalog.Glyph.Screenshot -> TablerIcons.Outline.Screenshot
+
+        // 计时器：沙漏 —— 「等一段时间、往下漏」
+        ActionCatalog.Glyph.Timer -> TablerIcons.Outline.HourglassHigh
 
         ActionCatalog.Glyph.Home -> TablerIcons.Outline.Home
 

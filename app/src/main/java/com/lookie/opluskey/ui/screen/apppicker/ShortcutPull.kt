@@ -7,7 +7,8 @@ import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.wire.registerLocalReceiver
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
@@ -49,6 +50,10 @@ internal object ShortcutPull {
         //  回包在主线程的广播回调里写、在这次调用的线程上读 —— 用原子引用而不是普通变量：
         //  普通变量在这里既没有可见性保证，也说不清「读到的到底是哪一趟」。
         val reply = AtomicReference<List<Pair<String, String>>?>(null)
+        //  **回包一到就醒**，不是固定睡满 [WAIT_MS]：本地广播实测几十毫秒就回来了，
+        //  睡满等于给每一次进页白加 300ms（翻应用 / 分身一次要问好几条）。
+        //  `WAIT_MS` 只当「别无限等」的上限。
+        val done = CompletableDeferred<Unit>()
         val receiver =
             object : BroadcastReceiver() {
                 override fun onReceive(
@@ -60,6 +65,8 @@ internal object ShortcutPull {
                     val ids = intent.getStringArrayListExtra(ModuleWire.EXTRA_SHORTCUT_IDS).orEmpty()
                     val labels = intent.getStringArrayListExtra(ModuleWire.EXTRA_SHORTCUT_LABELS).orEmpty()
                     reply.set(ids.mapIndexed { i, id -> id to (labels.getOrNull(i) ?: id) })
+                    //  先写结果再放行；重复回包（补发那条）时 `complete` 是幂等的
+                    done.complete(Unit)
                 }
             }
         val registered =
@@ -79,7 +86,7 @@ internal object ShortcutPull {
                     .putExtra(ModuleWire.EXTRA_SHORTCUT_USER, userId),
             )
         try {
-            if (sent) delay(WAIT_MS)
+            if (sent) withTimeoutOrNull(WAIT_MS) { done.await() }
         } finally {
             //  页面走了（协程被取消）也要把接收器摘掉，否则下一次进来会再注册一份
             runCatching { context.unregisterReceiver(receiver) }

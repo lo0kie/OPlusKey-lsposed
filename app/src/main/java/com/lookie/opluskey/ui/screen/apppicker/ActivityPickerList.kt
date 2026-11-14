@@ -31,6 +31,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
 import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.chrome.PageFabIcon
 import com.lookie.opluskey.ui.chrome.collapseHeader
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.chrome.headerStatusBarPadding
@@ -45,7 +46,6 @@ import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.spacedItems
 import com.lookie.opluskey.ui.state.picker.PickedDetail
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -272,10 +272,9 @@ private fun SettingsPage.ActivityConfirmFab(
             onPick(detail.target, detail.shortcutId, detail.label)
         },
     ) {
-        Icon(
+        PageFabIcon(
             PageIcons.Confirm,
             contentDescription = I18n.get(Strings.APP_PICKER_CONFIRM_SELECTION, "确定选择"),
-            tint = COUITheme.colorScheme.onPrimary,
         )
     }
 }

@@ -35,7 +35,8 @@ BASELINE = 'tools/config-shape.txt'
 # `data class Xxx(` —— 名字后面紧跟括号（允许换行与修饰符）
 CLASS_HEAD = re.compile(r'\bdata\s+class\s+(\w+)\s*\(')
 # 构造参数里的一个字段：可带 `@SerialName("x")`，可带注解在前
-FIELD = re.compile(r'^\s*(?:@SerialName\("([^"]+)"\)\s*)?val\s+(\w+)\s*:', re.M)
+#  第三个分组是**声明类型**（到 `=` / 行尾为止）—— 见 [shape_of] 里为什么它必须进指纹。
+FIELD = re.compile(r'^\s*(?:@SerialName\("([^"]+)"\)\s*)?val\s+(\w+)\s*:\s*([^=\n]+)', re.M)
 
 
 def read(path):
@@ -66,12 +67,17 @@ def class_bodies(text):
 
 
 def shape_of(text):
-    """结构指纹：`类.字段`（有 `@SerialName` 就用线格式上的那个名字）排好序再哈希。"""
+    """结构指纹：`类.字段:类型`（有 `@SerialName` 就用线格式上的那个名字）排好序再哈希。
+
+    **类型必须进指纹**：只记名字时，把一个字段从 `Int` 改成 `String` 指纹不变 ——
+    而线上格式变了（老文件里那条 `"x": 1` 会被当字符串读、整份判读不懂），
+    这道闸却照样全绿。默认值同理：`val x: Int = 0` 改成 `= 5` 不改变线上格式，不必进指纹。
+    """
     names = []
     for cls, body in class_bodies(text):
         for m in FIELD.finditer(body):
-            wire, prop = m.group(1), m.group(2)
-            names.append(f'{cls}.{wire or prop}')
+            wire, prop, decl = m.group(1), m.group(2), ' '.join(m.group(3).split())
+            names.append(f'{cls}.{wire or prop}:{decl}')
     if not names:
         raise SystemExit(f'::error::{DTO} 里一个字段都没解析出来 —— 解析器要跟着改')
     names.sort()

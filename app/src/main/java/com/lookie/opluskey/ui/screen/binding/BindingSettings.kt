@@ -46,14 +46,17 @@ internal fun SettingsPage.BindingSettingsCard(
     //  不在这里另写一遍 `doubleClickOn || extraClicksOn…`：那样页面说「能调」、
     //  判定却按另一个数决定「等不等」，两处迟早对不上。
     val noMulti = key.judgeCap <= 1
-    //  两道闸都关着时先给**更根本**的那句（整页 / 这一格为什么动不了），再轮到「没开多击」。
+    //  这一颗键有没有开「使用独立设置」—— 关着时这两项跟随公共设置（那一份在公共设置页改），
+    //  这一页只是把生效值摆出来、灰着。
+    val own = key.useOwnSettings
+    //  三道闸的提示按**更根本的那一条**给：整页 / 这一格为什么动不了 → 没开独立设置 → 没开多击。
     val windowHint =
-        if (enabled && noMulti) {
-            I18n.get(Strings.BINDING_NO_MULTI_GESTURE, "没有启用任何多击手势")
-        } else {
-            disabledHint
+        when {
+            !own -> I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 [使用独立设置]")
+            enabled && noMulti -> I18n.get(Strings.BINDING_NO_MULTI_GESTURE, "没有启用任何多击手势")
+            else -> disabledHint
         }
-    val windowEnabled = enabled && !noMulti
+    val windowEnabled = enabled && own && !noMulti
     CardList(
         rows =
             buildList {
@@ -61,9 +64,11 @@ internal fun SettingsPage.BindingSettingsCard(
                 //  关着看「单击延迟」、开着看「多击窗口」（判据收在 `KeyConfig.clickWindowMs`）。
                 //  它自己也吃「没开多击」那道闸：一个多击手势都没开时，分成开 / 关两档也无从谈起。
                 add(waitMultiWindowRow(keyId, windowEnabled, windowHint))
-                //  **一根滑杆管两个值**（用户口径）：拖它写的是上面那颗开关当前用的那一位，
-                //  两个值分开存。两根并排时用户看到两个数、只有一个生效，还得先读开关才知道拖哪根。
-                add(waitWindowRow(keyId, key, windowEnabled, windowHint))
+                //  **独立设置里这两行只在有多击手势时可调**（`windowEnabled` 含 `!noMulti`）：
+                //  这一页管的是「这颗键的多击怎么判」，一档多击都没开时没有可判的东西。
+                //  「不管有没有多击都能调」的那一份在**公共设置**页（`ClickDelayCard`）——
+                //  那里是全局默认值，单键也要有个地方改单击延迟。
+                add(waitWindowRow(keyId, key, windowEnabled, windowHint, noMulti))
             },
     )
 }
@@ -86,16 +91,19 @@ private fun SettingsPage.waitWindowRow(
     key: KeyConfig,
     enabled: Boolean,
     disabledHint: String?,
+    noMulti: Boolean,
 ): CardRow {
     //  **不是 [key.multiWaitMs] 的原值**：0 表示「跟随单击延迟」（老配置就长这样），
     //  滑杆要显示一个具体值；「用户没动过就不写」这条靠 `SliderRow` 只在拖动时回调。
-    val multi = key.waitMultiWindow
+    val multi = key.waitMultiWindow && !noMulti
     val value = if (multi) key.multiWaitMs.takeIf { it > KeyConfig.FOLLOW_DOUBLE_CLICK_MS } ?: key.doubleClickMs else key.doubleClickMs
     return CardRow.Custom { position ->
         SliderRow(
             position = position,
             spec =
                 SliderSpec(
+                    //  标题**统一叫「等待窗口」**（与公共设置页同一句）：这一根在两种判定时机下
+                    //  写的值不同，但问的是同一件事 —— 「按下去之后等多久」。
                     title = I18n.get(Strings.BINDING_WAIT_WINDOW, "等待窗口"),
                     icon = PageIcons.DelayTap,
                     summary = I18n.get(Strings.BINDING_WAIT_WINDOW_DESC, "多击判定所用的窗口长度"),
@@ -112,8 +120,10 @@ private fun SettingsPage.waitWindowRow(
             //  **写哪一位要现读一次配置**，不能用上面那个 `multi` 快照：用户刚拨完判定时机、
             //  紧接着拖这一根时，快照还是旧的 —— 按它写就会写到「当前不生效」的那一位上，
             //  表现正是「滑杆拖了、判定一点没变」（真机报过）。
+            //  判据与显示那一侧同一个（`waitMultiWindow && !noMulti`）：没有多击时这一根写的就是
+            //  单击延迟，写进 `multiWaitMs` 会是一条谁也读不到的账。
             val now = configState.config.value.key(keyId)
-            if (now.waitMultiWindow) writeMultiWaitMs(keyId, v) else writeDoubleClickMs(keyId, v)
+            if (now.waitMultiWindow && !noMulti) writeMultiWaitMs(keyId, v) else writeDoubleClickMs(keyId, v)
         }
     }
 }

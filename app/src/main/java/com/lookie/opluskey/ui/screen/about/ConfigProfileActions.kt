@@ -6,7 +6,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.config.ProfileCommands
-import com.lookie.opluskey.core.config.isDefaultProfile
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -129,15 +128,12 @@ internal fun SettingsPage.createProfile(name: String) {
  */
 internal fun SettingsPage.renameProfile(name: String) {
     val current = configState.config.value
-    //  默认配置改名：菜单那一行已经灰了，这里只兜底（不弹文案，见 `ConfigProfiles.renamed`）
-    if (current.isDefaultProfile) {
-        XLog.w("配置改名：默认配置不许改名")
-        return
-    }
+    //  「默认配置不许改名」不在这里再判一次：判据只有一处（`ConfigProfiles.renamed`，按列表里的
+    //  身份判）；菜单那一行同样按它置灰。各处自己再按名字形态兜一遍，两份口径就会分裂。
     val next =
         ConfigProfiles.renamed(current, name)
             ?: run {
-                //  两种拒绝：名字空（弹窗里点不动「确定」，走不到）与**重名**
+                //  两种拒绝：默认配置（`renamed` 已记日志）与**重名**
                 if (ConfigProfiles.nameTaken(name, excludeId = current.profileId.ifBlank { null })) {
                     hint(I18n.get(Strings.PROFILE_NAME_TAKEN, "这个名字已经有了"))
                 }
@@ -180,14 +176,16 @@ internal fun SettingsPage.deleteBrokenProfile(item: ConfigProfiles.Item) {
  *  当前是「默认」配置时不许删 —— 那就没有地方可以退回去了。
  */
 internal fun SettingsPage.deleteCurrentProfile() {
-    val current = configState.config.value
-    //  默认配置不许删（用户口径）：它是升级时落下的退路 —— 菜单那一行已经灰了，这里兜底
-    if (current.isDefaultProfile) {
+    //  「当前这份是不是默认」按**列表里那一项的身份**判（`Item.isDefault`，按 id）——
+    //  与菜单置灰、`ConfigProfiles.delete` 同一口径，不按名字形态（两份都「名字空 + 位次 0」时
+    //  形态判据会把当前那份也锁死，见 `ConfigProfiles` 里 `isDefaultSlot` 的说明）。
+    val all = ConfigProfiles.list()
+    if (all.firstOrNull { it.isCurrent }?.isDefault == true) {
         XLog.w("配置删除：默认配置不许删")
         return
     }
 
-    val others = ConfigProfiles.list().filter { !it.isCurrent }
+    val others = all.filter { !it.isCurrent }
     val fallback = others.firstOrNull { it.isDefault } ?: others.firstOrNull()
     if (fallback == null) {
         XLog.w("配置删除：没有可以退回去的配置（只剩当前这一份带名字的），不动")

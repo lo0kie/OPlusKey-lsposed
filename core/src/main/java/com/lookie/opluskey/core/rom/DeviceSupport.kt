@@ -116,7 +116,7 @@ object DeviceSupport {
         /** 机型与系统版本都在清单里。 */
         ADAPTED,
 
-        /** 机型在清单里，但系统版本不是清单上那一档 —— 等作者适配。 */
+        /** 机型在清单里，但系统版本不是清单上那一档（**含版本号读不出来**）—— 等作者适配。 */
         PENDING,
 
         /** 机型不在清单里 —— 照常注入，只是这一组没验过（清单只影响提示，不拦注入）。 */
@@ -129,8 +129,11 @@ object DeviceSupport {
      * 机型大小写与首尾空白都容错（`Build.MODEL` 各 ROM 写法偶有出入），空值一律不支持。
      * 大小写转换**显式给 `Locale.ROOT`**：不带 Locale 的 `uppercase()` 吃系统区域设置，
      * 土耳其语环境里 `i` → `İ`，同一个机型在那种环境就会被判成「不在清单里」。
-     * 版本**读不出来时不拦**（按 [Support.ADAPTED] 走）：读不出来是「我们没读到」，不是「用户版本
-     * 不对」—— 拿它去锁，一台版本其实正常的机器会被整页禁用（要拦的是「读到了、且不是那一档」）。
+     *
+     *  版本**读不出来时既不说「已适配」也不说「不支持」，而是 [Support.PENDING]**（= 这一版没验过）。
+     *  这不是拦截：清单只回答「这一组验过没有」（一、13），而读不到版本号时**答案就是不知道**。
+     *  早先按 [Support.ADAPTED] 走 —— 那与 [RomProfile] 的做法正好相反：那边读不出 ROM 系列时
+     *  明说「照基准档的候选试」，界面却报「已适配」，两句话一个说猜、一个说验过。
      */
     fun check(
         model: String?,
@@ -143,7 +146,7 @@ object DeviceSupport {
         if (hits.isEmpty()) return Support.UNSUPPORTED
         val a = android?.trim().orEmpty()
         val r = rom?.trim().orEmpty()
-        if (a.isEmpty() || r.isEmpty()) return Support.ADAPTED
+        if (a.isEmpty() || r.isEmpty()) return Support.PENDING
         // 同一台机器只要有**任一项**验过的组合命中就算适配（多版 ROM 都写在同一行的 [Adapted.systems] 里）
         val hit =
             hits.any { device ->
@@ -160,8 +163,8 @@ object DeviceSupport {
      * `<机型>_<ROM 版本>.<构建号>(<地区>)`。**构建号必须丢掉**：它随每次 OTA 变（105 → 106），
      * 算进判据里会让一次月度补丁就把用户锁在门外，而那一档接管点通常没动过。
      *
-     * 取不出来（段数不够，或段里有非数字 —— 老 ROM 写作 `11.A.06`）就返回空串，
-     * 交给 [check] 按「读不出来不拦」处理。
+     * 取不出来（段数不够，或段里有非数字 —— 老 ROM 写作 `11.A.06`）就返回空串：
+     * [check] 拿到空版本号会给 [Support.PENDING]（这一版没验过），接管点那边则照基准档试。
      */
     fun romSeriesOf(display: String?): String {
         val parts =

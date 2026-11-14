@@ -40,23 +40,34 @@ object LogWire {
     ) {
         val lines = XLog.lines()
         val chunks = chunk(lines)
+        var sent = 0
         chunks.forEachIndexed { index, text ->
-            PageWire.send(
-                context,
-                pkg,
-                Intent(ModuleWire.ACTION_LOG_CHUNK)
-                    .putExtra(ModuleWire.EXTRA_LOG_PROC, proc)
-                    .putExtra(ModuleWire.EXTRA_LOG_INDEX, index)
-                    .putExtra(ModuleWire.EXTRA_LOG_TOTAL, chunks.size)
-                    .putExtra(ModuleWire.EXTRA_LOG_TEXT, text)
-                    //  这两项每片都带（只有第一片会被采纳）：收方要的是「这一侧是哪次构建、
-                    //  有多少行」，而不是逐片的账 —— 分开传反而要在收方再拼一次。
-                    .putExtra(ModuleWire.EXTRA_LOG_BUILD, ModuleInfo.BUILD_ID)
-                    .putExtra(ModuleWire.EXTRA_LOG_LINES, lines.size),
+            val ok =
+                PageWire.send(
+                    context,
+                    pkg,
+                    Intent(ModuleWire.ACTION_LOG_CHUNK)
+                        .putExtra(ModuleWire.EXTRA_LOG_PROC, proc)
+                        .putExtra(ModuleWire.EXTRA_LOG_INDEX, index)
+                        .putExtra(ModuleWire.EXTRA_LOG_TOTAL, chunks.size)
+                        .putExtra(ModuleWire.EXTRA_LOG_TEXT, text)
+                        //  这两项每片都带（只有第一片会被采纳）：收方要的是「这一侧是哪次构建、
+                        //  有多少行」，而不是逐片的账 —— 分开传反而要在收方再拼一次。
+                        .putExtra(ModuleWire.EXTRA_LOG_BUILD, ModuleInfo.BUILD_ID)
+                        .putExtra(ModuleWire.EXTRA_LOG_LINES, lines.size),
+                )
+            if (ok) sent++
+        }
+        // 一条 W：导出这件事本身要留痕。**报实际发出去几片**：整段宣称「已回 N 片」时，
+        //  收方按 total 等最后一片，缺了那片就只剩「这一侧没日志」—— 而日志说它发了。
+        if (sent == chunks.size) {
+            XLog.w("导出日志：已回 $proc 的缓冲 ${chunks.size} 片（${lines.size} 行 / ${ModuleInfo.BUILD_ID}）")
+        } else {
+            XLog.w(
+                "导出日志：$proc 的缓冲 ${chunks.size} 片只发出去 $sent 片（共 ${lines.size} 行）" +
+                    "—— 收方会缺片，先查这一行",
             )
         }
-        // 一条 W：导出这件事本身要留痕（收方拿到几片、发方发了什么，对不上时先看这两行）
-        XLog.w("导出日志：已回 $proc 的缓冲 ${chunks.size} 片（${lines.size} 行 / ${ModuleInfo.BUILD_ID}）")
     }
 
     /** 按行累积到 [CHUNK_CHARS] 就切一片；单行本身就超长时让它独占一片，绝不切在行中间。 */

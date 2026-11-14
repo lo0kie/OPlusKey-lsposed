@@ -56,24 +56,43 @@ internal object ShortcutStarter {
     }
 
     /**
+     * 一发起法的结果 —— **「没发出去」要能分出是哪一种**。
+     *
+     *  两种失败对用户的含义完全不同：`NO_SERVICE` 是这台机器上取不到 `LauncherApps`（环境问题，
+     *  换哪条快捷方式都一样），`REJECTED` 才是「这条快捷方式起不来了」（应用自己删了 / 服务端拒）。
+     *  混成一个 `false` 时调用方只能统一报「这个应用没有可启动的 Activity」——
+     *  环境问题被说成应用没有界面，用户会去重装应用。
+     */
+    enum class Result {
+        /** 这一发交出去了（不代表界面起来了，见 [send]）。 */
+        SENT,
+
+        /** 取不到 `LauncherApps` —— 根本没走到发那一步。 */
+        NO_SERVICE,
+
+        /** 两种起法都没成（PI 拿不到 + 系统代发抛错）。 */
+        REJECTED,
+    }
+
+    /**
      * 起一次。
      *
      * @param request 见 [Request]；`windowOptions` 非 `null` 时会把窗口模式那对 key
      *   合并进 BAL 那份 bundle 一起送给 PI。
-     * @return 这一发**发出去了没有**。**不代表界面起来了**（两种起法都是 fire-and-forget，
-     *   窗口模式更是服务端说了算）—— 判据一律走调用方那次查表验收。
+     * @return 这一发**发出去了没有**（[Result]）。**不代表界面起来了**（两种起法都是
+     *   fire-and-forget，窗口模式更是服务端说了算）—— 判据一律走调用方那次查表验收。
      */
     fun send(
         ctx: Context,
         request: Request,
-    ): Boolean {
+    ): Result {
         val launcherApps =
             launcherAppsOf(ctx) ?: run {
                 XLog.w("拿不到 LauncherApps，appshortcut:${request.label()} 跳过")
-                return false
+                return Result.NO_SERVICE
             }
-        if (viaPendingIntent(ctx, launcherApps, request)) return true
-        return viaSystem(launcherApps, request)
+        if (viaPendingIntent(ctx, launcherApps, request)) return Result.SENT
+        return if (viaSystem(launcherApps, request)) Result.SENT else Result.REJECTED
     }
 
     /**

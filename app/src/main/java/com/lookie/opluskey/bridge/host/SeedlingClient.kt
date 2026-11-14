@@ -54,6 +54,9 @@ internal object SeedlingClient {
     @Volatile
     private var boundContext: Context? = null
 
+    /** 绑定的轮次（每发起一次 `bindService` 加一）—— 超时任务靠它认「自己是不是当前这一轮」。 */
+    private var bindGeneration = 0
+
     private val connection =
         object : ServiceConnection {
             override fun onServiceConnected(
@@ -144,6 +147,10 @@ internal object SeedlingClient {
             }
             if (!isConnecting) {
                 isConnecting = true
+                //  这一次绑定的轮次 —— 那枪超时任务靠它认「我还是不是当前这一轮」：
+                //  上一轮的超时任务若在新一轮绑定期间才醒过来，它会把**新一轮**的连接掐掉
+                //  （`isConnecting` 又被置回 false、连接被解绑），下一轮 `onServiceConnected` 就永远不来。
+                val gen = ++bindGeneration
                 //  重绑之前先解掉上一条：连接还挂着时再 bindService 会直接复用那条死连接
                 //  （`onServiceConnected` 不再来），表现是流体云从此一条都收不到。
                 unbindQuietly()
@@ -158,8 +165,9 @@ internal object SeedlingClient {
                     if (bound) boundContext = app
                     XLog.w("绑定流体云服务结果: $bound")
                     if (!bound) {
+                        //  **队列不清**：刚才那一条还在里头，下一条消息会再发起一次绑定并把它一起补发。
+                        //  清掉等于「这一次的响铃档位永远到不了界面」，而绑失败多半只是这一次不走运。
                         isConnecting = false
-                        pendingMessages.clear()
                     } else {
                         // **绑上 ≠ 连上**：SystemUI 卡住 / 服务没起来时 `onServiceConnected` 永远不来，
                         //  `isConnecting` 就一直是 true ⇒ 之后所有消息只往队列里堆、再也不发起重绑。
@@ -167,7 +175,11 @@ internal object SeedlingClient {
                             {
                                 val stale =
                                     synchronized(lock) {
-                                        if (isConnecting && serverMessenger == null) {
+                                        //  只认自己那一轮：`gen` 变了说明这枪已经过期，
+                                        //  再动就会掐掉新一轮的连接（见上面 `val gen` 那句）
+                                        if (gen != bindGeneration) {
+                                            false
+                                        } else if (isConnecting && serverMessenger == null) {
                                             isConnecting = false
                                             true
                                         } else {
@@ -190,8 +202,8 @@ internal object SeedlingClient {
                     }
                 } catch (e: Throwable) {
                     XLog.w("绑定流体云服务异常：${e.javaClass.simpleName}: ${e.message}")
+                    //  同上：队列留着，下一条消息重新绑时一起补发
                     isConnecting = false
-                    pendingMessages.clear()
                 }
             }
         }

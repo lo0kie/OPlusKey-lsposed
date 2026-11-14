@@ -48,6 +48,14 @@ internal object RecorderStateBridge {
      */
     private const val BUDGET_MS = 2_000L
 
+    /**
+     * 事务线程最多换几条（见 [replaceWorker]）。
+     *
+     *  3：正常的「对端某一刻不走运」换一条就好了；连着三次都挂死说明对端真的卡住了，
+     *  再换只是拿线程去换同一个结果。
+     */
+    private const val WORKER_REBUILDS = 3
+
     /** 事务号 `0` 那一档：不要 oneway、不要异步（AIDL 的常规同步调用）。 */
     private const val TRANSACT_SYNC = 0
 
@@ -57,10 +65,43 @@ internal object RecorderStateBridge {
      *  对端一旦卡在 `mCondition.await()` 上，那条线程就再也回不来（binder 调用没有超时参数）。
      *  原先每次调用新建一条线程：每失败一次就多泄一条 daemon 线程与它手上的两个 `Parcel`。
      *  换成单线程池之后最坏只挂一条；后续调用排队后照样按预算超时失败，不会再新增线程 / Parcel。
+     *
+     *  **挂死之后换一条**（[replaceWorker]）：只挂不换的话，一次超时就把录音那一族动作
+     *  整个进程内废掉，而它只是对端某一刻不走运 —— 用户看到的却是「这个功能从此不能用了」。
      */
-    private val worker: java.util.concurrent.ExecutorService by lazy {
+    @Volatile
+    private var worker: java.util.concurrent.ExecutorService = newWorker()
+
+    /** 已经换过几条 —— `[WORKER_REBUILDS]` 用完就只挂不换（对端真死了，换多少条都一样）。 */
+    private var rebuilds = 0
+
+    private val workerLock = Any()
+
+    private fun newWorker(): java.util.concurrent.ExecutorService =
         java.util.concurrent.Executors.newSingleThreadExecutor { r ->
             Thread(r, "opluskey-recorder-aidl").apply { isDaemon = true }
+        }
+
+    /**
+     * 丢掉被挂死的那条线程，换一条新的给后面的调用。
+     *
+     *  `shutdownNow()` 有两个作用：**排队中的事务一并作废**（它们本来就已经超时，真跑起来只会是
+     *  「报失败之后又执行一遍」），以及标记这条池不再接活。卡在 binder 里的那条线程 interrupt
+     *  不掉 —— 它自己挂着，不再影响任何人。
+     *
+     *  最多换 [WORKER_REBUILDS] 条：对端真的永久卡死时，每换一条就多挂一条线程，
+     *  不设上限等于把一个「对端的问题」变成「我们的线程泄漏」。
+     */
+    private fun replaceWorker() {
+        synchronized(workerLock) {
+            if (rebuilds >= WORKER_REBUILDS) {
+                XLog.w("录音状态：已换过 $rebuilds 条事务线程，不再新建（对端看起来是永久卡住了）")
+                return
+            }
+            rebuilds++
+            worker.shutdownNow()
+            worker = newWorker()
+            XLog.w("录音状态：上一条事务线程被对端挂住，换第 $rebuilds 条（上限 $WORKER_REBUILDS）")
         }
     }
 
@@ -208,6 +249,13 @@ internal object RecorderStateBridge {
         deadline: Long,
         read: ((Parcel) -> Int)?,
     ): Int? {
+        //  **预算先判再投**：投出去之后即使这边放弃，那条任务仍会在后台把事务发出去 ——
+        //  `stop()` 那种有副作用的调用于是会在「已经报超时」之后又真跑一遍。
+        val wait = remaining(deadline).coerceAtMost(TIMEOUT_MS)
+        if (wait <= 0) {
+            XLog.w("${call.tag}：预算已经用完，事务 ${call.code} 没发就放弃")
+            return null
+        }
         val task =
             worker.submit<Int?> {
                 val data = Parcel.obtain()
@@ -223,21 +271,17 @@ internal object RecorderStateBridge {
                     data.recycle()
                 }
             }
-        val wait = remaining(deadline).coerceAtMost(TIMEOUT_MS)
-        if (wait <= 0) {
-            XLog.w("${call.tag}：预算已经用完，事务 ${call.code} 没发就放弃")
-            return null
-        }
         return try {
             task.get(wait, TimeUnit.MILLISECONDS)
         } catch (e: java.util.concurrent.TimeoutException) {
-            //  对端卡在 `mCondition.await()` 上：这条线程会一直挂着（binder 调用没有超时参数），
-            //  但**只挂这一条**（单线程池），不会再为下一次调用新建线程、也不再泄一份 Parcel。
+            //  对端卡在 `mCondition.await()` 上：这条线程会一直挂着（binder 调用没有超时参数）。
+            //  所以**换一条线程**给后面的调用（见 [replaceWorker]）—— 否则一次挂死之后
+            //  录音那一族动作整个进程内全废，只能重启宿主。
             XLog.w(
-                "${call.tag}：事务 ${call.code} 在 ${wait}ms 内没返回（对端绑定时会无限等），这一次算失败" +
-                    "（那条线程继续挂着，本进程不再为它新建线程）",
+                "${call.tag}：事务 ${call.code} 在 ${wait}ms 内没返回（对端绑定时会无限等），这一次算失败",
                 e,
             )
+            replaceWorker()
             null
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()

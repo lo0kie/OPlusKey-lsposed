@@ -186,6 +186,19 @@ internal fun Config.holdCombosStartedBy(key: KeyId): List<ComboKey> =
     combos.filter { it.mode != ComboKey.MODE_WAIT && it.starterKey == key.id }
 
 /**
+ * 这一颗键是**哪几档等待组合的成员** —— 「只参与组合」打开之前的另一道反查。
+ *
+ *  与 [holdCombosStartedBy] 是同一个矛盾的两个方向：`comboOnly` 的键按下先吞、等一个组合窗口，
+ *  没凑成才把原生事件补回去。于是它既**不再执行自己的单击 / 长按**，原生动作又**晚一个窗口** ——
+ *  两头都不讨好（用户口径「单键长按单击都一定会多等一个窗口」）。按住那一档更直接：
+ *  起点键要求「按住到点再松手」，`comboOnly` 的键根本不判单键手势，两者互斥。
+ *
+ *  所以两个方向都拦：这一支回答「已经在这几档等待组合里」，`addCombo` 那一支回答「要加的那几颗
+ *  开着 `comboOnly`」。**停用的那几档也算**（理由同 [holdCombosStartedBy]）。
+ */
+internal fun Config.waitCombosUsing(key: KeyId): List<ComboKey> = combos.filter { it.mode == ComboKey.MODE_WAIT && key.id in it.keys }
+
+/**
  * 加一档组合（选键弹窗点了「添加」）。
  *
  *  **类别在添加那一刻定下来**（用户口径）：等待组合 [starter] 传 `null`，按住组合传**那颗首键**。
@@ -210,6 +223,18 @@ internal fun SettingsPage.addCombo(
 ): String? {
     val cfg = configState.config.value
     val ids = keys.map { it.id }.distinct()
+    //  **等待组合的成员也不能是「只参与组合」的键**（与下面按住起点那一道对称）：
+    //  等待组合要求成员按下后吞一个窗口等第二颗，而 `comboOnly` 的语义是「单键归系统」——
+    //  叠在一起的结果是「模块的单击 / 长按不执行，原生动作还要晚一个窗口」（用户口径）。
+    //  改成说明原因、不添加，并指出路（先关掉那颗键的「只参与组合」）。
+    if (starter == null) {
+        val blocked = ids.firstNotNullOfOrNull { id -> cfg.keyIdOf(id)?.takeIf { cfg.key(it).comboOnly } }
+        if (blocked != null) {
+            XLog.w("组合键：${blocked.label} 只参与组合，不能加入等待组合（${ids.joinToString("+")}）")
+            ComboStarterBlocked.ask(blocked, ComboStarterBlocked.Reason.WAIT_MEMBER)
+            return null
+        }
+    }
     if (starter != null) {
         //  **「只参与组合」的键先拦一道**：那一档位的意思是「这颗键不判单键手势」，
         //  它自己的「松手时触发」开关在按键设置页是灰的（改不了）。所以这里不能再走
@@ -218,7 +243,7 @@ internal fun SettingsPage.addCombo(
         //  改为直接说明原因、不添加（用户口径「也 dialog 拦截」）。
         if (cfg.key(starter).comboOnly) {
             XLog.w("组合键：${starter.label} 只参与组合，不能作为按住起点（${ids.joinToString("+")}）")
-            ComboStarterBlocked.ask(starter)
+            ComboStarterBlocked.ask(starter, ComboStarterBlocked.Reason.HOLD_STARTER)
             return null
         }
         if (!cfg.key(starter).longFireOnRelease) {

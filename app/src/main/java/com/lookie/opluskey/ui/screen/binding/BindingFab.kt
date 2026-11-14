@@ -8,10 +8,9 @@ import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.ui.chrome.PageCornerFab
 import com.lookie.opluskey.ui.chrome.PageCornerFabStack
 import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.chrome.PageFabIcon
 import com.lookie.opluskey.ui.model.icon.PageIcons
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 进「自定义命令」页的浮动操作按钮 —— 「按键绑定」与「组合键」两页**共用这一颗**。
@@ -29,10 +28,9 @@ internal fun BoxScope.BindingFab(
 ) {
     PageCornerFabStack(visible = visible) {
         PageFabButton(onClick = onClick) {
-            Icon(
+            PageFabIcon(
                 PageIcons.CommandAdd,
                 contentDescription = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"),
-                tint = COUITheme.colorScheme.onPrimary,
             )
         }
     }
@@ -56,10 +54,9 @@ internal fun BoxScope.BoundConfirmFab(
 ) {
     PageCornerFab(visible = visible) {
         PageFabButton(onClick = onClick) {
-            Icon(
+            PageFabIcon(
                 PageIcons.Confirm,
                 contentDescription = I18n.get(Strings.COMMON_CONFIRM, "确定"),
-                tint = COUITheme.colorScheme.onPrimary,
             )
         }
     }

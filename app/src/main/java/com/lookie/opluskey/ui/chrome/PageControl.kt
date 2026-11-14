@@ -108,6 +108,10 @@ private fun SettingsPage.finishRestart(
             android.content.Intent(ModuleWire.ACTION_PAGE_RELAUNCH),
         )
     if (!asked) {
+        //  **这一支也要摘接收器**：上面刚注册过。漏掉的话它会一直挂在页面进程里，
+        //  日后宿主那条 `ACTION_PAGE_RELAUNCH_ACK` 一到（比如用户从别处又点了一次重启），
+        //  这个早已作废的回调会把**当前**页面进程杀掉。与超时那一支同一口径。
+        runCatching { context.unregisterReceiver(receiver) }
         hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
         return
     }

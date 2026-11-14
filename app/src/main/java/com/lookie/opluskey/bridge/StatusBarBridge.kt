@@ -3,6 +3,7 @@ package com.lookie.opluskey.bridge
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.provider.AlarmClock
 import com.lookie.opluskey.bridge.inject.SystemContext
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
@@ -37,6 +38,20 @@ internal object StatusBarBridge {
 
     /** 状态栏指令：切一个系统开关（`setting:<id>`，见 [SettingBridge]）。 */
     const val CMD_SETTING = "setting"
+
+    /**
+     * 状态栏指令：起一个**倒计时**（[EXTRA_TIMER_SECONDS] 秒）。
+     *
+     *  与 [CMD_POWER_MENU] / [CMD_VOICE_ASSIST] 同属「**必须由 system_server 本人干**」那一类，
+     *  但理由不同：`HandleApiActivity` 是**导出**的，谁都能起；拦人的是**后台起活动**（BAL）——
+     *  宿主（普通应用 uid）不在前台时，`startActivity` 不抛异常、直接把这一次丢掉，
+     *  表现是「按了没反应、也看不到流体云」（真机 2026-11-14 就是这样）。
+     *  system_server 自己起没有那道闸，时钟收到之后才会照常出胶囊。
+     */
+    const val CMD_TIMER = "start_timer"
+
+    /** [CMD_TIMER] 里带「倒计时多少秒」。 */
+    const val EXTRA_TIMER_SECONDS = "timer_seconds"
 
     /**
      * 状态栏指令：把这块屏的背光推到某个 raw 值。
@@ -112,6 +127,30 @@ internal object StatusBarBridge {
     }
 
     /**
+     * 宿主进程调：请 system_server 起一个 [seconds] 秒的倒计时。
+     *
+     *  与 [send] 同一个通道、同一个接收器，区别是带一个数值。为什么不在宿主里直接
+     *  `startActivity`：那一下会被**后台起活动**静默丢掉（见 [CMD_TIMER] 的注释）。
+     */
+    fun sendTimer(
+        context: Context,
+        seconds: Int,
+    ) {
+        try {
+            context.sendBroadcast(
+                Intent(ACTION_STATUSBAR)
+                    .setPackage(HostApp.PACKAGE)
+                    .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                    .putExtra(EXTRA_CMD, CMD_TIMER)
+                    .putExtra(EXTRA_TIMER_SECONDS, seconds),
+            )
+            XLog.w("timer:$seconds 已转给 system_server 起倒计时")
+        } catch (e: Throwable) {
+            XLog.w("发 timer 广播失败：$seconds", e)
+        }
+    }
+
+    /**
      * 调用点在 AMS 广播入口的 hooker 里（热路径 + system_server），
      * 整体再包一层 catch：漏一个异常出去就是系统崩。
      *
@@ -159,6 +198,10 @@ internal object StatusBarBridge {
                     BrightnessBridge.apply(loader, intent.getIntExtra(EXTRA_BRIGHTNESS, -1))
                 }
 
+                CMD_TIMER -> {
+                    startTimerLocal(intent, loader)
+                }
+
                 else -> {
                     XLog.w("不认识的状态栏指令：$cmd")
                 }
@@ -167,6 +210,39 @@ internal object StatusBarBridge {
             XLog.w("执行状态栏指令失败（忽略）：$cmd", e)
         }
         return true
+    }
+
+    /**
+     * 在 system_server 里起一个倒计时 —— 时钟那条 `ACTION_SET_TIMER` + `EXTRA_SKIP_UI`。
+     *
+     *  为什么这一下必须在本机（见 [CMD_TIMER]）：宿主是普通应用 uid，不在前台时
+     *  `startActivity` 会被后台起活动那道闸**静默丢掉**（不抛异常，所以我们那边看不出失败）。
+     *  本机这一下是 system_server 自己在起，那道闸不适用。
+     *
+     *  载荷照 AOSP 标准写：`EXTRA_LENGTH` 是**秒**，`EXTRA_SKIP_UI = true` 让时钟别停在拨盘页
+     *  —— 少了它，秒数填好却不走（用户口径「不是打开界面，我要的是开始计时」）。
+     */
+    private fun startTimerLocal(
+        intent: Intent,
+        loader: ClassLoader?,
+    ) {
+        val seconds = intent.getIntExtra(EXTRA_TIMER_SECONDS, -1)
+        if (seconds <= 0) {
+            XLog.w("倒计时：秒数没带过来（$seconds），跳过")
+            return
+        }
+        val ctx =
+            loader?.let { SystemContext.get(it) } ?: run {
+                XLog.w("倒计时：还拿不到 system_server 的 Context，跳过")
+                return
+            }
+        ctx.startActivity(
+            Intent(AlarmClock.ACTION_SET_TIMER)
+                .putExtra(AlarmClock.EXTRA_LENGTH, seconds)
+                .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        XLog.w("倒计时：已请 system_server 起 $seconds 秒的倒计时")
     }
 
     /**

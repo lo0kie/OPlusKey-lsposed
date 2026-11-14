@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.GlobalConfig
+import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.ui.Screen
@@ -27,6 +28,8 @@ import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.write.setColorOsApi
+import com.lookie.opluskey.ui.write.setGlobalClickWindow
+import com.lookie.opluskey.ui.write.setGlobalWaitMultiWindow
 import com.lookie.opluskey.ui.write.setMiniWindowAnim
 import com.lookie.opluskey.ui.write.setToastFluid
 import com.lookie.opluskey.ui.write.setToastOnRun
@@ -67,6 +70,12 @@ internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
         InterfaceCard(pageEnabled)
         SectionTitle(I18n.get(Strings.HOME_BINDING_CARD_TITLE, "按键行为"))
         ActionsCard(pageEnabled)
+        //  —— 单击（判定时机 + 单击延迟）——
+        //  这一节是**全局默认值**：没开「使用独立设置」的键都按这一份判。
+        //  它不吃「有没有多击手势」那道闸 —— 单键也要有个地方改「按下之后等多久」；
+        //  逐键那一份在独立设置页里，只有开了多击才可调（见 `BindingSettingsCard`）。
+        SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK, "单击"))
+        ClickDelayCard(pageEnabled)
         //  组合键那两项（无操作时怎么走 / 两颗键之间等多久）—— 从「按键功能」页搬来：
         //  它们是**全局**设置，与「有哪几颗键」无关，与上面两节同一类。
         SectionTitle(I18n.get(Strings.COMBO_SETTINGS_SECTION, "组合按键设置"))
@@ -384,3 +393,73 @@ private fun vibrateStrengthLabel(level: Int): String =
             I18n.get(Strings.HOME_VIBRATE_STRENGTH_MEDIUM, "中")
         }
     }
+
+/**
+ * 「单击」那张卡（**公共设置**）—— 判定时机 + 单击延迟。
+ *
+ *  这一份是**全局默认值**：没开「使用独立设置」的键都按它判（广播前由
+ *  `KeyConfig.fieldValues(global)` 解析成生效值）。逐键那一份在独立设置页，那边**只在开了多击手势时
+ *  可调**（那一页管的是「这颗键的多击怎么判」）；这里**不吃那道闸** —— 单键也要有个地方
+ *  改「按下之后等多久」，否则一颗多击都没开的键就再也调不了单击延迟。
+ *
+ *  两根的关系与逐键那一页一样：判定时机决定下面这根滑杆**写哪一位**
+ *  （`waitMultiWindow` 关着写 `doubleClickMs`，开着写 `multiWaitMs`），两个值分开存。
+ */
+@Composable
+private fun SettingsPage.ClickDelayCard(pageEnabled: Boolean) {
+    val g = configState.config.value.global
+    val multi = g.waitMultiWindow
+    //  0 = 「跟随单击延迟」（老配置长这样），滑杆要显示一个具体值
+    val windowValue =
+        if (multi) {
+            g.multiWaitMs.takeIf { it > KeyConfig.FOLLOW_DOUBLE_CLICK_MS } ?: g.doubleClickMs
+        } else {
+            g.doubleClickMs
+        }
+    CardList(
+        rows =
+            buildList {
+                add(
+                    CardRow.Switch(
+                        title = I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW, "固定窗口起点"),
+                        summaryOn =
+                            I18n.get(
+                                Strings.BINDING_WAIT_MULTI_WINDOW_ON,
+                                "从首次按下起算一个窗口，不随后续按压延长",
+                            ),
+                        summaryOff =
+                            I18n.get(
+                                Strings.BINDING_WAIT_MULTI_WINDOW_OFF,
+                                "每次松手重新起算，按压越久等待越长",
+                            ),
+                        icon = PageIcons.CollectWindow,
+                        //  开关说的是「固定窗口起点」= `waitMultiWindow` 的反面（与逐键那颗同一个口径）
+                        checked = !multi,
+                        enabled = pageEnabled,
+                    ) { collect ->
+                        setGlobalWaitMultiWindow(!collect)
+                    },
+                )
+                add(
+                    CardRow.Custom { position ->
+                        SliderRow(
+                            position = position,
+                            spec =
+                                SliderSpec(
+                                    //  标题与逐键那一根统一：两种判定时机问的都是「按下去之后等多久」
+                                    title = I18n.get(Strings.BINDING_WAIT_WINDOW, "等待窗口"),
+                                    icon = PageIcons.DelayTap,
+                                    summary = I18n.get(Strings.BINDING_WAIT_WINDOW_DESC, "多击判定所用的窗口长度"),
+                                    //  上下限与逐键那一根统一（切换判定时机时范围不跟着跳）
+                                    min = KeyConfig.MIN_DOUBLE_CLICK_MS,
+                                    max = KeyConfig.MAX_MULTI_WAIT_MS,
+                                    value = windowValue,
+                                    default = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
+                                    enabled = pageEnabled,
+                                ),
+                        ) { v -> setGlobalClickWindow(v) }
+                    },
+                )
+            },
+    )
+}

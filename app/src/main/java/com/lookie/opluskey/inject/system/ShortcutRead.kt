@@ -68,19 +68,28 @@ internal object ShortcutRead {
         val service = serviceInstance(loader) ?: return null
         val user = oneInt(service, "getUserShortcutsLocked", userId) ?: return null
         val all = shortcutsOf(user, pkg, userId) ?: return null
-        val pinned = all.filterIsInstance<ShortcutInfo>().filter { it.isPinned }
-        //  判据级：这一行回答「系统里到底钉了几条」—— 与宿主那一行（钉住 0）并排看就知道这条通道有没有用。
-        XLog.w(
-            "快捷方式（系统侧）：$pkg（user=$userId）系统里共 ${all.size} 条，其中钉住 ${pinned.size} 条" +
-                (if (pinned.isEmpty()) "" else "：" + pinned.joinToString("、") { labelOf(it) }),
-        )
-        return pinned.map { it.id to labelOf(it) }
+        //  整理解不出（`isPinned` / 标签那几步碰到怪数据）也只算「这一趟读不到」——
+        //  抛出去会变成「不回包」，宿主那一侧分不清是超时还是失败。
+        return runCatching {
+            val pinned = all.filterIsInstance<ShortcutInfo>().filter { it.isPinned }
+            //  判据级：这一行回答「系统里到底钉了几条」—— 与宿主那一行（钉住 0）并排看就知道这条通道有没有用。
+            XLog.w(
+                "快捷方式（系统侧）：$pkg（user=$userId）系统里共 ${all.size} 条，其中钉住 ${pinned.size} 条" +
+                    (if (pinned.isEmpty()) "" else "：" + pinned.joinToString("、") { labelOf(it) }),
+            )
+            pinned.map { it.id to labelOf(it) }
+        }.getOrElse { e ->
+            XLog.w("快捷方式（系统侧）：结果整理失败（${e.javaClass.simpleName}）⇒ 这一趟按读不到处理", e)
+            null
+        }
     }
 
     /**
      * 处理一条 [ModuleWire.ACTION_SHORTCUT_QUERY]：读一遍，把结果回给宿主。
      *
-     *  空表照回（那是「这个应用没钉过」或「读失败」的结论）：回一条空包让宿主那边**不再等**。
+     *  **读不到就不回包**（宿主那边等满自己的超时之后按「没要到」收尾），读到了但没有钉住的才回空表：
+     *  「读不到」与「这个应用没钉过」是两条不同的结论 —— 把前一条回成后者，宿主会把一条
+     *  `appshortcut:` 绑定当成「快捷方式已经不在了」降级成整个应用。那比晚 300 毫秒严重得多。
      *
      * @param loader `system_server` 的 ClassLoader；`null` = 这一趟还没拿到，直接不回
      */
@@ -92,7 +101,7 @@ internal object ShortcutRead {
         val req = intent.getStringExtra(ModuleWire.EXTRA_SHORTCUT_REQ) ?: return
         val pkg = intent.getStringExtra(ModuleWire.EXTRA_SHORTCUT_PKG) ?: return
         val userId = intent.getIntExtra(ModuleWire.EXTRA_SHORTCUT_USER, 0)
-        val rows = pinned(l, pkg, userId).orEmpty()
+        val rows = pinned(l, pkg, userId) ?: return
         val ids = ArrayList<String>(rows.size)
         val labels = ArrayList<String>(rows.size)
         for ((id, label) in rows) {

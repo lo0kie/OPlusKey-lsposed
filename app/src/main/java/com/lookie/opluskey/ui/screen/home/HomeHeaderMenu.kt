@@ -50,14 +50,16 @@ import kotlinx.coroutines.withContext
  *
  *  ⋮ **本身永远可点**：「默认界面」那一项必须始终够得着
  *  —— 它是模块彻底坏掉时唯一的逃生口（回宿主原版页面）。
- *  跟着 [rowsEnabled] 走的只有那三项**动模块运行时 / 数据**的（重启服务 / 导出日志 / 重置模块）：
- *  模块没就绪时它们改不了什么，放用户去点只会以为生效了。
+ *  跟着 [rowsEnabled] 走的只有**导出日志**那一条：模块没就绪时它导不出什么。
+ *  「重启服务」与「重置模块」是另外两条逃生口，**不吃 `readOnly`**：只读态（这次没读成功）
+ *  正是它们的用场 —— 跟着闸走就成了「提示让你重启 / 重置，而那一行是灰的」。
+ *  「重置配置」在「切换配置」那层菜单里，同样只吃链路那一半。
  *
  *  注意：「更多选项」那一项**已从菜单里删掉**：它只留首页那一行，
  *  且那一行**不吃任何闸** —— 页面整页禁用时，用户仍能从那儿进去看「运行状态」到底断在哪一段
  *  （见 [HomeScreen] 里那一行的注释）。
  *
- *  注意：判据是两个条件的与：`linkReady`（链路）**且** `!configReadOnly`（配置这次读成功了）。
+ *  注意：[rowsEnabled] 是两个条件的与：`linkReady`（链路）**且** `!configReadOnly`（配置这次读成功了）。
  *  只读态下其余几项也不放出来点：那时什么都写不进去，点了只会得到一句失败。
  *  **两条逃生口不吃这个闸**（各在自己的行上写了 `enabled = true`）：「默认界面」与「重启服务」——
  *  前者是页面坏了时的出口，后者是「执行侧读不懂配置」那一档的修法（那一档整页都被闸住）。
@@ -156,7 +158,10 @@ internal fun SettingsPage.HomeHeaderMenu() {
                     MenuEntry.Row(
                         title = I18n.get(Strings.MENU_RESET_MODULE, "重置模块"),
                         icon = PageIcons.MenuReset,
-                        enabled = rowsEnabled,
+                        //  **不吃 `readOnly` 那道闸**：只读态（建页那次没读成功）下，这一项正是
+                        //  「明说要丢掉重来」的正门 —— `resetModule` 自己会先把只读位放行。
+                        //  跟着 `rowsEnabled` 走的话，那一档里整页控件全灰、连这个出口也灰着。
+                        enabled = linkReady,
                         danger = true,
                         dividerBefore = true,
                     ) {

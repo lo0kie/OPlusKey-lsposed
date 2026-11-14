@@ -88,7 +88,8 @@ internal object ProcessController {
      *
      *  **这 0.8 秒里 pid 可能已经被系统回收再分配给别的进程** —— 拿着开工时那张清单直接
      *  `kill -9` 就是 root 身份杀无关进程。所以强杀那一步逐个复核：只有「现在这一行还是
-     *  本包（或本包子进程）」才杀，认不出就不动它。
+     *  本包（或本包子进程）」才杀，认不出就不动它。**收尾的核实也按名字核**（同一句 `ps`）：
+     *  只看 `kill -0` 的话，同一个 pid 被别的进程占用时会把一次成功的结束报成失败。
      *
      *  一个 pid 都没有时按**已经结束**处理（`am force-stop` 都不用发），并回一行提示 ——
      *  与「发了命令但什么都没停」区分开。
@@ -102,7 +103,12 @@ internal object ProcessController {
             "if [ -z \"\$todo\" ]; then echo '${ShellRunner.TIP_PREFIX} 本来就没有进程'; exit 0; fi; " +
             "am force-stop $pkg; sleep $STOP_SETTLE_S; " +
             "for pid in \$todo; do ${killIfStillOurs(pkg)}; done; sleep $STOP_VERIFY_S; " +
-            "left=0; for pid in \$todo; do kill -0 \$pid 2>/dev/null && left=1; done; [ \$left = 0 ]"
+            //  收尾同样**按名字核**：只 `kill -0` 的话，pid 被系统回收再分配给别的进程时
+            //  会判成「还活着」，把一次成功的结束报成失败（与上面强杀那一步同一口径）。
+            "left=0; for pid in \$todo; do ${nameOf("\$pid")}case \"\$cur\" in $pkg|$pkg:*) left=1 ;; esac; done; [ \$left = 0 ]"
+
+    /** 「这个 pid 现在叫什么名字」—— 空 = 这个 pid 已经没了。两个判据共用这一句。 */
+    private fun nameOf(pidVar: String): String = "cur=\$(ps -A -o PID,ARGS | awk -v i=$pidVar '\$1==i{print \$2}'); "
 
     /**
      * 循环体：`pid` 这一行现在还是 [pkg] 的进程才 `kill -9`。
@@ -111,7 +117,7 @@ internal object ProcessController {
      *  「核一个 pid」—— 后者慢一点无所谓，它只跑在要杀的那几个 pid 上。
      */
     private fun killIfStillOurs(pkg: String): String =
-        "cur=\$(ps -A -o PID,ARGS | awk -v i=\$pid '\$1==i{print \$2}'); " +
+        nameOf("\$pid") +
             "case \"\$cur\" in $pkg|$pkg:*) kill -9 \$pid 2>/dev/null ;; " +
             "*) echo \"skip \$pid (\$cur)\" ;; esac"
 

@@ -5,8 +5,6 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.reflect.ActivityThreadCompat
-import com.lookie.opluskey.core.reflect.Reflect
 
 /**
  * 由 `system_server` 替宿主弹一条提示（命令里 `echo 'tip: …'` 那行）。
@@ -26,9 +24,6 @@ import com.lookie.opluskey.core.reflect.Reflect
 internal object SystemToast {
     /** 主线程 Handler —— toast 只能在有 Looper 的线程上建。 */
     private val main = Handler(Looper.getMainLooper())
-
-    /** 系统 Context 缓存（拿一次就够；拿不到下次再试）。 */
-    private var systemContext: Context? = null
 
     /** 同一句话在这个间隔内不重复弹（长按连发时同一条命令会连着报同一句）。 */
     private const val DEDUP_MS = 1000L
@@ -63,14 +58,8 @@ internal object SystemToast {
 
     /** `ActivityThread.getSystemContext()` —— 包名 `android` 的那一份（免限流就靠它）。 */
     private fun context(loader: ClassLoader): Context? {
-        systemContext?.let { return it }
-        val at = ActivityThreadCompat.currentActivityThread(loader) ?: return null
-        val ctx =
-            Reflect.call(at, "getSystemContext") as? Context ?: run {
-                XLog.w("拿不到 system_server 的 SystemContext，注入侧弹不了提示")
-                return null
-            }
-        systemContext = ctx
+        val ctx = SystemServerContext.get(loader)
+        if (ctx == null) XLog.w("拿不到 system_server 的 SystemContext，注入侧弹不了提示")
         return ctx
     }
 }

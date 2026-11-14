@@ -1,10 +1,10 @@
 package com.lookie.opluskey.inject.key
 
 import android.view.KeyEvent
+import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.bridge.hookGuarded
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.inject.wire.ConfigChannel
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
@@ -32,6 +32,9 @@ import io.github.libxposed.api.XposedModule
  *
  *  两个方法都返回 `void` ⇒ 「吞掉」= 不 `proceed()`、返回 `null`。
  *
+ *  候选类名 / 方法名登记在 `bridge/Framework` 的候选表里（一、7），这里不写名字 ——
+ *  换一版 ROM 只改那张表。
+ *
  * ## 只丢哪些
  *
  *  三条同时成立才丢：音量加 / 减、物理事件、配置里这颗键
@@ -39,51 +42,23 @@ import io.github.libxposed.api.XposedModule
  *  「音量 + / −」动作注入的那一颗，拦了等于把那个动作也一起废掉（与注入侧 `isSynthetic` 同一条口径）。
  */
 internal object KeyObserverHooks {
-    /**
-     * 派发点的候选 —— 类名与方法名成对登记（都是 `com.android.server.am` 下**没有混淆**的名字）。
-     *
-     *  加一档 ROM 时若这两处都落空，日志里会各留一行 W，音量键本身不受影响。
-     */
-    private val DISPATCH_CANDIDATES =
-        listOf(
-            "com.android.server.am.OplusKeyEventUtil\$OnKeyEventObserver" to "onKeyEvent",
-            "com.android.server.am.OplusKeyEventUtil" to "onKeyEvent",
-        )
-
     fun install(
         module: XposedModule,
         loader: ClassLoader,
     ): Int {
-        val hooked =
-            DISPATCH_CANDIDATES.count { (className, methodName) ->
-                hookOne(module, loader, className, methodName)
+        //  候选类 / 方法名只在 `Framework` 的候选表里（一、7）—— 这里只负责装
+        val points = Framework.findObserverPoints(loader)
+        var hooked = 0
+        for (method in points) {
+            if (module.hookGuarded(method) { chain -> handle(chain) } != null) {
+                hooked++
+                XLog.w("已 Hook 按键观察者派发：${method.declaringClass.name}#${method.name}")
             }
+        }
         if (hooked == 0) {
             XLog.w("按键观察者派发一个都没挂上 —— 游戏里音量键仍会弹游戏空间的音量条（音量键本身不受影响）")
         }
         return hooked
-    }
-
-    /** 试挂一个派发点 —— 类 / 方法不在或挂失败都只记一行、返回 `false`。 */
-    private fun hookOne(
-        module: XposedModule,
-        loader: ClassLoader,
-        className: String,
-        methodName: String,
-    ): Boolean {
-        val cls = Reflect.findClass(loader, className)
-        if (cls == null) {
-            XLog.w("没找到按键观察者派发类：$className —— 这一档不装")
-            return false
-        }
-        val method = Reflect.method(cls, methodName, KeyEvent::class.java)
-        if (method == null) {
-            XLog.w("$className 上没有 $methodName(KeyEvent) —— 这一档不装")
-            return false
-        }
-        val ok = module.hookGuarded(method) { chain -> handle(chain) } != null
-        if (ok) XLog.w("已 Hook 按键观察者派发：$className#$methodName")
-        return ok
     }
 
     private fun handle(chain: XposedInterface.Chain): Any? {

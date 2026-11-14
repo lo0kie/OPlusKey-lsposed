@@ -132,14 +132,30 @@ def check_apk(apk, checks):
         else:
             checks.bad(f"{disp(apk)} 的 scope.list 首行须为 system（实际 '{scope_head}'）")
 
-        # (3) module.prop 同时含 minApiVersion= 与 targetApiVersion=（上架机器人按这两条校验）
+        # (3) module.prop：两条 API 档位要有值、是整数，且 target ≥ min
+        #   **这个文件只带 LSPosed 那几项**（min / target / staticScope）—— `id` / `name` /
+        #   `version` / `versionCode` 在根 `module.prop` 里，别在这里要求它们。
+        #   只查「键在不在」时，`minApiVersion=`（空值）照样全绿，而 LSPosed 读到空值会拒绝加载。
         prop = entry(XPOSED + 'module.prop').replace('\r', '')
-        prop_lines = prop.split('\n')
+        prop_map = {}
+        for line in prop.split('\n'):
+            if '=' in line:
+                k, v = line.split('=', 1)
+                prop_map[k.strip()] = v.strip()
+        api = {}
         for k in ('minApiVersion', 'targetApiVersion'):
-            if any(line.startswith(k + '=') for line in prop_lines):
-                checks.ok(f'module.prop 有 {k}')
+            raw = prop_map.get(k, '')
+            if raw.isdigit():
+                api[k] = int(raw)
+                checks.ok(f'module.prop 的 {k}={raw}')
             else:
-                checks.bad(f'{disp(apk)} 的 module.prop 缺 {k}=')
+                checks.bad(f'{disp(apk)} 的 module.prop 里 {k}= 缺值或不是整数（实际 {raw!r}）')
+        #  target < min 时管理器会认为这版模块在本机框架上跑不了（装上去直接不加载）。
+        if len(api) == 2 and api['targetApiVersion'] < api['minApiVersion']:
+            checks.bad(
+                f'{disp(apk)} 的 module.prop 里 targetApiVersion='
+                f"{api['targetApiVersion']} < minApiVersion={api['minApiVersion']}",
+            )
 
         # (4) 清单里的界面入口**只放行那一个跳板**：`EntryActivity`（无界面，点了转宿主设置页）。
         #    多一个就是「模块自带界面」或多一条入口；少一个则管理器那颗 FAB 不显示，
@@ -213,7 +229,7 @@ def check_apk(apk, checks):
 
         # (7) 作用域必须是构建期写死的那一档（`staticScope=true`）—— 「作用域写错 = 模块全绿但
         #     日志一行都没有」正是它守的东西。
-        if any(line == 'staticScope=true' for line in prop_lines):
+        if prop_map.get('staticScope') == 'true':
             checks.ok('module.prop 有 staticScope=true')
         else:
             checks.bad(f'{disp(apk)} 的 module.prop 缺 staticScope=true'
@@ -323,7 +339,9 @@ def placeholders(text):
         m = KEY_IN_JSON.search(line)
         if not m:
             continue
-        out[m.group(1)] = ''.join(re.findall(r'%[sd]', line))
+        #  **位置写法（`%1$s` / `%2$d`）也要认**：只认 `%s` 时，用位置参数的那条会被算成
+        #  「这一行没有占位符」，与另一本字典里对应的那条对不上（真缺参时也放过去）。
+        out[m.group(1)] = ''.join(re.findall(r'%(?:\d+\$)?[sd]', line))
     return out
 
 

@@ -5,7 +5,9 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.core.present.ClockCatalog
 import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.core.present.appTargetLabel
 import com.lookie.opluskey.core.present.commandTitleOf
@@ -175,6 +177,10 @@ internal fun stepIcon(
     //  步骤行的每一次重组都会走到这一句（见 `ActionCatalog.canonicalToken`）。
     if (!isCommandRef(token)) return actionIcon(ActionCatalog.canonicalToken(token))
     val name = token.removePrefix(Command.PREFIX)
+    //  **内置那几条常用命令不在用户命令库里**（`cmd:common.wechat_scan` 这类）：按库里查必然落空，
+    //  落到通用的「命令」字形上就等于把它们的信息抹掉了。它们自带 root 位与那一步正文 ——
+    //  按与库里那条**同一条判据**（`commandIcon`）画，root 角标才不会丢。
+    CommonCommands.entryOf(token)?.let { return commandIcon(CommandKind.SINGLE, 1, it.root, it.step) }
     val ref = commands.firstOrNull { it.name == name } ?: return PageIcons.CommandSingle
     //  单条命令按它**自己那种写法**取底图、root 那档加井号角标，与命令列表里那张卡同一条判据
     return commandIcon(ref.kind, ref.steps.size, ref.root, ref.single)
@@ -191,6 +197,10 @@ internal fun actionCellIcon(
     action: Action,
     commands: List<Command>,
 ): ImageVector {
+    //  计时器**没有入口格**（那一格就是它自己，不进 `MODE_MENUS`），`modeHitOf` 查不到它；
+    //  而 token 是 `timer:300`，按 token 走兜底只会拿到通用那颗 —— 它的字形登记在格子那份 [Spec] 上。
+    //  这条也决定「执行时提示走流体云」时胶囊左边那颗图（见 `ActionCardArt`）。
+    if (action is Action.Timer) return specIcon(ClockCatalog.TILE_SPEC)
     val hit = ActionCatalog.modeHitOf(action)
     return if (hit == null) stepIcon(action.token, commands) else specIcon(hit.mode)
 }

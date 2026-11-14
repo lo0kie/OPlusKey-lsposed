@@ -68,7 +68,7 @@ object ConfigStore {
             val config: Config,
         ) : Load
 
-        /** 文件还不存在（首装 / 刚清过数据）—— 用默认值，**允许写回**。 */
+        /** 文件还不存在（首装 / 刚清过数据 —— 连 `.prev` 都没有）—— 用默认值，**允许写回**。 */
         data object Absent : Load
 
         /**
@@ -134,9 +134,17 @@ object ConfigStore {
                 }
 
                 ModuleFiles.Load.Absent -> {
-                    // 真的没写过（主文件与 `.bak` 都不在，[ModuleFiles.read] 已经还原过了）。
+                    //  **只剩 `.prev` 时不能判「首装」**：`[writeProfileConfig]` 每次写盘前留的那份快照
+                    //  正是给这种情况准备的，而 `slots()` 也把 `.prev` 算作一个槽（列表里看得见它）。
+                    //  两头结论相反的话，列表里那一份会在下一次保存时被默认值整份盖掉 ——
+                    //  那是「配置莫名回到出厂」最安静的一条路径。
+                    recoverFromBackup()?.let {
+                        XLog.w("读配置：主文件与 .bak 都不在，用上次写入留下的 .prev 顶上")
+                        return it
+                    }
+                    // 真的没写过（主文件、`.bak`、`.prev` 都不在）。
                     //  用 d：这是首装时每条按键都会走到的正常状态，w 会刷屏。
-                    XLog.d("读配置：主文件与 .bak 都不在，按首装处理（${f.path}）")
+                    XLog.d("读配置：主文件、.bak 与 .prev 都不在，按首装处理（${f.path}）")
                     cached = null
                     return Load.Absent
                 }
@@ -199,7 +207,7 @@ object ConfigStore {
                 ?.let { ConfigCodec.parseOrNull(it) }
                 ?: return null
         //  这条必须是 w：它解释了「为什么用户的某一项改动不见了」
-        XLog.w("读配置：主文件解析失败，已从 .prev 快照恢复（比最后一次成功写入旧一个版本）")
+        XLog.w("读配置：主文件读不懂（或已不在），已从 .prev 快照恢复（比最后一次成功写入旧一个版本）")
         return Load.Recovered(config)
     }
 

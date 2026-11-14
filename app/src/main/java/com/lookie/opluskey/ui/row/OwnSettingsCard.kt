@@ -296,8 +296,15 @@ private fun SettingsPage.toastRows(
             summaryOff = I18n.get(Strings.HOME_TOAST_FLUID_DESC_OFF, "以 Toast 弹出"),
             icon = PageIcons.FormatFluid,
             checked = show.toastFluid,
-            enabled = rowsEnabled,
-            disabledHint = ownHint,
+            //  流体云是 ColorOS 的能力：这一档随「使用 ColorOS 接口」走，关掉之后由执行侧回落 Toast
+            //  （判据在 `GestureExec.noticeIfNeeded`，这里只是不让人去调一个当前不生效的开关）。
+            enabled = rowsEnabled && show.colorOsApi,
+            disabledHint =
+                if (show.colorOsApi) {
+                    ownHint
+                } else {
+                    I18n.get(Strings.HOME_TOAST_FLUID_NEEDS_COLOROS, "需要开启「使用 ColorOS 接口」")
+                },
             visible = show.toastOnRun,
         ) {
             edit(OwnField.FLUID) { v -> v.copy(toastFluid = it) }

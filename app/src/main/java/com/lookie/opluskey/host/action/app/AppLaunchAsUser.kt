@@ -92,8 +92,12 @@ internal object AppLaunchAsUser {
         if (userId != 0) return false
         XLog.w("startActivityAsUser 不可用，主用户退回 Context.startActivity")
         return runCatching { context.startActivity(intent) }
-            .onFailure { XLog.w("退回 Context.startActivity 也失败：$intent", it) }
-            .isSuccess
+            .onFailure {
+                //  只打落点：整个 Intent 会带上 data / extras，那是用户写进命令里的东西 ——
+                //  与 `startViaAtms` 那条成功日志同一口径（脱敏）。
+                val at = intent.component?.flattenToShortString() ?: intent.action.orEmpty()
+                XLog.w("退回 Context.startActivity 也失败：$at", it)
+            }.isSuccess
     }
 
     /** `startActivityAsUser` 两个签名都试一遍。成功返回 `true`。 */

@@ -284,7 +284,10 @@ private fun SettingsPage.ComboTitle(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "ComboTitle",
     )
-    val names = combo.keys.mapNotNull { id -> cfg.keyIdOf(id)?.let(::keyName) }
+    //  **认不出的成员键也要占位**：`mapNotNull` 会把它整个丢掉，句子于是少一段 ——
+    //  成员键被删 / 换了 id 之后那张组合还留着，标题就渲染成「按住 后再按 」。
+    //  退回键 id 本身（短、不空），比留白更有用，也不必为这一档新增一条文案。
+    val names = combo.keys.map { id -> cfg.keyIdOf(id)?.let(::keyName) ?: id }
     //  **按住组合写成一句话、键名自己仍是框**（用户口径：「按住 A 后再按 B」，名字用 tag 样式）：
     //  那一档的判据就是「谁先按住」，只摆一串框读不出顺序，而顺序正是它的区分所在；
     //  但名字也不该退化成纯文字 —— 同一颗键在这一列里要一直是同一枚框。

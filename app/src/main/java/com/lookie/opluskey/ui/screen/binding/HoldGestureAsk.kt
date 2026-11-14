@@ -381,6 +381,15 @@ private class LastAskLabel {
  *  本来就是灰的，写了也是自相矛盾的配置）。所以这里只记「哪一颗键」，确认即为关闭。
  */
 internal object ComboStarterBlocked {
+    /** 挡下来的那一条原因 —— 决定弹窗标题与正文。 */
+    enum class Reason {
+        /** 拿它当**按住组合的起点**（要求「按住到点再松手」，与不判单键手势互斥）。 */
+        HOLD_STARTER,
+
+        /** 把它加进**等待组合**（按下要吞一个窗口，与「单键归系统」叠起来两头不讨好）。 */
+        WAIT_MEMBER,
+    }
+
     private val pending = PendingAsk<KeyId>()
 
     val asking: Boolean get() = pending.asking
@@ -388,7 +397,17 @@ internal object ComboStarterBlocked {
     /** 阻挡这一档的那颗起点键（`null` = 没有待说明的事）。 */
     val key: KeyId? get() = pending.pending
 
-    fun ask(key: KeyId) = pending.set(key)
+    /** 这一次拦下来的原因；退场期间沿用上一次那一份（见 [LastBlocked]）。 */
+    var reason: Reason = Reason.HOLD_STARTER
+        private set
+
+    fun ask(
+        key: KeyId,
+        why: Reason,
+    ) {
+        reason = why
+        pending.set(key)
+    }
 
     fun clear() = pending.clear()
 }
@@ -410,7 +429,12 @@ internal fun SettingsPage.ComboStarterBlockedDialog() {
     val textColor = COUITheme.colorScheme.onBackgroundVariant
     ConfirmDialog(
         show = live != null,
-        title = I18n.get(Strings.COMBO_STARTER_BLOCKED_TITLE, "无法用作按住起点"),
+        title =
+            if (ComboStarterBlocked.reason == ComboStarterBlocked.Reason.WAIT_MEMBER) {
+                I18n.get(Strings.COMBO_MEMBER_BLOCKED_TITLE, "无法加入等待组合")
+            } else {
+                I18n.get(Strings.COMBO_STARTER_BLOCKED_TITLE, "无法用作按住起点")
+            },
         action = I18n.get(Strings.COMBO_STARTER_BLOCKED_ACTION, "知道了"),
         positiveDanger = false,
         //  这一条没有「确认之后做点什么」—— 两颗按钮都只是把窗关掉
@@ -419,10 +443,17 @@ internal fun SettingsPage.ComboStarterBlockedDialog() {
         body = {
             ChipSentence(
                 template =
-                    I18n.get(
-                        Strings.COMBO_STARTER_BLOCKED_BODY,
-                        "%s 已设为只参与组合，无法用它作为按住手势的起点。",
-                    ),
+                    if (ComboStarterBlocked.reason == ComboStarterBlocked.Reason.WAIT_MEMBER) {
+                        I18n.get(
+                            Strings.COMBO_MEMBER_BLOCKED_BODY,
+                            "%s 已设为只参与组合，无法加入等待组合。",
+                        )
+                    } else {
+                        I18n.get(
+                            Strings.COMBO_STARTER_BLOCKED_BODY,
+                            "%s 已设为只参与组合，无法用它作为按住手势的起点。",
+                        )
+                    },
                 names = listOf(label),
                 look = ChipLook(textStyle, textColor, enabled = true),
                 style = textStyle,
@@ -455,6 +486,15 @@ private class LastBlocked {
  *  所以只记「哪一颗键」，确认即为关闭。
  */
 internal object ComboOnlyBlocked {
+    /** 挡下来的那一条原因 —— 决定弹窗正文怎么说。 */
+    enum class Reason {
+        /** 这颗键是某档**按住组合的起点**（要求「按住到点再松手」，与不判单键手势互斥）。 */
+        HOLD_STARTER,
+
+        /** 这颗键是某档**等待组合的成员**（按下要吞一个窗口，两头都不讨好）。 */
+        WAIT_MEMBER,
+    }
+
     private val pending = PendingAsk<KeyId>()
 
     val asking: Boolean get() = pending.asking
@@ -462,7 +502,17 @@ internal object ComboOnlyBlocked {
     /** 拦下这一下的那颗键（`null` = 没有待说明的事）。 */
     val key: KeyId? get() = pending.pending
 
-    fun ask(key: KeyId) = pending.set(key)
+    /** 这一次拦下来的原因；退场期间沿用上一次那一份（见 [LastComboOnlyBlocked]）。 */
+    var reason: Reason = Reason.HOLD_STARTER
+        private set
+
+    fun ask(
+        key: KeyId,
+        why: Reason,
+    ) {
+        reason = why
+        pending.set(key)
+    }
 
     fun clear() = pending.clear()
 }
@@ -492,12 +542,20 @@ internal fun SettingsPage.ComboOnlyBlockedDialog() {
         onDismiss = { ComboOnlyBlocked.clear() },
         onConfirm = { ComboOnlyBlocked.clear() },
         body = {
+            val waitMember = ComboOnlyBlocked.reason == ComboOnlyBlocked.Reason.WAIT_MEMBER
             ChipSentence(
                 template =
-                    I18n.get(
-                        Strings.COMBO_ONLY_BLOCKED_BODY,
-                        "%s 是某一档按住组合的起点，不能设为只参与组合。",
-                    ),
+                    if (waitMember) {
+                        I18n.get(
+                            Strings.COMBO_ONLY_BLOCKED_WAIT_BODY,
+                            "%s 是某一档等待组合的成员，不能设为只参与组合。",
+                        )
+                    } else {
+                        I18n.get(
+                            Strings.COMBO_ONLY_BLOCKED_BODY,
+                            "%s 是某一档按住组合的起点，不能设为只参与组合。",
+                        )
+                    },
                 names = listOf(label),
                 look = ChipLook(textStyle, textColor, enabled = true),
                 style = textStyle,
@@ -506,10 +564,19 @@ internal fun SettingsPage.ComboOnlyBlockedDialog() {
             //  出路那一句：与上面同一档字号与颜色，只是不夹名字框
             Text(
                 text =
-                    I18n.get(
-                        Strings.COMBO_ONLY_BLOCKED_TAIL,
-                        "先把那一档组合改成等待组合，或者删掉它。",
-                    ),
+                    if (waitMember) {
+                        //  等待组合的成员没有「改一档」这条路：它就是这一档的一颗成员，
+                        //  要么删掉那一档、要么把它换成别的键
+                        I18n.get(
+                            Strings.COMBO_ONLY_BLOCKED_WAIT_TAIL,
+                            "先把那一档组合删掉，或者把它换成别的键。",
+                        )
+                    } else {
+                        I18n.get(
+                            Strings.COMBO_ONLY_BLOCKED_TAIL,
+                            "先把那一档组合改成等待组合，或者删掉它。",
+                        )
+                    },
                 style = textStyle,
                 color = textColor,
                 modifier = Modifier.fillMaxWidth().padding(top = BLOCKED_TAIL_GAP),

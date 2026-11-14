@@ -304,9 +304,18 @@ private fun circleCut(
     val dx = notch.x - centerX
     val dy = notch.y - centerY
     val distance = sqrt(dx * dx + dy * dy)
+    //  两圆心重合（缺口正落在圆心）：下面每一条都要除以 `distance`，这里直接给一对重合点，
+    //  否则 `ux/uy` 是 Inf、交点变 NaN，整条路径画不出来。
+    if (distance < 1e-4f) {
+        val p = centerX to centerY
+        return p to p
+    }
     //  沿两圆心连线走 along，再垂直偏 offset 就是那两个交点
     val along = (distance * distance + radius * radius - notch.radius * notch.radius) / (2f * distance)
-    val offset = sqrt(radius * radius - along * along)
+    //  **开方前夹到 0**：`along` 可能略大于 `radius`（圆心距与两个半径都来自那几张固定表，
+    //  太阳内圈实测只差 0.0005 就到临界），负数开方是 NaN —— 交点变 NaN 后整条路径不画，
+    //  表现是「这颗字形某一档突然空白」。夹到 0 时两个交点重合在切点上，形状仍然连续。
+    val offset = sqrt((radius * radius - along * along).coerceAtLeast(0f))
     val ux = dx / distance
     val uy = dy / distance
     val midX = centerX + along * ux

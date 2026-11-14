@@ -165,9 +165,6 @@ internal object ConfigChannel {
             ?.takeIf { it > 0 }
             ?.toLong() ?: GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong()
 
-    /** [combo] 这一档靠「窗口内先后按下」触发吗 —— 触发方式是这一档自己的身份，不必再问公共。 */
-    fun windowOnFor(combo: ComboKey): Boolean = combo.isWait
-
     /**
      * [combo] 的**首键要先按住多久**（毫秒）—— 按住那条的下限，每组可另设一份
      * （没写过就跟随公共，见 `Config.comboHoldMinFor`）。
@@ -209,7 +206,7 @@ internal object ConfigChannel {
      * 这一颗键**参与某一组已启用、且认窗口那条的组合**吗 —— 只有这种键才值得为组合先等一个窗口。
      *
      *  不参与的键不等：那条路上没有「第二颗键会不会来」这个问题，让它们跟着等只是白慢。
-     *  **按住那几档的成员也不让等**（`Config.windowOnFor` 只看 `combo.isWait`）：那一档不认
+     *  **按住那几档的成员也不让等**（判据就是 `ComboKey.isWait`）：那一档不认
      *  「窗口内先后按下」，等一个窗口换不来任何东西 —— 成员键按下去就立刻走自己的单键判定。
      *
      *  集合在收到配置时算好（[deriveCombos] 的 `windowMembers`）：这条判据每次 DOWN 都要问一遍，

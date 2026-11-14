@@ -70,7 +70,6 @@ object Strings {
     const val APP_PICKER_SEARCH_APP = "app_picker.search_app"
 
     const val APP_PICKER_TAB_SYSTEM = "app_picker.tab_system"
-    const val APP_PICKER_TAB_USER = "app_picker.tab_user"
     const val APP_PICKER_TAB_XPOSED = "app_picker.tab_xposed"
     const val APP_PICKER_TAG_UNOPENABLE = "app_picker.tag_unopenable"
 
@@ -98,12 +97,6 @@ object Strings {
     const val BINDING_ENABLE_KEY = "binding.enable_key"
 
     const val BINDING_ADD_KEY = "binding.add_key"
-
-    /** 首页按键清单里，一颗**停用的**键后面那句状态（不是动作，别与 `binding.disable_key` 混）。 */
-    const val BINDING_KEY_DISABLED_STATE = "binding.key_disabled_state"
-
-    /** 同一处的另一半：这颗键**开着**（与上面那条一起用，两档都有副标题）。 */
-    const val BINDING_KEY_ENABLED_STATE = "binding.key_enabled_state"
 
     const val BINDING_CUSTOM_KEY_NAME = "binding.custom_key_name"
     const val BINDING_KEY_NAME = "binding.key_name"
@@ -608,6 +601,14 @@ object Strings {
      */
     const val COMBO_STARTER_BLOCKED_TITLE = "combo.starter_blocked_title"
     const val COMBO_STARTER_BLOCKED_BODY = "combo.starter_blocked_body"
+
+    /**
+     * 「这颗键只参与组合，不能加入等待组合」那一条 —— 与 [COMBO_STARTER_BLOCKED_BODY] 同一道
+     * 拦截的另一端：那一档按下要吞一个窗口等第二颗，与「单键归系统」叠起来就是
+     * 「单击没了、原生还晚一个窗口」。
+     */
+    const val COMBO_MEMBER_BLOCKED_TITLE = "combo.member_blocked_title"
+    const val COMBO_MEMBER_BLOCKED_BODY = "combo.member_blocked_body"
     const val COMBO_STARTER_BLOCKED_ACTION = "combo.starter_blocked_action"
 
     /**
@@ -623,6 +624,15 @@ object Strings {
      */
     const val COMBO_ONLY_BLOCKED_TITLE = "combo.combo_only_blocked_title"
     const val COMBO_ONLY_BLOCKED_BODY = "combo.combo_only_blocked_body"
+
+    /**
+     * 同一道拦截的另一半：这颗键已经是某档**等待组合的成员**，不能再设成「只参与组合」。
+     *
+     *  与 [COMBO_ONLY_BLOCKED_BODY]（按住组合的起点）是两个方向、同一条矛盾 ——
+     *  两处都拦，用户不管从哪头配都走不进那个自相矛盾的状态。
+     */
+    const val COMBO_ONLY_BLOCKED_WAIT_BODY = "combo.combo_only_blocked_wait_body"
+    const val COMBO_ONLY_BLOCKED_WAIT_TAIL = "combo.combo_only_blocked_wait_tail"
     const val COMBO_ONLY_BLOCKED_TAIL = "combo.combo_only_blocked_tail"
     const val COMBO_ONLY_BLOCKED_ACTION = "combo.combo_only_blocked_action"
 
@@ -686,6 +696,22 @@ object Strings {
     const val CATALOG_CALCULATOR = "catalog.calculator"
     const val CATALOG_QUICK_TOOLS = "catalog.quick_tools"
     const val CATALOG_RECORDING = "catalog.recording"
+
+    /**
+     * 「计时器」那一格 —— **内置快捷功能**，不给手写格式；它也没有下一层菜单（点格子直接挑时长）。
+     *
+     *  这一条不列在「支持的命令格式」卡上：那张卡只教**没有图形入口**的格式（收录规则见
+     *  `ui/model/text/PageCopy`），而这一格就是它的入口。
+     *
+     *  底下三条是**时长怎么说**（`5 分钟` / `30 秒` / `1 分 30 秒`）：落盘的是秒数，
+     *  界面上念的是分秒 —— 三种形态各自一条键，单位不进代码。
+     *
+     *  **没有秒表那几条**：ColorOS 的秒表没有外部入口，功能没做（判据见 `ClockCatalog`）。
+     */
+    const val CATALOG_CLOCK = "catalog.clock"
+    const val CATALOG_CLOCK_MIN = "catalog.clock_min"
+    const val CATALOG_CLOCK_SEC = "catalog.clock_sec"
+    const val CATALOG_CLOCK_MIN_SEC = "catalog.clock_min_sec"
 
     /**
      * 录音那一层选择器的三档 —— **只有动词**（`开始` / `结束` / `切换`），与录屏同一套。
@@ -764,8 +790,9 @@ object Strings {
      *  弹窗里把那处**该填什么**写明确（`keyevent:<keycode>（数字）`），用来纠正
      *  「写了个键名而不是数字」那一类错误。
      *
-     *  只覆盖 `Action.PREFIXES` 里那七种 —— 别的写法（老配置、`app:` 那类内建动作的 token）
-     *  本来就不该手写，不贴提示。
+     *  只覆盖「支持的命令格式」卡上那七种 —— 别的写法（老配置、`app:` 那类内建动作的 token）
+     *  本来就不该手写，不贴提示。时钟那两条同理：它们在 `Action.PREFIXES` 里（选中之后要能
+     *  当单条命令的正文存下来），但入口是「快捷功能」那一格，卡片上不教手写。
      */
     const val COMMAND_FORMAT_SHELL_TIP = "command.format_shell_tip"
     const val COMMAND_FORMAT_KEYEVENT_TIP = "command.format_keyevent_tip"
@@ -813,9 +840,6 @@ object Strings {
 
     /** 表单与步骤都空着时，顶栏那颗「重置」为什么点不动 —— 点它一下说这一句。 */
     const val COMMAND_RESET_EMPTY = "command.reset_empty"
-
-    /** 停在「命令列表」那一页点重置时的说法 —— 那一页没有表单，清不了什么。 */
-    const val COMMAND_RESET_LIST_PAGE = "command.reset_list_page"
 
     /** 步骤排序态下点重置时的说法 —— 那时改的是顺序、不是内容，重置没有宾语。 */
     const val COMMAND_RESET_SORTING = "command.reset_sorting"
@@ -1279,12 +1303,6 @@ object Strings {
     /** 多配置：已重命名为「%s」 */
     const val PROFILE_RENAMED = "profile.renamed"
 
-    /** 多配置：默认那份不许改名 */
-    const val PROFILE_RENAME_DEFAULT = "profile.rename_default"
-
-    /** 多配置：默认那份不许删除（当前是它时没有地方可以退回去） */
-    const val PROFILE_DELETE_DEFAULT = "profile.delete_default"
-
     /** 多配置：已删除「%1$s」，切到「%2$s」 */
     const val PROFILE_DELETED_SWITCHED = "profile.deleted_switched"
 
@@ -1414,10 +1432,16 @@ object Strings {
     const val HOME_TOAST_DESC_ON = "home.toast_desc_on"
     const val HOME_TOAST_TITLE = "home.toast_title"
 
-    /** 「执行时提示」的**落点**：Toast 还是流体云（只换落点，不换文案）。 */
+    /**
+     * 「执行时提示」的**落点**：Toast 还是流体云（只换落点，不换文案）。
+     *
+     *  流体云是 ColorOS 的能力 ⇒ 这一档随「使用 ColorOS 接口」走：接口那一档关掉时置灰并说明
+     *  原因（`_NEEDS_COLOROS`），执行侧也会回落 Toast（见 `GestureExec.noticeIfNeeded`）。
+     */
     const val HOME_TOAST_FLUID_TITLE = "home.toast_fluid_title"
     const val HOME_TOAST_FLUID_DESC_ON = "home.toast_fluid_desc_on"
     const val HOME_TOAST_FLUID_DESC_OFF = "home.toast_fluid_desc_off"
+    const val HOME_TOAST_FLUID_NEEDS_COLOROS = "home.toast_fluid_needs_coloros"
 
     /** 「执行时提示」的**文案模板**：那一行的标题 / 输入框占位 / 弹窗里的占位符说明 / 为空时那句默认。 */
     const val HOME_TOAST_TEMPLATE_TITLE = "home.toast_template_title"
@@ -1620,7 +1644,6 @@ object Strings {
     const val MORE_SIGNATURE_UNKNOWN = "more.signature_unknown"
     const val NAV_RECENTS = "nav.recents"
     const val PANEL_POWER_MENU = "panel.power_menu"
-    const val SETTING_ENABLE_BINDING = "setting.enable_binding"
     const val SETTING_KEY_BINDING = "setting.key_binding"
 
     /**
@@ -1630,8 +1653,6 @@ object Strings {
      *  两句都要说清「只是不显示」（写成「停用」会让人以为那些命令不跑了）。
      */
     const val SETTING_SHOW_COMMON_COMMANDS = "setting.show_common_commands"
-    const val SETTING_SHOW_COMMON_COMMANDS_ON = "setting.show_common_commands_on"
-    const val SETTING_SHOW_COMMON_COMMANDS_OFF = "setting.show_common_commands_off"
 
     /**
      * 滑杆行「手动输入」小窗的输入框占位（不带值域 —— 那一句在框下面常驻，见 [SLIDER_INPUT_RANGE]）。
@@ -1858,14 +1879,6 @@ object Strings {
     const val VAR_LIMIT = "var.limit"
     const val VAR_NAME_INVALID = "var.name_invalid"
     const val VAR_VALUE_INVALID = "var.value_invalid"
-
-    /**
-     * 绑上一步变量操作之后那句回执（`%s` = 那一步的正文）。
-     *
-     *  **不复用 `toast.bound`**：那一句自带「」，而变量那一步的正文自己已经用「」框住了变量名
-     *  （见 [VAR_STEP_SET]），套两层就成了「已绑定「「计数」+= 1」」。
-     */
-    const val VAR_BOUND = "var.bound"
 
     /** 删除二次确认（标题带变量名，用 `I18n.format`）。 */
     const val VAR_DELETE_TITLE = "var.delete_title"

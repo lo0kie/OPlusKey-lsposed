@@ -25,6 +25,9 @@ jobs:
   build:
     name: debug + release
     runs-on: ubuntu-latest
+    #  **给个上限**：没有它时一次卡住的构建会占满默认的 6 小时，
+    #  而这套 job 正常 10 分钟内跑完（Gradle 缓存命中时 5 分钟）。
+    timeout-minutes: 30
     outputs:
       version_name: ${{ steps.dist.outputs.version_name }}
       version_code: ${{ steps.dist.outputs.version_code }}

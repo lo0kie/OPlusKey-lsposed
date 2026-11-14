@@ -200,11 +200,14 @@ internal fun SettingsPage.PageSheet(
             delay(SHEET_POSITION_STEP_MS)
             val before = scrollState.value
             val error = runCatching { bringIntoView.bringIntoView() }.exceptionOrNull()
-            XLog.w(
+            //  **只有第一轮记 W**：内容整段放得下（没有可滚的）或没有行挂 requester 时，
+            //  视口一直是 0 ⇒ 这里会跑满 8 轮；每轮一条 W 就是 8 行噪音，把别的判据冲干净。
+            //  后面几轮降到 `d`：真要看逐轮位移，log 包里照样有（release 里被编译期消灭）。
+            val line =
                 "抽屉定位：第 ${attempt + 1} 次 视口=${scrollState.viewportSize} " +
                     "范围=${scrollState.maxValue} 位移=$before→${scrollState.value} " +
-                    (error?.let { "抛 $it" } ?: "ok"),
-            )
+                    (error?.let { "抛 $it" } ?: "ok")
+            if (attempt == 0) XLog.w(line) else XLog.d(line)
             //  **视口还没量到就必须再试**：那一刻范围一定是 0，请求会被夹成「原地不动」——
             //  这既不是「已可见」也不是「没得滚」，正是原先「一次都没动过」的根因。
             if (scrollState.viewportSize <= 0) return@repeat

@@ -825,6 +825,13 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
                         I18n.get(Strings.LINK_CHECK_NOT_SYNCED, "未同步")
                     }
 
+                    //  **用户没关、执行侧读到的是关**（`hostSwitchMissing`）：这一档说的是
+                    //  「另一边手上不是这一份」，不是「主开关已关闭」—— 与首页那条提示同一句话
+                    //  （`blockedReason` 里也是这个分支）。不单列的话会把人指去拨一个本来就开着的开关。
+                    f.hostSwitchMissing -> {
+                        I18n.get(Strings.LINK_CHECK_NOT_SYNCED, "未同步")
+                    }
+
                     // 读到默认值只有两种来路：主开关被关了，或者开机还没解锁
                     !link.hostEnabled -> {
                         I18n.get(Strings.LINK_CHECK_SWITCH_OFF, "主开关已关闭")

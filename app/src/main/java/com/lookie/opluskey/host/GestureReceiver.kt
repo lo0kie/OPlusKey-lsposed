@@ -196,17 +196,22 @@ internal object GestureReceiver {
                 ) {
                     // 设置页问「宿主侧的模块在不在」——回一条报活（见 [ModuleWire.ACTION_HOST_SERVICE_QUERY]）。
                     //  要这一问是因为报活广播是**一次性**的：我们发出时设置页可能还没起来。
+                    //  **投到 worker**：报活要读一遍配置（`ConfigStore.read` 是 stat + 指纹比对），
+                    //  留在广播回调里就是给主线程塞一次磁盘 IO —— 这一层只该做「取 extra + 投递」。
                     if (intent?.action == ModuleWire.ACTION_HOST_SERVICE_QUERY) {
                         XLog.w("设置页问宿主模块在不在 —— 回一条报活")
-                        context?.let { reportAlive(it) }
+                        val ctx = context ?: return
+                        runOnWorker { reportAlive(ctx) }
                         return
                     }
                     // 设置页按了「重启服务」：那边马上要杀自己，由我们（宿主主进程）等一下把页面拉回来，
                     //  拉起之后本进程也重来一遍（见 [PageRelaunch]）。
-                    // 设置页要导出日志：把本进程（宿主主进程）那份缓冲回给它。
-                    //  与本文件其他分支同一纪律：只做广播与取 extra，不碰配置、不改状态。
+                    // 设置页要导出日志：把本进程（宿主主进程）那份缓冲回给它 —— 拼片发广播是几十次
+                    //  跨进程调用，同样丢给 worker（缓冲自己有锁，不必在主线程上手）。
+                    //  与本文件其他分支同一纪律：这块回调里只做广播与取 extra，不碰配置、不改状态。
                     if (intent?.action == ModuleWire.ACTION_LOG_PULL) {
-                        context?.let { LogWire.reply(it, HostApp.PACKAGE, "host") }
+                        val ctx = context ?: return
+                        runOnWorker { LogWire.reply(ctx, HostApp.PACKAGE, "host") }
                         return
                     }
                     if (intent?.action == ModuleWire.ACTION_PAGE_RELAUNCH) {
@@ -225,11 +230,6 @@ internal object GestureReceiver {
                         //  **场景快照请求**：不是手势、不执行动作 —— 只是「某个时刻到了」，
                         //  让宿主把那一刻的条件定下来（见 `GestureExec.handleComboScene`）。
                         val sceneStage = intent?.getStringExtra(ModuleWire.EXTRA_SCENE_STAGE)
-                        //  这一下是**模块认领的**（判据侧刚判出手势）：记一笔，宿主那条场景派发
-                        //  据此判「要不要吞」（见 [PressTrace]）。
-                        //  **记在 `GestureExec` 过完「过期 / 重复」那道闸之后**：转发侧对同一次手势
-                        //  会发两条（立刻 + 300ms 补发），在这里无条件记等于把吞键窗口一路推到
-                        //  600ms —— 那段时间里别的键的原生派发会被当成「模块认领的」一起吞掉。
                         if (!sceneStage.isNullOrEmpty()) {
                             XLog.w("收到 system_server 转来的场景快照：$sceneStage=$combo")
                             runOnWorker {
@@ -241,6 +241,10 @@ internal object GestureReceiver {
                             // 组合键走独立一条：动作在 `ComboKey` 上，没有单键的 `KeyConfig`
                             //  （见 `ModuleWire.EXTRA_COMBO`）。
                             XLog.w("收到 system_server 转来的组合键：combo=$combo phase=$phase repeat=$repeat")
+                            //  **「这一下归模块」就在这一刻记**（见 [PressTrace]）：再往后的执行排在那条
+                            //  串行队列上，前一条动作慢时会晚到几秒 —— 那期间下一次按压的原生派发
+                            //  会被补投回去，一次按压出两个动作。
+                            PressTrace.noteArrival(sentAt)
                             //  **执行丢给 worker**：广播回调留在主线程只做「取 extra + 投递」，
                             //  否则一次读盘 + 多次 binder 全压在宿主 UI 线程上（见 [worker] 的注释）。
                             runOnWorker {
@@ -250,6 +254,8 @@ internal object GestureReceiver {
                             }
                         } else {
                             XLog.w("收到 system_server 转来的手势：key=$key phase=$phase repeat=$repeat")
+                            //  与上面那一条同一笔账（见 [PressTrace]）
+                            PressTrace.noteArrival(sentAt)
                             runOnWorker {
                                 XLog.guard("执行侧键动作") {
                                     GestureExec.handle(key, phase, repeat, sentAt)

@@ -60,8 +60,12 @@ internal class KeyInjector(
         //  `KeyInject.injectOnce` 里同一条教训，两处口径必须一致）。
         return when {
             r == null -> {
-                XLog.w("注入按键：injectInputEvent 没返回（按已下发处理）：keyevent:$keyCode")
-                true
+                //  `Reflect.call` 把异常吞成 `null`（`SecurityException` / 反射失败都在里头），
+                //  而 `injectInputEvent` 哪一版都返回 `int` / `boolean` —— 拿不到值只可能是**调用没成**。
+                //  当成成功会让「没权限」表现成「已注入、屏幕没反应」，与注入侧那条教训同源
+                //  （见 `inject/key/KeyInject` 的 `injectOnce`）。
+                XLog.w("注入按键：injectInputEvent 调用没成（异常见上一行「reflect invoke failed」）：keyevent:$keyCode")
+                false
             }
 
             r is Boolean -> {

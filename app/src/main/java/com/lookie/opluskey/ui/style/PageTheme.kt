@@ -43,17 +43,25 @@ internal val LocalAppTheme = staticCompositionLocalOf { AppTheme.AUTO }
 internal fun SettingsPage.colorsFor(night: Boolean) = if (night) DARK_SCHEME else LIGHT_SCHEME
 
 /**
- * 系统当前是不是深色 —— 读系统全局配置；不能用 Activity / Application 的 `configuration`
+ * 系统当前是不是深色 —— 读**系统全局配置**；不能用 Activity / Application 的 `configuration`
  * （宿主声明了 `configChanges=uiMode`）。
+ *
+ *  **判据只有这一处**：页面（[systemNight]）与 hook 侧（`hook/HostWindow.isNight`）都调它，
+ *  只是读不出来时兜底不同 —— 页面退回自己记的 `chrome.dark`，hook 侧退回 `Context` 的
+ *  configuration。那两份兜底本来就不该一样，但「系统到底深不深」只能有一个答案。
+ *
+ *  @return 读不出来（极少数 ROM 上 `Resources.getSystem()` 会抛）给 `null`，由调用方兜底
  */
-internal fun SettingsPage.systemNight(): Boolean =
+internal fun systemNightOrNull(): Boolean? =
     try {
-        val uiMode = Resources.getSystem().configuration.uiMode
-        (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        (Resources.getSystem().configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
     } catch (e: Throwable) {
-        XLog.d("读系统深浅失败：${e.message}")
-        chrome.dark
+        XLog.d("读系统深浅失败（由调用方兜底）：${e.message}")
+        null
     }
+
+internal fun SettingsPage.systemNight(): Boolean = systemNightOrNull() ?: chrome.dark
 
 /** 系统切深浅时同步给 hook 侧（顶栏与状态栏配色）。 */
 @Composable

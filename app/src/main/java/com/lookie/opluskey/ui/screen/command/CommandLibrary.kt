@@ -44,14 +44,15 @@ internal fun SettingsPage.testCommand(cmd: Command) {
     //  判据与保存那一栏共用 `hasSupportedFormat`（只针对单条：多条的每一步都是从列表里挑的，
     //  天然是支持的格式）。两条入口（命令列表的菜单、表单页的菜单）都走这一支，闸只加在这里。
     if (cmd.kind == CommandKind.SINGLE && !Action.hasSupportedFormat(cmd.single)) {
-        XLog.w("测试命令：正文格式不支持，不派发（${cmd.single.take(32)}）")
+        //  正文可能内嵌令牌 / 密码（`shell:` 那一类）：走与执行侧同一套脱敏，不再截前 32 字符
+        XLog.w("测试命令：正文格式不支持，不派发（${XLog.redactCommand(cmd.single)}）")
         hint(I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "必须以支持的格式开头"), slot = HINT_SLOT_COMMAND)
         return
     }
     //  **只写了前缀也不算有内容**（`shell:` 后面空着、或只有空格）：它过了格式闸，
     //  派下去却是一条空命令 —— 与「空命令」同一个症状（点了测试、什么都没发生）。
     if (cmd.kind == CommandKind.SINGLE && !Action.hasBody(cmd.single)) {
-        XLog.w("测试命令：只有前缀、没有正文，不派发（${cmd.single.take(32)}）")
+        XLog.w("测试命令：只有前缀、没有正文，不派发（${XLog.redactCommand(cmd.single)}）")
         hint(I18n.get(Strings.COMMAND_FAILURE_EMPTY, "这条命令是空的，补上内容再试"), slot = HINT_SLOT_COMMAND)
         return
     }

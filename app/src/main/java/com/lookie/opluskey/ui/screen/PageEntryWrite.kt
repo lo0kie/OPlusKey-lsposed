@@ -304,7 +304,7 @@ private fun SettingsPage.writeLongReleaseTo(
  *
  * @return 写下去没有（`false` = 这条动作根本不能执行 / 链路未就绪 / 写盘失败）
  */
-private fun SettingsPage.addCommonCommand(action: Action): Boolean {
+internal fun SettingsPage.addCommonCommand(action: Action): Boolean {
     //  入口格那种「标记」写法（`appctl:open`）不是能执行的动作，读盘那一道也会把它丢掉
     if (action is Action.None) return false
     val cfg = configState.config.value

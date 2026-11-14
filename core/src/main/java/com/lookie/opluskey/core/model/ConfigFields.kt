@@ -697,6 +697,24 @@ object ConfigFields {
      */
     val F_SHOW_COMMON_COMMANDS = Field(null, Kind.Bool(GlobalConfig.DEFAULT_SHOW_COMMON_COMMANDS))
 
+    //  —— 公共设置里的「单击」三项 ——
+    //
+    //  **只落盘、不进广播**（`Field(null, …)`）：注入侧读的是**每颗键**那三个 extra
+    //  （`<keyId>_double_click_ms` 等），而那三格在广播前已经按「这颗键开没开独立设置」
+    //  解析成生效值了（见 `KeyConfig.fieldValues(global)`）。再单独广播一份公共值，
+    //  注入侧还得自己判一次该用哪一份 —— 两份判据迟早对不上。
+
+    /** 公共设置里的单击延迟（毫秒）。 */
+    val F_GLOBAL_DOUBLE_CLICK_MS =
+        Field(null, Kind.Number(KeyConfig.DEFAULT_DOUBLE_CLICK_MS, KeyConfig.MIN_DOUBLE_CLICK_MS, KeyConfig.MAX_DOUBLE_CLICK_MS))
+
+    /** 公共设置里的判定时机（`false` = 固定窗口起点）。 */
+    val F_GLOBAL_WAIT_MULTI_WINDOW = Field(null, Kind.Bool(false))
+
+    /** 公共设置里的等待窗口（0 = 跟随单击延迟）。 */
+    val F_GLOBAL_MULTI_WAIT_MS =
+        Field(null, Kind.Number(KeyConfig.FOLLOW_DOUBLE_CLICK_MS, KeyConfig.FOLLOW_DOUBLE_CLICK_MS, KeyConfig.MAX_MULTI_WAIT_MS))
+
     /** `GlobalConfig` 的全部广播字段。 */
     val GLOBAL_FIELDS: List<Field> =
         listOf(

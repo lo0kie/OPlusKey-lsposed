@@ -386,9 +386,11 @@ object ConfigProfiles {
     }
 
     /**
-     * 算出一份**改过名字**的配置（**不写盘**）。
+     * 算出一份**改过名字**的配置（**不写盘**）。只改当前配置（[CURRENT_SLOT]）。
      *
      *  两条不许：名字为空、以及这份是「默认」配置（名字本来就是空串，改了就没地方回去了）。
+     *
+     *  「是不是默认」按**它在列表里的身份**（id）判，不按名字形态 —— 理由见 [isDefaultSlot]。
      *
      *  写盘交给调用方走通用写入通道（界面的 `write`）：那条路负责页面状态、配置广播与重问注入侧。
      *  这一层自己写一次的话，那三样都得在这儿再补一遍 —— 而它连页面都不认识。
@@ -401,11 +403,9 @@ object ConfigProfiles {
     ): Config? {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return null
-        //  默认配置**不许改名**：名字空着就是它的身份（见 [Config.isDefaultProfile]），
-        //  改了名之后「升级时落下的退路」在列表里就再也认不出来了。
-        //  曾经为救「名字被抹掉的那一份」放开过这条（它顶着默认身份卡死）；现在按用户口径收紧 ——
-        //  那种情况的自救入口是「新建一份配置」再配，而不是给退路改名。
-        if (config.isDefaultProfile) {
+        //  默认配置**不许改名**：名字空着就是它的身份，改了名之后「升级时落下的退路」在列表里
+        //  就再也认不出来了。判据是 id（与 [list] 同一口径），不是名字形态 —— 见 [isDefaultSlot]。
+        if (isDefaultSlot(CURRENT_SLOT)) {
             XLog.w("配置改名：默认配置不许改名")
             return null
         }
@@ -422,6 +422,16 @@ object ConfigProfiles {
     private fun isProfileSlot(slot: String): Boolean =
         slot == CURRENT_SLOT ||
             (slot.startsWith(SLOT_PREFIX) && slot.removePrefix(SLOT_PREFIX).toIntOrNull() != null)
+
+    /**
+     * 这一槽在列表里是不是那个「默认配置」—— **按 id 判**，与 [list] / [assignProfileIds] 同一口径。
+     *
+     *  为什么不能按名字形态（[Config.isDefaultProfile]：名字空 + 位次 0）判：真机上出现过两份都
+     *  满足这条的数据（名字被抹过两次）。那时 [assignProfileIds] 只把 id 分给其中一份，另一份在
+     *  界面上显示成「未命名」；改名与删除若仍按形态判，就会把两份**同时**当成默认 ——
+     *  当前那份既改不了名也删不掉，还占着 [isFull] 的额度，新建 / 导入永久灰着，没有任何自救入口。
+     */
+    private fun isDefaultSlot(slot: String): Boolean = list().firstOrNull { it.slot == slot }?.isDefault == true
 
     /**
      * 删除 [slot] 槽里的配置。
@@ -448,8 +458,9 @@ object ConfigProfiles {
         //  **默认配置不许删**（用户口径）：它是升级时落下的退路 —— 删掉之后「新建 / 导入失败时
         //  退回到哪一份」就没有答案了。读不出来（`readOf` 为 null）的槽按「坏了的普通配置」处理、照删：
         //  那是自救入口，堵掉会让「新建 / 导入」永久灰着。
+        //  判据按 **id**（与 [list] 同一口径），不按名字形态 —— 见 [isDefaultSlot]。
         val target = readOf(slot)
-        if (target != null && target.isDefaultProfile) {
+        if (isDefaultSlot(slot)) {
             XLog.w("配置删除：默认配置不许删")
             return false
         }
@@ -611,6 +622,12 @@ object ConfigProfiles {
         config: Config,
         commands: List<Command>,
     ): Config? {
+        //  与 [delete] 同一道闸：公开 API 传进来的若是 `ui` / `vars` / `commands` 那几槽，
+        //  写下去就是把界面状态或变量表整份换成一份配置（那几个槽归各自的 Store 管）。
+        if (!isProfileSlot(slot)) {
+            XLog.w("配置导入覆盖：$slot 不是配置槽，拒绝")
+            return null
+        }
         val target =
             readOf(slot) ?: run {
                 XLog.w("配置导入覆盖：$slot 读不出来，拒绝覆盖")
@@ -651,17 +668,29 @@ object ConfigProfiles {
         return ordered
     }
 
-    /** 读某一份（导出、以及列表里取名字都用它）。读不出来返回 `null`。 */
-    fun readOf(slot: String): Config? =
-        when (val r = ConfigStore.files().read(slot)) {
-            is ModuleFiles.Load.Ok -> {
-                FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, r.text)?.let { ConfigCodec.parseOrNull(it) }
+    /**
+     * 读某一份（导出、以及列表里取名字都用它）。读不出来返回 `null`。
+     *
+     *  **主文件读不懂时也试一次 `.prev`**：`[writeProfileConfig]` 每次写盘前都留一份快照，
+     *  正是为这种情况准备的。不比（`ConfigStore.load` 给当前配置做的那一步）的话，非当前的那一份
+     *  坏一次就只能删掉 —— 它明明还有一份可救的副本躺在同一个目录里。
+     */
+    fun readOf(slot: String): Config? {
+        val fromMain =
+            when (val r = ConfigStore.files().read(slot)) {
+                is ModuleFiles.Load.Ok -> decodeConfig(r.text)
+                ModuleFiles.Load.Absent, ModuleFiles.Load.Unreadable -> null
             }
-
-            ModuleFiles.Load.Absent, ModuleFiles.Load.Unreadable -> {
-                null
-            }
+        if (fromMain != null) return fromMain
+        val backup = readModuleFileBackup(ConfigStore.files().file(slot)) ?: return null
+        return decodeConfig(backup)?.also {
+            XLog.w("配置列表：$slot 的主文件读不懂，用 .prev 快照顶上")
         }
+    }
+
+    /** 一份文件正文 → 配置（外皮剥不开 / 解析不了都是 `null`）。 */
+    private fun decodeConfig(text: String): Config? =
+        FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, text)?.let { ConfigCodec.parseOrNull(it) }
 
     /**
      * 除「默认」之外还能不能再建一份 —— 按**槽位数**，不按「能读出来的内容」。

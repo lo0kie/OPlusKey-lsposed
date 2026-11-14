@@ -134,25 +134,15 @@ jobs:
             exit 1
           fi
 
-      # 资产名按版本号，同一版重传会撞同名 —— 先清掉这一版已有资产再传，
-      # 免得 `gh` 报「文件已存在」，也免得同一条 release 下攒出两个同名包。
-      - name: 清掉这一版里的旧资产
-        env:
-          TAG: ${{ steps.resolve.outputs.tag }}
-          GH_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
-        run: |
-          gh release view "$TAG" --repo "$MODULE_REPO" --json assets \
-            --jq '.assets[].name' 2>/dev/null | while read -r name; do
-            [ -n "$name" ] || continue
-            echo "删除旧资产 $name"
-            gh release delete-asset "$TAG" "$name" --repo "$MODULE_REPO" --yes
-          done
-
       # 这一版的更新说明 —— **管理器弹「有新版本」时显示的就是它**（模块仓库那条 release 的正文）。
       #
       #   来源是**手写维护**的 `docs/release-notes/<versionName>.md`，与钉版那条（`release.yml`）同一个文件：
       #   两处显示的永远是一样的字。为什么不从提交里拼 —— 提交信息是写给维护者的，
       #   弹窗里要的是写给用户的一段话。缺文件就歇：公告是发版物的一部分。
+      #
+      #  **必须排在「清掉旧资产」之前**：那一步一跑，模块仓库那一版 release 就成了「有 tag、0 个包」——
+      #   管理器按 tag 判「有新版本」并提示用户更新，而下到的包是空的，只能人工补传。
+      #   公告缺失是最常见的失败，让它先失败在没有副作用的那一步。
       - name: 取本版更新公告
         run: |
           note="docs/release-notes/${{ steps.dist.outputs.version_name }}.md"
@@ -170,6 +160,20 @@ jobs:
           } > dist/release-body.md
           echo "--- 正文 ---"
           cat dist/release-body.md
+
+      # 资产名按版本号，同一版重传会撞同名 —— 先清掉这一版已有资产再传，
+      # 免得 `gh` 报「文件已存在」，也免得同一条 release 下攒出两个同名包。
+      - name: 清掉这一版里的旧资产
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          GH_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
+        run: |
+          gh release view "$TAG" --repo "$MODULE_REPO" --json assets \
+            --jq '.assets[].name' 2>/dev/null | while read -r name; do
+            [ -n "$name" ] || continue
+            echo "删除旧资产 $name"
+            gh release delete-asset "$TAG" "$name" --repo "$MODULE_REPO" --yes
+          done
 
       # 让这一版的 tag 指向一个**新提交**。
       #

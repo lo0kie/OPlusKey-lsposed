@@ -100,10 +100,12 @@ internal class StepRowDisplay {
         }
         // 没匹配上的 → 退场；锚 = 前面最近的保留行（收缩期间插回它下面）
         var prevId = -1
+        //  `kept` 就是 `rows.filter { !it.exiting }`，所以这里不必再判一次 `!row.exiting`
+        //  （恒真）—— 写出来只会让人以为「已退场的行也可能在这一支里」。
         kept.forEach { row ->
             if (matched.contains(row)) {
                 prevId = row.id
-            } else if (!row.exiting) {
+            } else {
                 row.exiting = true
                 row.anchorId = prevId
                 row.state.targetState = false

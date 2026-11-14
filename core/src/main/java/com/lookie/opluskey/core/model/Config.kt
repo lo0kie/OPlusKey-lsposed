@@ -652,7 +652,7 @@ data class KeyConfig(
      *  界面那一侧也据它把「松手执行额外动作」整族压灰（见 `LongPressGates.releaseEnabled`）。
      */
     val longActionExists: Boolean
-        get() = long.isBound || sceneLong || scenes.any { (it.actions[GestureTrigger.LongPress] ?: Action.None).isBound }
+        get() = long.isBound || sceneLong || scenes.any { it.longBound }
 
     /**
      * 「单击后长按」这一档**本身**有事可做 —— 直接绑了动作，或某块场景里给它配了动作。
@@ -664,7 +664,7 @@ data class KeyConfig(
         get() =
             clickThenLong.isBound ||
                 sceneChain ||
-                scenes.any { (it.actions[GestureTrigger.ClickThenLong] ?: Action.None).isBound }
+                scenes.any { it.chainBound }
 
     /**
      * 「单击后长按」这一档**此刻算不算数** —— 开着，**且**这一档真有动作（直接绑定 / 场景里配过）。
@@ -729,9 +729,17 @@ data class KeyConfig(
      *
      *  **成对纪律**：这里加一个键，[ofFields] 必须同时读回来；改字段集合时先看 `ConfigFields` 那张表的
      *  「加一个配置字段要改几处」。
+     *
+     *  ## `global` 为什么在这里
+     *
+     *  单击那三项（[doubleClickMs] / [waitMultiWindow] / [multiWaitMs]）在**没开「使用独立设置」**
+     *  时读的是公共设置那一份。广播是判定侧**唯一**的输入，它不能自己再判一次「这颗键开没开独立
+     *  设置」—— 所以在这里就把生效值算好写进去。不传（`null`）时按本对象自己的值，给落盘那条
+     *  通道用：**文件里存的永远是这一档自己的值**，与「用不用」无关。
      */
-    fun fieldValues(): ConfigFields.Values =
-        ConfigFields.Values(
+    fun fieldValues(global: GlobalConfig? = null): ConfigFields.Values {
+        val own = useOwnSettings || global == null
+        return ConfigFields.Values(
             mapOf(
                 ConfigFields.F_ENABLED to enabled,
                 ConfigFields.F_SINGLE to single.token,
@@ -744,11 +752,11 @@ data class KeyConfig(
                 ConfigFields.F_LONG_FIRE_ON_RELEASE to longFireOnRelease,
                 ConfigFields.F_REPEAT_INTERVAL_MS to longRepeatIntervalMs,
                 ConfigFields.F_REPEAT_VIBRATE to longRepeatVibrate,
-                ConfigFields.F_DOUBLE_CLICK_MS to doubleClickMs,
+                ConfigFields.F_DOUBLE_CLICK_MS to if (own) doubleClickMs else global.doubleClickMs,
                 ConfigFields.F_COMBO_ONLY to comboOnly,
                 ConfigFields.F_DOUBLE_CLICK_ON to doubleClickOn,
-                ConfigFields.F_WAIT_MULTI_WINDOW to waitMultiWindow,
-                ConfigFields.F_MULTI_WAIT_MS to multiWaitMs,
+                ConfigFields.F_WAIT_MULTI_WINDOW to if (own) waitMultiWindow else global.waitMultiWindow,
+                ConfigFields.F_MULTI_WAIT_MS to if (own) multiWaitMs else global.multiWaitMs,
                 ConfigFields.F_OWN_SETTINGS to useOwnSettings,
                 ConfigFields.F_KEY_COLOR_OS_API to colorOsApi,
                 ConfigFields.F_KEY_VIBRATE to vibrate,
@@ -790,6 +798,7 @@ data class KeyConfig(
                 ConfigFields.F_CTL_RELEASE to clickThenLongRelease.token,
             ),
         )
+    }
 
     companion object {
         /** 「单击延迟」的默认值（毫秒）。 */
@@ -972,6 +981,18 @@ data class GlobalConfig(
      *  默认关：装上模块不改变任何行为。
      */
     val enabled: Boolean = DEFAULT_ENABLED,
+    /**
+     * 公共设置里的**单击延迟**（毫秒）—— 没开「使用独立设置」的键都用这一份。
+     *
+     *  与 `KeyConfig.doubleClickMs` 是同一件事的两层：那一层是「这颗键自己的一份」，
+     *  这一层是「大家都用这一份」。取哪一个由 `KeyConfig.useOwnSettings` 定
+     *  （见 `KeyConfig.fieldValues(global)`）。
+     */
+    val doubleClickMs: Int = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
+    /** 公共设置里的**判定时机**（`false` = 固定窗口起点，`true` = 每次松手重新起算）。 */
+    val waitMultiWindow: Boolean = false,
+    /** 公共设置里的**等待窗口**（0 = 跟随 [doubleClickMs]，见 `KeyConfig.multiWaitMs`）。 */
+    val multiWaitMs: Int = KeyConfig.FOLLOW_DOUBLE_CLICK_MS,
     override val vibrate: Boolean,
     /**
      * **振动强度** —— 三档（[VIBRATE_WEAK] / [VIBRATE_MEDIUM] / [VIBRATE_STRONG]）。
@@ -983,10 +1004,15 @@ data class GlobalConfig(
     /** 执行**任意动作**时弹一条提示（内容是动作名；自定义命令取命令名）。 */
     override val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
     /**
-     * 「执行时提示」走**流体云**（状态栏 / AOD 上那颗胶囊）而不是 Toast，默认关。
+     * 「执行时提示」走**流体云**（状态栏 / AOD 上那颗胶囊）而不是 Toast，默认**开**。
      *
      *  它只换落点，不换说法：文案仍由 [toastTemplate] 拼，图标取**被执行的那个动作**自己的
      *  字形（`FluidCard.actionNameOf`，界面层预渲染、宿主执行时按同一名字找）。
+     *
+     *  **跟着 [colorOsApi] 走**：流体云是 ColorOS 的能力（Seedling 卡片只有已注册的 seedling
+     *  宿主发得出去），所以关掉「使用 ColorOS 接口」之后一律回落 Toast —— 那一档的语义就是
+     *  「这一套动作都走 AOSP 通道」，回执也跟着走 AOSP 的 Toast（用户口径「使用 ColorOS 接口时
+     *  应该弹流体云」）。
      *
      *  与 [toastOnRun] 同一档：只在 [toastOnRun] 为真时有意义，读它的是宿主执行器，
      *  所以**只走落盘那一列**、不进广播（注入侧不弹提示）。
@@ -1146,6 +1172,9 @@ data class GlobalConfig(
                 ConfigFields.F_PAGE_SCALE to pageScale,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
+                ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS to doubleClickMs,
+                ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to waitMultiWindow,
+                ConfigFields.F_GLOBAL_MULTI_WAIT_MS to multiWaitMs,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
                 ConfigFields.F_COMBO_HOLD_MIN_MS to comboHoldMinMs,
                 ConfigFields.F_COMBO_SCENE_ON_STARTER to comboSceneOnStarter,
@@ -1159,8 +1188,14 @@ data class GlobalConfig(
         /** [GlobalConfig.toastOnRun] 的默认值：默认不弹。 */
         const val DEFAULT_TOAST_ON_RUN = false
 
-        /** [GlobalConfig.toastFluid] 的默认值：默认走 Toast（与这一档出现之前一致）。 */
-        const val DEFAULT_TOAST_FLUID = false
+        /**
+         * [GlobalConfig.toastFluid] 的默认值：**默认走流体云**。
+         *
+         *  用户口径「使用 ColorOS 接口时应该弹流体云」—— 而「使用 ColorOS 接口」出厂就是开的，
+         *  所以回执的默认落点跟着它走胶囊。真要 Toast 气泡，在设置里把这一行关掉即可；
+         *  关掉「使用 ColorOS 接口」则自动回落 Toast（见 [GlobalConfig.toastFluid]）。
+         */
+        const val DEFAULT_TOAST_FLUID = true
 
         /**
          * [GlobalConfig.toastTemplate] 的默认值 —— 与拆分之前那句话**逐字一致**，
@@ -1293,6 +1328,10 @@ data class GlobalConfig(
                 // 与 pageScale 同一档：手改文件写进负数在这一层钳回「关」
                 iconTintSeed = v.number(ConfigFields.F_ICON_TINT_SEED).coerceAtLeast(0),
                 showCommonCommands = v.bool(ConfigFields.F_SHOW_COMMON_COMMANDS),
+                // 公共设置里的「单击」三项（只落盘，见 `F_GLOBAL_DOUBLE_CLICK_MS` 那一段）
+                doubleClickMs = v.number(ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS),
+                waitMultiWindow = v.bool(ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW),
+                multiWaitMs = v.number(ConfigFields.F_GLOBAL_MULTI_WAIT_MS),
                 //  与 pageScale 同一档：手改文件写进越界值，在这一层钳回滑杆两端
                 comboWindowMs = v.number(ConfigFields.F_COMBO_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
                 //  与 comboWindowMs 同一档：越界值在这一层钳回滑杆两端

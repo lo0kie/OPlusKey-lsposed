@@ -318,8 +318,12 @@ internal class SideKeyInterceptor(
                 XLog.d { "按键（$point）：参数里没有 KeyEvent，这一层不做转发（放行给系统）" }
                 return false
             }
-        // 同上：合成事件不认领
-        if (isSynthetic(keyEvent)) return false
+        // 同上：合成事件不认领。**按 d 记一行**：按 w 会随每次注入刷屏，而不记的话
+        //  「自己注入的键被自己认领了」这种自持循环在日志里完全无痕。
+        if (isSynthetic(keyEvent)) {
+            XLog.d { "按键（$point）：合成事件（deviceId<0），不认领" }
+            return false
+        }
 
         // 这一层能收到所有按键，所以按 keyCode 认领 —— 但只认**原始码**（内部注入码归策略类那条路）
         return when (val d = decide(config, keyEvent, point, raw = true)) {
@@ -340,7 +344,9 @@ internal class SideKeyInterceptor(
         code: Int,
         keyEvent: KeyEvent,
     ): Boolean {
-        if (keyEvent.action == KeyEvent.ACTION_DOWN) {
+        //  **只记第一次按下**：长按的 repeat 同样是 ACTION_DOWN（`repeatCount > 0`），
+        //  按住不放会把这行 W 刷成几十条，把真正的判据行冲掉。
+        if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount == 0) {
             XLog.w("按键：ROM 中间码 $code 已认下并吞掉（不是手势码，不派发）")
         }
         return true

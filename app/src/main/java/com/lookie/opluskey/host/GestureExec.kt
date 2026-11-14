@@ -220,8 +220,8 @@ internal object GestureExec {
         //  `ClickThenLongRelease` 与 `Release` 同一个道理 —— 它也是抬手那一刻才发的那一条。
         if (staleOrDuplicate(key.id, phaseId, sentAt, keepLate = trigger.isReleasePhase)) return
 
-        //  「这一下归模块」那一笔（`PressTrace`）不在这里记：它要等开关闸也过完 ——
-        //  停用的键不该把宿主的吞键窗口往后推（见 [dispatch]）。
+        //  「这一下归模块」那一笔（`PressTrace`）**不在这里记**：它记在广播到达那一刻，见
+        //  [GestureReceiver] —— 记在这一侧会排到那条串行队列后面（前一条动作慢就晚到几秒）。
         dispatch(key, trigger, repeat)
     }
 
@@ -342,8 +342,8 @@ internal object GestureExec {
                 ?.takeIf {
                     !staleOrDuplicate("combo:${it.id}", phaseId, sentAt, keepLate = trigger is GestureTrigger.Release)
                 } ?: return
-        //  与单键那条同一笔账：过完闸才记「这一下归模块」（理由见 [handle] 里那段）
-        PressTrace.noteClaim()
+        //  「这一下归模块」那一笔（`PressTrace`）同样不在这里记 —— 与 [handle] 同一条理由，
+        //  它记在广播到达那一刻（见 [GestureReceiver]）。
         //  条件执行：与单键那一支同一套 —— 先在这档的顺序表里找，第一条成立的就执行它，
         //  一条都不中才落到 `actionOf` 那一档绑定。判据现判（按下的那一刻），且**一次按下的
         //  一次判定里同一个条件只判一次**（一块可以带好几条，几条规则之间又常重复）。
@@ -529,11 +529,6 @@ internal object GestureExec {
             XLog.w("${key.label}：$why，忽略这次 ${trigger.label}（模块不生效）")
             return
         }
-        //  两块闸都过完才算**这一下归模块**（`PressTrace`）：转发侧对同一次手势会发两条
-        //  （立刻 + 300ms 补发），补发那条若也记一笔，宿主的吞键窗口就被推迟到约 600ms，
-        //  期间别的键的原生派发会被一起吞掉。**必须放在开关闸之后** —— 停用 / 总闸关的键
-        //  会被上面那一支挡掉，那种情况下不该占住宿主的吞键窗口。
-        PressTrace.noteClaim()
         runAction(key, trigger, keyConfig, repeat, config)
     }
 
@@ -768,7 +763,11 @@ internal object GestureExec {
         if (what.sentence.isEmpty()) return
         val notice = ToastNotice.render(own.toastTemplate, keyLabel, gestureLabel, what)
         XLog.w("执行时提示：$notice")
-        if (own.toastFluid) {
+        //  走哪一路：流体云是 **ColorOS 的能力**（Seedling 卡片只有已注册的 seedling 宿主发得出去），
+        //  所以「使用 ColorOS 接口」关着时一律回落 Toast —— 那一档的语义就是「这一套都走 AOSP 通道」。
+        //  用户口径「使用 ColorOS 接口时应该弹流体云」。
+        val viaFluid = own.toastFluid && config.global.colorOsApi
+        if (viaFluid) {
             //  换落点不换说法：同一句 `$key - $gesture → $action`，交给宿主自己的 Seedling SDK。
             //  图标取**这一次执行的动作**（界面层已按 `FluidCard.actionNameOf` 预渲染成 png）；
             //  失败不再回头弹一条 Toast —— 那是「提示失败的提示」，用户要的那一句照样没出现。

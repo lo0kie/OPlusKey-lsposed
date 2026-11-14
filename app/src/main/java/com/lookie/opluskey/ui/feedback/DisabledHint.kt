@@ -22,21 +22,11 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 // 「提示怎么弹」与「点不动时说哪句」—— 控件层拿不到页面实例，这两条通道都从上面传。
 
 /**
- * 弹一条操作提示 —— 由页面在根上提供（实现是 `hints.hint`，见 `ui/feedback/PageFeedback.kt`）。
- *
- *  控件层（`SheetAction` 这种不带 `SettingsPage` 接收者的）也拿不到页面实例，所以「提示怎么弹」
- *  从上面传下来。**没提供时是空实现**：控件在别的上下文里照样能用，只是不出声。
- *
- *  「禁用态被点了一下」要说的话不走这一条，走 [LocalDisabledHint]。
- */
-internal val LocalHint = staticCompositionLocalOf<(String) -> Unit> { {} }
-
-/**
  * 「点一下振一次」—— 由页面在根上提供（实现是 `haptics.tick`，见 `PageHaptics`）。
  *
  *  为什么要有这一条：**能点的行默认就该振**（用户口径），而这一下振动发生在
  *  `CardList` / `PickerRow` 这些**控件层**——它们不带 `SettingsPage` 接收者，拿不到页面实例。
- *  所以和 [LocalHint] 一样从上面传下来，控件只管「点的时候叫一声」。
+ *  所以和 [LocalDisabledHint] 一样从上面传下来，控件只管「点的时候叫一声」。
  *
  *  没提供时是空实现：这些控件在别的上下文里照样能用，只是不振动。
  *

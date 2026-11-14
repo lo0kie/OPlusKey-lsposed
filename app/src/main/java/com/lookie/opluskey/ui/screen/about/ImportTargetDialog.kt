@@ -286,12 +286,10 @@ internal fun SettingsPage.overwriteProfile(overwrite: ImportOverwrite) {
     if (overwrite.slot == ConfigProfiles.CURRENT_SLOT) {
         if (applySwitchedConfig(ordered, "导入覆盖当前配置") != CommandsSave.Ok) return
     }
-    hint(
-        I18n.format(
-            Strings.PROFILE_OVERWRITTEN,
-            ordered.profileName.ifBlank { I18n.get(Strings.PROFILE_DEFAULT, "默认配置") },
-        ),
-    )
+    //  **名字用选择器带过来的那份**（`Item.displayName`）：空名的普通配置该叫「未命名」，
+    //  在这里再算一遍「空名 = 默认」就是第三份实现（前两份是 `Item.displayName` 与
+    //  `currentProfileName`），三份迟早各答一套。
+    hint(I18n.format(Strings.PROFILE_OVERWRITTEN, overwrite.displayName))
 }
 
 /**

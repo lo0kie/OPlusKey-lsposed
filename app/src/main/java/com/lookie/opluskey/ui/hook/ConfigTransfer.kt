@@ -286,24 +286,31 @@ internal object ConfigTransfer {
         //  退回用的命令库在主线程上先取好：协程里读页面状态（Compose 状态）不是它的用法。
         val fallbackCommands = page.configState.commands.value
         fileScope.launch {
-            val config = ConfigProfiles.readOf(slot)
-            //  命令库要分清三档（见 `ProfileCommands.load`）：老配置**没有**自己的库才退回当前这份，
-            //  「库读不懂」则整趟放弃 —— 拿当前这份顶上去，导出来的备份里就是别人的命令，
-            //  用户恢复时才发现对不上（而且他不会知道这份备份是错的）。
-            val lib = ProfileCommands.load(slot)
-            if (lib is ProfileCommands.Load.Unreadable) XLog.w("导出配置：$slot 的命令库读不懂，放弃导出")
-            val commands = if (lib is ProfileCommands.Load.Ok) lib.commands else fallbackCommands
-            mainHandler.post {
-                try {
-                    if (config == null || lib is ProfileCommands.Load.Unreadable) {
-                        XLog.w("导出配置：$slot 读不出来，放弃")
-                        page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
-                    } else {
-                        openConfigExport(activity, config, commands)
+            //  **整段兜住**：同文件其余三条入口（导入 / 日志导出 / 保存）都包了 catch，只这一条裸着 ——
+            //  协程里的未捕获异常会顺着 `fileScope` 冒到默认处理器，也就是「点一下导出，页面没了」。
+            try {
+                val config = ConfigProfiles.readOf(slot)
+                //  命令库要分清三档（见 `ProfileCommands.load`）：老配置**没有**自己的库才退回当前这份，
+                //  「库读不懂」则整趟放弃 —— 拿当前这份顶上去，导出来的备份里就是别人的命令，
+                //  用户恢复时才发现对不上（而且他不会知道这份备份是错的）。
+                val lib = ProfileCommands.load(slot)
+                if (lib is ProfileCommands.Load.Unreadable) XLog.w("导出配置：$slot 的命令库读不懂，放弃导出")
+                val commands = if (lib is ProfileCommands.Load.Ok) lib.commands else fallbackCommands
+                mainHandler.post {
+                    try {
+                        if (config == null || lib is ProfileCommands.Load.Unreadable) {
+                            XLog.w("导出配置：$slot 读不出来，放弃")
+                            page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
+                        } else {
+                            openConfigExport(activity, config, commands)
+                        }
+                    } catch (e: Throwable) {
+                        XLog.w("导出配置：收尾失败（已忽略）：${e.javaClass.simpleName}", e)
                     }
-                } catch (e: Throwable) {
-                    XLog.w("导出配置：收尾失败（已忽略）：${e.javaClass.simpleName}", e)
                 }
+            } catch (e: Throwable) {
+                XLog.w("导出配置：读盘失败（已忽略）：${e.javaClass.simpleName}", e)
+                mainHandler.post { page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault)) }
             }
         }
     }
@@ -441,6 +448,19 @@ internal object ConfigTransfer {
                         //  命令名去重这条闸原本在 `saveCommands` 里，导入不经过它，所以自己过一遍
                         //  （同理：`cmd:<名字>` 只命中第一条）
                         val commands = dedupeByName(parsed.commands)
+                        //  **条数上限也要在这里过**：导入直接把命令库写进盘，绕开了 `saveCommands`
+                        //  那道出口。放进去一份超限的库之后，之后**任何一次保存**都会被那道闸拒
+                        //  —— 用户只会看到「保存不了」，而原因在导入那一刻就已经发生。
+                        //  这一档**整份拒绝**（不截断）：悄悄丢掉几条命令，多步命令里那些
+                        //  `cmd:<名字>` 步骤会变成永久 NOT_FOUND，比一句「导入失败」难查得多。
+                        if (Command.overLimit(commands) != null) {
+                            XLog.w(
+                                "导入配置：文件里的命令超过每类 ${Command.MAX_COMMANDS} 条（${commands.size} 条），" +
+                                    "整份拒绝（截断会让 cmd: 引用永久失效）",
+                            )
+                            page.hint(I18n.format(Strings.COMMAND_LIMIT, Command.MAX_COMMANDS))
+                            return@post
+                        }
                         page.pendingImport = PendingImport(normalized, commands, name)
                         XLog.w("导入配置：校验通过，等用户挑目标（${commands.size} 条命令）")
                     } catch (e: Throwable) {

@@ -251,7 +251,10 @@ internal object VolumeAction {
             target: Int,
             flags: Int,
         ): Boolean {
-            am.setStreamVolume(stream, target, flags)
+            //  **写入本身要兜**：固定音量 / 权限 / 音频策略都可能让它抛，抛出去会把后面那几条
+            //  降级通道整条跳过 —— 这一档要的是「这次没落下去，换一条路」，不是「这一下炸掉」。
+            runCatching { am.setStreamVolume(stream, target, flags) }
+                .onFailure { XLog.w("$label：写入抛异常（${it.javaClass.simpleName}），按没写进去处理", it) }
             if (runCatching { am.getStreamVolume(stream) }.getOrNull() == target) return true
             val fixed = runCatching { am.isVolumeFixed }.getOrDefault(false)
             val muted = runCatching { am.isStreamMute(stream) }.getOrDefault(false)
@@ -263,7 +266,8 @@ internal object VolumeAction {
         private fun silentRetries(target: Int): Boolean {
             repeat(WRITE_RETRIES) {
                 SystemClock.sleep(WRITE_RETRY_MS)
-                am.setStreamVolume(stream, target, 0)
+                //  与 [applyAndRead] 同一条：抛了就按「这一次没落下」算，接着读回、接着往下走
+                runCatching { am.setStreamVolume(stream, target, 0) }
                 if (runCatching { am.getStreamVolume(stream) }.getOrNull() == target) {
                     XLog.w("$label：静默写第 ${it + 1} 次重试落下了（写 $target）")
                     return true

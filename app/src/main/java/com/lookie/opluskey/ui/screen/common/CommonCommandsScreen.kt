@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -30,6 +31,7 @@ import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
 import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.chrome.PageFabIcon
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.dialog.ConfirmDialog
@@ -49,6 +51,7 @@ import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.TitleCounter
+import com.lookie.opluskey.ui.screen.addCommonCommand
 import com.lookie.opluskey.ui.screen.command.StepPickerPage
 import com.lookie.opluskey.ui.screen.command.StepPickerSheet
 import com.lookie.opluskey.ui.screen.command.StepSheetFilter
@@ -67,6 +70,7 @@ import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // 「常用命令」页 —— 管那张**自己的清单**：收录哪几条、每条叫什么、每格画哪颗图标、要不要固定。
 //
@@ -128,7 +132,7 @@ internal fun SettingsPage.CommonCommandsScreen(scrollBehavior: ScrollBehavior) {
                     st.picking = true
                 },
             ) {
-                Icon(PageIcons.MenuKeyAdd, contentDescription = null, tint = COUITheme.colorScheme.onPrimary)
+                PageFabIcon(PageIcons.MenuKeyAdd, contentDescription = null)
             }
         }
     }
@@ -211,7 +215,7 @@ private fun CommonCommandsSection(
                                 anchor = anchors[cmd.token] ?: st.coldAnchor,
                                 enabled = enabled,
                                 //  正在退场 / 还没进场的那一条由 `CardList` 收起（时机见 `CommonCommandsRemove` / `CommonCommandsAdd`）
-                                visible = cmd.token != st.leavingToken && cmd.token != st.enteringToken,
+                                visible = cmd.token !in st.leavingTokens && cmd.token != st.enteringToken,
                                 onOpenMenu = { st.menuToken = cmd.token },
                             )
                         },
@@ -256,8 +260,14 @@ private class CommonCommandsUiState {
     /** 挑动作那层抽屉开着没有。 */
     var picking by mutableStateOf(false)
 
-    /** 正在播退场的那一条 —— `CardList` 按 `visible` 收起它，播完才从清单里删。 */
-    var leavingToken by mutableStateOf<String?>(null)
+    /**
+     * 正在播退场的那几条 —— `CardList` 按 `visible` 收起它们，播完才从清单里删。
+     *
+     *  **是集合不是单个**：退场要等 240ms，这期间用户完全可能连删第二条。只留一个 token 的话，
+     *  第二次删除会把第一条的退场状态顶掉：那一行又「回来」一次，而且它那条协程被取消 ——
+     *  动画播完了、落盘却没发生，下次进页它还在（真机上就是「删了又回来」）。
+     */
+    var leavingTokens by mutableStateOf<Set<String>>(emptySet())
 
     /** 刚收录、还没播进场的那一条 —— 先按「不在场」组合一帧，下一帧才展开。 */
     var enteringToken by mutableStateOf<String?>(null)
@@ -382,30 +392,33 @@ private fun SettingsPage.CommonCommandsRemove(
     val target = list.firstOrNull { it.token == st.removingToken }
     val last = remember { LastCommand() }
     target?.let { last.cmd = it }
+    //  每一笔删除**各自一条协程**：挂在 `LaunchedEffect(leavingTokens)` 上时，240ms 内删第二条
+    //  会把第一条那条取消 —— 动画播完了、落盘没发生，下次进页它又回来了。
+    val scope = rememberCoroutineScope()
     removeDialog(
         show = target != null,
         cmd = target ?: last.cmd,
         onDismiss = { st.removingToken = null },
-        onRemove = {
+        onRemove = { token ->
             st.removingToken = null
-            st.leavingToken = it
+            st.leavingTokens = st.leavingTokens + token
+            //  **删的是最后一条时不等**：这一下整块要变成空态，高度由外层（空态 与 清单）那套交叉过渡
+            //  接管；再等一轮「行收起 200ms + 结算 40ms、然后空态淡入 260ms」就是两段串在一起
+            //  （「条件执行」页删最后一块同一套处理）。直接删，那一行跟着整块一起淡出。
+            val wait = if (list.size > 1) VISIBILITY_EXIT_MS + ROW_EXIT_SETTLE_MS else 0L
+            scope.launch {
+                if (wait > 0) delay(wait)
+                val cfg = configState.config.value
+                write(
+                    cfg.copy(
+                        global = cfg.global.copy(commonCommands = cfg.global.commonCommands.filterNot { it.token == token }),
+                    ),
+                    "common_commands=remove",
+                )
+                st.leavingTokens = st.leavingTokens - token
+            }
         },
     )
-    LaunchedEffect(st.leavingToken) {
-        val token = st.leavingToken ?: return@LaunchedEffect
-        //  **删的是最后一条时不等**：这一下整块要变成空态，高度由外层（空态 与 清单）那套交叉过渡
-        //  接管；再等一轮「行收起 200ms + 结算 40ms、然后空态淡入 260ms」就是两段串在一起
-        //  （「条件执行」页删最后一块同一套处理）。直接删，那一行跟着整块一起淡出。
-        if (list.size > 1) delay(VISIBILITY_EXIT_MS + ROW_EXIT_SETTLE_MS)
-        st.leavingToken = null
-        val cfg = configState.config.value
-        write(
-            cfg.copy(
-                global = cfg.global.copy(commonCommands = cfg.global.commonCommands.filterNot { it.token == token }),
-            ),
-            "common_commands=remove",
-        )
-    }
 }
 
 /**
@@ -555,11 +568,13 @@ private fun SettingsPage.addSheet(
                         }
 
                         else -> {
+                            //  **与「挑应用」那条入口共用同一支**（去重 / 上限 / 落盘都在 `addCommonCommand`）：
+                            //  这一格原先自己拼 `list + 一条`，绕开了上限 —— 于是能加到 21/20。
                             //  清单**本来是空的**时不给这一行播进场：那一下整块正从空态交叉淡入到
                             //  清单，行再自己从零高展开就是同一件事播两遍（用户口径「从空态到列表
                             //  不要滑出来」）。它直接以在场状态组合，跟着整块一起显出来。
                             if (list.isNotEmpty()) onAdded(token)
-                            setCommonCommands(list + CommonCommand(token = token))
+                            addCommonCommand(Action.parse(token))
                         }
                     }
                 },

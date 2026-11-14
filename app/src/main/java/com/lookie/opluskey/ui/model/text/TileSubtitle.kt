@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui.model.text
 
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.core.present.ClockCatalog
 import com.lookie.opluskey.core.present.commandTitleOf
 
 /**
@@ -36,6 +37,13 @@ internal fun tileSubtitle(
         //  「名字」是动词（`打开应用`）、「状态」是目标，哪一段都不是这一格要的。
         spec.token == ActionCatalog.APP_CONTROL_TILE || spec.token == ActionCatalog.APP_TILE -> {
             appLabel?.takeIf { it.isNotBlank() }
+        }
+
+        //  「计时器」那一格：小字只写**时长**（`5 分钟`）—— 格子名已经在标题上。
+        //  它没有下一层菜单（格子本身就是那个动作），所以 `modeHitOf` 查不到它，
+        //  这里按格子的标记 token 认领；不认识这一格就是「没绑」。
+        spec.token == ClockCatalog.TILE -> {
+            ClockCatalog.durationOf(current)
         }
 
         // 其余每一格：**先确认当前动作真的落在这一格**，再问 `forTile`（那一格小字那一支）。

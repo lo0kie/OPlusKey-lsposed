@@ -129,6 +129,11 @@ internal object KeyHooks {
             //  而日志只会说「侧键没找到」，看起来像整条链路都没救。
             XLog.guard("挂组合键接管点（侧键落空之后）") { installChordHooks(module, loader) }
             XLog.w("侧键 Hook 0/0 个接管点 —— 侧键完全不被接管（组合键那条见上一行）")
+            //  **仍然算装过**：广播入口与组合键 Hook 已经挂上了，再进来一次会各挂第二份
+            //  （同一条广播处理两遍）。`KeyWatch` 那一条不装 —— 它收集自定义按键是为了喂判定，
+            //  而这里连一个接管点都没有，收集了也没有东西去认那些键。
+            installed = true
+            reportHookInstall(0, 0)
             return
         }
 
@@ -641,10 +646,18 @@ internal object KeyHooks {
  */
 internal object BroadcastSender {
     /**
+     * 宿主 uid 的缓存期限（毫秒）。
+     *
+     *  30 秒：换包到用户下一次按键之间只会重解析一两次，代价是一次 `getPackageUid`；
+     *  取太短等于给自家通道的每条广播都加一次 binder 查询，取太长就成了「换包后要等重启」。
+     */
+    private const val HOST_UID_TTL_MS = 30_000L
+
+    /**
      * 这条广播是不是宿主进程发出来的。
      *
      *  两条通道都只有宿主 / 设置页（同 uid）会发；在原方法体跑之前读 `Binder.getCallingUid()`
-     *  拿到的就是发送方 uid，宿主 uid 解析一次后缓存。
+     *  拿到的就是发送方 uid，宿主 uid 解析一次后缓存 [HOST_UID_TTL_MS]（换包会换 uid，见 [hostUid]）。
      *  **解析不到时丢弃（fail-closed）**：放行等于任意 App 都能伪造这两条通道，而配置广播只在
      *  启动 / 解锁 / 写盘时发，下一轮会重取 uid，不会因一次失败把通道永久锁死。
      */
@@ -693,13 +706,24 @@ internal object BroadcastSender {
         return false
     }
 
-    /** 宿主包的 uid，解析成功后缓存（-1 = 还没解析到；失败不缓存，下一轮广播重取）。 */
+    /**
+     * 宿主包的 uid 缓存（-1 = 还没解析到；失败不缓存，下一轮广播重取）。
+     *
+     *  **带保质期**：卸载重装 / 换签名重装都会换 uid，而这里缓存的是「上一次解析出来的数」。
+     *  缓存不过期的话，换包之后所有功能广播都会被 [isFromHost] 判成伪造、fail-closed 丢掉，
+     *  表现是「模块装好了、日志里一条动作都没有」，而唯一出路是整机重启 —— 那不是用户会想到的事。
+     *  过期的代价只是每 [HOST_UID_TTL_MS] 一次 `getPackageUid`（而且只在自家通道的广播上才走到）。
+     */
     @Volatile
     private var cachedHostUid: Int = -1
 
+    @Volatile
+    private var cachedHostUidAt: Long = 0L
+
     private fun hostUid(loader: ClassLoader?): Int {
+        val now = android.os.SystemClock.elapsedRealtime()
         val cached = cachedHostUid
-        if (cached != -1) return cached
+        if (cached != -1 && now - cachedHostUidAt <= HOST_UID_TTL_MS) return cached
         val uid =
             try {
                 val ctx = SystemContext.get(loader ?: return -1) ?: return -1
@@ -709,8 +733,13 @@ internal object BroadcastSender {
                 -1
             }
         if (uid > 0) {
+            if (cached > 0 && cached != uid) {
+                XLog.w("宿主 uid 变了（$cached → $uid）—— 换过包，按新 uid 认")
+            } else if (cached == -1) {
+                XLog.w("宿主 uid = $uid（广播来源校验用）")
+            }
             cachedHostUid = uid
-            XLog.w("宿主 uid = $uid（广播来源校验用）")
+            cachedHostUidAt = now
         }
         return uid
     }

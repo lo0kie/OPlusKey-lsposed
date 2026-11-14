@@ -126,8 +126,14 @@ internal fun SwitchRow(
         if (shown == checked) return@LaunchedEffect
         positions[title] = shown
         shown = checked
-        delay(SWITCH_SETTLE_MS)
-        positions[title] = checked
+        try {
+            delay(SWITCH_SETTLE_MS)
+        } finally {
+            //  **被打断也要归位**：`checked` 在这 200ms 内又翻一次时这一支会被取消（`delay` 抛
+            //  取消异常），不归位的话 `positions[title]` 就停在上一个值 —— 这一行下次重建时
+            //  首帧会照那个旧值画一下再回弹。
+            positions[title] = shown
+        }
     }
 
     //  置灰那一档**点一下要说话**：COUI 在 `enabled = false` 时把行自己的点击摘了，但**行尾那颗

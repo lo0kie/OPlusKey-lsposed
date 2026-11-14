@@ -35,6 +35,9 @@ class ActionTokenTest {
             // 「屏幕翻译」那一格：点它弹「打开 / 关闭」两行单选，落成 `oplus:screen_translate`
             //  与 `oplus:screen_translate_stop`。标记本身与上面那两个 `ai:` 同类，永不写进配置。
             "ai:screen_translate",
+            // 「计时」那一格：点它弹「倒计时」那一行，挑完时长落成 `timer:<秒>`。
+            //  标记本身永不写进配置（`Action.parse("clock:")` 认不出 ⇒ `none`）。
+            "clock:",
         )
 
     /**

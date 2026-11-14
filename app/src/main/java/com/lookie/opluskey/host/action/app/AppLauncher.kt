@@ -331,10 +331,18 @@ internal class AppLauncher(
         // ForegroundServiceDidNotStartInTimeException。
         var last: Throwable? = null
         for (foreground in if (target.foreground) FOREGROUND_FIRST else SERVICE_FIRST) {
+            val how = if (foreground) "startForegroundService" else "startService"
             try {
-                if (foreground) ctx.startForegroundService(intent) else ctx.startService(intent)
-                XLog.w("oplus:$feature → ${if (foreground) "startForegroundService" else "startService"}($short)")
-                return
+                //  **返回值要看**：服务不存在 / 没有权限时这两个方法**不抛异常**，只返回 `null`。
+                //  当成成功的话「现在是开」那本账会记反 —— 下一次按同一个开关就是「再开一次」，
+                //  永远回不到「关」（用户口径「开了关不掉」）。
+                val started = if (foreground) ctx.startForegroundService(intent) else ctx.startService(intent)
+                if (started != null) {
+                    XLog.w("oplus:$feature → $how($short)")
+                    return
+                }
+                last = IllegalStateException("$how 返回 null（服务不存在 / 没权限）")
+                XLog.d("oplus:$feature 的 $how 返回 null（服务没起来）⇒ 试下一条起法")
             } catch (e: Throwable) {
                 last = e
                 XLog.d("oplus:$feature 的 ${if (foreground) "前台" else "普通"}起法被拒：${e.message}")
@@ -832,10 +840,9 @@ internal class AppShortcutLaunch(
         shortcutId: String,
         userId: Int,
     ) {
-        if (ShortcutStarter.send(ctx, ShortcutStarter.Request(pkg, shortcutId, userId, windowOptions = null))) return
-        // 连发都没发出去 —— 最常见是那条快捷方式已被应用自己删掉（动态快捷方式随登录状态变）。
-        // 报「没有入口」而不是「已卸载」：包明明还在。
-        onFailure(CommandFailure.APP_NO_ENTRY)
+        val result = ShortcutStarter.send(ctx, ShortcutStarter.Request(pkg, shortcutId, userId, windowOptions = null))
+        if (result == ShortcutStarter.Result.SENT) return
+        onFailure(failureOf(result))
     }
 
     /**
@@ -903,8 +910,8 @@ internal class AppShortcutLaunch(
  *  不等于「没起来」。在这里补发一次，跳板链会把两份任务串起来、第二份顶掉第一份 ——
  *  用户看到的是「按一下，等好几秒窗口才出来」。⇒ 多等的那几轮**不发任何东西**。
  *
- *  轮数只有 [SHORTCUT_VERIFY_RETRIES]（=2）次、每次 [MINI_VERIFY_MS]（=700ms）⇒ 上限 1.4 秒；
- *  PI 那一发通常 0.7 秒就进表，正常路径只等一轮。
+ *  轮数 = 首轮 + [SHORTCUT_VERIFY_RETRIES]（=2）次补等，每轮 [MINI_VERIFY_MS]（=700ms）
+ *  ⇒ 上限 2.1 秒；PI 那一发通常 0.7 秒就进表，正常路径只等一轮。
  *
  * ## 为什么收到 taskId 之后交给回调，而不是自己收
  *
@@ -959,8 +966,9 @@ internal class ShortcutThenMinimize(
         userId: Int,
     ): Boolean {
         val request = ShortcutStarter.Request(pkg, shortcutId, userId, ShortcutStarter.zoomOptions())
-        if (ShortcutStarter.send(ctx, request)) return true
-        onFailure(CommandFailure.APP_NO_ENTRY)
+        val result = ShortcutStarter.send(ctx, request)
+        if (result == ShortcutStarter.Result.SENT) return true
+        onFailure(failureOf(result))
         return false
     }
 
@@ -1040,3 +1048,13 @@ internal fun stockLaunchIntent(intent: Intent): Intent =
     } else {
         intent
     }
+
+/**
+ * 「快捷方式没发出去」→ 提示里报哪一档（`appshortcut:` 的两条起法共用）。
+ *
+ *  **取不到 `LauncherApps` 不算「没有入口」**：那是这台机器上的环境问题（换哪条快捷方式都一样），
+ *  报成「这个应用没有可启动的 Activity」会让人去重装应用。真正的「没有入口」只有
+ *  [ShortcutStarter.Result.REJECTED] 那一档 —— 那条快捷方式起不来了（应用自己删了 / 服务端拒）。
+ */
+private fun failureOf(result: ShortcutStarter.Result): CommandFailure =
+    if (result == ShortcutStarter.Result.NO_SERVICE) CommandFailure.UNKNOWN else CommandFailure.APP_NO_ENTRY

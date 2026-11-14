@@ -246,8 +246,35 @@ private fun builtInSegments(
  *
  *  其余档位返回 `null`：它们的状态已经写在名字里（`静音` / `主屏幕` / `循环`），再补一个
  *  状态词就成了「静音 - 静音」。
+ *
+ *  **计时器不走这里**：它没有父动作，名字与状态要一起拼（见 [timerTitle]），塞回这一支就成了
+ *  「计时器: 5 分钟」那种父子读法。
  */
-private fun stateLabel(action: Action): String? = ActionCatalog.switchStateLabel(action) ?: ActionCatalog.percentStateLabel(action)
+private fun stateLabel(action: Action): String? =
+    ActionCatalog.switchStateLabel(action)
+        ?: ActionCatalog.percentStateLabel(action)
+
+/**
+ * 「计时器」那一条 —— **没有父动作**：名字就是格子名，状态是时长（`计时器 - 5 分钟`）。
+ *
+ *  为什么不用内置那一支（`builtInSegments`）：那一条的读法是「父格: 档位」，而这一格没有下一层
+ *  —— 格子本身就是那个动作（用户口径「不用父子动作了，就写计时，名字改成计时器」）。硬走那条路
+ *  要么拼出「计时器: 计时器」（格与档同名），要么得给清单造一行假的子档。
+ *
+ *  `nameIsTheTile` 让格子里那行小字**只写时长**：格子标题已经是「计时器」，再写一遍就是重复
+ *  （与录屏 / 录音那几格同一条规矩）。
+ */
+private val timerTitle =
+    CommandTitle(
+        segmentsOf = { action, _, _ ->
+            TitleSegments(
+                parent = null,
+                name = I18n.get(Strings.CATALOG_CLOCK, "计时器"),
+                state = ClockCatalog.durationOf(action),
+                nameIsTheTile = true,
+            )
+        },
+    )
 
 /**
  * 「应用控制」那一族 —— 父名是**动词所在的格子**，名字是动词，状态是目标。
@@ -314,6 +341,9 @@ fun commandTitleOf(action: Action): CommandTitle =
         is Action.Process -> stopAppTitle
 
         is Action.VarSet -> variableTitle
+
+        //  计时器：**没有父动作**（格子本身就是那个动作），拼法与内置那一支不同，见 [timerTitle]
+        is Action.Timer -> timerTitle
 
         is Action.None,
         is Action.Follow,

@@ -187,6 +187,13 @@ internal class MiniWindowLauncher(
         if (userId != 0) {
             XLog.w("window:$target 是分身（user=$userId）⇒ 跳过「原地收成小窗」那一档，直接起")
         }
+        //  前台那一份**已经就是小窗** ⇒ 什么都不做。与 `appshortcut:w:` 那条同一口径
+        //  （`AppLauncher` 的「已在小窗，不重起」）：目的状态已经达成，再发一次
+        //  `startFlexibleFromRecents` 只会让后面的验收读到「还是 true」，白多一次任务派发。
+        if (foregroundTask > 0 && zoomStateOf(foregroundTask) == true) {
+            XLog.w("window:$target 已经是小窗（任务 #$foregroundTask），不动它")
+            return
+        }
         if (foregroundTask > 0 &&
             startFlexibleFromRecents(foregroundTask, ZOOM_LAUNCH_FLAG_USER_POSITION) == RecentsStart.ACCEPTED
         ) {

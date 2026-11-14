@@ -10,6 +10,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.wire.localConfigTag
+import com.lookie.opluskey.ui.wire.primeLocalTag
 import com.lookie.opluskey.ui.wire.publishConfig
 import com.lookie.opluskey.ui.wire.resyncInjectStatus
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +45,12 @@ internal fun SettingsPage.write(
     //  此时 [SettingsPage.configState] 里那份是**默认值**、不是用户的真相 —— 写回等于把它固化，
     // 会把用户配的绑定 / 开关整份抹掉。一律拒，并明确告诉用户「没保存」。
     if (!canWriteConfig(what)) return CommandsSave.Failed
-    return applyWritten(next, persistConfig(next, what))
+    val saved = persistConfig(next, what)
+    //  指纹在这里先算好（`finishWrite` 第一件事就是读它）：算它要逐键问一次命令库
+    //  （「长按绑的是不是串行命令」），那是磁盘读 —— 不能让它在 `finishWrite` 里现算。
+    //  这一条（[write]）本来就在主线程落盘，代价不变；真正的收益在 [writeOnIo]。
+    if (saved) primeLocalTag(next, configState.commands.value)
+    return applyWritten(next, saved)
 }
 
 /**
@@ -59,7 +65,14 @@ internal suspend fun SettingsPage.writeOnIo(
     what: String,
 ): CommandsSave {
     if (!canWriteConfig(what)) return CommandsSave.Failed
-    val saved = withContext(Dispatchers.IO) { persistConfig(next, what) }
+    val saved =
+        withContext(Dispatchers.IO) {
+            persistConfig(next, what).also { ok ->
+                //  **指纹也在这一趟 IO 里算好**（见 [write] 里那段）：它逐键读一次命令库，
+                //  留在主线程上就是「每次写配置都在 UI 线程做一遍按文件数的磁盘读」。
+                if (ok) primeLocalTag(next, configState.commands.value)
+            }
+        }
     return applyWritten(next, saved)
 }
 
