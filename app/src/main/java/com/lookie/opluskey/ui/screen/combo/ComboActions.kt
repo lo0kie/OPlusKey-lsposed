@@ -7,11 +7,15 @@ import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.hint
-import com.lookie.opluskey.ui.screen.binding.setComboMode
+import com.lookie.opluskey.ui.row.chipsOfNames
+import com.lookie.opluskey.ui.row.namesToChipsTemplate
+import com.lookie.opluskey.ui.screen.binding.ComboModeAsk
+import com.lookie.opluskey.ui.screen.binding.ComboStarterBlocked
 import com.lookie.opluskey.ui.state.binding.KeysAsk
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.write.write
@@ -29,6 +33,15 @@ import com.lookie.opluskey.ui.write.write
  */
 internal const val MAX_COMBOS = 9
 
+/**
+ * 同一组键最多能有几种触发方式 —— 等待 / 先按住第一颗 / 先按住第二颗，三档
+ * （[ComboKey.MODE_WAIT] / `MODE_HOLD_FIRST` / `MODE_HOLD_SECOND`）。
+ *
+ *  回执里「N 种触发方式都已添加」那个 N 就是它；三颗成员的组合只有等待那一档
+ *  （见 `ComboKey.modeFor`），所以**只有两颗的那一组**能走到上限。
+ */
+internal const val COMBO_MODE_TOTAL = 3
+
 //  `COMBO_PAIR_SEPARATOR` / `comboLabel` / `keyName` 已挪到 `core/model/KeyNames.kt`：
 //  除了 UI（`ui/write/BindingTarget.kt` 的停用提示、顶栏副标题、列表行），**执行时提示**
 //  （`host/GestureExec.kt`）也要念键名，而 `host` 不许认识 `ui`（那条边由
@@ -41,15 +54,85 @@ internal const val MAX_COMBOS = 9
  *  只在**同一类内部**问：另一类里的档不算占位。
  *
  *  这是「添加」按钮按不按得动的唯一判据（`KeysScreen` 的选键窗与 [addCombo] 共用）。
+ *  按「具体哪一档已经有人」判（[usedComboModes]），不数条数 —— 同一档重复两次是废配置，
+ *  数条数会把它当成「两档都占了」。
  */
 internal fun comboRoomLeft(
     cfg: Config,
     ids: List<String>,
     hold: Boolean,
 ): Boolean {
-    val same = cfg.combos.filter { it.keys.sorted() == ids.sorted() && it.isHold == hold }
-    return if (hold) same.size < 2 else same.isEmpty()
+    val used = usedComboModes(cfg, ids)
+    return if (hold) {
+        ComboKey.MODE_HOLD_FIRST !in used || ComboKey.MODE_HOLD_SECOND !in used
+    } else {
+        ComboKey.MODE_WAIT !in used
+    }
 }
+
+/**
+ * [comboRoomLeft] 的反面 —— 这一类里的触发方式**已经全占满了**。
+ *
+ *  单独起个名字只为读起来顺：被拦住时要说哪一句由它决定（见 `KeysScreen` 的选键窗与
+ *  [writeNewCombo]）—— 按住那两种都加过时说「所有触发方式都已添加」，
+ *  而不是笼统的「这组按键已经添加过了」：后者读起来像整组都加过，而另一类往往还能加。
+ */
+internal fun comboAllModesTaken(
+    cfg: Config,
+    ids: List<String>,
+    hold: Boolean,
+): Boolean = !comboRoomLeft(cfg, ids, hold)
+
+/**
+ * 这一组键（同一批成员）**眼下占掉了哪一档**（[ComboKey.MODE_WAIT] / `MODE_HOLD_FIRST` /
+ * `MODE_HOLD_SECOND` 的集合）—— 选择窗据此把用不上的那几行置灰。
+ *
+ *  与 [comboRoomLeft] 同源、但答的不是同一个问题：那一条问「这一类里还排不排得下」，
+ *  这一条问「具体是哪一档已经有人了」。界面要用后者，才能说出「两种都已经添加」。
+ *
+ *  只算**这一批成员完全一样**的档：同一批键的等待档只有一档、按住档有两种顺序各一档。
+ */
+internal fun usedComboModes(
+    cfg: Config,
+    ids: List<String>,
+): Set<Int> {
+    val want = ids.map { it }.sorted()
+    return cfg.combos
+        .filter { it.keys.sorted() == want }
+        .mapTo(HashSet()) { it.mode }
+}
+
+/**
+ * 这一组键的那一档选完之后，**这一组键一共占了几档**（含正要加的这一档）。
+ *
+ *  回执用它决定说「已添加 …」还是「%d 种触发方式都已添加 …」：同组键最多三档
+ *  （等待 + 先按住第一颗 + 先按住第二颗），把三种都补齐时说清「这一组已经齐了」，
+ *  比再说一次「已添加」有用 —— 用户补第二种 / 第三种时往往正是在凑齐。
+ */
+internal fun comboModeCountAfter(
+    cfg: Config,
+    ids: List<String>,
+    mode: Int,
+): Int = (usedComboModes(cfg, ids) + mode).size
+
+/**
+ * 这颗键现在是**哪几档按住组合的起点**（空表 = 不是任何一档的起点）。
+ *
+ *  这是「只参与组合」那对矛盾的**另一半**：加一档按住组合时查「起点键是不是只参与组合」
+ *  （[addCombo] 里那道拦截），打开「只参与组合」时查「它是不是已经是某档的起点」
+ *  （`KeySettingsScreen` 的 `comboOnlyRow`）。**两条必须问同一句话** —— 各写一份的话，
+ * 一边放行、一边拒绝，落下的就是一份自相矛盾的配置：起点键不判单键手势，而那一档组合
+ * 又要求它「按住到点」。
+ *
+ *  返回的是**整张表**而不是「第一档」：同一颗键可以同时是好几个按住组合的起点（`A+B` 先按 A、
+ *  `A+C` 也先按 A）。只取一档的话，用户按提示删掉其中一档、回头再点还是一样被拦，
+ *  而界面上再也说不出「还剩哪一档挡着」。
+ *
+ *  **停用的那几档也算**：停用只是暂时不生效，重新启用时同一个矛盾还在 —— 拿停用状态把它
+ *  放过去，等于埋一份「一开就矛盾」的配置。
+ */
+internal fun Config.holdCombosStartedBy(key: KeyId): List<ComboKey> =
+    combos.filter { it.mode != ComboKey.MODE_WAIT && it.starterKey == key.id }
 
 /**
  * 加一档组合（选键弹窗点了「添加」）。
@@ -58,13 +141,79 @@ internal fun comboRoomLeft(
  * 「先按住第一颗」或「先按住第二颗」。一档只认一种触发方式，所以以后想两种都有，
  * 就是两列里各建一档 —— 不再有「在一档上改方式」这条路。
  *
- *  按住那两档要求**起点键**是「松手时触发」，不是就走同一问（[setComboMode]）。
+ * ## 按住那两档先问一句，**问的时候还什么都没写**
  *
- * @return 新那一档的 id（`null` = 没加：这一类排满了 / 成员数不对 / 超出上限 / 写盘失败）
+ *  它们要求**起点键**是「松手时触发」：不是的话那一档永远不成立（判定侧把「已经执行过自己
+ *  动作」的键排除在按住之外）。所以先问（[ComboModeAsk]），**确认之后才连同添加一起落盘**。
+ *
+ *  早先的做法是「先写进配置、再问」——那一问于是只是做样子：点取消时那一档已经在列表里了，
+ *  而起点键没改，它是一条死活不成立的废档（用户口径「那个 dialog 只是做样子，触发方式已经
+ *  被真的添加了」）。
+ *
+ * @return 新那一档的 id。`null` = 没加：这一类排满了 / 成员数不对 / 超出上限 / 写盘失败 /
+ *   **正在等那一问的回答**（确认之后由 `ComboModeAskDialog` 走 [writeNewCombo] 真正写下去）
  */
 internal fun SettingsPage.addCombo(
     keys: List<KeyId>,
     mode: Int,
+): String? {
+    val cfg = configState.config.value
+    val ids = keys.map { it.id }.distinct()
+    val resolved = ComboKey.modeFor(mode, ids.size)
+    if (resolved != ComboKey.MODE_WAIT) {
+        //  起点键是不是「松手时触发」—— 判据用 `ComboKey.starterKey`（顺序唯一来源），
+        //  这里拿一档临时对象去问，不必先落盘。
+        //
+        //  **「只参与组合」的键先拦一道**：那一档位的意思是「这颗键不判单键手势」，
+        //  它自己的「松手时触发」开关在按键设置页是灰的（改不了）。所以这里不能再走
+        //  下面那条「切换为松手时触发并添加」的问句 —— 用户点了也没有效果，只会落下
+        //  一份 `combo_only=true` 又 `long_fire_on_release=true` 的自相矛盾配置。
+        //  改为直接说明原因、不添加（用户口径「也 dialog 拦截」）。
+        val starter = ComboKey(id = "", keys = ids, enabled = true, mode = resolved).starterKey?.let { cfg.keyIdOf(it) }
+        if (starter != null && cfg.key(starter).comboOnly) {
+            XLog.w("组合键：${starter.label} 只参与组合，不能作为按住起点（${ids.joinToString("+")} / mode $resolved）")
+            ComboStarterBlocked.ask(starter)
+            return null
+        }
+        if (starter != null && !cfg.key(starter).longFireOnRelease) {
+            XLog.w("组合键：${starter.label} 还不是「松手时触发」，先问一句再添加（${ids.joinToString("+")} / mode $resolved）")
+            ComboModeAsk.askAdd(listOf(starter), keys, resolved)
+            return null
+        }
+    }
+    return writeNewCombo(keys, resolved, releaseKeys = emptyList())
+}
+
+/**
+ * 「这一类最多几颗」那句话 —— **两类各一条**（用户口径）。
+ *
+ *  等待组合 2~3 颗，按住组合只有 2 颗（两种顺序各算一档，都由两颗组成）。原先那一条
+ *  「一个组合最多 N 颗按键」对按住是错的：它报的是 `MAX_KEYS`（3），而按住入口的第二颗之后
+ *  就勾不上了 —— 用户会去找那颗根本不存在的第三颗。
+ *
+ *  两处调用共用这一份（选键窗勾满上限、[writeNewCombo] 的越界兜底）：各写一遍迟早有一处
+ *  报错类。
+ */
+internal fun comboMaxKeysHint(hold: Boolean): String =
+    if (hold) {
+        I18n.format(Strings.COMBO_MAX_KEYS_HOLD, ComboKey.MIN_KEYS)
+    } else {
+        I18n.format(Strings.COMBO_MAX_KEYS_WAIT, ComboKey.MAX_KEYS)
+    }
+
+/**
+ * 真正把新那一档写进配置（按住那两档可顺带把起点键改成「松手时触发」，同一次落盘）。
+ *
+ *  过了那一问之后走这里；起点键本来就合规时 [addCombo] 也直接走这里。所有闸**都在这里再过
+ *  一遍**：等确认的那段时间里配置可能变过（用户又加了一档 / 删了档），不能拿提问那一刻的
+ *  结论当数。
+ *
+ * @param releaseKeys 要改成「松手时触发」的那几颗键（空 = 不动键）
+ */
+internal fun SettingsPage.writeNewCombo(
+    keys: List<KeyId>,
+    mode: Int,
+    releaseKeys: List<KeyId>,
 ): String? {
     val cfg = configState.config.value
     val ids = keys.map { it.id }.distinct()
@@ -73,7 +222,9 @@ internal fun SettingsPage.addCombo(
         //  这一句是给**新增入口**兜底：判定侧认得更多成员，界面这一侧仍然只造到
         //  `MAX_KEYS`（三颗）—— 别让某个新入口绕过这条线。
         XLog.w("组合键：成员 ${ids.size} 颗不在 ${ComboKey.MIN_KEYS}..${ComboKey.MAX_KEYS} 之内，不添加（${ids.joinToString("+")}）")
-        hint(I18n.format(Strings.COMBO_MAX_KEYS, ComboKey.MAX_KEYS), slot = HINT_SLOT_COMBO)
+        //  按**这次要加的类**说数（见 `comboMaxKeysHint`）：越界走到这里时多半是等待那类，
+        //  但按住入口将来放宽也照样说得对
+        hint(comboMaxKeysHint(mode != ComboKey.MODE_WAIT), slot = HINT_SLOT_COMBO)
         return null
     }
     //  三类各自入列：成员数不对的（三颗走按住）先夹回等窗口，再按那一类自己算上限与判重
@@ -85,9 +236,16 @@ internal fun SettingsPage.addCombo(
         return null
     }
     //  同一类里这组键还排不排得下 —— 界面那边同一判据判「添加」按不动，
-    //  这一句是给手改的配置与将来的入口兜底。
-    if (!comboRoomLeft(cfg, ids, hold)) {
-        hint(I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了"), slot = HINT_SLOT_COMBO)
+    //  这一句是给手改的配置与将来的入口兜底。全占满时换个说法（见 `comboAllModesTaken`）
+    if (comboAllModesTaken(cfg, ids, hold)) {
+        hint(
+            if (hold) {
+                I18n.get(Strings.COMBO_ALL_MODES_TAKEN, "所有触发方式都已添加")
+            } else {
+                I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了")
+            },
+            slot = HINT_SLOT_COMBO,
+        )
         return null
     }
     //  序号只增不减：删掉中间一档之后再加，不会复用那个 id（复用会让「在编哪一档」指到别人身上）
@@ -95,17 +253,45 @@ internal fun SettingsPage.addCombo(
         (cfg.combos.mapNotNull { it.id.removePrefix(ComboKey.ID_PREFIX).toIntOrNull() }.maxOrNull() ?: 0) + 1
     val combo = ComboKey(id = ComboKey.idOf(seq), keys = ids, enabled = comboEnableByDefault(cfg, ids), mode = resolved)
     val label = comboLabel(cfg, combo)
-    val result = write(cfg.copy(combos = cfg.combos + combo), "combo_add=${combo.id} mode=$resolved")
+    //  `cfg.keys` 是按 `KeyId` 索引的，所以这一份集合也用 `KeyId`（与 `writeComboMode` 同一条）
+    val release = releaseKeys.toHashSet()
+    val keysNext =
+        if (release.isEmpty()) {
+            cfg.keys
+        } else {
+            cfg.keys.mapValues { (id, key) -> if (id in release) key.copy(longFireOnRelease = true) else key }
+        }
+    val what =
+        buildString {
+            append("combo_add=${combo.id} mode=$resolved")
+            if (release.isNotEmpty()) append(" fire_on_release=${releaseKeys.joinToString(",") { it.id }}")
+        }
+    val result = write(cfg.copy(keys = keysNext, combos = cfg.combos + combo), what)
     // 与 [writeAndNotice] 同一套口径：只在真的落盘并广播出去时报一句；失败时 [write] 自己已经报过。
     //  回执里每个键名各套一对括号（`已添加「侧键」+「电量 +」`）—— 整串再包一层会把两颗键
     //  读成一个名字。
     if (result == CommandsSave.Ok) {
-        hint(I18n.format(Strings.COMBO_ADDED, comboLabel(cfg, combo)), slot = HINT_SLOT_COMBO)
+        //  这一组键的三种触发方式都补齐时换一种说法（见 `comboModeCountAfter`）：
+        //  补到第三种的人要的是「这组已经齐了」，再报一次「已添加」读起来像什么都没发生。
+        val count = comboModeCountAfter(cfg, ids, resolved)
+        //  名字串按**逐个名字一枚框**展开（见 `namesToChipsTemplate`）：回执里那几颗键
+        //  与列表行、顶栏副标题是同一种长相，不再是一串套着方括号的纯文字。
+        val names = comboKeyNames(cfg, combo)
+        val notice =
+            if (count >= COMBO_MODE_TOTAL) {
+                namesToChipsTemplate(
+                    I18n
+                        .get(Strings.COMBO_ALL_MODES_ADDED, "%1\$d 种触发方式都已添加 %2\$s")
+                        .replace("%1\$d", count.toString()),
+                    "%2\$s",
+                    names,
+                )
+            } else {
+                namesToChipsTemplate(I18n.get(Strings.COMBO_ADDED, "已添加 %s"), "%s", names)
+            }
+        hint(notice, slot = HINT_SLOT_COMBO, chips = chipsOfNames(names))
     }
-    XLog.w("组合键：加了一档 ${combo.id}=${combo.keys.joinToString("+")}（$label / mode $mode）")
-    //  按住那两档要求**起点键**是「松手时触发」：不是就走那一问（与编辑页切方式同一个入口，
-    //  确认后同一次落盘改那颗键的长按时机）。已经合规时它什么都不做。
-    if (result == CommandsSave.Ok && resolved != ComboKey.MODE_WAIT) setComboMode(combo, resolved)
+    XLog.w("组合键：加了一档 ${combo.id}=${combo.keys.joinToString("+")}（$label / mode $resolved）")
     return combo.id.takeIf { result == CommandsSave.Ok }
 }
 
@@ -126,7 +312,12 @@ internal fun SettingsPage.removeCombo(id: String): Boolean {
     if (write(cfg.copy(combos = cfg.combos.filterNot { it.id == id }), "combo_del=$id") !=
         CommandsSave.Failed
     ) {
-        hint(I18n.format(Strings.COMBO_REMOVED, label), slot = HINT_SLOT_COMBO)
+        val names = comboKeyNames(cfg, combo)
+        hint(
+            namesToChipsTemplate(I18n.get(Strings.COMBO_REMOVED, "已删除 %s"), "%s", names),
+            slot = HINT_SLOT_COMBO,
+            chips = chipsOfNames(names),
+        )
         return true
     }
     return false
@@ -169,9 +360,17 @@ internal fun SettingsPage.setComboEnabled(
     if (on && !comboEnableAllowed(cfg, combo, label)) return
     XLog.w("组合键：${if (on) "启用" else "停用"} $id（$label）")
     if (updateCombo(id, "enabled=${if (on) 1 else 0}") { it.copy(enabled = on) }) {
+        val names = comboKeyNames(cfg, combo)
+        val base =
+            if (on) {
+                I18n.get(Strings.COMBO_ENABLED, "已启用 %s")
+            } else {
+                I18n.get(Strings.COMBO_DISABLED, "已停用 %s")
+            }
         hint(
-            I18n.format(if (on) Strings.COMBO_ENABLED else Strings.COMBO_DISABLED, label),
+            namesToChipsTemplate(base, "%s", names),
             slot = HINT_SLOT_COMBO,
+            chips = chipsOfNames(names),
         )
     }
 }

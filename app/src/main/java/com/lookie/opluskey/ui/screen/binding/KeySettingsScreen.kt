@@ -35,6 +35,7 @@ import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.row.values
 import com.lookie.opluskey.ui.row.withField
 import com.lookie.opluskey.ui.row.withOwn
+import com.lookie.opluskey.ui.screen.combo.holdCombosStartedBy
 import com.lookie.opluskey.ui.screen.combo.setComboOwnHoldMin
 import com.lookie.opluskey.ui.screen.combo.setComboOwnWindow
 import com.lookie.opluskey.ui.screen.combo.updateCombo
@@ -143,6 +144,10 @@ internal fun SettingsPage.KeySettingsScreen(
             ComboOwnCard(target = target, cfg = cfg, enabled = pageEnabled, ownOn = owner.useOwnSettings)
         }
     }
+
+    //  「只参与组合」被拦下时的说明窗 —— **必须挂在这一页**：开关就在上面那张卡里，
+    //  没有这一行就没人画那张窗，用户只会看到开关自己弹回来（`ComboOnlyBlocked`）。
+    ComboOnlyBlockedDialog()
 }
 
 /**
@@ -195,6 +200,16 @@ private fun SettingsPage.ExtraClicksCard(
  *  开着时**绑定页整页灰掉**（`bindingTargetEnabled`）：这颗键不判单键手势，配一档动作没处执行。
  *  但**这一页照旧能改** —— 否则用户想关回来都点不动；页面上那句原因由
  *  `disabledClickReason` 给（「只参与组合按键」那一支）。
+ *
+ *  ## 打开这一项要拦一道
+ *
+ *  这颗键如果已经是某档**按住组合的起点**（`Config.holdCombosStartedBy`），这一项就开不了：
+ *  按住那一档要求起点键「按住到点」再松手，而只参与组合的键根本不判单键手势 —— 两个要求
+ *  互斥，落下去就是一份自相矛盾的配置（与 `ComboActions.addCombo` 里「起点键只参与组合」
+ *  那一道拦截是同一条账，方向相反）。
+ *
+ *  拦法是**弹窗说明**而不是悄悄不生效：这一项点下去会变、配置却不变的话，用户看到的是一颗
+ *  自己弹回来的开关。弹窗里也给出路（把那档组合改成等待组合，或者删掉它）。
  */
 @Composable
 private fun SettingsPage.comboOnlyRow(
@@ -212,11 +227,22 @@ private fun SettingsPage.comboOnlyRow(
     ) { on ->
         //  与上面几行同一条：现读一次再改这一格，只动这一位
         val cfgNow = configState.config.value
-        val keyNow = cfgNow.key(target.id)
-        val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(comboOnly = on)))
-        val what = "own_settings target=${settingsTargetLabel(target)} combo_only=${if (on) 1 else 0}"
-        writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
-            switchNotice(I18n.get(Strings.BINDING_COMBO_ONLY, "只参与组合按键"), on)
+        //  只有在**打开**时才查：关掉这一项永远是安全的（矛盾那一端正是「开着」）
+        val starters = if (on) cfgNow.holdCombosStartedBy(target.id) else emptyList()
+        if (starters.isNotEmpty()) {
+            //  可能不止一档（同一颗键可以是好几个按住组合的起点），日志把挡着的都列出来
+            XLog.w(
+                "只参与组合：${target.id.label} 是 ${starters.size} 档按住组合的起点" +
+                    "（${starters.joinToString { it.keys.joinToString("+") }}），拒绝开启",
+            )
+            ComboOnlyBlocked.ask(target.id)
+        } else {
+            val keyNow = cfgNow.key(target.id)
+            val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(comboOnly = on)))
+            val what = "own_settings target=${settingsTargetLabel(target)} combo_only=${if (on) 1 else 0}"
+            writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
+                switchNotice(I18n.get(Strings.BINDING_COMBO_ONLY, "只参与组合按键"), on)
+            }
         }
     }
 
@@ -355,9 +381,6 @@ private val COUNT4: Int = KeyConfig.DEFAULT_EXTRA_CLICKS.last()
  *  身份（`ComboKey.mode`），入口在「组合键」编辑页那颗 ⋮ 的「触发方式」一行。这里只剩
  *  那两种触发方式各自的参数，且**跟着当前那一种**显隐 —— 换方式之后不该看到另一条的参数。
  *
- *  · **无操作时执行按键命令**：这一组自己说了算（写过就用自己的，没写过跟随公共设置）。
- *    只在等窗口那一档出现 —— 它说的是「窗口按出来了、可这一格没绑动作」，按住那两档不经过
- *    这个形状（`Config.comboPassthroughFor` 同一份判据）。
  *  · **按键之间的等待**：这一组自己的一份数。它与公共页那一行是**同一个参数、两个落点** ——
  *    那个数同时管「算不算同时按下」与「第一颗键要等多久才回落单击」，三颗的组合与两颗的
  *    组合对它的要求本来就不一样，共用一个数只能互相将就。
@@ -366,6 +389,8 @@ private val COUNT4: Int = KeyConfig.DEFAULT_EXTRA_CLICKS.last()
  *    同样只在等窗口那一档出现。
  *  · **首键按住时长**：按住那两档的下限 —— 起点键要按满这么久、还没抬手，另一颗落下才算组合。
  *    只有按住那两档才有意义，等窗口那一档不出现。
+ *  · **系统场景在首键按下时固定**：按住那两档的场景什么时候取（按下那一刻固定 / 凑成那一刻再取）。
+ *    与上面那条同一组 —— 它们都是「先按住一颗再按另一颗」这条按法的参数，等窗口那一档不出现。
  *
  *  这一族都吃上面那颗总开关：关着时它们是**公共设置**那一份，改也改不动 —— 不用再给其中某一行
  *  单独加一个「要不要自己设」的开关，那个总开关就是唯一那道闸。
@@ -395,38 +420,6 @@ private fun SettingsPage.ComboOwnCard(
     CardList(
         rows =
             buildList {
-                //  「无操作时执行按键命令」紧跟窗口那一组：它是那一条按法的收尾语义
-                //  （与公共页那一行同一份判据）。只在**这一组认窗口那条**时才有意义 ——
-                //  它说的是「窗口按出来了、可这一格没绑动作」，按住那两档不经过这个形状。
-                //  **不在这里 `if (…) add(…)`**：行本身一直在，靠 `visible` 做滑动进出场 ——
-                //  直接增删会让下面两行跳一格。
-                add(
-                    CardRow.Switch(
-                        title = I18n.get(Strings.COMBO_PASSTHROUGH_TITLE, "无操作时执行按键命令"),
-                        summaryOn = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_ON, "每颗键各执行自己的绑定"),
-                        summaryOff = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_OFF, "什么都不做"),
-                        icon = PageIcons.NoMatch,
-                        checked = cfg.comboPassthroughFor(combo),
-                        enabled = rowsEnabled,
-                        visible = isWait,
-                        //  灰着时说明是哪一道闸（与下面两行同一句，见 `needOwnHint`）
-                        disabledHint = needOwnHint,
-                    ) { on ->
-                        //  写下去就是「这一组自己的决定」，不再跟随公共设置。
-                        //  **按最新的配置改**（`updateCombo` 现读一次），不用渲染那一帧的 `cfg`：
-                        //  同一页下面那根滑杆走的正是现读（`setComboOwnWindow`），一行用快照、
-                        //  一行现读时，先拨这一行再拖那根滑杆会把刚写进去的值顶回旧值。
-                        val ok = updateCombo(combo.id, "passthrough=${if (on) 1 else 0}") { it.copy(passthrough = on) }
-                        //  回执与公共页那一颗**同一个语义位**（`HINT_SLOT_COMBO`）：两处是同一个参数的
-                        //  两个落点，连着拨时应当是同一条在改字，而不是各弹一条。
-                        if (ok) {
-                            hint(
-                                switchNotice(I18n.get(Strings.COMBO_PASSTHROUGH_TITLE, "无操作时执行按键命令"), on),
-                                slot = HINT_SLOT_COMBO,
-                            )
-                        }
-                    },
-                )
                 //  **按键之间的等待**是窗口那条的参数（相邻两颗最多隔多久）——
                 //  换到按住那一档之后这个数不再有任何作用（成员键不再按它等）
                 add(
@@ -438,7 +431,7 @@ private fun SettingsPage.ComboOwnCard(
                                     //  文案与公共页那一行**逐字相同**：同一个参数，两处只是改的对象不同
                                     title = I18n.get(Strings.COMBO_WINDOW_TITLE, "按键之间的等待"),
                                     summary = I18n.get(Strings.COMBO_WINDOW_DESC, "调大后，参与组合的按键等待更久"),
-                                    icon = PageIcons.DelayStep,
+                                    icon = PageIcons.ComboWait,
                                     min = GlobalConfig.COMBO_WINDOW_MIN_MS,
                                     max = GlobalConfig.COMBO_WINDOW_MAX_MS,
                                     //  这一根滑杆显示的是**这一组自己存着**的那个数（没写过才退回公共）——
@@ -470,7 +463,7 @@ private fun SettingsPage.ComboOwnCard(
                                             Strings.COMBO_HOLD_MIN_DESC,
                                             "先按住的那颗按满这么久、还没抬手，再按另一颗才算组合",
                                         ),
-                                    icon = PageIcons.DelayHold,
+                                    icon = PageIcons.ComboHold,
                                     min = GlobalConfig.COMBO_HOLD_MIN_MIN_MS,
                                     max = GlobalConfig.COMBO_HOLD_MIN_MAX_MS,
                                     //  显示这一组自己存着的数（没写过才退回公共）—— 口径与上面那根
@@ -483,6 +476,43 @@ private fun SettingsPage.ComboOwnCard(
                                     valueText = { "$it ms" },
                                 ),
                         ) { v -> setComboOwnHoldMin(combo.id, v) }
+                    },
+                )
+                //  按住那两档的**系统场景什么时候取**：首键按下那一刻固定，还是凑成那一刻再取。
+                //  与「首键按住时长」同一组（同一条触发方式的参数），文案也与公共页那一行逐字相同。
+                add(
+                    CardRow.Switch(
+                        title = I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE, "系统场景在首键按下时固定"),
+                        summaryOn =
+                            I18n.get(
+                                Strings.COMBO_SCENE_ON_STARTER_DESC_ON,
+                                "首键按下那一刻就定下用哪块场景，按住期间换应用不改变动作",
+                            ),
+                        summaryOff =
+                            I18n.get(
+                                Strings.COMBO_SCENE_ON_STARTER_DESC_OFF,
+                                "组合凑成那一刻再取场景",
+                            ),
+                        icon = PageIcons.ScenePin,
+                        checked = cfg.comboSceneOnStarterFor(combo),
+                        enabled = rowsEnabled,
+                        visible = !isWait,
+                        disabledHint = needOwnHint,
+                    ) { on ->
+                        //  写下去就是「这一组自己的决定」，不再跟随公共设置（与上面那颗透传同一条）
+                        val ok =
+                            updateCombo(combo.id, "scene_on_starter=${if (on) 1 else 0}") {
+                                it.copy(sceneOnStarter = on)
+                            }
+                        if (ok) {
+                            hint(
+                                switchNotice(
+                                    I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE, "系统场景在首键按下时固定"),
+                                    on,
+                                ),
+                                slot = HINT_SLOT_COMBO,
+                            )
+                        }
                     },
                 )
             },
@@ -513,15 +543,15 @@ private fun applyOwnSettings(
 /**
  * 组合那几位「这一组独有的参数」**跟着总开关一起播种**。
  *
- *  `OwnSettings` 契约里只有那几项，`passthrough` / `windowMs` / `holdMinMs` 是 `ComboKey` 独有的，
+ *  `OwnSettings` 契约里只有那几项，`windowMs` / `holdMinMs` / `sceneOnStarter` 是 `ComboKey` 独有的，
  *  所以它们**不在** [OwnSettingsValues] 里 —— 但「打开独立设置」对用户来说是一件事：
  *  这一档从此自己说了算。只播那几项的话，其余几位仍停在「没设过 ⇒ 跟公共」，同一颗开关下就有了
  *  两套语义（那几项已经是自己的值、另几位还在跟随）——「既然都开了独立设置，还跟随公共」正是这个别扭。
  *
  *  播一次之后不再重播（判据 `ownSettingsSeeded`）：关掉总开关仍回到公共
- *  （`Config.comboWindowFor` / `comboPassthroughFor` 的第一支），重新打开用的是上次这一套。
+ *  （`Config.comboWindowFor` 的第一支），重新打开用的是上次这一套。
  *  读取侧那几个 `?: global` 兜底留给**老配置**（这一位出现之前写下的 `windowMs = 0` /
- *  `passthrough = null` / `holdMinMs = 0`），新配置不会再落到那一支。
+ *  `holdMinMs = 0`），新配置不会再落到那一支。
  *
  * @param values 上面算好的那份独立设置（用它判断「这一次是不是刚打开总开关」）
  * @param before 写之前的这一档 —— 只为看 `ownSettingsSeeded`
@@ -535,18 +565,20 @@ private fun withSeededComboFields(
     val base = applyOwnSettings(cfg, target, values)
     if (target !is SettingsTarget.Combo || !values.useOwnSettings || before.ownSettingsSeeded) return base
     //  播的是**这一刻**的公共值：与上面那几项同一个时刻、同一份来源，两边不会错开
-    val passthrough = cfg.global.comboPassthrough
     val windowMs = cfg.global.comboWindowMs
     //  按住手势的下限也一起播：它属于「这一档从此自己说了算」那一族，不播就还在跟随公共
     val holdMinMs = cfg.global.comboHoldMinMs
+    //  「场景在什么时候取」同样属于那一族：不播的话这一位仍是 `null`，
+    //  以后改公共设置还会顺带改到这一档 —— 与「打开独立设置之后整份自己说了算」不符
+    val sceneOnStarter = cfg.global.comboSceneOnStarter
     return base.copy(
         combos =
             base.combos.map { c ->
                 if (c.id == target.id) {
                     c.copy(
-                        passthrough = passthrough,
                         windowMs = windowMs,
                         holdMinMs = holdMinMs,
+                        sceneOnStarter = sceneOnStarter,
                     )
                 } else {
                     c

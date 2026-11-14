@@ -242,6 +242,32 @@ sealed interface Action {
     ) : Action {
         override val token: String =
             Action.FLUID_PREFIX + (if (icon.isEmpty()) "" else icon + Action.FLUID_ICON_SEP) + message
+
+        /**
+         * 换一颗图标，**其余原样** —— 返回的还是 `fluid:` 这条动作，不是新的写法。
+         *
+         *  界面那一行「图标」把它当成唯一的写入路径（`ui/model/icon/FluidIconRow`）：无论这条
+         *  `fluid:` 原先长什么样、写在哪个槽里，点中一颗之后都从这里收成新的一份。
+         *  [icon] 给空串 = 退回「不给图标」（胶囊左边空着）。
+         */
+        fun withIcon(icon: String): Fluid = copy(icon = icon)
+
+        companion object {
+            /**
+             * `fluid:` 后面那段正文 → 一条动作。
+             *
+             *  切法与 [Action.parse] 里那一支**同一份**：`|` 左边要长得像图标 id（小写字母 /
+             *  数字 / 连字符），否则整段都算正文 —— 老命令 `fluid:现在14:30` 里不会凭空多出图标。
+             */
+            fun parse(text: String): Fluid {
+                val cut = text.indexOf(Action.FLUID_ICON_SEP)
+                if (cut <= 0) return Fluid(text.trim())
+                val icon = text.substring(0, cut).trim().lowercase()
+                val looksLikeId = icon.isNotEmpty() && icon.all { it in 'a'..'z' || it in '0'..'9' || it == '-' }
+                if (!looksLikeId) return Fluid(text.trim())
+                return Fluid(text.substring(cut + Action.FLUID_ICON_SEP.length).trim(), icon)
+            }
+        }
     }
 
     /**
@@ -1122,14 +1148,7 @@ private fun parseRingerVolume(text: String): Action {
  *
  *  写成**顶层**函数而不是 `Companion` 的成员：那个伴生对象已经顶着 detekt 的函数数阈值。
  */
-private fun parseFluid(text: String): Action.Fluid {
-    val cut = text.indexOf(Action.FLUID_ICON_SEP)
-    if (cut <= 0) return Action.Fluid(text.trim())
-    val icon = text.substring(0, cut).trim().lowercase()
-    val looksLikeId = icon.isNotEmpty() && icon.all { it in 'a'..'z' || it in '0'..'9' || it == '-' }
-    if (!looksLikeId) return Action.Fluid(text.trim())
-    return Action.Fluid(text.substring(cut + Action.FLUID_ICON_SEP.length).trim(), icon)
-}
+private fun parseFluid(text: String): Action.Fluid = Action.Fluid.parse(text)
 
 /**
  * `app:目标` / `app:a:目标` 那一支 —— `Action.parse` 的一个分支。

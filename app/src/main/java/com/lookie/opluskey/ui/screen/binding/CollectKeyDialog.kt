@@ -132,9 +132,11 @@ internal fun SettingsPage.CollectKeyDialog(
             //  已经在清单里：同上一条（用户口径：**弹消息条，不要直接结束**）——
             //  这一颗没有「下一步」可走，可前面那些键的关系还得看，直接收掉弹窗等于把人赶走。
             is CollectCheck.Duplicate -> {
+                //  键名画成标签（`chips`），模板里只留一个 `%s` 占位
                 hint(
-                    I18n.get(Strings.KEY_WATCH_DUPLICATE, "[%s] 已经在清单里了").format(check.name),
+                    I18n.get(Strings.KEY_WATCH_DUPLICATE, "%s 已经在清单里了"),
                     slot = HINT_SLOT_BINDING,
+                    chips = listOf(check.name),
                 )
             }
 
@@ -324,8 +326,9 @@ private fun SettingsPage.addKey(
     // 回执照发即可：提示条现在挂在**浮层槽、弹窗宿主之后**（见 `PageContent`），
     //  自己就压在弹窗之上；`onDismiss()` 紧跟其后把弹窗收走，两句谁先谁后都看得见
     hint(
-        I18n.get(Strings.KEY_WATCH_ADDED, "已添加 [%s]").format(name),
+        I18n.get(Strings.KEY_WATCH_ADDED, "已添加 %s"),
         slot = HINT_SLOT_BINDING,
+        chips = listOf(name),
     )
     return true
 }

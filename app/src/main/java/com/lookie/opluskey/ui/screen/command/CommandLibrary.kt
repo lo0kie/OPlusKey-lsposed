@@ -263,10 +263,14 @@ private fun SettingsPage.clearDeletedCommandFromDrafts(cmd: Command) {
 }
 
 /**
- * 删命令前把**每一颗键**上的 `cmd:` 引用清掉。
+ * 删命令前把**每一颗键**上的 `cmd:` 引用清掉，并摘掉「常用命令」里指向它的那几条。
  *
  *  自定义键同样能绑 `cmd:`，只清侧键的话那些键按下去永远 NOT_FOUND（与改名那条路同一套口径，
  *  见 `PageText.saveCommand`）。
+ *
+ *  **常用命令要反向删**（用户口径）：那张清单存的是一条条指向动作的快捷方式，源命令被删之后
+ *  留下的条目只剩一个念不出名字的 token —— 用户既看不懂、也删不掉（除非还记得它原来指向什么）。
+ *  与「移除常用命令」同一个口径：只摘清单，不动别人已经绑好的那一处。
  *
  * @return false = 绑定没清成（配置只读 / 写盘失败），调用方**不能**继续删命令
  */
@@ -279,10 +283,28 @@ private fun SettingsPage.clearCommandBindings(
     //  （组合按下拿不到命令、只报 NOT_FOUND），所以遍历只留那一处。
     //
     //  规则里的动作同样只换成「无操作」、不摘整条规则：摘掉会让用户的判断条件一起消失。
-    val next = cfg.mapActions { if (it.token == cmd.token) Action.None else it }
+    val mapped = cfg.mapActions { if (it.token == cmd.token) Action.None else it }
+    //  **常用命令里指向这一条的条目一并摘掉**（用户口径）：那是一条快捷方式，源命令没了它只剩
+    //  一个念不出名字的 token。与「移除常用命令」同一个口径 —— 只摘清单、不动别人的绑定。
+    //  挂在同一笔写入里：分两次写就会出现「清单还指着一条已经不存在的命令」的中间态。
+    val stale = mapped.global.commonCommands.filter { it.token == cmd.token }
+    val next =
+        if (stale.isEmpty()) {
+            mapped
+        } else {
+            mapped.copy(
+                global =
+                    mapped.global.copy(
+                        commonCommands = mapped.global.commonCommands.filterNot { it.token == cmd.token },
+                    ),
+            )
+        }
     if (next == cfg) return true
     // 只读态下这次写会被拒（返回值不能丢）：命令库那份照删，配置里就留下悬空的 `cmd:`。
     val ok = write(next, "删除命令时清掉绑定：${cmd.name}") != CommandsSave.Failed
     if (!ok) XLog.w("删除命令中止：绑定没能清掉（配置只读），命令库保持原样：${cmd.name}")
+    if (ok && stale.isNotEmpty()) {
+        XLog.w("删除命令：顺带摘掉 ${stale.size} 条指向它的常用命令（${cmd.token}）")
+    }
     return ok
 }

@@ -3,6 +3,7 @@ package com.lookie.opluskey.core.present
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ActionReading
 
 // 「一个动作怎么念」—— 全项目**唯一**实现。
 //
@@ -113,6 +114,30 @@ class CommandTitle internal constructor(
         appName: (Action) -> String,
         fallback: String,
     ): String = join(segmentsOf(action, appName, fallback), withParent = true)
+
+    /**
+     * 「这一次执行的是什么」—— 整句与拆开的三段，**一次算出来**。
+     *
+     *  给「执行时提示」的模板那一档：它既能写 `$action`（整句），也能写 `$parent` / `$name` /
+     *  `$state`（拆开的各段）。分成两次调用（[forSentence] 一次、另一处再取三段）也拼得出同样的
+     *  东西，但那要多算一遍，而且**两处拼法会各自演化** —— 提示里于是出现「整句是 A、拆开是 B」。
+     *
+     *  @param appName 应用名那一段（「打开应用」那一族用），其余动作不读它
+     *  @param fallback 清单也认不出时用的原文（见 [builtInSegments]）
+     */
+    fun reading(
+        action: Action,
+        appName: (Action) -> String,
+        fallback: String,
+    ): ActionReading {
+        val seg = segmentsOf(action, appName, fallback)
+        return ActionReading(
+            sentence = join(seg, withParent = true),
+            parent = seg.parent,
+            name = seg.name,
+            state = seg.state,
+        )
+    }
 
     /**
      * 网格 / 抽屉里那一格的小字。

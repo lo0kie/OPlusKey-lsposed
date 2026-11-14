@@ -13,10 +13,13 @@ import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.LongPressParams
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.withLongPress
-import com.lookie.opluskey.core.present.comboLabel
+import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.model.text.BRANCHES_TITLE
+import com.lookie.opluskey.ui.row.chipsOfNames
+import com.lookie.opluskey.ui.row.namesToChipsTemplate
 import com.lookie.opluskey.ui.state.binding.BranchDraft
 import com.lookie.opluskey.ui.state.binding.KeyWatchState
 
@@ -126,7 +129,7 @@ internal sealed interface BindingTarget {
      *  一并不给用）—— 判据只有一份（`ui/screen/binding/BindingPagerScreen.bindingTargetStopped`）。
      *  **场景块自己不在其中**：那一页的闸门只看整页，停用的块照样能改（见 `bindingTargetEnabled`）。
      */
-    fun pageBlockedReason(cfg: Config): String?
+    fun pageBlockedReason(cfg: Config): HintText?
 
     /** 一颗键的一档。 */
     data class Key(
@@ -153,7 +156,7 @@ internal sealed interface BindingTarget {
 
         //  单键这一页没有「这一份停用」这一类说法：格子的闸门是 `keyEnabled`，点不动时由
         //  `LinkCheck.disabledClickReason` 统一说「按键已停用」那一句。
-        override fun pageBlockedReason(cfg: Config): String? = null
+        override fun pageBlockedReason(cfg: Config): HintText? = null
     }
 
     /**
@@ -197,15 +200,21 @@ internal sealed interface BindingTarget {
                     },
             )
 
-        override fun pageBlockedReason(cfg: Config): String? {
+        override fun pageBlockedReason(cfg: Config): HintText? {
             val combo = cfg.combos.firstOrNull { it.id == id } ?: return null
-            return if (combo.enabled) {
-                null
-            } else {
-                //  这里要的是**用户认得出的名字**（`「侧键」×「电量 +」`），不是 `id` ——
-                //  后者是 `com1` 那种内部标识，画到提示条上等于什么都没说。
-                I18n.format(Strings.COMBO_DISABLED_ITEM, comboLabel(cfg, combo))
-            }
+            if (combo.enabled) return null
+            //  这里要的是**用户认得出的名字**（`[侧键]×[电量 +]`），不是 `id` ——
+            //  后者是 `com1` 那种内部标识，画到提示条上等于什么都没说。
+            //  名字按**逐颗一枚框**交给提示条（见 `namesToChipsTemplate`）。
+            val names = comboKeyNames(cfg, combo)
+            return HintText(
+                namesToChipsTemplate(
+                    I18n.get(Strings.COMBO_DISABLED_ITEM, "%s 已停用，可在菜单里启用它"),
+                    "%s",
+                    names,
+                ),
+                chipsOfNames(names),
+            )
         }
     }
 
@@ -288,7 +297,7 @@ internal sealed interface BindingTarget {
          * （主开关 + 链路 + 只读），「这一块停用」只影响命中，不影响编辑。
          * `null` 也是「那一块已经不在草稿里了（页面正在退）」那一帧的答案。
          */
-        override fun pageBlockedReason(cfg: Config): String? = null
+        override fun pageBlockedReason(cfg: Config): HintText? = null
 
         /**
          * 把 [action] 写进这一块的这一档 —— **只改草稿**，一个字节都不落盘。

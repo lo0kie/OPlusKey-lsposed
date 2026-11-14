@@ -30,7 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -164,19 +163,6 @@ internal fun SettingsPage.BranchCards(
             VisibleAreaCentered(emptyHeight) { BranchEmptyHint() }
         } else {
             Column(Modifier.fillMaxWidth()) {
-                //  「松手沿用按下时的场景」—— **整张表**一格开关，摆在列表**最上面**：
-                //  它修饰的是「按下与松手怎么接」，不是某一块的动作，所以不进任何一块的卡，
-                //  也不跟在列表后面（那要滚到底才看得见，读起来还像「第 N+1 块」）。
-                //  只在表非空时出现（空态那一支压根不画这一层）。
-                //
-                //  与顶栏的间距由这张卡自己让（`SECTION_TITLE_PAD_TOP`，与「按键绑定」页那张
-                //  「系统场景」条同一个数）；下面第一块的小标题自带 16dp 上间距，这一行与它
-                //  之间不再补距离 —— 与块与块之间那一档正好一致，这一行读成「这张表的一行表头」。
-                SceneReleasePinCard(
-                    rules = shownRules,
-                    enabled = pageWritable(),
-                    onToggle = { on -> setSceneReleasePin(draft, on) },
-                )
                 BranchRuleColumn(
                     rules = shownRules,
                     ids = shownIds,
@@ -251,10 +237,7 @@ internal fun SettingsPage.addScene() {
         return
     }
     val first = rules.isEmpty()
-    //  新块**沿用这张表此刻的取值**：`SceneRule.EMPTY` 自带「沿用」（那一项的默认值就是开），
-    //  而表被拨成关之后再加一块，就会冒出一块开着的 —— 列表那一行读「有任一块开着就算开」，
-    //  于是它当场自己跳回开，看着像「加一块就把设置改了」。
-    val id = branchDraftNow().add(SceneRule.EMPTY.copy(releasePin = sceneReleasePinOn(rules)))
+    val id = branchDraftNow().add(SceneRule.EMPTY)
     onAdded(if (first) NO_FRESH_ROW else id)
 }
 
@@ -1071,20 +1054,10 @@ internal fun SettingsPage.branchToggleRow(
     }
 }
 
-/** 表尾那句注脚 —— 与「自定义命令」页那条权限提示同一个样式（不占卡片、居中、`footnote1`）。 */
+/** 表尾那句注脚 —— 走全项目那一份注脚（[CommandFootnote]：不占卡片、居中、`footnote1`）。 */
 @Composable
 internal fun SettingsPage.BranchDefaultTip() {
-    Text(
-        //  只留这一句，不接「：侧键 - 单击」那截详细 —— 那一档顶栏副标题已经写着
-        text = I18n.get(Strings.COMMAND_BRANCH_DEFAULT, "以上都不成立时用按键绑定"),
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(start = 32.dp, end = 32.dp, top = 6.dp),
-        textAlign = TextAlign.Center,
-        style = COUITheme.textStyles.footnote1,
-        color = COUITheme.colorScheme.onSurfaceVariantSummary,
-    )
+    CommandFootnote(I18n.get(Strings.COMMAND_BRANCH_DEFAULT, "以上都不成立时用按键绑定"))
 }
 
 /**

@@ -163,6 +163,22 @@ object ConfigCodec {
      *       老文件（没有 `mode`）由 `ComboDto.toCombo` 的 `legacyMode` 推一次：认窗口就当窗口那条，
      *       只认按住就取加过的那一种（两种都加过 ⇒ 取第一颗那套，另一套丢弃）。
      *
+     *  60 = **按住组合的场景固定在首键按下**：`ComboDto` 多了 `sceneOnStarter`，`GlobalConfigDto`
+     *       多了 `comboSceneOnStarter`（公共那份）。同一轮里 `SceneRuleDto` 的 `release_pin` 退场
+     *       —— 那是「松手沿用按下时命中的那一块」，现在松手一律按当时条件重判（用户口径）。
+     *       老文件缺这两个新位 ⇒ 走出厂值（开）；多出来的 `release_pin` 由 `ignoreUnknownKeys` 丢掉。
+     *
+     *  59 = **常用命令能换图标**：`CommonCommandDto` 多了 `icon`（`FluidIcons` 的 id，空串 = 用它
+     *       本来那颗）。`show_in_binding` 在这一版之后**回来了**：它重新参与判断（每条自己决定
+     *       要不要出现在按键绑定页那一段），读回来是什么就写回什么 —— 字段没动过，所以不必再抬
+     *       版本；v59 那一版写下的 `true` 正好等于「全部显示」，与本版默认观感一致。
+     *       老文件缺 `icon` ⇒ 空串，观感逐字不变。
+     *
+     *  61 = **删掉「无操作时执行按键命令」**（`GlobalDto.combo_passthrough` 与 `ComboDto.passthrough`）——
+     *       组合某一格是「无操作」时不再让两颗键各跑一遍：留空就是什么都不做。
+     *       老文件里残留的那两格按未知键丢掉（`version < VERSION` 走「不校验 md5」那一支）。
+     *       删字段同样是改 DTO，必须抬这一位。
+     *
      *  **这个数只往上加**：一旦某个编号随一次提交发布出去，它对应的那组字段就定死了。
      *
      *
@@ -172,7 +188,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 58
+    const val VERSION = 61
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

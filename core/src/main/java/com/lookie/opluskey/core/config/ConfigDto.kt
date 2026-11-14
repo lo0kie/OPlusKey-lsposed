@@ -547,14 +547,6 @@ internal data class SceneRuleDto(
     /** 「单击后长按」的松手 —— 与 [releaseOn] / [release] 同一对，挂在另一档上。 */
     val chainReleaseOn: Boolean = false,
     val chainRelease: String = Action.NONE,
-    /**
-     * **松手沿用按下那一刻命中的这一块**（`SceneRule.releasePin`）—— 默认开。
-     *
-     *  老文件没有这一格 ⇒ 走默认（开）：松手不再重判条件。要回到「按当时状态重判」，
-     *  在「系统场景」列表下面那一行关掉（见 `ui/screen/command/SceneReleasePinCard`）——
-     *  那一行拨的是**整张表**，写下来的仍然是每块各自这一位。
-     */
-    val releasePin: Boolean = true,
     val enabled: Boolean = true,
 ) {
     /**
@@ -579,7 +571,6 @@ internal data class SceneRuleDto(
             release = Action.parse(release),
             chainReleaseOn = chainReleaseOn,
             chainRelease = Action.parse(chainRelease),
-            releasePin = releasePin,
             enabled = enabled,
         )
     }
@@ -630,7 +621,6 @@ internal data class SceneRuleDto(
                 release = scene.release.token,
                 chainReleaseOn = scene.chainReleaseOn,
                 chainRelease = scene.chainRelease.token,
-                releasePin = scene.releasePin,
                 enabled = scene.enabled,
             )
     }
@@ -696,6 +686,12 @@ internal data class ComboDto(
     /** 松手那一档的动作 token。 */
     val longRelease: String = Action.NONE,
     /**
+     * 这一档的**系统场景在什么时候定下来** —— `true` = 首键按下，`false` = 成员键按下。
+     *
+     *  老文件缺这一格 ⇒ `null` = 跟随公共设置（布尔没有第三个值，靠 `null` 表达「跟随」）。
+     */
+    val sceneOnStarter: Boolean? = null,
+    /**
      * **老的「一条规则一个手势」那一列** —— 只读，读到就迁移（见 [mergeScenes]）；与单键那份同型。
      */
     val rules: List<StateRuleDto> = emptyList(),
@@ -718,13 +714,6 @@ internal data class ComboDto(
     val toastTemplate: String? = null,
     /** 上面那几项被公共设置播过种没有 —— 与单键那条同义（`OwnSettings.ownSettingsSeeded`）。 */
     val ownSettingsSeeded: Boolean? = null,
-    /**
-     * 这一组自己的「无操作时执行按键命令」（`ComboKey.passthrough`）—— `null` = 跟随公共设置。
-     *
-     *  与上面那几项分开：它是**组合专属**的一项（单键没有「两颗键各干各的」），
-     *  所以不受 `useOwnSettings` 管，只有「写过没有」这一个区别。
-     */
-    val passthrough: Boolean? = null,
     /**
      * 这一档自己的「按键之间的等待」（毫秒）；`0` = 跟随公共设置。只在 [ComboKey.MODE_WAIT] 上算数。
      *
@@ -806,8 +795,6 @@ internal data class ComboDto(
             toastFluid = toastFluid ?: GlobalConfig.DEFAULT_TOAST_FLUID,
             toastTemplate = toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE,
             ownSettingsSeeded = ownSettingsSeeded ?: false,
-            //  「无操作时执行按键命令」：没写过就跟随公共设置（`null`），不在这里落默认值
-            passthrough = passthrough,
             //  「按键之间的等待」：0 表示跟随公共设置，必须原样留着 —— `clamp` 会把它抬到下限 20，
             //  那就成了「这一组显式设了 20ms」，界面上再也回不到跟随。
             windowMs = if (windowMs <= 0) ComboKey.WINDOW_FOLLOW_GLOBAL else clamp(ConfigFields.F_COMBO_WINDOW_MS, windowMs),
@@ -819,6 +806,7 @@ internal data class ComboDto(
                 } else {
                     clamp(ConfigFields.F_COMBO_HOLD_MIN_MS, holdMinMs)
                 },
+            sceneOnStarter = sceneOnStarter,
         )
     }
 
@@ -837,6 +825,7 @@ internal data class ComboDto(
                 longFireOnRelease = combo.longFireOnRelease,
                 longReleaseOn = combo.longReleaseOn,
                 longRelease = combo.longRelease.token,
+                sceneOnStarter = combo.sceneOnStarter,
                 scenes = combo.scenes.map { SceneRuleDto.of(it) },
                 useOwnSettings = combo.useOwnSettings,
                 colorOsApi = combo.colorOsApi,
@@ -846,7 +835,6 @@ internal data class ComboDto(
                 toastFluid = combo.toastFluid,
                 toastTemplate = combo.toastTemplate,
                 ownSettingsSeeded = combo.ownSettingsSeeded,
-                passthrough = combo.passthrough,
                 windowMs = combo.windowMs,
                 mode = combo.mode,
                 holdMinMs = combo.holdMinMs,
@@ -891,15 +879,14 @@ internal data class GlobalDto(
     /** 页面缩放（百分比）—— 老文件没有这一项，退回出厂值 100%。 */
     @SerialName("page_scale")
     val pageScale: Int = GlobalConfig.DEFAULT_PAGE_SCALE,
-    /** 组合键的无操作透传 —— 老文件没有这一项，退回默认（开）。 */
-    @SerialName("combo_passthrough")
-    val comboPassthrough: Boolean = GlobalConfig.DEFAULT_COMBO_PASSTHROUGH,
     /** 组合键两颗键之间的等待窗口（毫秒）—— 老文件没有这一项，退回出厂值 80。 */
     @SerialName("combo_window_ms")
     val comboWindowMs: Int = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
     /** 按住那两档里起点键要先按住多久（毫秒）—— 老文件没有这一项，退回出厂值 100。 */
     @SerialName("combo_hold_min_ms")
     val comboHoldMinMs: Int = GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS,
+    /** 按住那两档的场景在什么时候定下来（见 `GlobalConfig.comboSceneOnStarter`）—— 只落盘。 */
+    val comboSceneOnStarter: Boolean = GlobalConfig.DEFAULT_COMBO_SCENE_ON_STARTER,
     /** 随机图标配色的种子（`0` = 关）—— 老文件没有这一项，退回默认（关）。 */
     @SerialName("icon_tint_seed")
     val iconTintSeed: Int = GlobalConfig.DEFAULT_ICON_TINT_SEED,
@@ -933,9 +920,9 @@ internal data class GlobalDto(
                 ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
                 ConfigFields.F_FOLLOW_DISPLAY_SIZE to followDisplaySize,
                 ConfigFields.F_PAGE_SCALE to pageScale,
-                ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
                 ConfigFields.F_COMBO_HOLD_MIN_MS to comboHoldMinMs,
+                ConfigFields.F_COMBO_SCENE_ON_STARTER to comboSceneOnStarter,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
             ),
@@ -957,9 +944,9 @@ internal data class GlobalDto(
                 miniWindowAnim = g.miniWindowAnim,
                 followDisplaySize = g.followDisplaySize,
                 pageScale = g.pageScale,
-                comboPassthrough = g.comboPassthrough,
                 comboWindowMs = g.comboWindowMs,
                 comboHoldMinMs = g.comboHoldMinMs,
+                comboSceneOnStarter = g.comboSceneOnStarter,
                 iconTintSeed = g.iconTintSeed,
                 showCommonCommands = g.showCommonCommands,
                 //  `null` 原样留着（= 用默认那几条），不要在这里换成空表 —— 见这个字段的说明
@@ -973,8 +960,20 @@ internal data class GlobalDto(
 internal data class CommonCommandDto(
     val token: String = "",
     val name: String = "",
+    /**
+     * 这一条要不要出现在按键绑定页那一段（每条各管各的，没有总闸）。
+     *
+     *  老配置里这一位可能被写成 `true`（v59 那版曾把写回固定成 `true`），读回来就等于
+     *  「全部显示」—— 与那版的行为一致，不会让用户的清单突然少几条。
+     */
     @SerialName("show_in_binding")
     val showInBinding: Boolean = true,
+    /**
+     * 这一条换了哪颗图标（`FluidIcons` 的 id）—— 空串 = 用它本来那颗。
+     *
+     *  纯界面选择：常用命令只出现在模块自己的界面里，画的是 `ImageVector`，不落文件。
+     */
+    val icon: String = "",
 ) {
     /**
      * 读成模型；**解析不出来的写法直接丢**（与命令页同一条尺子：`Action.parse` 认不出的东西
@@ -986,12 +985,22 @@ internal data class CommonCommandDto(
     fun toCommonCommand(): CommonCommand? {
         val text = token.trim()
         if (text.isEmpty() || Action.parse(text) is Action.None) return null
-        return CommonCommand(token = text, name = name.trim(), showInBinding = showInBinding)
+        return CommonCommand(
+            token = text,
+            name = name.trim(),
+            showInBinding = showInBinding,
+            icon = icon.trim().lowercase(),
+        )
     }
 
     companion object {
         fun of(cmd: CommonCommand): CommonCommandDto =
-            CommonCommandDto(token = cmd.token, name = cmd.name, showInBinding = cmd.showInBinding)
+            CommonCommandDto(
+                token = cmd.token,
+                name = cmd.name,
+                showInBinding = cmd.showInBinding,
+                icon = cmd.icon,
+            )
     }
 }
 

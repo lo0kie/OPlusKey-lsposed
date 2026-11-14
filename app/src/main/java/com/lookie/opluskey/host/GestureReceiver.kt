@@ -222,12 +222,22 @@ internal object GestureReceiver {
                         val phase = intent?.getStringExtra(ModuleWire.EXTRA_PHASE)
                         val repeat = intent?.getBooleanExtra(ModuleWire.EXTRA_REPEAT, false) ?: false
                         val sentAt = intent?.getLongExtra(ModuleWire.EXTRA_SENT_AT, 0L) ?: 0L
+                        //  **场景快照请求**：不是手势、不执行动作 —— 只是「某个时刻到了」，
+                        //  让宿主把那一刻的条件定下来（见 `GestureExec.handleComboScene`）。
+                        val sceneStage = intent?.getStringExtra(ModuleWire.EXTRA_SCENE_STAGE)
                         //  这一下是**模块认领的**（判据侧刚判出手势）：记一笔，宿主那条场景派发
                         //  据此判「要不要吞」（见 [PressTrace]）。
                         //  **记在 `GestureExec` 过完「过期 / 重复」那道闸之后**：转发侧对同一次手势
                         //  会发两条（立刻 + 300ms 补发），在这里无条件记等于把吞键窗口一路推到
                         //  600ms —— 那段时间里别的键的原生派发会被当成「模块认领的」一起吞掉。
-                        if (!combo.isNullOrEmpty()) {
+                        if (!sceneStage.isNullOrEmpty()) {
+                            XLog.w("收到 system_server 转来的场景快照：$sceneStage=$combo")
+                            runOnWorker {
+                                XLog.guard("记录组合场景快照") {
+                                    GestureExec.handleComboScene(combo.orEmpty(), sceneStage)
+                                }
+                            }
+                        } else if (!combo.isNullOrEmpty()) {
                             // 组合键走独立一条：动作在 `ComboKey` 上，没有单键的 `KeyConfig`
                             //  （见 `ModuleWire.EXTRA_COMBO`）。
                             XLog.w("收到 system_server 转来的组合键：combo=$combo phase=$phase repeat=$repeat")

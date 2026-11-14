@@ -55,6 +55,12 @@ internal object OriginalLaunch {
 
     /**
      * 把这次启动交给原版 — `true` = 已经交出（界面由它起），调用方不要再起一次。
+     *
+     *  **就在调用线程上同步调**，不 post 到主线程。曾经照原版入口的样子 post 过一次（原版的
+     *  `ActionRemoteStartContentProvider` 是 `mHandler.post` 之后才调 `d.m`），结果**原本有动画的
+     * 应用全都变成没有**：`d.n` 里 `ActivityTransitionAnimator` 的 executor 本身就往主线程投递，
+     *  我们再套一层 post，启动与转场之间就多了一拍，远端转场拿不到那次启动。
+     *  原版那个 post 是 Binder 线程进主线程的必需，我们这条本来就不在 Binder 线程上，照抄是错的。
      */
     fun launch(
         context: Context,

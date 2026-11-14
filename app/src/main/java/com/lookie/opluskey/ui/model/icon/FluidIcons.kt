@@ -59,7 +59,11 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Circle
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.Clock24
+import io.github.lyxnx.compose.ui.tablericons.outline.ClockBolt
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
+import io.github.lyxnx.compose.ui.tablericons.outline.ClockPause
+import io.github.lyxnx.compose.ui.tablericons.outline.ClockPlay
+import io.github.lyxnx.compose.ui.tablericons.outline.ClockRecord
 import io.github.lyxnx.compose.ui.tablericons.outline.CloudSearch
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.ColorSwatch
@@ -116,6 +120,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.ListDetails
 import io.github.lyxnx.compose.ui.tablericons.outline.Location
 import io.github.lyxnx.compose.ui.tablericons.outline.Lock
+import io.github.lyxnx.compose.ui.tablericons.outline.LockCog
 import io.github.lyxnx.compose.ui.tablericons.outline.LockOpen
 import io.github.lyxnx.compose.ui.tablericons.outline.Logs
 import io.github.lyxnx.compose.ui.tablericons.outline.Message
@@ -207,11 +212,19 @@ import io.github.lyxnx.compose.ui.tablericons.outline.X
 import io.github.lyxnx.compose.ui.tablericons.outline.ZoomIn
 
 /**
- * 胶囊左边那颗图标**可选清单** —— 就是模块界面在用的那批 Tabler 字形（从 `ActionIcons` /
- * `PageIcons` 的引用里逐个列出来的，没有另造图）。
+ * 胶囊左边那颗图标**可选清单** —— 模块界面在用的那批字形，一颗不落。
  *
- *  id 是属性名的小写；outline / filled 同名的（`CircleCheck`）给 filled 加 `-filled` 后缀。
- *  顺序按 id 排，选择器就按这个顺序铺。
+ *  两段，按顺序拼在 [ALL] 里：
+ *
+ *  1. **Tabler 那批** —— 从 `ActionIcons` / `PageIcons` 的引用里逐个列出来的。id 是属性名的小写；
+ *     outline / filled 同名的（`CircleCheck`）给 filled 加 `-filled` 后缀。这一段按 id 排。
+ *  2. **手绘那批** —— [DrawnIcons] 里那 21 支（音量 / 铃声 / 亮度 / 媒体 / 录屏 / 小窗 / 电源菜单 /
+ *     手电筒 / 酷安 ……）。它们与 Tabler 同一支笔：24 视口、24dp 默认尺寸、描边色占位为黑，
+ *     所以导出那条路（[exportPainter] 刷白）照样走得通。这一段按 [DrawnIcons] 里的书写顺序跟在
+ *     后面，**不混排** —— 混进去之后「哪几颗是现成字形、哪几颗是自己画的」就看不出边界了。
+ *
+ *  别只从 `PageIcons` 里抓：动作字形（音量 / 亮度 / 媒体 …）全在 [DrawnIcons] 与 `ActionIcons`，
+ *  只看页面那张表会漏掉一大半。
  */
 internal object FluidIcons {
     /** id → 字形。 */
@@ -274,7 +287,11 @@ internal object FluidIcons {
             "circlecheck" to TablerIcons.Outline.CircleCheck,
             "click" to TablerIcons.Outline.Click,
             "clock24" to TablerIcons.Outline.Clock24,
+            "clockbolt" to TablerIcons.Outline.ClockBolt,
             "clockhour4" to TablerIcons.Outline.ClockHour4,
+            "clockpause" to TablerIcons.Outline.ClockPause,
+            "clockplay" to TablerIcons.Outline.ClockPlay,
+            "clockrecord" to TablerIcons.Outline.ClockRecord,
             "cloudsearch" to TablerIcons.Outline.CloudSearch,
             "codeplus" to TablerIcons.Outline.CodePlus,
             "colorswatch" to TablerIcons.Outline.ColorSwatch,
@@ -331,6 +348,7 @@ internal object FluidIcons {
             "link" to TablerIcons.Outline.Link,
             "location" to TablerIcons.Outline.Location,
             "lock" to TablerIcons.Outline.Lock,
+            "lockcog" to TablerIcons.Outline.LockCog,
             "lockopen" to TablerIcons.Outline.LockOpen,
             "logs" to TablerIcons.Outline.Logs,
             "message" to TablerIcons.Outline.Message,
@@ -420,6 +438,29 @@ internal object FluidIcons {
             "world" to TablerIcons.Outline.World,
             "x" to TablerIcons.Outline.X,
             "zoomin" to TablerIcons.Outline.ZoomIn,
+            // ── 手绘那批（[DrawnIcons]）—— Tabler 里没有的形状，仍是 24 视口、同一支笔 ──
+            //  顺序照 `DrawnIcons.kt` 的书写顺序，不掺进上面那段字母序里（见类注释）。
+            "menusidekey" to DrawnIcons.MenuSideKey,
+            "volumetile" to DrawnIcons.VolumeTile,
+            "volumeadd" to DrawnIcons.VolumeAdd,
+            "volumesub" to DrawnIcons.VolumeSub,
+            "volumeset" to DrawnIcons.VolumeSet,
+            "volumekeyup" to DrawnIcons.VolumeKeyUp,
+            "volumekeydown" to DrawnIcons.VolumeKeyDown,
+            "ringervolumeadd" to DrawnIcons.RingerVolumeAdd,
+            "ringervolumesub" to DrawnIcons.RingerVolumeSub,
+            "ringervolumeset" to DrawnIcons.RingerVolumeSet,
+            "ringercycle" to DrawnIcons.RingerCycle,
+            "mediaplaypause" to DrawnIcons.MediaPlayPause,
+            "brightnessadd" to DrawnIcons.BrightnessAdd,
+            "brightnesssub" to DrawnIcons.BrightnessSub,
+            "brightnessset" to DrawnIcons.BrightnessSet,
+            "screenrecordtile" to DrawnIcons.ScreenRecordTile,
+            "miniwindowexpand" to DrawnIcons.MiniWindowExpand,
+            "miniwindowcollapse" to DrawnIcons.MiniWindowCollapse,
+            "powermenu" to DrawnIcons.PowerMenu,
+            "flashlight" to DrawnIcons.Flashlight,
+            "brandcoolapk" to DrawnIcons.BrandCoolapk,
         )
 
     /** 按 id 取；认不出返回 null（旧配置里没写图标就是这条）。 */

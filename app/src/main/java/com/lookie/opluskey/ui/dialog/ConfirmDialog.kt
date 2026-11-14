@@ -82,6 +82,28 @@ internal fun ColumnScope.DialogBody(text: String) {
 }
 
 /**
+ * 正文那一块的**可组合版** —— 给「正文里要画键名框 / 组合列表」那种窗用。
+ *
+ *  与上面那个纯文本版的壳完全一致（同样的 `weight` + 滚动 + 左右内缩），差别只在内容：
+ *  那一档会把一整段字符串交给 `EmphasisText` 排版，这一档让调用方自己画。
+ *  为什么需要它：键名在这个界面里一直是**一枚圆角框**（`NameChip`），而 `summary` 只收纯文本 ——
+ *  写成一对方括号 `[侧键]` 就是另一套记号了。
+ *
+ *  正文仍是**可滚、可收缩**的（理由见上），所以调用方只管把内容按 `Column` 排好。
+ */
+@Composable
+internal fun ColumnScope.DialogBody(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier
+            .weight(1f, fill = false)
+            .verticalScroll(rememberScrollState())
+            .dialogSideMargin(),
+    ) {
+        content()
+    }
+}
+
+/**
  * 弹窗底部那组**标准按钮**：左「取消」+ 右动作项，两颗平分横向空间。
  *
  * ## 为什么不再用「两半平分 + 分隔线」那一版

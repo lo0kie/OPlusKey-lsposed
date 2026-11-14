@@ -1447,11 +1447,22 @@ object ActionCatalog {
      *  一眼看不出是「按一下取反」还是「定成开 / 关」。
      */
     fun switchStateLabel(action: Action): String? {
-        val setting = action as? Action.Setting ?: return null
-        return when (setting.on) {
-            true -> I18n.get(Strings.CATALOG_MODE_TURN_ON, "打开")
-            false -> I18n.get(Strings.CATALOG_MODE_TURN_OFF, "关闭")
-            null -> I18n.get(Strings.CATALOG_MODE_TOGGLE, "切换")
+        val setting = action as? Action.Setting
+        if (setting != null) {
+            return when (setting.on) {
+                true -> I18n.get(Strings.CATALOG_MODE_TURN_ON, "打开")
+                false -> I18n.get(Strings.CATALOG_MODE_TURN_OFF, "关闭")
+                null -> I18n.get(Strings.CATALOG_MODE_TOGGLE, "切换")
+            }
+        }
+        //  **老写法**里只有「切一下」的那两档（`flashlight` / `oplus:no_disturb`）：状态词就是「切换」。
+        //  它们不在 `setting:` 那一族里，走不到上面那一支 —— 不补这一支，`系统开关: 手电筒` 就少了
+        //  后半句（提示与格子小字只剩「手电筒」，读不出这一次是切了一下）。
+        //  老配置不迁移（执行侧照旧认这两个 token），所以念法也不能比新写法少一段。
+        return if (SystemSwitches.idOfLegacy(action.token) != null) {
+            I18n.get(Strings.CATALOG_MODE_TOGGLE, "切换")
+        } else {
+            null
         }
     }
 

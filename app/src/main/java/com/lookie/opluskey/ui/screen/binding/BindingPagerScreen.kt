@@ -16,14 +16,17 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.trigger
+import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageTabBand
 import com.lookie.opluskey.ui.chrome.rememberFabVisibleOnScroll
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_PAGE
+import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
 import com.lookie.opluskey.ui.model.text.gestureLabel
+import com.lookie.opluskey.ui.row.plain
 import com.lookie.opluskey.ui.screen.PagePagers
 import com.lookie.opluskey.ui.screen.command.LeaveDiscardDialog
 import com.lookie.opluskey.ui.screen.command.SceneBlockSave
@@ -388,16 +391,21 @@ internal fun SettingsPage.bindingTargetStopped(target: BindingTarget): String? {
     val cfg = configState.config.value
     return when (target) {
         is BindingTarget.Key -> {
-            SettingsTarget.Key(target.id).disabledReason(cfg)
-                ?: if (cfg.key(target.id).comboOnly) {
-                    I18n.format(Strings.BINDING_COMBO_ONLY_BLOCKED, target.id.label)
-                } else {
-                    null
-                }
+            val reason =
+                SettingsTarget.Key(target.id).disabledReason(cfg)
+                    ?: if (cfg.key(target.id).comboOnly) {
+                        HintText(
+                            I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED, "按键 %s 只参与组合按键"),
+                            listOf(keyName(target.id)),
+                        )
+                    } else {
+                        null
+                    }
+            reason?.plain()
         }
 
         is BindingTarget.Combo -> {
-            SettingsTarget.Combo(target.id).disabledReason(cfg)
+            SettingsTarget.Combo(target.id).disabledReason(cfg)?.plain()
         }
 
         is BindingTarget.Scene -> {

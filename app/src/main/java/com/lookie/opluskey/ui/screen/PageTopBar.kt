@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.core.present.comboLabelOf
@@ -30,6 +31,7 @@ import com.lookie.opluskey.ui.model.text.KEYS_TITLE
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.SUBTITLE_DIM_FACTOR
 import com.lookie.opluskey.ui.row.ChipLook
+import com.lookie.opluskey.ui.row.ChipSentence
 import com.lookie.opluskey.ui.row.NameChipRow
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
@@ -104,19 +106,54 @@ internal fun SettingsPage.PageTopBar(
             }
 
             Screen.KEY_SETTINGS -> {
-                keyChipsOf(settingsTargetNames(cfg, SettingsTargetState.current), subtitleTint)
+                //  **按住那一档的独立设置也写成一句话**（用户口径）：这一页与它自己的列表行、
+                //  编辑页顶栏说的是同一档组合，三处不该有两种念法。
+                val target = SettingsTargetState.current
+                val combo =
+                    (target as? SettingsTarget.Combo)
+                        ?.let { t -> cfg.combos.firstOrNull { it.id == t.id } }
+                if (combo != null && combo.isHold) {
+                    holdComboChips(cfg, combo, subtitleTint)
+                } else {
+                    keyChipsOf(settingsTargetNames(cfg, target), subtitleTint)
+                }
             }
 
             Screen.BRANCHES -> {
-                keyChipsOf(branchOwnerNames(cfg, branchDraft.comboId, editingKeyName()), subtitleTint)
+                //  这一页在编「哪一份」的场景表：归属是**按住组合**时与列表 / 编辑页 / 独立设置
+                //  同一句话（用户口径）—— 同一档组合在这四处不该有两种念法。
+                val combo =
+                    branchDraft.comboId
+                        ?.let { id -> cfg.combos.firstOrNull { it.id == id } }
+                if (combo != null && combo.isHold) {
+                    holdComboChips(cfg, combo, subtitleTint)
+                } else {
+                    keyChipsOf(branchOwnerNames(cfg, branchDraft.comboId, editingKeyName()), subtitleTint)
+                }
             }
 
-            //  组合键编辑页：那一组还在时才有名字；刚被删掉（退场那一帧）时退回纯文字那句兜底
+            //  组合键编辑页：那一组还在时才有名字；刚被删掉（退场那一帧）时退回纯文字那句兜底。
+            //
+            //  **按住那两档写成一句话**（用户口径「副标题改成和列表一样，按住 A 后再按 B」）：
+            //  那两档的判据就是「谁先按住」，只摆两枚框读不出顺序，而顺序正是这两档的区分所在。
+            //  与组合列表那一行同一份实现（`ChipSentence`），键名仍是框。
             Screen.COMBO_EDIT -> {
-                ComboEditState.editingId
-                    ?.let { id -> cfg.combos.firstOrNull { it.id == id } }
-                    ?.let { comboKeyNames(cfg, it) }
-                    ?.let { keyChipsOf(it, subtitleTint) }
+                val combo =
+                    ComboEditState.editingId
+                        ?.let { id -> cfg.combos.firstOrNull { it.id == id } }
+                when {
+                    combo == null -> {
+                        null
+                    }
+
+                    combo.isHold -> {
+                        holdComboChips(cfg, combo, subtitleTint)
+                    }
+
+                    else -> {
+                        keyChipsOf(comboKeyNames(cfg, combo), subtitleTint)
+                    }
+                }
             }
 
             else -> {
@@ -567,4 +604,34 @@ internal fun settingsTargetNames(
                 // 那一组刚被删掉（退场那一帧）：报 id 总比空串强，页面自己会退
                 ?: listOf(target.id)
         }
+    }
+
+/**
+ * **按住**那一档的副标题 —— 一句话「按住 A 后再按 B」，键名仍是名字框。
+ *
+ *  那两档的判据就是「谁先按住」：只摆两枚框 `A × B` 读不出顺序，而顺序正是这两档的区分所在。
+ *  与组合列表那一行是同一份实现（`ChipSentence`）：语序在模板里、框在 `NameChip` 里，
+ *  区别只是这里不套整列那个对齐用的框宽（这一行是一句话）。
+ *
+ *  三处顶栏共用这一支：组合编辑页、「按键设置」里那一档组合的独立设置 —— 它们说的是同一档组合，
+ *  不该两种念法。
+ *
+ * @param color 这一行的字色（`subtitleTint`：停用那一档会压暗）
+ */
+private fun holdComboChips(
+    cfg: Config,
+    combo: ComboKey,
+    color: Color,
+): @Composable () -> Unit =
+    {
+        val names = comboKeyNames(cfg, combo)
+        //  第二颗先按住那一档，句子里的顺序要对调（与列表同一处判据）
+        val ordered = if (combo.mode == ComboKey.MODE_HOLD_SECOND) names.reversed() else names
+        ChipSentence(
+            template = I18n.get(Strings.COMBO_MODE_HOLD, "按住 %s 后再按 %s"),
+            names = ordered,
+            look = ChipLook(COUITheme.textStyles.body2, color, enabled = true),
+            style = COUITheme.textStyles.body2,
+            color = color,
+        )
     }

@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui.screen.donate
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -20,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -211,9 +213,9 @@ private fun DonorRow(
         modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        DonorCell(name, style, Modifier.weight(1f))
+        DonorCell(name, style, Modifier.weight(1f), interactive = !header)
         VerticalDivider()
-        DonorCell(amount, style, Modifier.weight(1f))
+        DonorCell(amount, style, Modifier.weight(1f), interactive = !header)
     }
 }
 
@@ -221,14 +223,34 @@ private fun DonorRow(
  * 一格：撑满自己那份宽，字居中；超长按尾省略，不换行把行撑高。
  *
  *  行高由 [CELL_LINE_HEIGHT] 摊平，字按行盒居中 —— 不再对各字体做额外的墨迹修正。
+ *
+ *  **按压反馈只要涟漪**：`clickable` 吃 `LocalIndication`（COUI 那一份矩形状态层），
+ *  **不加任何缩放 / 下沉** —— 表格格子的行列线是连着的，缩一格会把线带歪。
+ *  涟漪用 `clipToBounds` 裁进这一格，否则会漫过竖线糊到旁边那一格上。
+ *
+ * @param interactive 这一格吃不吃点击（表头那一行不吃 —— 列名不是可点的东西）
  */
 @Composable
 private fun DonorCell(
     text: String,
     style: TextStyle,
     modifier: Modifier,
+    interactive: Boolean,
 ) {
-    Box(modifier = modifier.padding(TABLE_CELL_PADDING), contentAlignment = Alignment.Center) {
+    Box(
+        modifier =
+            modifier
+                .then(
+                    if (interactive) {
+                        Modifier
+                            .clipToBounds()
+                            .clickable(onClick = {})
+                    } else {
+                        Modifier
+                    },
+                ).padding(TABLE_CELL_PADDING),
+        contentAlignment = Alignment.Center,
+    ) {
         Text(
             text = text,
             // 格子高度由行高固定、字在里面竖居中 —— 补一档光学修正（见 `opticalCenter`）

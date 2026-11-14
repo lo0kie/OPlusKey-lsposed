@@ -8,8 +8,11 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.OwnSettings
-import com.lookie.opluskey.core.present.comboLabel
+import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.core.present.keyName
+import com.lookie.opluskey.ui.feedback.HintText
+import com.lookie.opluskey.ui.row.chipsOfNames
+import com.lookie.opluskey.ui.row.namesToChipsTemplate
 
 /**
  * 「独立设置页现在在改谁」—— 一颗键，或一组组合键。**纯界面状态**，不落盘。
@@ -44,7 +47,7 @@ internal sealed interface SettingsTarget {
      *  与页面里其它按不动的控件**同一句**（`KEY_DISABLED_ITEM` / `COMBO_DISABLED_ITEM`），
      *  并且名字走 `keyName` / `comboLabel` —— 那一份才是「一个键怎么念」的权威实现。
      */
-    fun disabledReason(config: Config): String?
+    fun disabledReason(config: Config): HintText?
 
     data class Key(
         val id: KeyId,
@@ -53,8 +56,15 @@ internal sealed interface SettingsTarget {
 
         override fun enabledIn(config: Config): Boolean = config.key(id).enabled
 
-        override fun disabledReason(config: Config): String? =
-            if (enabledIn(config)) null else I18n.format(Strings.KEY_DISABLED_ITEM, keyName(id))
+        override fun disabledReason(config: Config): HintText? =
+            if (enabledIn(config)) {
+                null
+            } else {
+                HintText(
+                    I18n.get(Strings.KEY_DISABLED_ITEM, "%s 已停用，可在菜单里启用"),
+                    listOf(keyName(id)),
+                )
+            }
     }
 
     data class Combo(
@@ -68,9 +78,18 @@ internal sealed interface SettingsTarget {
          */
         override fun enabledIn(config: Config): Boolean = config.combos.firstOrNull { it.id == id }?.enabled ?: true
 
-        override fun disabledReason(config: Config): String? {
+        override fun disabledReason(config: Config): HintText? {
             val combo = config.combos.firstOrNull { it.id == id } ?: return null
-            return if (combo.enabled) null else I18n.format(Strings.COMBO_DISABLED_ITEM, comboLabel(config, combo))
+            if (combo.enabled) return null
+            val names = comboKeyNames(config, combo)
+            return HintText(
+                namesToChipsTemplate(
+                    I18n.get(Strings.COMBO_DISABLED_ITEM, "%s 已停用，可在菜单里启用它"),
+                    "%s",
+                    names,
+                ),
+                chipsOfNames(names),
+            )
         }
     }
 }

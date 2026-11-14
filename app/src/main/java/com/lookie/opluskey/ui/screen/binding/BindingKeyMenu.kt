@@ -13,6 +13,7 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.withKeyName
 import com.lookie.opluskey.core.model.withoutKey
+import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.HeaderIconButton
@@ -23,6 +24,7 @@ import com.lookie.opluskey.ui.dialog.NameDialog
 import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
+import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.text.BRANCHES_TITLE
@@ -253,7 +255,10 @@ private fun keyMenuEntries(
         val sceneBlocked =
             blocked
                 ?: if (cfg.key(selected).comboOnly) {
-                    I18n.format(Strings.BINDING_COMBO_ONLY_BLOCKED, selected.label)
+                    HintText(
+                        I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED, "按键 %s 只参与组合按键"),
+                        listOf(keyName(selected)),
+                    )
                 } else {
                     null
                 }
@@ -275,7 +280,8 @@ private fun keyMenuEntries(
                     icon = PageIcons.Scene,
                     submenu = true,
                     enabled = sceneBlocked == null,
-                    disabledHint = sceneBlocked,
+                    disabledHint = sceneBlocked?.template,
+                    disabledChips = sceneBlocked?.chips.orEmpty(),
                     onPick = actions.onOpenBranches,
                 ),
             )
@@ -289,7 +295,8 @@ private fun keyMenuEntries(
                 icon = PageIcons.SettingsCog,
                 submenu = true,
                 enabled = blocked == null,
-                disabledHint = blocked,
+                disabledHint = blocked?.template,
+                disabledChips = blocked?.chips.orEmpty(),
                 onPick = actions.onOpenSettings,
             ),
         )
@@ -447,7 +454,8 @@ private fun SettingsPage.confirmRenameKey(
     // 只在完全成功时报（见下一条同一笔账）
     if (write(now.withKeyName(selected.id, name), "custom_key_rename=${selected.id}") != CommandsSave.Ok) return
     hint(
-        I18n.get(Strings.TOAST_KEY_RENAMED, "已重命名为 [%s]").format(name),
+        I18n.get(Strings.TOAST_KEY_RENAMED, "已重命名为 %s"),
         slot = HINT_SLOT_BINDING,
+        chips = listOf(name),
     )
 }

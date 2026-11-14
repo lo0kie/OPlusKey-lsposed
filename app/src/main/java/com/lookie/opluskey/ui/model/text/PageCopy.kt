@@ -344,10 +344,24 @@ internal val COMMAND_DISCLAIMER_TEXT: String
  *  点带 `prefix` 的那一行 = 把前缀填进命令输入框；输入框里已经带了格式时只换前缀、正文留着
  *  （不是追加，见 `CommandFormats.fillPrefix`）。
  */
-internal fun formatIconOf(text: String?): ImageVector? {
+internal fun formatIconOf(text: String?): ImageVector? = formatLineOf(text)?.icon
+
+/**
+ * 「命令详情」弹窗正文底下那句格式提示 —— 这一段是哪一种写法，就把那一种的骨架摆出来。
+ *
+ *  与 [formatIconOf] 走**同一个**匹配（[formatLineOf]）：两处各挑一遍的话，图标的归属和
+ *  提示的归属迟早会分叉（同一段命令行首是「模拟按键」、底下却说 `shell:<命令>`）。
+ *
+ *  没有前缀、或者前缀不在支持清单里（老配置、内建动作的 `app:` 那一类）返回 `null` ——
+ *  那几种本来就不该手写，硬贴一条「格式」只会把人往错的方向教。
+ */
+internal fun formatTipOf(text: String?): String? = formatLineOf(text)?.tip
+
+/** 这段命令开头是哪一行格式（[COMMAND_FORMAT_LINES]）；认不出返回 `null`。 */
+private fun formatLineOf(text: String?): CommandFormatLine? {
     val raw = text?.trim().orEmpty()
     if (raw.isEmpty()) return null
-    return COMMAND_FORMAT_LINES.firstOrNull { line -> line.prefix?.let(raw::startsWith) == true }?.icon
+    return COMMAND_FORMAT_LINES.firstOrNull { line -> line.prefix?.let(raw::startsWith) == true }
 }
 
 internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
@@ -361,18 +375,23 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
                 icon = PageIcons.FormatShell,
                 label = I18n.get(Strings.COMMAND_FORMAT_SHELL, "shell:<命令>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_SHELL_DESC, "执行 shell 命令"),
+                tip = I18n.get(Strings.COMMAND_FORMAT_SHELL_TIP, "shell:<命令>"),
                 prefix = Action.SHELL_PREFIX,
             ),
             CommandFormatLine(
                 icon = PageIcons.FormatKeyEvent,
                 label = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT, "keyevent:<按键>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT_DESC, "模拟按键"),
+                //  唯一一种**载荷不是文字**的写法：这里填的是 keycode，写「电源键」这种名字
+                //  解析器认不出（见 `Action.parseKeyEvent`），所以提示里把「数字」点出来。
+                tip = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT_TIP, "keyevent:<keycode>（数字）"),
                 prefix = Action.KEYEVENT_PREFIX,
             ),
             CommandFormatLine(
                 icon = PageIcons.FormatIntent,
                 label = I18n.get(Strings.COMMAND_FORMAT_INTENT, "intent:<Action>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_INTENT_DESC, "发送 Intent"),
+                tip = I18n.get(Strings.COMMAND_FORMAT_INTENT_TIP, "intent:<Action>（广播 action 名）"),
                 prefix = Action.INTENT_PREFIX,
             ),
             //  发通知（`notify:`）放这里：它是**通知中心里那条**通知，与「执行时提示」那个 toast
@@ -381,6 +400,7 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
                 icon = PageIcons.FormatNotify,
                 label = I18n.get(Strings.COMMAND_FORMAT_NOTIFY, "notify:<正文>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_NOTIFY_DESC, "以宿主身份发一条通知"),
+                tip = I18n.get(Strings.COMMAND_FORMAT_NOTIFY_TIP, "notify:<正文>"),
                 prefix = Action.NOTIFY_PREFIX,
             ),
             //  流体云（`fluid:`）紧跟其后：同样是「让用户看见一句话」，但它是状态栏 / AOD 上
@@ -389,6 +409,13 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
                 icon = PageIcons.FormatFluid,
                 label = I18n.get(Strings.COMMAND_FORMAT_FLUID, "fluid:<正文>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_FLUID_DESC, "弹一条流体云胶囊"),
+                //  这一族多一段：正文前面可以再带一个图标 id（见 `Action.Fluid` 的 token），
+                //  卡片一行放不下，弹窗里才说得清。
+                tip =
+                    I18n.get(
+                        Strings.COMMAND_FORMAT_FLUID_TIP,
+                        "fluid:<正文>（带图标写 fluid:<图标 id>|正文）",
+                    ),
                 prefix = Action.FLUID_PREFIX,
             ),
             //  提示（`toast:`）与上面两行是同一件事的第三个落点：「说完就没」的那一档 ——
@@ -397,12 +424,14 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
                 icon = PageIcons.FormatToast,
                 label = I18n.get(Strings.COMMAND_FORMAT_TOAST, "toast:<正文>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_TOAST_DESC, "在屏幕上闪一条提示"),
+                tip = I18n.get(Strings.COMMAND_FORMAT_TOAST_TIP, "toast:<正文>"),
                 prefix = Action.TOAST_PREFIX,
             ),
             CommandFormatLine(
                 icon = PageIcons.FormatShortcut,
                 label = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT, "shortcut:<ID>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_DESC, "触发快捷方式"),
+                tip = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_TIP, "shortcut:<ID>（快捷指令 id）"),
                 prefix = Action.SHORTCUT_PREFIX,
             ),
         )

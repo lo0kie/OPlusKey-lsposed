@@ -40,6 +40,7 @@ import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.screen.binding.CollectKeyDialog
 import com.lookie.opluskey.ui.screen.binding.ComboModeAskDialog
+import com.lookie.opluskey.ui.screen.binding.ComboStarterBlockedDialog
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.binding.ComboEditState
 import com.lookie.opluskey.ui.state.binding.KeysEditState
@@ -190,17 +191,33 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
         },
     )
 
+    //  按住组合只差最后一步：**先按住哪一颗**（两种顺序各是一档）。
+    //
+    //  **窗口不能跟着数据一起消失**：点中 / 取消时 `holdOrder` 立刻回 `null`，若这一窗的开关直接
+    //  就是 `order != null`，它会在同一帧从组合里被摘掉 —— 那一下是硬切，退场动画根本来不及播
+    //  （用户口径「触发方式的 dialog 没有出场动画」）。所以这里留一份**比数据慢一格**的状态：
+    //  数据（`holdOrder`）空了只代表「关窗请求」，`modeShown` 等窗自己播完退场再翻下去。
+    //  画的内容照**最后画过的那一份**（`LastHoldOrder`），否则退场那两百毫秒里行名会先变空。
     val order = holdOrder
-    if (order != null) {
-        val names = order.map { keyName(it) }
+    val orderLast = remember { LastHoldOrder() }
+    if (order != null) orderLast.value = order
+    var modeShown by remember { mutableStateOf(false) }
+    //  **合成式而不是 `LaunchedEffect`**：`LaunchedEffect` 要等这一帧画完才跑，而点选那一帧
+    //  `order` 已经空了 —— 中间会先组合出一次「没有东西可画」，整支 `if` 塌掉、窗跟着被摘，
+    //  退场照样播不出来。合成式当场置位，同一个组合过程里 `shown` 就接得上。
+    if (order != null && !modeShown) modeShown = true
+    val shown = (order ?: orderLast.value).takeIf { modeShown }
+    if (shown != null && shown.isNotEmpty()) {
+        val names = shown.map { keyName(it) }
         val first = names.getOrNull(0).orEmpty()
         val second = names.getOrNull(1).orEmpty()
         val template = I18n.get(Strings.COMBO_MODE_HOLD, "按住 %s 后再按 %s")
         //  这一组键**已经用过**哪种顺序 —— 用过的那一行置灰：同一类里同一种顺序只能有一档
         //  （再来一档就是死配置，判定侧只会取配置里靠前的那个）。判据与 `comboRoomLeft` 同源。
-        val used = cfg.combos.filter { it.keys == order.map { k -> k.id } }.mapTo(HashSet()) { it.mode }
+        val ids = shown.map { it.id }
+        val used = remember(cfg.combos, ids) { usedComboModes(cfg, ids) }
         SinglePickerDialog(
-            show = true,
+            show = order != null,
             title = I18n.get(Strings.COMBO_MODE_TITLE, "触发方式"),
             options =
                 listOf(
@@ -210,18 +227,42 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             //  这一窗是「二选一新加一档」，不是在改某个已经选中的值 —— 哪一行都不打勾
             selectedIndex = -1,
             onDismiss = { holdOrder = null },
+            onDismissFinished = {
+                modeShown = false
+                orderLast.value = null
+            },
             onPick = { index ->
                 holdOrder = null
                 val mode = if (index == 0) ComboKey.MODE_HOLD_FIRST else ComboKey.MODE_HOLD_SECOND
-                comboWriteGuard("添加按住组合") { addCombo(order, mode) != null }
+                comboWriteGuard("添加按住组合") { addCombo(shown, mode) != null }
+            },
+            //  置灰那一行点下去**要有话说**（用户口径「禁用的条目点击没有消息提示」）：
+            //  一句「这种触发方式已经添加过了」就够 —— 用户点的就是那一行，
+            //  再把它的名字念一遍（「先按住第一颗 这种…」）是把同一件事说两次。
+            onDisabledPick = {
+                hint(I18n.get(Strings.COMBO_MODE_ALREADY, "这种触发方式已经添加过了"), slot = HINT_SLOT_COMBO)
             },
         )
     }
 
-    //  「起点键得先改成松手时触发」那一问 —— 加按住组合时才会弹（`addCombo` → `setComboMode`）。
-    //  **必须挂在这一页**：添加动作发生在这里，而它只把问题记在 `ComboModeAsk` 上，
-    //  没有这一行就没人画那张窗 —— 那一档会静悄悄地不生效。
+    //  「起点键得先改成松手时触发」那一问 —— 加按住组合时才会弹（`addCombo` 发现起点键不合规，
+    //  只把问题记在 `ComboModeAsk` 上，**那一档此时还没进配置**）。
+    //  **必须挂在这一页**：添加动作发生在这里，没有这一行就没人画那张窗 ——
+    //  那一档会静悄悄地不生效（或者说，用户点了添加却什么都不会发生）。
     ComboModeAskDialog()
+    //  起点键「只参与组合」那一道拦截 —— 同一处添加动作，同样的挂法（见 `ComboStarterBlocked`）
+    ComboStarterBlockedDialog()
+}
+
+/**
+ * 「触发方式」那一窗退场期间要画的那几颗键（见 [KeysScreen]）。
+ *
+ *  窗的开关是「数据在不在」，而点中一行时数据**当场**就收了 —— 没有这一格的话，退场那两百
+ *  毫秒里行上的键名先变空（「按住  后再按  」）。所以照**最后画过的那一份**画，与
+ *  `CommonCommandsScreen` 的 `LastCommand`、`DonateDialog` 的 `Last` 同一个理由。
+ */
+private class LastHoldOrder {
+    var value: List<KeyId>? = null
 }
 
 /**
@@ -377,25 +418,26 @@ private fun SettingsPage.ComboKeysDialog(
     val keys = cfg.allKeys
     //  每次露出都从空选起：上一次点了取消还留着一半勾选，读起来像「上次已经选好了」
     var picked by remember(show) { mutableStateOf(emptySet<String>()) }
-    //  这一组键在**这一类里**还有没有位置：等待组合一档、按住组合两档（两种顺序），配满就按不动。
-    //  判据与 addCombo 的去重同一条。
+    //  这一组键在**这一类里**还有没有没占的触发方式：等待组合一档、按住组合两档（两种顺序）。
+    //  判据与 `addCombo` 的去重同一条（`comboAllModesTaken`）。
     val maxKeys = if (hold) ComboKey.MIN_KEYS else ComboKey.MAX_KEYS
-    val sameKeys =
-        if (picked.size < ComboKey.MIN_KEYS) {
-            emptyList()
-        } else {
-            cfg.combos.filter { it.keys.sorted() == picked.sorted() }
-        }
-    val duplicate =
-        picked.size >= ComboKey.MIN_KEYS &&
-            if (hold) sameKeys.count { it.isHold } >= 2 else sameKeys.any { it.isWait }
+    val pickedIds = picked.toList()
+    val allModesTaken = picked.size >= ComboKey.MIN_KEYS && comboAllModesTaken(cfg, pickedIds, hold)
     //  「为什么还不能添加」只有一处判据：`null` = 可以加。点那颗灰按钮时由
     //  `MultiPickerDialog` 的 `onBlockedClick` 把它送进通用消息条 —— 灰着点了没反应最像「坏了」。
     //  颗数超出那一档**不在这里判**：勾满两颗之后第三颗勾不上（见 `onToggle`），走不到这儿。
     val blockedReason =
         when {
-            duplicate -> I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了")
+            //  按住那两种顺序都加过时换一种说法（用户口径「要改成所有触发都已添加」）：
+            //  从这一列的「添加」进来，用户面对的就是「按住组合」这一类，全占满就是这一类没得加了。
+            //  等待组合只有一档，它已存在时仍是「这组按键已经添加过了」——那种情况下另一类
+            //  往往还能加，说「所有」不准确。
+            allModesTaken && hold -> I18n.get(Strings.COMBO_ALL_MODES_TAKEN, "所有触发方式都已添加")
+
+            allModesTaken -> I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了")
+
             picked.size < ComboKey.MIN_KEYS -> I18n.format(Strings.COMBO_MIN_KEYS, ComboKey.MIN_KEYS)
+
             else -> null
         }
 
@@ -416,7 +458,8 @@ private fun SettingsPage.ComboKeysDialog(
             //  在勾选那一步就说清，别让用户先勾出一个不成立的组合、再去猜「添加」为什么是灰的。
             //  取消勾选永远放行（那是往回收，不受上限管）。
             if (!on && picked.size >= maxKeys) {
-                hint(I18n.format(Strings.COMBO_MAX_KEYS, maxKeys), slot = HINT_SLOT_COMBO)
+                //  上限按类说（见 `comboMaxKeysHint`）：等待组合 3 颗、按住组合 2 颗
+                hint(comboMaxKeysHint(hold), slot = HINT_SLOT_COMBO)
             } else {
                 picked = if (on) picked - key.id else picked + key.id
             }

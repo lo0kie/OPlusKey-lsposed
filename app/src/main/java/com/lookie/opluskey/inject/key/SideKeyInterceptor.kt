@@ -57,6 +57,10 @@ internal class SideKeyInterceptor(
      *  触发方式不必带 —— 它是这一档的身份（`ComboKey.mode`），执行侧读自己那份配置就有。
      */
     private val onCombo: (ComboKey, GestureTrigger, Boolean) -> Unit,
+    /** **某颗键刚按下** —— 按住组合的起点键要在这一刻让宿主把场景定下来（见 `ComboDetector.onHoldStarter`）。 */
+    private val onHoldStarter: (KeyId) -> Unit,
+    /** **某一档组合刚凑成** —— 关掉「首键按下固定」时，场景按这一刻定。 */
+    private val onComboFormed: (ComboKey) -> Unit,
     /**
      * 「屏幕黑着的话，这段时间里别让 CPU 睡」（熄屏排双击窗口时用，见 `KeyHooks.holdAwake`）。
      *
@@ -100,6 +104,8 @@ internal class SideKeyInterceptor(
         ComboDetector(
             handler = handler,
             onCombo = onCombo,
+            onHoldStarter = onHoldStarter,
+            onComboFormed = onComboFormed,
             resetKey = { id ->
                 //  这一颗已经归组合了 ⇒ 压着等窗口的那一下不必再喂单键（否则一次按压执行两个动作）
                 held.drop(id)

@@ -180,12 +180,23 @@ object Strings {
      * 关掉「松手才触发」之前的那一问（标题 + 正文 + 动作项）—— 这颗键正被某些按住手势
      * 当成「先按住的那一颗」时弹。
      *
-     *  正文里的 `%s` 两处：第一处是**这颗键的名字**，第二处是**受影响的组合**（一行一个，
-     *  名字各带一对括号）。关掉之后判定侧那条上界会把那些组合整条截止，所以确认时
-     *  一并把它们改回「等窗口」—— 留着它们只是一个永远按不出来的档。
+     *  **正文拆成三段**（用户口径「正文的键名用 tag 样式」）：[BINDING_FIRE_OFF_LEAD] 一句引导
+     *  （`%s` = 这颗键的名字，画成名字框）、中间每一档组合各一行键名框、[BINDING_FIRE_OFF_TAIL]
+     *  一句后果。合成一整段字符串的话，键名只能写成 `[侧键]` —— 那是这个界面里另一套记号。
+     *
+     *  关掉之后判定侧那条上界会把那些组合整条截止，所以确认时一并把它们改回「等窗口」——
+     *  留着它们只是一个永远按不出来的档。
      */
     const val BINDING_FIRE_OFF_TITLE = "binding.fire_off_title"
-    const val BINDING_FIRE_OFF_BODY = "binding.fire_off_body"
+    const val BINDING_FIRE_OFF_LEAD = "binding.fire_off_lead"
+    const val BINDING_FIRE_OFF_TAIL = "binding.fire_off_tail"
+
+    /**
+     * 上面那一问的动作项 —— `%d` 是**受影响的组合数**（`禁用 3 个组合`）。
+     *
+     *  这一下真正发生的是那几档按住组合被退回「等窗口」（等于它们暂时不成立），
+     *  报个数比「关闭并改回等窗口」这个动词更直接：用户据此判断要不要继续。
+     */
     const val BINDING_FIRE_OFF_ACTION = "binding.fire_off_action"
 
     /** 「按键绑定」页大标题下面那行小标题：当前这一组是「快捷键」。 */
@@ -219,10 +230,6 @@ object Strings {
     /** 这一档本身是「无操作」时，「松手执行额外动作」那一族灰着被点一下说的话。 */
     const val BINDING_RELEASE_NEEDS_ACTION = "binding.release_needs_action"
 
-    /** 「松手沿用按下时的场景」那一行（标题 / 开 / 关）—— 只给场景块的松手那一族摆。 */
-    const val BINDING_RELEASE_PIN_TITLE = "binding.release_pin_title"
-    const val BINDING_RELEASE_PIN_ON = "binding.release_pin_on"
-    const val BINDING_RELEASE_PIN_OFF = "binding.release_pin_off"
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
 
     /**
@@ -272,19 +279,23 @@ object Strings {
     /** 改名窗下面那行常驻小字：留空会怎样。 */
     const val COMMON_COMMANDS_RENAME_HINT = "common_commands.rename_hint"
 
-    /** 行菜单里那一项：这一条要不要出现在按键绑定页。 */
-    const val COMMON_COMMANDS_SHOW_IN_BINDING = "common_commands.show_in_binding"
+    /**
+     * 行菜单里那一项：**把这一条固定到按键绑定页**（`固定`）。
+     *
+     *  是一个开关而不是结论：`selected` 画的是这一条当前固定的状态，点一下切换。
+     *  标题取「固定」而不是「显示在按键绑定页」—— 那一长串在菜单里折成两行，
+     *  而这一格回答的正是「它是我的常用之一吗」（用户口径）。
+     */
+    const val COMMON_COMMANDS_PINNED = "common_commands.pinned"
 
     /**
-     * 行菜单里那一项（**固定档**）—— 常用命令一律显示在按键绑定页，这一项只是结论、不能切。
+     * 行菜单里那一项：给这一条**换一颗图标**。
      *
-     *  与 [COMMON_COMMANDS_SHOW_IN_BINDING] 分开两条：那一条是问句（要不要显示），
-     *  这一条是陈述（固定显示）。同一个标题下挂两种语气，用户会去找「怎么点都没反应」的原因。
+     *  与命令页那一档共用同一个网格选择器（[COMMAND_FLUID_ICON_TITLE] 那一套字形），只是写回去的
+     *  落点不同 —— 那边改命令正文里的 `<id>|`，这边改清单里这一条的 `icon`。所以两处的标题也
+     *  用同一个词（「图标」），不另起说法。
      */
-    const val COMMON_COMMANDS_SHOW_IN_BINDING_FIXED = "common_commands.show_in_binding_fixed"
-
-    /** 点那一行（不可切换）时说的那句：为什么点不动。 */
-    const val COMMON_COMMANDS_SHOW_IN_BINDING_LOCKED = "common_commands.show_in_binding_locked"
+    const val COMMON_COMMANDS_ICON = "common_commands.icon"
 
     /** 行菜单里那一项：从清单里拿掉。 */
     const val COMMON_COMMANDS_REMOVE = "common_commands.remove"
@@ -292,7 +303,7 @@ object Strings {
     /** 移除前那道确认窗的标题。 */
     const val COMMON_COMMANDS_REMOVE_TITLE = "common_commands.remove_title"
 
-    /** 同上那段正文（`%s` = 这一条的名字）—— 说清「只从清单里拿掉，绑定不动」。 */
+    /** 同上那段正文（`%s` = 这一条的名字）—— 就一句「把这一条从清单里移除」。 */
     const val COMMON_COMMANDS_REMOVE_BODY = "common_commands.remove_body"
 
     /** 右下角那颗加号打开的那层抽屉的标题。 */
@@ -465,6 +476,32 @@ object Strings {
      */
     const val COMBO_MODE_SWITCHED = "combo.mode_switched"
 
+    /**
+     * 「触发方式」选择窗里点到**已经添加过**的那一行时说的那句（不带参数）。
+     *
+     *  那一行是置灰的，可点性仍挂在 `clickable` 上（见 `PickerRow`）—— 点了毫无反应最像坏了。
+     *  所以这里点名说清是**这一种**已经添加，而不是笼统的 [COMBO_DUPLICATE]：
+     *  那一条读起来像「整组都加过了」，而实际情况是同一组键还能再加另一种方式。
+     */
+    const val COMBO_MODE_ALREADY = "combo.mode_already"
+
+    /**
+     * 这一组键在**这一类里**的触发方式已经全占满时说的那句（`所有触发方式都已添加`）。
+     *
+     *  与 [COMBO_MODE_ALREADY] 分开：那一条说的是「你点的这一种已经有了」，这一条说的是
+     *  「这一类里没有可选项了」。按住组合两种顺序都加过时用这一条 —— 选键窗的「添加」按钮
+     *  也归它，那里连「哪一行」都没有，只能说结论。
+     */
+    const val COMBO_ALL_MODES_TAKEN = "combo.all_modes_taken"
+
+    /**
+     * 同一组键把三种触发方式**都补齐**之后那条回执（`%1$d` = 一共几种、`%2$s` = 这一组键）。
+     *
+     *  补到第三种的人要的是「这组齐了」这个结论，再报一次 [COMBO_ADDED] 读起来像什么都没发生。
+     *  那句里的数字由 `COMBO_MODE_TOTAL` 给，不写死在文案里。
+     */
+    const val COMBO_ALL_MODES_ADDED = "combo.all_modes_added"
+
     /** 选键弹窗的标题。 */
     const val COMBO_PICK_KEYS = "combo.pick_keys"
 
@@ -507,17 +544,29 @@ object Strings {
     /** 同一组键再加一遍时那句 —— 判定那边只会认第一档，第二档永远轮不到。 */
     const val COMBO_DUPLICATE = "combo.duplicate"
 
-    /** 选键弹窗里「颗数不对」那两句（格式：颗数）—— 点灰按钮时显示在按钮上面。 */
-    const val COMBO_MAX_KEYS = "combo.max_keys"
+    /**
+     * 选键弹窗里「颗数不对」那几句（格式：颗数）—— 勾满上限再点下一颗时、以及写入口兜底时显示。
+     *
+     *  **上限按类分两条**（用户口径）：等待组合 2~3 颗，按住组合只有 2 颗（两种顺序各算一档，
+     *  都由两颗组成）。原先那一条「一个组合最多 N 颗按键」对按住是错的 —— 它说的数比实际
+     *  能选的多一颗，用户会去找那颗根本不存在的第三颗。
+     */
+    const val COMBO_MAX_KEYS_WAIT = "combo.max_keys_wait"
+    const val COMBO_MAX_KEYS_HOLD = "combo.max_keys_hold"
     const val COMBO_MIN_KEYS = "combo.min_keys"
 
     /** 列表页那张设置卡的小标题。 */
     const val COMBO_SETTINGS_SECTION = "combo.settings_section"
 
-    /** 「组合绑的是无操作时怎么办」那一行 —— 标题 + 开关真假各一句。 */
-    const val COMBO_PASSTHROUGH_TITLE = "combo.passthrough_title"
-    const val COMBO_PASSTHROUGH_DESC_ON = "combo.passthrough_desc_on"
-    const val COMBO_PASSTHROUGH_DESC_OFF = "combo.passthrough_desc_off"
+    /**
+     * 「系统场景什么时候取」那一行 —— 标题 + 开关真假各一句。
+     *
+     *  只管**按住那两档**：等窗口那一档凑成即是按下，两种口径没有区别
+     *  （`Config.comboSceneOnStarterFor` 的说明）。
+     */
+    const val COMBO_SCENE_ON_STARTER_TITLE = "combo.scene_on_starter_title"
+    const val COMBO_SCENE_ON_STARTER_DESC_ON = "combo.scene_on_starter_desc_on"
+    const val COMBO_SCENE_ON_STARTER_DESC_OFF = "combo.scene_on_starter_desc_off"
 
     /**
      * 「首键要先按住多久」那一行（滑杆标题 + 一句说明）—— **按住手势的下限**。
@@ -536,12 +585,44 @@ object Strings {
      *  期间就执行了，这一按就出两个动作（判定侧那条上界也会直接截止）。改成「松手时触发」之后
      *  长按押到抬手，组合凑成时那颗键的状态机被摘掉，抬手只出组合那一套。
      *
-     *  正文里那一个 `%s` 是**起点那颗键的名字**；动作项是「切换并添加」（同一次落盘改这一位、
-     *  并把触发方式切过去）。
+     *  正文拆成两段（与 [BINDING_FIRE_OFF_LEAD] 同一套做法）：[COMBO_MODE_ASK_LEAD] 里那个 `%s`
+     *  是**起点那颗键的名字**（画成名字框），[COMBO_MODE_ASK_TAIL] 是那句代价。
+     *  动作项是「切换并添加」（同一次落盘改这一位、并把触发方式切过去）。
      */
     const val COMBO_MODE_ASK_TITLE = "combo.mode_ask_title"
-    const val COMBO_MODE_ASK_BODY = "combo.mode_ask_body"
+    const val COMBO_MODE_ASK_LEAD = "combo.mode_ask_lead"
+    const val COMBO_MODE_ASK_TAIL = "combo.mode_ask_tail"
     const val COMBO_MODE_ASK_ACTION = "combo.mode_ask_action"
+
+    /**
+     * 「这颗键只参与组合，当不了按住起点」那一道拦截（标题 + 正文 + 动作项）。
+     *
+     *  为什么拦：那一档位说「这颗键不判单键手势」，它自己的「松手时触发」在按键设置页是灰的 ——
+     *  放它继续走「切换为松手时触发」那条问句，用户点完也不会有任何效果，只会落下一份
+     *  `combo_only=true` 又 `long_fire_on_release=true` 的自相矛盾配置。
+     *
+     *  正文里那个 `%s` 是**起点那颗键的名字**（画成名字框）；动作项只是「知道了」——
+     *  这一条没有能替用户做的补救。
+     */
+    const val COMBO_STARTER_BLOCKED_TITLE = "combo.starter_blocked_title"
+    const val COMBO_STARTER_BLOCKED_BODY = "combo.starter_blocked_body"
+    const val COMBO_STARTER_BLOCKED_ACTION = "combo.starter_blocked_action"
+
+    /**
+     * 「这颗键已经是按住组合的起点，不能设成只参与组合」—— 与 [COMBO_STARTER_BLOCKED_*]
+     * **方向相反**的那一道：那一组是「先开了只参与组合，再想拿它当起点」，这一组是反过来的。
+     *
+     *  两条说的是同一个矛盾的两端（起点键必须按住到点，而只参与组合的键不判单键手势），
+     *  所以正文里那个 `%s` 同样是**键名**（画成名字框）。
+     *
+     *  [COMBO_ONLY_BLOCKED_TAIL] 是第二段「怎么解」：这一条不像反向那道那样无可挽回 ——
+     *  用户把那档组合改成等待组合、或者删掉它，就能回来开这个开关。只说「不行」会让人
+     *  以为这一项坏了。
+     */
+    const val COMBO_ONLY_BLOCKED_TITLE = "combo.combo_only_blocked_title"
+    const val COMBO_ONLY_BLOCKED_BODY = "combo.combo_only_blocked_body"
+    const val COMBO_ONLY_BLOCKED_TAIL = "combo.combo_only_blocked_tail"
+    const val COMBO_ONLY_BLOCKED_ACTION = "combo.combo_only_blocked_action"
 
     /** 组合键：按键之间的等待（两颗键按下最多隔多久才算一起按下）。 */
     const val COMBO_WINDOW_TITLE = "combo.window_title"
@@ -673,6 +754,24 @@ object Strings {
     const val COMMAND_FORMAT_SHELL_DESC = "command.format_shell_desc"
     const val COMMAND_FORMAT_SHORTCUT = "command.format_shortcut"
     const val COMMAND_FORMAT_SHORTCUT_DESC = "command.format_shortcut_desc"
+
+    /**
+     * 「命令详情」弹窗正文底下那句**格式提示** —— 一条前缀一句。
+     *
+     *  与上面每行的 `..._LABEL` 不是一回事：卡片上地方小，占位处只能笼统写 `<按键>`；
+     *  弹窗里把那处**该填什么**写明确（`keyevent:<keycode>（数字）`），用来纠正
+     *  「写了个键名而不是数字」那一类错误。
+     *
+     *  只覆盖 `Action.PREFIXES` 里那七种 —— 别的写法（老配置、`app:` 那类内建动作的 token）
+     *  本来就不该手写，不贴提示。
+     */
+    const val COMMAND_FORMAT_SHELL_TIP = "command.format_shell_tip"
+    const val COMMAND_FORMAT_KEYEVENT_TIP = "command.format_keyevent_tip"
+    const val COMMAND_FORMAT_INTENT_TIP = "command.format_intent_tip"
+    const val COMMAND_FORMAT_NOTIFY_TIP = "command.format_notify_tip"
+    const val COMMAND_FORMAT_FLUID_TIP = "command.format_fluid_tip"
+    const val COMMAND_FORMAT_TOAST_TIP = "command.format_toast_tip"
+    const val COMMAND_FORMAT_SHORTCUT_TIP = "command.format_shortcut_tip"
     const val COMMAND_FORMATS_TITLE = "command.formats_title"
     const val COMMAND_LIST_TITLE = "command.list_title"
 
@@ -1082,9 +1181,6 @@ object Strings {
 
     /** 「重启服务」确认窗：动作（按钮上的那个词）。 */
     const val DIALOG_RESTART_CONFIRM = "dialog.restart_confirm"
-
-    /** 「重启服务」确认窗：正文只提醒代价（未保存的内容会丢），不解释流程。 */
-    const val DIALOG_RESTART_MESSAGE = "dialog.restart_message"
 
     /** 「重启服务」确认窗：标题（与菜单那一项同名）。 */
     const val DIALOG_RESTART_TITLE = "dialog.restart_title"
@@ -1545,10 +1641,10 @@ object Strings {
     const val KEY_DISABLED_ITEM = "status.key_disabled_item"
 
     /**
-     * 当前编辑的那一档组合被停用了（`%s` = 成员名，**已带各自的括号**，见 `comboLabel`）。
+     * 当前编辑的那一档组合被停用了（`%s` = 成员名，**逐颗一枚框**，见 `comboKeyNames`）。
      *
-     *  为什么不复用 [KEY_DISABLED_ITEM]：那一句给键名外面再套一对「」，而组合名里每个成员
-     *  已经各有自己的括号 —— 套两层会读成「一个叫『「侧键」+「电量 +」』的东西」。
+     *  为什么不复用 [KEY_DISABLED_ITEM]：那一句的语序是「按键 X 已停用」—— 单键与组合键的
+     *  主语不同，套用会把一档组合说成一颗按键。
      */
     const val COMBO_DISABLED_ITEM = "status.combo_disabled_item"
     const val TOAST_COMMAND_DELETED = "toast.command_deleted"

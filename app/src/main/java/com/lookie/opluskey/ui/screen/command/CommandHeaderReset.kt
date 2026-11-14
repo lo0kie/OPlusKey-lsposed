@@ -9,6 +9,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.HeaderIconButton
 import com.lookie.opluskey.ui.feedback.DisabledHint
+import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
@@ -101,7 +102,7 @@ private fun SettingsPage.CommandHeaderEdit() {
     DisabledHint(
         when {
             canEdit -> null
-            configState.commands.value.isEmpty() -> I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令")
+            configState.commands.value.isEmpty() -> HintText(I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令"))
             else -> disabledClickReason()
         },
     ) {

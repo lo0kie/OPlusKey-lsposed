@@ -145,7 +145,8 @@ private fun SettingsPage.HomeHeaderConfirmDialogs() {
     ConfirmDialog(
         show = overlays.confirmRestart,
         title = I18n.get(Strings.DIALOG_RESTART_TITLE, "重启服务"),
-        summary = I18n.get(Strings.DIALOG_RESTART_MESSAGE, "未保存的改动将丢失。"),
+        //  **不带正文**（用户口径）：这一个是「下一步马上就好」的动作，那句「未保存的改动将丢失」
+        //  反而像个警告 —— 用户点的是重启，不是要放弃什么。
         action = I18n.get(Strings.DIALOG_RESTART_CONFIRM, "重启"),
         onDismiss = { overlays.confirmRestart = false },
         onConfirm = {

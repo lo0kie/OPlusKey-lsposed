@@ -244,6 +244,8 @@ internal sealed interface MenuEntry {
          *  与「整页为什么改不了」是两回事，不能拿页面那句顶替。
          */
         val disabledHint: String? = null,
+        /** [disabledHint] 里那几个 `%s` 各是什么名字（画成标签，见 `HintText`）。 */
+        val disabledChips: List<String> = emptyList(),
         /**
          * 这一行前面用**加深带**而不是默认那条细线（组内再分一小段时用）。
          *

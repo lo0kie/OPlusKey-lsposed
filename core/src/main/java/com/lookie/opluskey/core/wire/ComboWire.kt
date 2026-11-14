@@ -94,14 +94,12 @@ object ComboWire {
         /**
          * **这一组开没开「使用独立设置」** —— 少了它，上面那个 `windowMs` 等于白带。
          *
-         *  `Config.comboWindowFor` / `comboPassthroughFor` 的第一句都是「独立设置关着就整份看公共」，
-         *  而这两个函数**跑在注入侧**（`ConfigChannel.windowFor` / `ChordGuard`）。它解出来的
-         *  [ComboKey] 一旦缺这一位就走默认 `false` ⇒ 每组自己的窗口与透传全被忽略
+         *  `Config.comboWindowFor` 的第一句就是「独立设置关着就整份看公共」，
+         *  而这个函数**跑在注入侧**（`ConfigChannel.windowFor`）。它解出来的
+         *  [ComboKey] 一旦缺这一位就走默认 `false` ⇒ 每组自己的窗口被忽略
          *  （真机症状：「独立的组合等待怎么调都没作用」）。
          */
         val useOwnSettings: Boolean = false,
-        /** 这一组自己的「无操作时执行按键命令」；`null` = 没写过（跟随公共）。 */
-        val passthrough: Boolean? = null,
         /**
          * **触发方式**（`ComboKey.mode`）—— `0` 窗口内先后按下 / `1` 先按住第一颗 / `2` 先按住第二颗。
          *
@@ -269,7 +267,6 @@ object ComboWire {
             longRelease = combo.longRelease.token,
             windowMs = combo.windowMs,
             useOwnSettings = combo.useOwnSettings,
-            passthrough = combo.passthrough,
             mode = combo.mode,
             holdMinMs = combo.holdMinMs,
             scenes = combo.scenes.map { WireScene.of(it) },
@@ -301,10 +298,9 @@ object ComboWire {
             longRelease = Action.parse(longRelease),
             //  0 = 跟随公共设置，原样留着；设过的钳进那一档区间（老版本 / 手改的越界值在这里收口）
             windowMs = if (windowMs <= 0) ComboKey.WINDOW_FOLLOW_GLOBAL else clampWindow(windowMs),
-            //  「这一组开了独立设置、以及它自己的透传」—— 与 `windowMs` 是一组：
-            //  少了这两位，上面那个窗口在判定侧永远算不出来（见 `WireCombo` 里那段说明）
+            //  「这一组开了独立设置」—— 与 `windowMs` 是一组：
+            //  少了这一位，上面那个窗口在判定侧永远算不出来（见 `WireCombo` 里那段说明）
             useOwnSettings = useOwnSettings,
-            passthrough = passthrough,
             //  触发方式：认不出的取值退回窗口那条，三颗及以上的按住由 `modeFor` 挡回去
             mode = ComboKey.modeFor(mode, members.size),
             //  「起点键要先按住多久」：0 = 跟随公共设置，原样留着；设过的钳进那一档区间

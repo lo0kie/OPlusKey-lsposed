@@ -155,6 +155,14 @@ internal object KeyHooks {
                     logComboDispatch(combo, trigger, repeat)
                     forwarder.forwardCombo(combo.id, trigger, repeat)
                 },
+                //  按住组合的场景要在「首键按下」那一刻定下来（用户口径）：这一颗若是某按住组合的
+                //  起点才发 —— 每次按下都会走这条回调，判据（`holdStarter`）不通过就直接返回。
+                onHoldStarter = { id ->
+                    if (ConfigChannel.holdStarter(id)) forwarder.forwardComboScene(id.id, "starter")
+                },
+                //  关掉「首键按下固定」时按「成员键按下」（组合凑成）那一刻定 —— 两条都发，
+                //  用哪一份由宿主按配置决定（注入侧不读那个开关：它只在落盘那一列）。
+                onComboFormed = { combo -> forwarder.forwardComboScene(combo.id, "formed") },
             )
         // 主开关翻到「不接管」时撤销已排下的手势（长按枪 / 双击窗 / 连发任务）。
         //  撤销只能由「收到配置广播」触发，不能挂在拦截点那条 early return 上（按住不放时

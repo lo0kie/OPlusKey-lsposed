@@ -3,32 +3,47 @@ package com.lookie.opluskey.ui.row
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.present.COMBO_PAIR_SEPARATOR
+import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-// 「一枚名字框」—— 组合键的成员键名、场景条件里的应用名共用这一份。
+// 「一枚名字框」—— 组合键的成员键名、场景条件里的应用名、弹窗里的变量清单共用这一份。
 //
 // 出身：这套框本来是 `ComboListCard.kt` 里私有的 `ComboKeyChip`（组合那一列按颗数排框）。
 //  场景条件那一行要的是**同一种长相**（用户口径：应用名改成和组合按键一样的标签样式、复用它），
@@ -64,6 +79,60 @@ internal val CHIP_FLOW_GAP = 4.dp
 
 /** 文案里「这里塞一枚名字框」的占位符 —— 与 `I18n.format` 的 `%s` 同一个写法。 */
 internal const val CHIP_SLOT = "%s"
+
+/**
+ * 把「一段名字串」的占位模板展开成**逐个名字一枚框**的模板。
+ *
+ *  文案里那个占位符（组合键一般是 `%s`，带序号时是 `%2$s`）本意是「把这一串名字写进来」；
+ *  要让每个名字各画一枚框，就得把它换成 `%s × %s`（`n` 个槽位，分隔符与 [comboLabelOf] 同一份）。
+ *
+ *  **只有一颗时不展开、也不给 chips**：与 [comboLabelOf] 的「单颗不套框」同一条规则 ——
+ *  一个名字旁边没有第二个名字需要分开，框只剩噪声。
+ *
+ *  @param template 整句模板（含 [slot]）
+ *  @param slot 那个名字串占位符
+ *  @param names 名字（按显示顺序）
+ *  @return 展开后的模板；调用方把它与 [names] 一起交给 `hint(chips = …)` /
+ *   `ChipText(chips = …)`（单颗时 chips 传空表）
+ */
+internal fun namesToChipsTemplate(
+    template: String,
+    slot: String,
+    names: List<String>,
+): String =
+    if (names.size <= 1) {
+        template.replace(slot, names.firstOrNull().orEmpty())
+    } else {
+        template.replace(slot, names.joinToString(" $COMBO_PAIR_SEPARATOR ") { CHIP_SLOT })
+    }
+
+/** [namesToChipsTemplate] 的配套：名字够两颗才画框，单颗时不传 chips（见那条注释）。 */
+internal fun chipsOfNames(names: List<String>): List<String> = if (names.size <= 1) emptyList() else names
+
+/**
+ * 把「模板 + 名字」还原成**一整句纯文字** —— 给那些只收 `String` 的通道用
+ * （菜单行的 `disabledHint`：那一层没有 `chips` 位，收的是排队之前的一句话）。
+ *
+ *  与 `ChipText` 渲染出来的是同一句话，区别只在没有那几枚框 —— 宁可少一层样式，
+ *  也不要让那几条通道继续自己拼一遍「名字怎么念」（判据就分成两份了）。
+ */
+internal fun HintText.plain(): String {
+    if (chips.isEmpty()) return template
+    var at = 0
+    val out = StringBuilder(template.length)
+    var i = 0
+    while (i < template.length) {
+        if (at < chips.size && template.startsWith(CHIP_SLOT, i)) {
+            out.append(chips[at])
+            at += 1
+            i += CHIP_SLOT.length
+        } else {
+            out.append(template[i])
+            i += 1
+        }
+    }
+    return out.toString()
+}
 
 /** 文字段与名字框之间、框与框之间的空隙 —— 4dp 读起来是「两段话」而不是「一个词」。 */
 internal val CHIP_TEXT_GAP = 4.dp
@@ -129,6 +198,88 @@ internal fun ChipText(
 }
 
 /**
+ * 「几枚名字框 + 各自的说明」排成一行（装不下换行）—— **变量清单**那一行用它。
+ *
+ *  用在「这一格能写什么」那种清单上（提示文案弹窗里输入框下面那一行）：框里是占位符本身
+ *  （`$key`），框后面跟着它换成什么（`键名`）。用框而不是纯文字，是因为这一行要读成
+ *  「几个能填的变量」，而不是一句要连着读的话 —— 框的样式与组合键的键名同一份（[NameChip]）。
+ *  给了 [onClick] 时每一枚框**可点**（点一下把那个变量接进输入框）：这一行于是既是说明、
+ *  又是入口，省得用户照着抄一遍 `$gesture`。
+ *
+ *  与 [ChipText] 的差别只有一处：那里框是**插在一句话中间**的（说明在框前后都可能有），
+ *  这里每枚框都跟着自己那句说明。所以两者不合并 —— 合并就得让每个调用点自己说「这段字是给
+ *  框的还是给上下文的」。
+ *
+ *  模板与框的个数对不上（改文案时漏了一个 `%s`）时退回整句原文：宁可看见一个裸 `%s`，
+ *  也不要把说明按错位置挂到别的框后面。
+ *
+ *  @param template 说明那一句，`%s` 是框的位置
+ *  @param chips 框里的字，按模板里 `%s` 的先后一一对应
+ *  @param onClick 点某一枚框做什么（拿到的是框里的字）—— 给了才可点
+ */
+@Composable
+internal fun ChipLegend(
+    template: String,
+    chips: List<String>,
+    textStyle: TextStyle,
+    textColor: Color,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: ((String) -> Unit)? = null,
+) {
+    val parts = template.split(CHIP_SLOT)
+    if (chips.isEmpty() || parts.size != chips.size + 1) {
+        Text(
+            text = template,
+            style = textStyle,
+            color = textColor,
+            modifier = modifier.opticalCenter(textStyle),
+        )
+        return
+    }
+    val look = ChipLook(chipStyleOf(textStyle), textColor, enabled)
+    FlowRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(CHIP_TEXT_GAP),
+        verticalArrangement = Arrangement.spacedBy(CHIP_FLOW_GAP),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        //  模板开头那段（第一个 `%s` 之前）照原样画；`%s` 之间的每一段都归**前一枚框**，
+        //  于是框与它那句说明绑成一组参与换行，不会出现「框在行尾、说明在下一行开头」。
+        parts.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let { head ->
+            Text(
+                text = head,
+                style = textStyle,
+                color = textColor,
+                modifier = Modifier.opticalCenter(textStyle),
+            )
+        }
+        chips.forEachIndexed { at, name ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(CHIP_TEXT_GAP),
+            ) {
+                NameChip(
+                    text = name,
+                    look = look,
+                    modifier = Modifier,
+                    onClick = onClick?.let { click -> { click(name) } },
+                )
+                val label = parts.getOrNull(at + 1)?.trim().orEmpty()
+                if (label.isNotEmpty()) {
+                    Text(
+                        text = label,
+                        style = textStyle,
+                        color = textColor,
+                        modifier = Modifier.opticalCenter(textStyle),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
  * 框里那档样式 —— 行标题的**字号 × 0.85**、字重 Medium。
  *
  *  字重并进样式而不是写在 `Text` 的参数上：`opticalCenter` 与 `measure` 都按样式算，
@@ -177,12 +328,15 @@ internal fun chipLook(
  *
  *  @param look 框里那档样式与颜色（量过宽度时必须是画字同一份，见 [chipLook]）
  *  @param modifier 宽度由调用方给：组合那一列整列同一个数（对齐），场景条件那一行按各自字宽
+ *  @param onClick 点了做什么 —— 只有「变量清单」那一档给（点一下把这一枚接到输入框末尾）。
+ *   `null` = 这一枚只是**读**的（这一行叫哪几颗键），点它没有语义，连涟漪都不该有
  */
 @Composable
 internal fun NameChip(
     text: String,
     look: ChipLook,
     modifier: Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
     val scheme = COUITheme.colorScheme
     val color = look.color
@@ -210,6 +364,10 @@ internal fun NameChip(
             modifier
                 .background(color = fill, shape = shape)
                 .border(width = 1.dp, color = border, shape = shape)
+                //  可点那一档：`clip` 要在 `clickable` **之前**、`background` **之后** ——
+                //  涟漪画在底色上、又被框的圆角裁掉（顺序反了就是一块方形的涟漪）。
+                .then(if (onClick == null) Modifier else Modifier.clip(shape).clickable(onClick = onClick))
+                //  内边距在 `clickable` 之后：触达范围含这一圈，框小字小也好点中
                 .padding(horizontal = CHIP_H_PAD, vertical = CHIP_V_PAD),
         contentAlignment = Alignment.Center,
     ) {
@@ -315,3 +473,96 @@ internal fun ChipFlow(
         }
     }
 }
+
+/**
+ * 一句话里夹几枚名字框 —— 把模板按 `%s` 切成几段，框**排在字流里**（不是另起一格）。
+ *
+ *  给「按住 A 后再按 B」那一档用（组合列表的行、组合编辑页的顶栏副标题、两个确认窗的正文）。
+ *  语序是翻译的事（模板里自带 `%s`），框是界面的事（[NameChip]）。这里不套统一的框宽 ——
+ *  那是一列对齐用的（见 `comboTitleWidths`），而这一行是**一句话**，框跟着自己的字宽走才像句子里的名字。
+ *
+ * ## 为什么是行内占位，不是 `FlowRow`
+ *
+ *  `FlowRow` 把每一段文字当成**一个整体**：模板前半截一长（`%s 的长按目前会在按住到时就执行…`），
+ *  那一整段放不进第一行，于是换行 —— 第一行只剩一枚框，读起来像「键名自己占了一行」
+ *  （真机反馈「键名后面直接换行了，整行只剩键名」）。改成 `AnnotatedString` 的
+ *  `appendInlineContent` 之后，框是**字流里的一个词**：它前面的字照常排，它后面的字接着同一行排，
+ *  到行尾才折行 —— 与句子里的普通词一样。
+ *
+ *  代价是占位尺寸要自己量（[Placeholder] 只收像素）：宽度按这一枚框的字宽加上左右内边距与描边，
+ *  高度同理。量的时候用**画框时同一份样式**（字重 Medium，见 [NameChip]），否则框会被撑窄或留白。
+ *
+ * @param style / @param color 句子本体那几段文字（框里的字色取 [look]）
+ */
+@Composable
+internal fun ChipSentence(
+    template: String,
+    names: List<String>,
+    look: ChipLook,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val parts = template.split("%s")
+    //  模板与名字数对不上、或者**有一个名字是空的**时，退回纯文字：`appendInlineContent` 的
+    //  `alternateText` **不许为空串**（库直接抛 `IllegalArgumentException`，整页崩掉），
+    //  而「这一条暂时还没有名字」是真实会发生的状态（弹窗退场那一帧载荷已经清了）。
+    //  拼法就是把 `%s` 直接去掉（`split` 已经把它们切走了），句子读起来仍然是通顺的一句话。
+    val usable = names.isNotEmpty() && parts.size == names.size + 1 && names.none { it.isBlank() }
+    if (!usable) {
+        BasicText(
+            text = AnnotatedString(parts.joinToString("")),
+            modifier = modifier.fillMaxWidth(),
+            style = style.copy(color = color),
+        )
+        return
+    }
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    //  与 [NameChip] 画字那份一致（它会把字重并进样式）
+    val inner = look.style.copy(fontWeight = FontWeight.Medium)
+    val padH = with(density) { CHIP_H_PAD.roundToPx() }
+    val padV = with(density) { CHIP_V_PAD.roundToPx() }
+    //  描边 1dp 两边各一份 —— 不算进去的话框会比占位宽一点，行尾那枚容易被挤到下一行
+    val border = with(density) { 1.dp.roundToPx() }
+    //  `look` 不参与 `remember` 的键（它是每次组合新建的实例，放进去等于每帧重量一遍）；
+    //  但框的颜色要跟着它走，所以用 `rememberUpdatedState` 让缓存的 lambda 读最新那一份。
+    val currentLook by rememberUpdatedState(look)
+    val inline =
+        remember(names, inner, padH, padV, border, density) {
+            names
+                .mapIndexed { at, name ->
+                    val measured = measurer.measure(AnnotatedString(name), style = inner)
+                    chipSlotId(at) to
+                        InlineTextContent(
+                            //  `Placeholder` 要的是 `TextUnit`（新版 API），这里把算好的像素
+                            //  按当前密度换回去 —— 用 sp 而不是 dp 只是它唯一的入口，不随字号缩放走
+                            //  （`toSp()` 走的是 density 那一条，与 `fontScale` 无关）。
+                            Placeholder(
+                                width = with(density) { (measured.size.width + padH * 2 + border * 2).toSp() },
+                                height = with(density) { (measured.size.height + padV * 2 + border * 2).toSp() },
+                                //  框比这一行的字略高，居中对齐才不会让它压着基线往下沉
+                                placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
+                            ),
+                        ) { NameChip(text = name, look = currentLook, modifier = Modifier) }
+                }.toMap()
+        }
+    val text =
+        remember(template, names) {
+            buildAnnotatedString {
+                parts.forEachIndexed { at, part ->
+                    append(part)
+                    if (at < names.size) appendInlineContent(chipSlotId(at), names[at])
+                }
+            }
+        }
+    BasicText(
+        text = text,
+        modifier = modifier.fillMaxWidth(),
+        style = style.copy(color = color),
+        inlineContent = inline,
+    )
+}
+
+/** 行内占位的 id —— 只在本函数内配对（`appendInlineContent` 与 `inlineContent` 的键）。 */
+private fun chipSlotId(index: Int): String = "chip:$index"

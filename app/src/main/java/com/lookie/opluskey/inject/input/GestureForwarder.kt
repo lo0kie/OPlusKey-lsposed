@@ -154,6 +154,32 @@ internal class GestureForwarder(
         }
     }
 
+    /**
+     * **场景快照请求** —— 只让宿主「把这一刻的条件记下来」，不执行任何动作。
+     *
+     *  @param target `starter` 那一档传**起点键的 id**（此时还不知道会凑成哪一档，宿主自己查）；
+     *    `formed` 那一档传组合 id
+     *  @param stage `starter`（首键按下）/ `formed`（组合凑成）
+     *
+     *  只发一条、**不补发**：这是一次状态记录，不是必须送达的动作 —— 丢了就退回「按当时条件重判」，
+     *  比让动作晚到一条更好。
+     */
+    fun forwardComboScene(
+        target: String,
+        stage: String,
+    ) {
+        val intent = comboIntent(target, phase = "scene", repeat = false, sceneStage = stage)
+        sender.post {
+            try {
+                val ctx = context() ?: return@post
+                wakeHost(ctx)
+                send(ctx, intent, delayMs = 0L, retry = false)
+            } catch (e: Throwable) {
+                XLog.w("转交组合键场景快照失败（已忽略）：$target $stage", e)
+            }
+        }
+    }
+
     /** 唤醒宿主进程（动态接收器要求它活着；借来的 Context 与宿主同 uid，`startService` 才过得了 OPLUS_COMPONENT_SAFE）。 */
     private fun wakeHost(ctx: Context) {
         try {
@@ -252,6 +278,7 @@ internal class GestureForwarder(
         comboId: String,
         phase: String,
         repeat: Boolean,
+        sceneStage: String? = null,
     ): Intent =
         Intent(ModuleWire.ACTION_GESTURE)
             .setPackage(HostApp.PACKAGE)
@@ -261,6 +288,7 @@ internal class GestureForwarder(
             .putExtra(ModuleWire.EXTRA_PHASE, phase)
             .putExtra(ModuleWire.EXTRA_REPEAT, repeat)
             .putExtra(ModuleWire.EXTRA_SENT_AT, nextSentAt())
+            .apply { if (sceneStage != null) putExtra(ModuleWire.EXTRA_SCENE_STAGE, sceneStage) }
 
     /** 造一条手势广播（载荷见 `ModuleWire` 的 `EXTRA_*`）。 */
     private fun gestureIntent(

@@ -172,7 +172,6 @@ private fun blockWrite(
             release = block.release,
             chainReleaseOn = block.chainReleaseOn,
             chainRelease = block.chainRelease,
-            releasePin = block.releasePin,
         )
     return BlockWrite(written, base.toMutableList().also { it[slot] = written })
 }

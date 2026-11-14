@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.input.IconInputView
 import com.lookie.opluskey.ui.input.InputSpec
+import com.lookie.opluskey.ui.row.ChipLegend
 import com.lookie.opluskey.ui.row.TitleCounter
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -48,6 +49,10 @@ internal const val MAX_NAME_LENGTH = 24
  *   合法输入，此时「确定」不该是灰的
  * @param hint 输入框**下面**那行小字说明（`null` = 不写）。给「这一格能写什么」说不完的那几档用 ——
  *   占位文案（[label]）只在框空着时看得见，填着东西时那条规矩就消失了
+ * @param hintChips 给了就把 [hint] 里的 `%s` 按顺序换成**名字框**（键名那种标签），见
+ *   `ui/row/ChipLabel.ChipLegend`。给「这一格能填哪几个变量」那种清单用：变量名画成框才读得出
+ *   「几个可填的东西」，纯文字读起来是一句话。**框可点** —— 点一下把这个变量接到输入框末尾。
+ *   空 = [hint] 整句当纯文字画
  * @param onReset 给了就在按钮区多一颗「重置」（最左那颗，见 [DialogButtonRow]）。这一格有默认值
  *   时才传 —— 没有默认值的「改名」那档多一颗只会让人以为自己改过什么。
  *   **关窗与落盘都由调用方在这个回调里做**：有的档是「填回输入框」、有的是「直接存默认值并关掉」，
@@ -72,6 +77,7 @@ internal fun SettingsPage.NameDialog(
     maxLength: Int = MAX_NAME_LENGTH,
     allowEmpty: Boolean = false,
     hint: String? = null,
+    hintChips: List<String> = emptyList(),
     onReset: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
@@ -132,6 +138,7 @@ internal fun SettingsPage.NameDialog(
             maxLength = range?.last?.toString()?.length ?: maxLength,
             digitsOnly = range != null,
             hint = hint,
+            hintChips = hintChips,
         )
     }
 }
@@ -165,6 +172,7 @@ internal fun SettingsPage.NameInputBody(
     maxLength: Int = MAX_NAME_LENGTH,
     digitsOnly: Boolean = false,
     hint: String? = null,
+    hintChips: List<String> = emptyList(),
 ) {
     Column(Modifier.fillMaxWidth()) {
         // 与「名称 / 命令」那两栏**同一个组件**：长度上限与计数也就跟着一起有了。
@@ -189,19 +197,56 @@ internal fun SettingsPage.NameInputBody(
         //  输入框下面那行小字 —— 与弹窗里别的说明同一档（页面上那些行副标题也是它）：
         //  `footnote1` + 次要色。占位文案只在框空着时可见，这条规矩填着东西时也得在。
         hint?.let {
-            Text(
-                text = it,
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                //  水平居中：这行是「这一格怎么填」的说明，不是正文的一段 —— 左对齐时它会与
-                //  上面那个输入框的左边缘咬在一起，读起来像框里溢出来的字。
-                textAlign = TextAlign.Center,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .dialogSideMargin()
-                        .padding(top = 8.dp),
-            )
+            val body =
+                Modifier
+                    .fillMaxWidth()
+                    .dialogSideMargin()
+                    .padding(top = 8.dp)
+            if (hintChips.isEmpty()) {
+                Text(
+                    text = it,
+                    style = COUITheme.textStyles.footnote1,
+                    color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                    //  水平居中：这行是「这一格怎么填」的说明，不是正文的一段 —— 左对齐时它会与
+                    //  上面那个输入框的左边缘咬在一起，读起来像框里溢出来的字。
+                    textAlign = TextAlign.Center,
+                    modifier = body,
+                )
+            } else {
+                //  变量清单那一档：框 + 各自的说明排成一行，**左对齐**（它是清单不是一句话，
+                //  居中时换行后每行起点都不一样，读起来更散）。
+                //  每一枚框**可点**：点一下把这个变量接到输入框末尾 —— 这一行既是说明也是入口。
+                ChipLegend(
+                    template = it,
+                    chips = hintChips,
+                    textStyle = COUITheme.textStyles.footnote1,
+                    textColor = COUITheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = body,
+                    onClick = { token ->
+                        val next = appendToken(text, token, maxLength)
+                        if (next != text) onTextChange(next)
+                    },
+                )
+            }
         }
     }
+}
+
+/**
+ * 把一枚变量名接到输入框**末尾** —— 点一下那排名字框走的就是这条路。
+ *
+ *  - **接在末尾、不是光标处**：这一栏对外只有一个 `String`（`AppInputField` 不把选区交出来），
+ *    拿不到光标。弹窗打开时光标本来就在末尾（`caretToEndOnFirstFocus`），两边口径一致。
+ *  - **原样接上去，不补分隔符**：空格与箭头都是用户自己在模板里打的，替他想一步就等于
+ *    猜他这一句要怎么写。
+ *  - **放不下就整枚都不放**（返回原值）：按码点截一半会留下 `$sta` 这种半截占位符 —— 那比
+ *    「点了没反应」更糟，而长度已经满了这件事标题行那格计数写着。
+ */
+private fun appendToken(
+    text: String,
+    token: String,
+    maxLength: Int,
+): String {
+    val next = text + token
+    return if (next.codePointCount(0, next.length) > maxLength) text else next
 }

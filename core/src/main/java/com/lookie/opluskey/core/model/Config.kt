@@ -993,8 +993,9 @@ data class GlobalConfig(
      */
     override val toastFluid: Boolean = DEFAULT_TOAST_FLUID,
     /**
-     * 「执行时提示」那一句的**文案模板** —— `$key` / `$gesture` / `$action` 三段可自由摆放与增删
-     *  （见 `ToastNotice`）。默认就是拆分之前那句 `侧键 - 单击 → 手电筒`。
+     * 「执行时提示」那一句的**文案模板** —— `$key` / `$gesture` / `$action` 三段，以及 `$action`
+     *  拆开的 `$parent` / `$name` / `$state`，都可自由摆放与增删（见 `ToastNotice`）。
+     *  默认就是拆分之前那句 `侧键 - 单击 → 手电筒`。
      *
      *  与 [toastOnRun] 同一档：只在 [toastOnRun] 为真时有意义，读它的是宿主执行器，
      *  所以**只走落盘那一列**、不进广播（注入侧不弹提示）。
@@ -1084,17 +1085,6 @@ data class GlobalConfig(
      */
     val miniWindowAnim: Boolean = DEFAULT_MINI_WINDOW_ANIM,
     /**
-     * 「组合键绑的是无操作时，执行两颗键各自的绑定」—— 为真时那一档组合不吞键，
-     * 两颗键各按自己这一档手势照常执行；为假时什么都不做（与这一位出现之前一致）。
-     *
-     *  只在组合的**那一格**是 [Action.None] 时生效：绑了动作就以组合为准，
-     *  否则「配了组合还要两颗键各跑一遍」会变成一次按压执行三个动作。
-     *
-     *  读它的是宿主里的执行器（`host/GestureExec.handleCombo`），注入侧的 `ChordGuard` 判
-     *  「吞不吞 ROM 的组合判定」时也读它 —— 所以走广播（`ConfigFields.F_COMBO_PASSTHROUGH`）。
-     */
-    val comboPassthrough: Boolean = DEFAULT_COMBO_PASSTHROUGH,
-    /**
      * 组合键：**两颗键按下之间最多隔多久**（毫秒）—— 用户口径「按键之间互相的等待时间」。
      *
      *  判定在注入侧（`ComboDetector`），所以这一位**走广播**（`ConfigFields.F_COMBO_WINDOW_MS`）。
@@ -1114,6 +1104,20 @@ data class GlobalConfig(
      *  而哪一颗算「先按住」全看硬件先报谁 —— 同一个物理动作于是有时命中、有时整条落空。
      */
     val comboHoldMinMs: Int = DEFAULT_COMBO_HOLD_MIN_MS,
+    /**
+     * 按住那两档的**系统场景在什么时候定下来** —— 默认开 = 首键按下那一刻。
+     *
+     *  按住组合要先按住起点键（`comboHoldMinMs`）才凑得成，凑成之后还要等长按阈值才派发；
+     *  这段时间里前台应用完全可能已经换了。开着这一位，场景按**首键按下**那一刻的条件判一次、
+     *  整一按都用它；关掉则按**成员键按下**（组合凑成）那一刻判。
+     *
+     *  两种时机都**不是**派发那一刻 —— 派发比凑成更晚，按那一刻判等于把「按住不放期间切了应用」
+     *  也算进去，与用户按下时的意图对不上。
+     *
+     *  每档可以另设一份（`ComboKey.sceneOnStarter`，受那一档的「使用独立设置」管），
+     *  取值一律走 `Config.comboSceneOnStarterFor`。
+     */
+    val comboSceneOnStarter: Boolean = DEFAULT_COMBO_SCENE_ON_STARTER,
 ) : OwnSettings {
     /**
      * 公共那份**永远是「用自己的」**：它自己就是那个「公共设置」。
@@ -1142,9 +1146,9 @@ data class GlobalConfig(
                 ConfigFields.F_PAGE_SCALE to pageScale,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
-                ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
                 ConfigFields.F_COMBO_HOLD_MIN_MS to comboHoldMinMs,
+                ConfigFields.F_COMBO_SCENE_ON_STARTER to comboSceneOnStarter,
             ),
         )
 
@@ -1217,14 +1221,6 @@ data class GlobalConfig(
         const val DEFAULT_MINI_WINDOW_ANIM = false
 
         /**
-         * [GlobalConfig.comboPassthrough] 的默认值：**开**。
-         *
-         *  组合键是用户主动配的，而「配了一组却忘了给某一格绑动作」很常见 ——
-         *  默认吞掉两颗键的全部反应，用户会以为模块坏了。开着时这种半成品至少还保留两颗键本来的行为。
-         */
-        const val DEFAULT_COMBO_PASSTHROUGH = true
-
-        /**
          * [GlobalConfig.comboWindowMs] 的三档 —— 下限 / 出厂值 / 上限（毫秒）。
          *
          *  出厂 80 就是这一位出现之前写死的那个窗口：老配置读回来行为完全不变。
@@ -1251,6 +1247,14 @@ data class GlobalConfig(
         const val COMBO_HOLD_MIN_MIN_MS = 40
         const val DEFAULT_COMBO_HOLD_MIN_MS = 100
         const val COMBO_HOLD_MIN_MAX_MS = 500
+
+        /**
+         * [GlobalConfig.comboSceneOnStarter] 的出厂值 —— **开**：按住组合的场景按首键按下那一刻定。
+         *
+         *  按住组合的起点键要按满 `comboHoldMinMs` 才凑得成，凑成之后还有长按阈值；按「派发那一刻」
+         *  判场景会把这段时间里的切换也算进去。首键按下才是用户心里「这一下要干什么」的起点。
+         */
+        const val DEFAULT_COMBO_SCENE_ON_STARTER = true
 
         /**
          * 「常用命令」最多几条 —— 20。
@@ -1289,7 +1293,6 @@ data class GlobalConfig(
                 // 与 pageScale 同一档：手改文件写进负数在这一层钳回「关」
                 iconTintSeed = v.number(ConfigFields.F_ICON_TINT_SEED).coerceAtLeast(0),
                 showCommonCommands = v.bool(ConfigFields.F_SHOW_COMMON_COMMANDS),
-                comboPassthrough = v.bool(ConfigFields.F_COMBO_PASSTHROUGH),
                 //  与 pageScale 同一档：手改文件写进越界值，在这一层钳回滑杆两端
                 comboWindowMs = v.number(ConfigFields.F_COMBO_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
                 //  与 comboWindowMs 同一档：越界值在这一层钳回滑杆两端
@@ -1297,6 +1300,7 @@ data class GlobalConfig(
                     v
                         .number(ConfigFields.F_COMBO_HOLD_MIN_MS)
                         .coerceIn(COMBO_HOLD_MIN_MIN_MS, COMBO_HOLD_MIN_MAX_MS),
+                comboSceneOnStarter = v.bool(ConfigFields.F_COMBO_SCENE_ON_STARTER),
             )
     }
 }
@@ -1305,7 +1309,7 @@ data class GlobalConfig(
  * 整份配置。
  *
  *  函数数贴着 detekt 的 `TooManyFunctions` 阈值：多出来的那一族是**「公共项的按键级取值」**
- *  （`effectiveFor` / `comboPassthroughFor`）—— 它们就该长在这一层：判据只有一句
+ *  （`effectiveFor` / `comboWindowFor`）—— 它们就该长在这一层：判据只有一句
  *  「这一档开了独立设置就看自己那份，否则看公共设置」，拆到别处等于让每个调用方自己拼，
  *  而拼错一处的表现是「这台机器上这颗键不听话」。
  */
@@ -1441,28 +1445,12 @@ data class Config(
     fun effectiveFor(owner: OwnSettings): OwnSettings = if (owner.useOwnSettings) owner else global
 
     /**
-     * 这一组组合**实际**在「无操作」时怎么办。
-     *
-     *  与 [effectiveFor] 同一条规则：**总开关关着就跟随公共设置**（哪怕这一组以前设过自己那份）——
-     *  否则界面灰着、执行侧却照旧用自己那份，是「关了没关掉」。
-     *
-     *  开着时看 [ComboKey.passthrough] —— 注意 `null` 现在**只有老配置会读到**：打开独立设置的
-     *  那一刻会把公共值一并播进这一位（`KeySettingsScreen.withSeededComboFields`），
-     *  所以「开着独立设置、这一项却还在跟随公共」只出现在还没被拨过的旧配置上（拨一下任何一项就补上）。
-     *
-     *  **只在 [ComboKey.MODE_WAIT] 上算数**：透传的语义是「窗口那条按出来了、可这一格没绑动作」，
-     *  按住那两档不经过这个形状（它们的判据就是「这一下交给组合」）。于是按住那两档恒为假 ——
-     *  界面那边同一份判据决定这一行显不显示，两处不会各说各的。
-     */
-    fun comboPassthroughFor(combo: ComboKey): Boolean = combo.isWait && comboField(combo, combo.passthrough, global.comboPassthrough)
-
-    /**
      * 组合键上那几位「这一档自己写过没有」的公共项 —— 唯一一处判据。
      *
      *  `null` 是「没写过 ⇒ 跟公共」，但**总开关一关就整份看公共**（哪怕写过）——
      *  否则界面灰着、执行侧却照旧用自己那份，是「关了没关掉」。
      *
-     *  只剩「无操作时执行按键命令」一位还在用它：`windowOn` / `holdOn` 那一对已经收进
+     *  现在只剩 `sceneOnStarter` 一位用它：`windowOn` / `holdOn` 那一对已经收进
      *  [ComboKey.mode]（触发方式是这一档的身份），不再有「跟随公共」这回事。
      */
     private fun comboField(
@@ -1474,7 +1462,7 @@ data class Config(
     /**
      * 「独立设置开着看自己那份、关着看公共」—— **全项目只有这一处实现**。
      *
-     *  组合那几位自有字段（`passthrough` / `windowMs` / `holdMinMs`）都按它取值。原先每项各写一遍
+     *  组合那几位自有字段（`windowMs` / `holdMinMs` / `sceneOnStarter`）都按它取值。原先每项各写一遍
      *  `if (!combo.useOwnSettings) global.X else combo.X`：规则一样、改一处要改五处。
      */
     private fun <T> effective(
@@ -1506,7 +1494,7 @@ data class Config(
     fun comboStoredWindowFor(combo: ComboKey): Int = stored(combo.windowMs.takeIf { it > 0 }, global.comboWindowMs)
 
     /**
-     * 这一组**实际生效**的按键间隔（毫秒）—— 规则与 [comboPassthroughFor] 同一条：
+     * 这一组**实际生效**的按键间隔（毫秒）—— 规则与 [comboSceneOnStarterFor] 同一条：
      * 独立设置关着就跟随公共，开着就是这一组自己那份。
      *
      *  `WINDOW_FOLLOW_GLOBAL`（0）同样只剩**老配置**会读到：打开独立设置时这一位会被播成当时的
@@ -1516,6 +1504,16 @@ data class Config(
      *  界面手上也只有它 —— 两处各拼一次，「关了独立设置却不生效」这种错只会出现在其中一边。
      */
     fun comboWindowFor(combo: ComboKey): Int = effective(combo.useOwnSettings, global.comboWindowMs, comboStoredWindowFor(combo))
+
+    /**
+     * 按住这一档的**场景在什么时候定下来** —— 首键按下（`true`）还是成员键按下（`false`）。
+     *
+     *  与 [comboWindowFor] 同一条规则：独立设置关着就跟随公共，开着就是这一档自己那份；
+     *  `null` = 这一档还没写过 ⇒ 仍跟随公共（老配置、以及打开独立设置后还没拨过这一项时）。
+     *  两种时机都只在**按住**那两档上有意义（等窗口那一档没有「先按住哪一颗」，
+     *  判定侧也不会为首键发那条通知）。
+     */
+    fun comboSceneOnStarterFor(combo: ComboKey): Boolean = comboField(combo, combo.sceneOnStarter, global.comboSceneOnStarter)
 
     /**
      * 这一组**自己存着**的「首键要先按住多久」（毫秒）—— 与 [comboStoredWindowFor] 同一条：
@@ -1815,10 +1813,16 @@ data class Config(
  * @param token 动作写法（`Action.parse` 认的那种）
  * @param name 用户起的名字；**空串 = 按动作自己念**（`cmd:` 走 `CommonCommands.labelOf`，
  *   其余走 `commandTitleOf`）—— 默认那几条因此能跟着界面语言变
- * @param showInBinding 要不要出现在「按键绑定页」那一段（关掉只是那一段不画，绑定本身不动）
+ * @param showInBinding 这一条要不要出现在按键绑定页那一段。**每条各管各的**：常用命令只是
+ *   一条快捷方式，哪几条值得常按由用户自己挑 —— 没有「全显示 / 全隐藏」那种总闸。
+ *   关掉只影响绑定页那一段，这一条仍在「常用命令」页的清单里（还能绑给别的目标）。
+ * @param icon 给这一条换个图标 —— 与 `fluid:` 的图标**同一套字形**（`FluidIcons` 的 id，
+ *   空串 = 用它本来那颗）。**只是一个界面上的选择**：常用命令只出现在模块自己的界面里
+ *   （绑定页那一段、这一页的清单），画的是 `ImageVector`，不必也不该渲染成 png 交给宿主。
  */
 data class CommonCommand(
     val token: String,
     val name: String = "",
     val showInBinding: Boolean = true,
+    val icon: String = "",
 )

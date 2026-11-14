@@ -30,14 +30,80 @@ import com.lookie.opluskey.ui.model.icon.icon
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.text.COMMAND_FORMAT_LINES
+import com.lookie.opluskey.ui.model.text.formatTipOf
 import com.lookie.opluskey.ui.model.theme.CommandFormatLine
 import com.lookie.opluskey.ui.state.command.CommandUiState
+import com.lookie.opluskey.ui.style.AnimatedColumn
 import com.lookie.opluskey.ui.style.tinted
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
+
+/**
+ * 页面上那句**居中注脚** —— 不占卡片、比正文小一号（`footnote1`）、次级色、左右各缩 32dp。
+ *
+ *  全项目就这一份：原先「场景动作」页表尾、「自定义命令」页那条权限提示各自写了一遍同一个
+ *  `Text`，这一处（正文底下的格式提示）要是再抄一遍就是第三份 —— 三份的边距或色阶迟早有一处
+ *  没跟上，同一个界面里就出现两种「注脚」。
+ *
+ *  @param text 整句；调用方负责把它翻好（本函数只管排版）
+ */
+@Composable
+internal fun CommandFootnote(text: String) {
+    Text(
+        text = text,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(start = FOOTNOTE_EDGE, end = FOOTNOTE_EDGE, top = FOOTNOTE_TOP),
+        textAlign = TextAlign.Center,
+        style = COUITheme.textStyles.footnote1,
+        color = COUITheme.colorScheme.onSurfaceVariantSummary,
+    )
+}
+
+/** 注脚左右各缩多少（与页面 `PAGE_MARGIN` 两倍那一档无关，是「比正文再收进来一点」的读法）。 */
+private val FOOTNOTE_EDGE = 32.dp
+
+/** 注脚与上面那一段之间空多少 —— 一档 6dp：「贴着但不同段」。 */
+private val FOOTNOTE_TOP = 6.dp
+
+/**
+ * 「命令详情」输入框底下那句**格式提示** —— 正文以哪种前缀开头，就把那一种的骨架摆出来
+ * （`keyevent:<keycode>（数字）`）。
+ *
+ *  与上面那张「支持的命令格式」卡说的是同一件事，但**位置与粒度不同**：那张卡是「能写什么」的
+ *  总览，这一句只讲**现在写的这一段**——用户正在输入的是一个具体前缀，最想知道的就是它后面
+ *  该跟什么。`keyevent:` 那一行尤其需要：卡片上地方小，只能写 `<按键>`，而这里填的其实是
+ *  keycode 数字（见 `Action.parseKeyEvent`），写「电源键」这种名字解析器认不出。
+ *
+ *  认不出前缀时不画（空输入、老配置、以及 `app:` 那类内建动作的 token）—— 那种命令本来就不该
+ *  手写，硬贴一条「格式」只会把人往错的方向教。不画也就不占位，下面的「可用变量」不会空一段。
+ *
+ *  **进出场走全项目那一套显隐动画**（[AnimatedColumn] → `VISIBILITY_ENTER` / `VISIBILITY_EXIT`：
+ *  淡入 + 从顶边缘纵向展开，退场先快淡出再收缩）。换前缀时这条提示要么从无到有、要么长短一变，
+ *  硬切会让下面整块内容原地跳一下 —— 展开 / 收缩把那段推移交给动画，观感与页面上其它动态显隐一致。
+ */
+@Composable
+internal fun SettingsPage.CommandFormatTip(body: String) {
+    //  先取再画（不写成 `?.let { CommandFootnote(it) }`）：`let` 那一支的返回类型推不出来，
+    //  编译器会在调用点报「Cannot infer type for type parameter 'T'」。
+    val tip = formatTipOf(body)
+    //  退场那 200ms 里 `tip` 已经是 `null`，但那一块还要再画一次 —— 直接用 `tip` 的话这一帧是
+    //  一个空盒子在收缩：字先没了、底下的内容才慢慢合上。留一份 `last`，普通对象、**不是 state**
+    //  （写它不该触发重组，与 `CommandDetailOverlay` 里那个 `LastCommand` 同一条账）。
+    val last = remember { LastTip() }
+    if (tip != null) last.value = tip
+    val shown = last.value ?: return
+    AnimatedColumn(visible = tip != null) { CommandFootnote(shown) }
+}
+
+/** 退场期间要画的那一份（见 [CommandFormatTip]）。 */
+private class LastTip {
+    var value: String? = null
+}
 
 /**
  * 「支持的命令格式」卡 —— 说的是「命令输入框里能写什么」。

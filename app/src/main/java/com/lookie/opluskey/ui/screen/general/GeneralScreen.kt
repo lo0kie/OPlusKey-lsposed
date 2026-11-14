@@ -28,7 +28,6 @@ import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.write.setColorOsApi
 import com.lookie.opluskey.ui.write.setMiniWindowAnim
-import com.lookie.opluskey.ui.write.setShowCommonCommands
 import com.lookie.opluskey.ui.write.setToastFluid
 import com.lookie.opluskey.ui.write.setToastOnRun
 import com.lookie.opluskey.ui.write.setToastTemplate
@@ -104,15 +103,12 @@ private fun SettingsPage.InterfaceCard(pageEnabled: Boolean) {
                         setColorOsApi(it)
                     },
                 )
-                //  「显示常用命令」—— 总开关（`CommonCommands.SHOW`）关着时，这一行跟着入口
-                //  一起收起来。配置位与写入口都留着，开回来这一行就回来。
+                //  「管理常用命令」—— 进清单页（收录哪几条、每条叫什么、换哪颗图标）。
+                //  **不再配一颗「显示常用命令」**：常用命令本来就只是快捷方式，露不露由清单里
+                //  有没有东西决定（空清单那一段只剩一行「去添加」），多一颗开关只是让人去关一个
+                //  本该由内容决定的事。配置位仍留着（老配置读得懂），执行侧也照旧。
                 if (CommonCommands.SHOW) {
-                    add(commonCommandsRow(cfg.global.showCommonCommands, pageEnabled))
-                    //  开关管「露不露」，这一行管「有哪几条」—— 两件事，两行。
-                    //  **开关关着时这一行也收起来**：那一段不画了，进那一页打理清单没有意义
-                    //  （要打理先把上面那颗打开，它就在头顶一行）。显隐交给 `CardList` 的进出场
-                    //  （`CardRow.Item.visible`），与页里其它随开关显隐的行同一套规格。
-                    add(manageCommonCommandsRow(visible = cfg.global.showCommonCommands, enabled = pageEnabled))
+                    add(manageCommonCommandsRow(enabled = pageEnabled))
                 }
             },
     )
@@ -200,8 +196,8 @@ private fun SettingsPage.toastFluidRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"),
-        summaryOn = I18n.get(Strings.HOME_TOAST_FLUID_DESC_ON, "提示显示在状态栏的流体云里"),
-        summaryOff = I18n.get(Strings.HOME_TOAST_FLUID_DESC_OFF, "提示以 Toast 弹出"),
+        summaryOn = I18n.get(Strings.HOME_TOAST_FLUID_DESC_ON, "显示在状态栏的流体云里"),
+        summaryOff = I18n.get(Strings.HOME_TOAST_FLUID_DESC_OFF, "以 Toast 弹出"),
         icon = PageIcons.FormatFluid,
         checked = checked,
         enabled = enabled,
@@ -237,42 +233,15 @@ private fun SettingsPage.toastTemplateRow(
     )
 
 /**
- * 「显示常用命令」那一行 —— 按键绑定页顶部那一段（微信扫一扫这类现成命令）露不露。
+ * 「管理常用命令」那一行 —— 进清单页（收录哪几条、每条叫什么、换哪颗图标）。
  *
- *  它是这一页里**唯一一条只管页面显示**的项：关掉只是那几行不画，已经绑上去的动作照旧执行、
- *  命令库里那些命令也一条不动 —— 两句副标题要说的正是这件事（别读成「停用常用命令」）。
- *
+ *  **单独一行，不再与上面一颗开关配成对**：那一段露不露已经由清单内容决定（见 `InterfaceCard`）。
+ *  行尾箭头：点开是一整页。
  */
-private fun SettingsPage.commonCommandsRow(
-    checked: Boolean,
-    enabled: Boolean,
-): CardRow =
-    CardRow.Switch(
-        title = I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS, "显示常用命令"),
-        summaryOn = I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS_ON, "按键绑定页列出常用命令"),
-        summaryOff = I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS_OFF, "按键绑定页不再列出"),
-        icon = PageIcons.CommonCommands,
-        checked = checked,
-        enabled = enabled,
-    ) {
-        setShowCommonCommands(it)
-    }
-
-/**
- * 「管理常用命令」那一行 —— 进清单页（收录哪几条、每条叫什么、哪些出现在绑定页）。
- *
- *  与上面那颗开关配成一对：那颗管「这一段露不露」，这一行管「这一段有哪几条」。
- *  行尾箭头：点开是一整页。**显隐跟着那颗开关**（`visible`，由 `CardList` 做进出场）。
- *
- */
-private fun SettingsPage.manageCommonCommandsRow(
-    visible: Boolean,
-    enabled: Boolean,
-): CardRow =
+private fun SettingsPage.manageCommonCommandsRow(enabled: Boolean): CardRow =
     CardRow.Item(
-        visible = visible,
         title = I18n.get(Strings.COMMON_COMMANDS_MANAGE, "管理常用命令"),
-        summary = I18n.get(Strings.COMMON_COMMANDS_MANAGE_DESC, "添加与显示"),
+        summary = I18n.get(Strings.COMMON_COMMANDS_MANAGE_DESC, "添加、改名、换图标与固定"),
         icon = PageIcons.CommonCommandsManage,
         arrow = true,
         enabled = enabled,
@@ -301,8 +270,11 @@ private fun SettingsPage.toastTemplateDialog(
         //  占位只写「留空则用默认」，**不再把默认那句摆进去**：那句话随时会变，摆进占位就成了
         //  一处会过期的说明；要看默认长什么样，清空（或按「重置」）之后行尾副标题就是它。
         label = I18n.get(Strings.HOME_TOAST_TEMPLATE_PLACEHOLDER, "留空将使用默认提示"),
-        //  三个占位符各是什么写在下面那行小字里 —— 填着内容时也一直在（这才是「变量提示」）。
+        //  六个占位符各是什么写在下面那行小字里 —— 填着内容时也一直在（这才是「变量提示」）。
+        //  变量名画成**名字框**（与键名那档标签同一份样式）：这一行要读成「几个能填的变量」，
+        //  纯文字读起来是一句话。顺序由 `ToastNotice.PLACEHOLDERS` 定。
         hint = I18n.get(Strings.HOME_TOAST_TEMPLATE_HINT),
+        hintChips = ToastNotice.PLACEHOLDERS,
         icon = PageIcons.ToastTemplate,
         initial = initial,
         maxLength = MAX_TOAST_TEMPLATE_LENGTH,

@@ -46,6 +46,20 @@ internal val LocalHint = staticCompositionLocalOf<(String) -> Unit> { {} }
 internal val LocalTick = staticCompositionLocalOf<() -> Unit> { {} }
 
 /**
+ * 一句话 + 要画成**标签**的那几个名字 —— 与 `SettingsPage.hint(text, chips)` 同一份口径。
+ *
+ *  为什么要有这个载体：文案模板（`%s`）与名字必须**一起**走完「控件层 → 页面」那一段 ——
+ *  只传模板会在界面上留下裸 `%s`，只传名字则丢掉了语序（各语言的语序不同）。
+ *
+ *  只在这一层用：那是「点不动时说的那句话」的两个半边，和 `HintItem` 的 `text` + `chips`
+ *  是同一种东西，区别只在它还没有落到队列里。
+ */
+internal class HintText(
+    val template: String,
+    val chips: List<String> = emptyList(),
+)
+
+/**
  * 「这一下为什么点不动」的投递位 —— 由页面在根上提供，**落到页面那个「禁用原因」语义位**
  * （`HINT_SLOT_DISABLED`，见 `ui/screen/PageContent.kt`）。
  *
@@ -54,7 +68,7 @@ internal val LocalTick = staticCompositionLocalOf<() -> Unit> { {} }
  *
  *  没提供时是空实现：控件在别的上下文里照样能用，只是不出声。
  */
-internal val LocalDisabledHint = staticCompositionLocalOf<(String) -> Unit> { {} }
+internal val LocalDisabledHint = staticCompositionLocalOf<(HintText) -> Unit> { {} }
 
 /**
  * 「这一块里点不动的东西，被点一下就说 [text] 那句。」
@@ -76,10 +90,22 @@ internal val LocalDisabledHint = staticCompositionLocalOf<(String) -> Unit> { {}
 internal fun DisabledHint(
     text: String?,
     content: @Composable () -> Unit,
+) = DisabledHint(text?.let { HintText(it) }, content)
+
+/**
+ * 同上，但带上**要画成标签的名字**（`%s` 在 [HintText.template] 里）。
+ *
+ *  带键名的那几条（「按键 %s 只参与组合按键」「%s 已停用…」）走这一支：名字画成标签，
+ *  与提示条里其它回执是同一种长相。纯文字那十几处继续用上面那条重载，一行都不用改。
+ */
+@Composable
+internal fun DisabledHint(
+    text: HintText?,
+    content: @Composable () -> Unit,
 ) {
     //  **空串与 `null` 同档**：这一条通道只负责「这一块有自己的说法」；给一句空话等于让这次点击
     //  什么都不说，而屏幕上还留着上一条提示 —— 用户看到的就是「回退到上一个消息文案」。
-    if (text.isNullOrBlank()) {
+    if (text == null || text.template.isBlank()) {
         content()
     } else {
         val say = LocalDisabledHint.current

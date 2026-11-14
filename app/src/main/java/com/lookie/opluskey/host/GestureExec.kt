@@ -17,7 +17,6 @@ import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.OwnSettings
-import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.core.model.gestureOrNull
 import com.lookie.opluskey.core.model.isReleasePhase
@@ -28,7 +27,7 @@ import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.host.action.FailureNotice
 import com.lookie.opluskey.host.action.condition.ConditionProbe
 import com.lookie.opluskey.host.action.notice.FluidAction
-import com.lookie.opluskey.host.action.notice.actionNoticeText
+import com.lookie.opluskey.host.action.notice.actionNoticeReading
 
 /**
  * **一次手势的执行**：过期丢弃 → 去重 → 读配置 → 判两级开关 → 振动 → 提示 → 交给执行器。
@@ -70,62 +69,27 @@ internal object GestureExec {
     private val lastHandledAt = HashMap<String, Long>()
 
     /**
-     * 上一次按下**命中哪一块**（`SceneRule.releasePin` 开着才记）—— 键用 `KeyId.id`、
-     * 组合用 `combo:<id>` 当键，与 [lastHandledAt] 同一套写法。
+     * 按住那两档的**场景快照** —— 在「首键按下」或「组合凑成」那一刻判一次，派发时用它。
      *
-     *  松手是一条**独立的手势**：判定侧只发「键 + 档位」，宿主收到时若重新判条件，就会落进
-     *  「长按动作换了前台，松手落到别的块」那个坑。这一格就是那一按的归属，松手取动作时用掉即清。
+     *  为什么需要：按住组合要先按住起点键（`comboHoldMinMs`）才凑得成，凑成之后还要等长按阈值
+     *  才派发；按派发那一刻判场景，会把「按住不放期间切了应用」也算进去，与用户按下时的意图对不上。
+     *  用哪一份由 `Config.comboSceneOnStarterFor` 决定（见 [handleComboScene]）。
+     *
+     *  覆盖＝下一次按下，清理＝保质期（[COMBO_SCENE_MAX_AGE_MS]）—— 理由见 [takeComboScene]。
      */
-    private val pressPins = HashMap<String, Int>()
-
-    /** 按下那一档命中的块 → 记下（只有该块开着 `releasePin` 才记；否则清掉，松手时照旧重判）。 */
-    private fun rememberPressPin(
-        subject: String,
-        trigger: GestureTrigger,
-        scenes: List<SceneRule>,
-        matches: (BranchCondition) -> Boolean,
-    ) {
-        //  只有「按下那一刻」的两档有归属可言：松手与双击是收尾 / 连击链的结论，不记。
-        if (trigger != GestureTrigger.LongPress && trigger != GestureTrigger.ClickThenLong) return
-        val index = sceneIndexOf(scenes, trigger, matches)
-        if (index != null && scenes[index].releasePin) {
-            pressPins[subject] = index
-        } else {
-            pressPins.remove(subject)
-        }
+    private class ComboSceneMarks {
+        var starter: SceneSnapshot? = null
+        var formed: SceneSnapshot? = null
     }
 
-    /**
-     * 松手那一档 —— 这一按**钉住的那一块**该给什么。
-     *
-     *  @return `null` = 没有钉住（调用方走原来那条「按当时状态重判」的路）；
-     *   否则那个块该给的松手动作（`null` 的动作 = 这一下什么都不做）
-     */
-    private fun consumePressPin(
-        subject: String,
-        trigger: GestureTrigger,
-        scenes: List<SceneRule>,
-    ): PinnedRelease? {
-        val index = pressPins.remove(subject) ?: return null
-        val block = scenes.getOrNull(index)
-        if (block == null || !block.enabled) {
-            XLog.w("松手：按下时命中的那一块已经不在了或被停用 ⇒ 这一下不执行（不再去重判别的块）")
-            return PinnedRelease(null)
-        }
-        val action =
-            if (trigger == GestureTrigger.Release) {
-                //  「松手执行额外动作」那一格：开关 + 动作一起看（`hasRelease`）
-                if (block.hasRelease) block.release else Action.None
-            } else {
-                if (block.hasChainRelease) block.chainRelease else Action.None
-            }
-        if (!action.isBound) {
-            XLog.w("松手：这一块没有可执行的松手动作（沿用按下时命中的那一块，不回落按键自己那格）")
-            return PinnedRelease(null)
-        }
-        XLog.w("松手：沿用按下时命中的第 ${index + 1} 块（不再重判条件）")
-        return PinnedRelease(action)
-    }
+    /** 某一刻这一档命中的是哪一块（`null` = 没有块接管）。 */
+    private class SceneSnapshot(
+        val long: Int?,
+        val click: Int?,
+        val at: Long,
+    )
+
+    private val comboScenes = HashMap<String, ComboSceneMarks>()
 
     /**
      * 手势的「保质期」（毫秒）：超过它视为冻结期间积压的过期手势，丢弃不执行。
@@ -137,6 +101,15 @@ internal object GestureExec {
 
     /** 触觉反馈的时长（毫秒）—— 与最初宿主侧那路同一档（30ms 短振）。 */
     private const val HAPTIC_MS = 30L
+
+    /**
+     * 组合场景快照的**保质期**（毫秒）。
+     *
+     *  快照到派发之间正常只隔一个长按阈值（默认 500ms）；超过这一档说明中间丢了动作，
+     *  那时按一份过期归属去执行，比退回「按当时条件重判」更错。3s 与单键那条 [STALE_MS]
+     *  同一量级：都只用来兜「积压 / 丢事件」，不是正常路径。
+     */
+    private const val COMBO_SCENE_MAX_AGE_MS = 3000L
 
     /**
      * 三档强度对应的振幅（0..255，见 `VibrationEffect.createOneShot`）。
@@ -253,6 +226,94 @@ internal object GestureExec {
     }
 
     /**
+     * **记一份场景快照** —— 注入侧在「首键按下」或「组合凑成」时发来一条，不执行任何动作。
+     *
+     *  @param target `starter` 那一档传**起点键的 id**：此刻还不知道会凑成哪一档，
+     *    这里把「以它为起点的所有按住档」各记一份；`formed` 那一档传组合 id，只记它自己
+     *
+     *  为什么在宿主判：条件（前台应用 / 各系统开关）只有宿主查得到；注入侧只能报「时刻」。
+     *  判一次、整一按都用它 —— 这是「按住组合的场景由首键按下时固定」的全部实现。
+     */
+    fun handleComboScene(
+        target: String,
+        stage: String,
+    ) {
+        if (target.isEmpty()) return
+        val config = ConfigStore.read()
+        //  **只记按住那两档**：等窗口那一档既没有「先按住哪一颗」，也不需要这份快照 ——
+        //  它照旧在派发那一刻现判（`takeComboScene` 对它恒返回空）。两处判据是同一句，
+        //  免得「记了却没人用」多一次条件判定（那里面有反射与小窗那张表）。
+        val combos =
+            if (stage == "starter") {
+                config.combos.filter { it.isHold && it.starterKey == target }
+            } else {
+                listOfNotNull(config.combos.firstOrNull { it.id == target && it.isHold })
+            }
+        if (combos.isEmpty()) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val judged = HashMap<BranchCondition, Boolean>()
+
+        fun matchesCondition(condition: BranchCondition): Boolean =
+            judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
+        for (combo in combos) {
+            val snapshot =
+                SceneSnapshot(
+                    long = sceneIndexOf(combo.scenes, GestureTrigger.LongPress, ::matchesCondition),
+                    click = sceneIndexOf(combo.scenes, GestureTrigger.Click(1), ::matchesCondition),
+                    at = now,
+                )
+            val marks = comboScenes.getOrPut(combo.id) { ComboSceneMarks() }
+            if (stage == "starter") marks.starter = snapshot else marks.formed = snapshot
+            XLog.w("组合键场景快照：${combo.id} @$stage ⇒ 长按第 ${snapshot.long?.plus(1) ?: "-"} 块 / 单击第 ${snapshot.click?.plus(1) ?: "-"} 块")
+        }
+    }
+
+    /**
+     * 派发时取这一档该用哪一份快照 —— 按 [Config.comboSceneOnStarterFor] 选。
+     *
+     *  **不在取用时清掉**：同一次按压会派发多次（连续触发一条一条来），每一条都得看同一份，
+     *  否则第二次起就退回「按当时条件重判」—— 按住期间切了应用的话，第一次与第二次动作会
+     *  落进不同的场景块。覆盖靠下一次按下（`handleComboScene` 写同一格），
+     *  清理靠 [COMBO_SCENE_MAX_AGE_MS] 这条保质期。
+     *
+     *  @return `null` = 不用快照（不是按住那两档 / 没收到 / 太旧），调用方退回「按当时条件重判」
+     */
+    private fun takeComboScene(
+        config: Config,
+        combo: ComboKey,
+    ): SceneSnapshot? {
+        //  等窗口那一档没有「按下那一刻」这回事：凑成即是派发，两种口径没有区别 ——
+        //  于是维持原来的「派发时现判」，不给它引入一条没人要求的归属时点。
+        if (combo.isWait) return null
+        val marks = comboScenes[combo.id] ?: return null
+        val snapshot = if (config.comboSceneOnStarterFor(combo)) marks.starter else marks.formed
+        if (snapshot == null) return null
+        //  超过这个时长就不用：快照与派发之间正常只隔着长按阈值，超出说明中间丢了动作，
+        //  拿一份过期归属去执行比按当时重判更错。
+        if (android.os.SystemClock.elapsedRealtime() - snapshot.at > COMBO_SCENE_MAX_AGE_MS) return null
+        return snapshot
+    }
+
+    /**
+     * 用快照取动作 —— 那一块没接管这一档时回落到这一档自己的绑定（与 [pickAction] 同一口径）。
+     */
+    private fun sceneActionOf(
+        combo: ComboKey,
+        trigger: GestureTrigger,
+        snapshot: SceneSnapshot,
+    ): Action {
+        val index =
+            when (trigger) {
+                GestureTrigger.LongPress -> snapshot.long
+                is GestureTrigger.Click -> snapshot.click
+                else -> null
+            }
+        val block = index?.let { combo.scenes.getOrNull(it) }?.takeIf { it.enabled }
+        val fromBlock = block?.actionOf(trigger) ?: Action.Follow
+        return if (fromBlock.isBound) fromBlock else combo.actionOf(trigger)
+    }
+
+    /**
      * 一次**组合键**（两颗键一起按）：读配置 → 认那一档 → 两级闸门 → 振动 → 提示 → 执行。
      *
      *  与 [handle] 分开两支：组合没有单颗键的 `KeyConfig`（没有三档绑定、没有条件执行、
@@ -291,27 +352,16 @@ internal object GestureExec {
         fun matchesCondition(condition: BranchCondition): Boolean =
             judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
         if (trigger == GestureTrigger.Release) {
-            //  **按住那两档没有「松手」这一档**：抬手只是收尾 —— 再执行一次松手动作就是
-            //  「组合动作 + 松手命令」两个结果。判定侧已经不为它们发这一条（`ComboDetector.onUp`），
-            //  这里再挡一道：两侧配置若错开一版，这一条能兜住。
-            if (combo.isHold) {
-                XLog.w("组合键 ${combo.id} - 松手：这一档先按住触发，不出松手动作，忽略")
-                return
-            }
-            //  「松手执行额外动作」这一档：与其它几档互斥。
+            //  「松手执行额外动作」这一档：与其它几档互斥，**三种触发方式同一套**（用户口径）——
+            //  按住那两档的长按照样有动作，抬手照样是那一按的收尾。
+            //  早先这里挡了一道 `combo.isHold`（那时按住档被定成「抬手只收尾」），
+            //  结果是界面能配、配了也不执行。
+            //
             //  取动作与单键同一条口径（[pickReleaseAction]）：长按被哪一块接管，就用那一块自己的松手格；
             //  一块都不中才落到这一组的 `longRelease`。块命中时**不**再补一刀 —— 一次按压一个结果。
             //
-            //  钉住的那一块优先：按下那一刻归谁，松手就归谁（不再按松手时的状态重判）。
-            consumePressPin("combo:${combo.id}", trigger, combo.scenes)?.let { pinned ->
-                val action = pinned.action
-                if (action == null) {
-                    XLog.w("组合键 ${combo.id} - 松手：这一块没有可执行的松手动作，这一下不执行")
-                    return
-                }
-                executeCombo(combo, trigger, action, config, repeat)
-                return
-            }
+            //  **按松手那一刻的条件重判**（用户口径：不再沿用按下时命中的那一块）：
+            //  松手本来就是一次独立的判定，条件和按下时不一样就该按新的来。
             val fired = combo.resolveRelease(::matchesCondition)
             if (!fired.isBound) {
                 XLog.w("组合键 ${combo.id} - 松手：这一下没有可执行的动作（长按命中场景 / 这一组没配松手），不执行")
@@ -320,22 +370,13 @@ internal object GestureExec {
             executeCombo(combo, trigger, fired, config, repeat)
             return
         }
-        //  取动作：三种触发方式共用这一条路（场景块只分短按 / 长按，不构成第二个维度）
-        val action = combo.resolve(trigger, ::matchesCondition)
-        //  记下这一按命中的是哪一块 —— 松手那一档按它给动作（见 `SceneRule.releasePin`）。
-        rememberPressPin("combo:${combo.id}", trigger, combo.scenes, ::matchesCondition)
-        //  这一格是「无操作」且开关打开 ⇒ **不吞键**：两颗键各按自己这一档照常执行
-        //  （见 `Config.comboPassthroughFor`：这一组写过就用自己的，否则看公共设置）。
-        //   这就是「配了组合、但只给长按绑了动作」时短按那颗依旧能用的那条路 ——
-        //   为假时什么都不做，与这一位出现之前一致。
-        //
-        //  **只有等窗口那一档走这条路**（判据在 `comboPassthroughFor` 里，按住那两档恒为假）：
-        //  按住那两档即使这一格是「无操作」也照样吞掉判定 —— 它们本来就是「把这一按交给组合」
-        //  的明确表态，落回两颗键各跑一遍只会多出两个动作。
-        if (!action.isBound && config.comboPassthroughFor(combo)) {
-            runComboMembers(combo, trigger, config)
-            return
-        }
+        //  取动作：三种触发方式共用这一条路（场景块只分短按 / 长按，不构成第二个维度）。
+        //  **有快照就用快照**：按住组合的场景在首键按下（或凑成）那一刻已经定下来了。
+        //  **留空就是留空**：这一格是「无操作」时什么都不做，不落回两颗键各自的绑定 ——
+        //  想「两颗键各干各的」就不要配这一档组合（判据只有这一句，没有例外）。
+        val action =
+            takeComboScene(config, combo)?.let { sceneActionOf(combo, trigger, it) }
+                ?: combo.resolve(trigger, ::matchesCondition)
         executeCombo(combo, trigger, action, config, repeat)
     }
 
@@ -385,8 +426,8 @@ internal object GestureExec {
     /**
      * 组合键那一下的收尾 —— 日志、振动、提示、执行、报活。
      *
-     *  单独一支是因为它有三个调用点（长按那一档、松手那一档、透传那一档）：三处收尾一模一样，
-     *  内联就是把同一段抄三遍。
+     *  单独一支是因为它有两处调用（普通那一档、松手那一档）：两处收尾一模一样，
+     *  内联就是把同一段抄两遍。
      */
     private fun executeCombo(
         combo: ComboKey,
@@ -426,62 +467,6 @@ internal object GestureExec {
             if (action.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
             if (!repeat) onExecutedHook?.invoke(config)
         }
-    }
-
-    /**
-     * 组合那一格是「无操作」时：**两颗键各按自己这一档执行**。
-     *
-     *  顺序就是 [ComboKey.keys] 的书写顺序（没有「谁先谁后」的语义，串行执行只是别让两条命令
-     *  同时抢同一个前台）。每颗键走它自己的 `actionFor`（含条件执行）—— 用户说的是
-     *  「执行两颗按键绑定的命令」，那两格本来就该按它们自己的条件分支判。
-     *
-     *  闸门与单键那条一致：这一颗键自己得开着（[Config.isLive]）。
-     */
-    private fun runComboMembers(
-        combo: ComboKey,
-        trigger: GestureTrigger,
-        config: Config,
-    ) {
-        val r =
-            runner ?: run {
-                XLog.w("ActionRunner 还没建好，忽略组合键 ${combo.id} 的透传")
-                return
-            }
-        //  同一次按压里，同一个条件只判一次（与单键那条同一个理由）
-        val judged = HashMap<BranchCondition, Boolean>()
-        syncLanguage(config)
-        //  同一颗一次：一颗失败不影响另一颗继续执行（它们本来就是两条独立绑定），
-        //  但报活只在这一组全部成功时补发 —— 「有一个没做成」不能报成整组生效。
-        var allOk = true
-        combo.keys.forEach { id ->
-            val key = config.keyIdOf(id) ?: return@forEach
-            if (!config.isLive(key)) {
-                XLog.w("${keyName(key)}：这颗键已停用，组合透传时跳过")
-                return@forEach
-            }
-            val keyConfig = config.key(key)
-            val action =
-                keyConfig.actionFor(trigger) { condition ->
-                    judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
-                }
-            //  「（组合透传）」挂在**手势**那一段上：模板里 `$gesture` 换成「单击（组合透传）」，
-            //  默认模板那句话于是与拆分之前逐字一致。
-            val keyLabel = keyName(key)
-            val gestureLabel = "${gestureLabel(trigger)}（组合透传）"
-            val subject = "$keyLabel - $gestureLabel"
-            XLog.w("$subject → ${XLog.redactToken(action.token)}（宿主进程执行）")
-            //  「振动反馈」同样按**这一颗键**的生效值给（不是公共那一档）：
-            //  动作前那一下在这里判，切响铃那一下要交给 `run` 传下去，两处不能各读一份。
-            val own = config.effectiveFor(keyConfig)
-            if (own.vibrate && action.isBound) haptic(config, keyConfig)
-            noticeIfNeeded(config, action, keyLabel, gestureLabel, keyConfig)
-            if (r.run(action, subject, own.colorOsApi, own.vibrate)) {
-                if (action.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
-            } else {
-                allOk = false
-            }
-        }
-        if (allOk) onExecutedHook?.invoke(config)
     }
 
     /**
@@ -591,9 +576,6 @@ internal object GestureExec {
         //  这一整段只回答一件事：**这一次到底执行哪个动作**。抽出去与「派发」分开，
         //  `runAction` 那条主线上就只剩顺序，不再一串嵌套判断。
         val fired = resolveAction(id, trigger, keyConfig, ::matchesCondition) ?: return
-        //  这一次是「按下」的话，记下命中的是哪一块 —— 松手那一刻按它给动作（见 `SceneRule.releasePin`）。
-        //  重复派发（连发）也照记：那几条本来就是同一次按下的后半段，最后一次的归属与松手最近。
-        rememberPressPin(id.id, trigger, keyConfig.scenes, ::matchesCondition)
         val r =
             runner ?: run {
                 XLog.w("ActionRunner 还没建好，忽略 ${id.label} 的 ${trigger.id}")
@@ -646,14 +628,9 @@ internal object GestureExec {
         //  块接管了长按 ⇒ 用那一块自己的松手格（`None` = 这一下什么都不做），**不再**补按键那一格；
         //  一块都不中 ⇒ 才补按键自己的 `longRelease`。判据与长按那一档同一份，且共用同一次按压里
         //  的 `judged` 缓存（不多判一轮）。
-        //  **钉住的那一块优先**（见 `SceneRule.releasePin`）：按下那一刻归谁，松手就归谁 ——
-        //  不再按松手时的状态重判，也不回落到按键自己那一格。
+        //  **按松手那一刻的条件重判**（用户口径：不再沿用按下时命中的那一块）—— 松手本来就是
+        //  一次独立判定，条件变了就该按新的来。
         //  返回非 `null` 就是「这一下有个结论」（动作可能是 `Action.None` = 什么都不做）。
-        //  只有**松手那两档**才结算钉位：单击 / 双击 / 连发那几条不是「按下那一刻的收尾」，
-        //  顺手消费掉会让下一次松手落到「没有钉位」上（而这一下也不该被钉位改写）。
-        if (trigger.isReleasePhase) {
-            consumePressPin(id.id, trigger, keyConfig.scenes)?.let { return it.action }
-        }
         if (trigger == GestureTrigger.Release) {
             //  长按这一档**本身没有动作**时，松手这一刀整条不成立（见 `KeyConfig.releaseBound` /
             //  `longActionExists`）：松手动作是「这一档执行完之后」的收尾，主语没有就不该有谓语。
@@ -757,8 +734,8 @@ internal object GestureExec {
 
     /**
      * 「执行时提示」：判据是全局开关（`GlobalConfig.toastOnRun`），文案由
-     * [GlobalConfig.toastTemplate] 拼 —— `$key` / `$gesture` / `$action` 三段可自由摆放增删
-     * （见 `ToastNotice`；默认模板就是拆分之前那句 `侧键 - 单击 → 手电筒`）。
+     * [GlobalConfig.toastTemplate] 拼 —— `$key` / `$gesture` / `$action` 与 `$action` 拆开的三段
+     * 可自由摆放增删（见 `ToastNotice`；默认模板就是拆分之前那句 `侧键 - 单击 → 手电筒`）。
      *
      *  钉在这一处（一次手势只走一遍）而不是 `CustomCommandRunner` 里 —— 那一处只覆盖 `cmd:`
      *  自定义命令，绑的是内置动作（小布识屏 / 截图 / 手电筒 …）时按下去一直没动静
@@ -787,8 +764,8 @@ internal object GestureExec {
         //  本来就该是同一句 —— 回执那边还得再拿 `ifBlank` 兜一次。
         if (!action.isBound) return
         // 名字表随配置来（`Config.appNames`）：快捷方式那档的名字只存在那里，token 里没有
-        val what = actionNoticeText(appContext, action, config.appNames)
-        if (what.isEmpty()) return
+        val what = actionNoticeReading(appContext, action, config.appNames)
+        if (what.sentence.isEmpty()) return
         val notice = ToastNotice.render(own.toastTemplate, keyLabel, gestureLabel, what)
         XLog.w("执行时提示：$notice")
         if (own.toastFluid) {
@@ -879,16 +856,6 @@ internal object GestureExec {
         }
     }
 }
-
-/**
- * 松手那一刻的结论 —— **按按下时命中的那一块**给出的（见 `SceneRule.releasePin`）。
- *
- *  [action] 为 `null` = 这一下不派发（那一块已经不在了 / 没有可执行的松手动作）；
- *  与「没有钉住」（`null` 的 `PinnedRelease`）必须分得开 —— 后者要回落去重判。
- */
-private class PinnedRelease(
-    val action: Action?,
-)
 
 /**
  * 这一次「切响铃」是不是走 ColorOS 接口（振动的去处不同，见 [GestureExec] 里的 `shouldVibrate`）。

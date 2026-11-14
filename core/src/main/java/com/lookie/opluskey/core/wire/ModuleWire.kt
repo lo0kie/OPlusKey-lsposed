@@ -59,6 +59,14 @@ object ModuleWire {
     const val EXTRA_REPEAT = "repeat"
 
     /**
+     * 广播里携带的**场景快照请求**（`starter` / `formed`）—— 这一条不是手势，是「某个时刻到了」。
+     *
+     *  带了这一项就说明本条只用来让宿主把场景定下来（见 `GestureExec.handleComboScene`），
+     *  不执行任何动作：按住组合的起点键按下 / 组合凑成，各报一次。
+     */
+    const val EXTRA_SCENE_STAGE = "scene_stage"
+
+    /**
      * 广播携带的发送时刻（`SystemClock.elapsedRealtime()`，跨进程同源）。
      * 宿主据此丢弃冻结期间积压、解冻才送到的过期手势，判据见 `host/GestureReceiver` 的 `STALE_MS`。
      */

@@ -44,7 +44,10 @@ import com.lookie.opluskey.ui.write.BindingTarget
 //  不写进用户的命令库文件，命令页里也一条都不出现 —— 所以它有自己的一段标题、自己的行。
 
 /**
- * 「常用命令」那一段（[CommonCommands.SHOW] 关着、或 `GlobalConfig.showCommonCommands` 关掉时整段不画）。
+ * 「常用命令」那一段（[CommonCommands.SHOW] 关着时整段不画）。
+ *
+ *  **每条自己决定露不露**（`CommonCommand.showInBinding`，在「常用命令」页的行菜单里切）：
+ *  清单里有几条就列几条的前提是那条没关 —— 空清单 / 一条都没勾时只剩「去添加」一行。
  *
  *  三种目标共用（按键绑定 / 组合键编辑 / 场景动作）：这一段的产物是一条动作绑定，
  *  三种目标都收得住 —— 场景块那一支写的是草稿（见 `BindingActions.commitBinding`）。
@@ -64,13 +67,14 @@ internal fun SettingsPage.CommonCommandsGroup(
     //  总开关（`CommonCommands.SHOW`）关着就整段不画。判断放在这一支里而不是调用点，
     //  这样调用点那边一行都不动 —— 关回去时也不必回去找哪一页少画了一段。
     if (!CommonCommands.SHOW) return
-    //  显示与否再读配置，不看页面：关掉之后整段消失，别处（网格 / 自定义命令）一个字都不动
-    if (!configState.config.value.global.showCommonCommands) return
-    //  **全部画出来**：这一档「显示在按键绑定页」已改成固定（用户口径），清单里没有
-    //  「不该出现在这里」的那一档了 —— 所以不再按 `showInBinding` 过滤。
-    //  老配置里被关过的条目也一并显示：那一位只影响这一处，而这一处现在恒为「显示」。
+    //  **只画这一条勾了「在按键绑定页显示」的那些**（每条各有自己的开关，见「常用命令」页的行菜单）。
+    //  没有「全显示 / 全隐藏」的总闸：常用命令只是快捷方式，哪几条值得常按由用户自己挑。
+    //
+    //  一张清单都没钉住、或者一条都没勾显示时，这一段**仍在**，只是下面换成一行「去添加」——
+    //  整段不画的话，这一页上就看不出还有「常用命令」这回事，用户也不会想到去别处先建一条再回来。
+    //  这与下面「自定义命令」那一段同一个读法。
     val all = configState.config.value.global.commonCommands
-    val entries = all
+    val entries = all.filter { it.showInBinding }
     //  这一档现在绑的是哪一条 —— 「勾」只服务这一段的**独立**身份：它不在下面那个网格里，
     //  网格不会替它点亮任何一格，不在这里标就完全看不出绑没绑上。
     val current = target.actionIn(configState.config.value)
@@ -84,8 +88,8 @@ internal fun SettingsPage.CommonCommandsGroup(
         //  整页闸关着（主开关 / 链路 / 只读）时不接点击：跳过去也是一页改不动的清单
         click = if (enabled) SectionTitleClick.Jump { navTo(Screen.COMMON_COMMANDS) } else null,
     )
-    //  一条都没有时，这一段只剩一行「去添加」：它进的是「常用命令」页，挑一条收录就回来了。
-    //  （「有清单但一条都没勾显示」那条路径已经随「改成固定」消失，见上面 `entries`。）
+    //  一条都没有（清单空，或者一条都没勾「在按键绑定页显示」）时，这一段只剩一行「去添加」：
+    //  它进的是「常用命令」页，在那里收录一条、顺手打开它的开关就回来了。
     if (entries.isEmpty()) {
         AddCommonCommandRow(enabled = enabled, onAdd = { navTo(Screen.COMMON_COMMANDS) })
         return
@@ -146,7 +150,8 @@ private fun SettingsPage.CommonCommandTile(
     ActionTile(
         spec = null,
         title = name,
-        icon = commonCommandIcon(cmd.token),
+        //  与「常用命令」页那一行同一个答案：换过图标就画换的那颗
+        icon = commonCommandIcon(cmd),
         selected = bound,
         focused = false,
         focusRequester = remember { FocusRequester() },

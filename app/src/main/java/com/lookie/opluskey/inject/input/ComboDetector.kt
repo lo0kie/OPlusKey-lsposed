@@ -144,6 +144,16 @@ internal class ComboDetector(
      *  `repeat` 与单键那条 `onGesture` 的第三位同义：重复派发不再振动、不再报活（那是同一次按压）。
      */
     private val onCombo: (ComboKey, GestureTrigger, Boolean) -> Unit,
+    /**
+     * **某颗键刚按下** —— 按住组合的系统场景要按「首键按下」那一刻的条件定下来
+     * （见宿主 `GestureExec.handleComboScene`）。
+     *
+     *  这一条每次按下都会走，装配方**必须**自己先判「这颗键是不是某按住组合的起点」
+     *  （`ConfigChannel.holdStarter`），不是就直接返回 —— 只有那几个起点才值得发一条广播。
+     */
+    private val onHoldStarter: (KeyId) -> Unit,
+    /** **某一档组合刚凑成** —— 关掉「首键按下固定」时，场景按这一刻的条件定（同上）。 */
+    private val onComboFormed: (ComboKey) -> Unit,
     /** 摘掉某颗键的单键计时器（组合成立时用，见类注释）。 */
     private val resetKey: (KeyId) -> Unit,
     /**
@@ -523,6 +533,13 @@ internal class ComboDetector(
             consumed.remove(id)
         }
         recent[id] = now
+        //  「首键按下」报一声：这一颗若是某按住组合的起点，宿主会在这一刻把场景快照下来。
+        //  包在 try 里 —— 这条跑在输入线程上，抛出去会把 system_server 带崩。
+        try {
+            onHoldStarter(id)
+        } catch (e: Throwable) {
+            XLog.w("组合键首键通知失败（忽略）：${e.javaClass.simpleName}", e)
+        }
         // 已经在组合里：第三颗键按下来默认不掺和，仍按「组合进行中」吞掉。
         //  **记进 [consumed]**：不记的话它没有「按下」，抬手那条 UP 会被单键判定器当成
         //  「孤立抬手」补判一次单击 —— 组合进行中又冒出第三颗键的动作。
@@ -580,6 +597,11 @@ internal class ComboDetector(
                 (if (hit.key.isWait) "等窗口" else "先按住 " + label(hit.key.starterKey)) +
                 "）",
         )
+        try {
+            onComboFormed(hit.key)
+        } catch (e: Throwable) {
+            XLog.w("组合键凑成通知失败（忽略）：${e.javaClass.simpleName}", e)
+        }
         scheduleLong(c, startedAt = now)
         //  还有更宽的一档来得及时（配了 {A,B} 又配了 {A,B,C}）⇒ 这一次先不派发，等它窗口结束
         awaitWider(c, now)
@@ -635,9 +657,10 @@ internal class ComboDetector(
                     XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 长按（松手才触发）")
                     fire(c, GestureTrigger.LongPress, repeat = false)
                 } else if (c.key.releaseBound) {
-                    //  **只有认窗口那一档才有「松手」这一档**：按住那两档的槽是那一对 `single`/`long`
-                    //  本身，抬手只是收尾 —— 再补一次松手动作就成了「按住手势 + 松手命令」两个结果
-                    //  （用户口径：只出按住手势那一条）。
+                    //  **三种触发方式都有这一档**（用户口径）：按住那两档的长按照样有动作，
+                    //  抬手就是那一按的收尾，再补一条松手动作与单键同一套语义。
+                    //  判据只看 `releaseBound`（它已经把「长按有动作 / 开关开着 / 挑过动作 /
+                    //  不是松手才触发」四条算在一起），这里不再另判触发方式。
                     XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 长按松手（${c.key.longRelease.token}）")
                     fire(c, GestureTrigger.Release, repeat = false)
                 }

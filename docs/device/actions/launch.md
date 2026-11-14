@@ -389,3 +389,63 @@ if (targetState.ordinal > initialState.ordinal) {
 `SpruceLauncher`，应当只有 `startActivityWithRemoteAnim: threadId:` 一条，没有 adapter 相关行；
 若能看到 `...RemoteAnimationAdapter is null` 即为此结论。若真机上确实出现过从按键位置展开的圆角卡片，
 说明那条动画不在本章这条链路上（本章只覆盖 `com.oplus.gesture` 内的这套实现）。
+
+## 四十八、`ActionRemoteStartContentProvider` 那条入口在本机是活的（实测，2026-11-14 / PMA110 / ColorOS 17.0.1）
+
+§47 的结论（「adapter 恒 null、这条链不启用」）在这台机器上**不成立** —— 原版那条 provider 入口一按
+就真的把远端动画播了出来。这条既是 §47 的更正，也是「我们自己转交时为什么没有动画」的判据。
+
+调法（provider 是 `exported`，`permission = com.oppo.permission.safe.PRIVATE`，root 直接过）：
+
+```
+content call --uri content://com.oplus.gesture.actionbuttonkey.ActionRemoteStartContentProvider \
+  --method onRemoteStart \
+  --extra pkgName:s:com.coloros.ocrscanner \
+  --extra className:s:com.oplus.scanner.ui.main.CameraActivity
+```
+
+抓到的行（`adb logcat`）：
+
+```
+ActionRemoteStartContentProvider: call:  method=onRemoteStart  bundle=…
+ActionRemoteStartContentProvider: call:  pkgName=com.coloros.ocrscanner  activityName=…
+SpruceLauncher: startActivityWithRemoteAnim: threadId: 6144          ← 主线程
+WindowManagerShell: RemoteTransition directly requested for (#265) … debugName = SpruceLauncher
+WindowManagerShell: Delegate animation for (#265) to RemoteTransition { … SpruceLauncher }
+v: createLeash leashSurface=Surface(name=…Task=2209…_transition-leash…)
+```
+
+**它和我们那条路差三样**（`dexdump` 读 `ActionRemoteStartContentProvider.call` 的 `onRemoteStart` 分支，
+一句一句对出来的）：
+
+| 原版做的 | 我们原来做的 |
+| --- | --- |
+| `pm.getLaunchIntentForPackage(pkg)` | `AppEntry.intentOf`（同一份来源） |
+| `intent.addFlags(270532608)` = `NEW_TASK \| RESET_TASK_IF_NEEDED` | 只有 `NEW_TASK` |
+| `intent.putExtra("android_action_key_launch_type", true)` | 没有 |
+| `mHandler.post(...)` → **主线程**再调 `d.m` | 在 `GestureExec` 的**工作线程**上直接调 |
+
+缺 `RESET_TASK_IF_NEEDED` 的后果最直接：目标的任务已经在表里时，这一下只是「把那个任务提到前面」，
+不是一次新的 OPEN 转场 —— 远端动画没有转场可挂，用户看到的是**完全没有动画**。
+`com.coloros.ocrscanner` 正好是这一档（清单里 `alwaysRetainTaskState=true`，任务一直留着）。
+
+**照这三样对齐过一次，结论是「不能照抄」**（同日真机）：补上 `RESET_TASK_IF_NEEDED` + `launch_type`、
+转主线程、去掉 `oflg` 之后，**原本有原版动画的应用全都不动了**（用户口径「你改的本来能用原版动画
+也都不行了」）。已整条还原。所以那三样是**原版 provider 那条入口的配套**，不是这条转场的前置条件：
+`d.n` 里 `ActivityTransitionAnimator` 的 executor 本身就往主线程投递，我们再套一层 post 反而把
+「启动」与「转场」之间多插一拍；两个标记也会把这条链路从「桌面启动」带偏。
+**这条链路只认 `ACTION_MAIN` + `CATEGORY_LAUNCHER` 那一对**（`stockLaunchIntent` 现在只做这一件事）。
+
+复核路径：`python tools/dexdump.py <OplusGestureUI classes.dex> method com.oplus.gesture.actionbuttonkey.ActionRemoteStartContentProvider call`。
+
+**`oflg=0x800` 那一处也还原了**：`OPLUS_FLAG_MULTI_APP_SKIP_CHOOSER` 是我们为「别弹分身选择器」
+加的，原版那条入口没有 —— 但去掉它同样属于「照抄原版」，一并还原：装了分身的应用在主用户下启动
+会被问「用哪一份」，选择器一盖上转场就断了，这一位是必需的。START 行里的 `oflg=0x800` 是**预期**。
+
+判据行（还原后的正常形态）：`打开应用：已转交原版启动链路（由宿主建 RemoteTransition）` 之后，
+`logcat` 里出现 `Delegate animation for (#…) to RemoteTransition { … SpruceLauncher }`；
+START 行带 `oflg=0x800`、**不带** `android_action_key_launch_type`。
+
+对齐前后都要看的一件事：**同一条路在「应用已经在最近任务里」时本来就没有可见转场** ——
+`LAUNCH_SINGLE_TOP`（应用在前台）与「任务已存在」这两种都只把窗口提到前面，动画画的是已经画好的
+窗口。真机验证必须先回桌面（或先切到别的应用）再按，否则会把「没有可动的东西」误判成「动画没播」。

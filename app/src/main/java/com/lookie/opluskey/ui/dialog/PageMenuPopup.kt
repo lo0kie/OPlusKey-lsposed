@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
+import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.TickHapticScope
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.rememberTick
@@ -463,6 +464,7 @@ private fun SettingsPage.MenuRow(
     // 禁用行被点时先收菜单再说原因（提示条在页面底部、被浮层压着）。
     //  走 CompositionLocal 而不是加参数：`MenuRow` 的签名已经很长了。
     val currentDisabledHint by rememberUpdatedState(row.disabledHint)
+    val currentDisabledChips by rememberUpdatedState(row.disabledChips)
     //  `MenuRow` 下面那个 `item` 是 `remember` 出来的：直接闭包会把**创建那一刻**的
     //  `interactive` 钉死，淡出期间的禁用行照样会说「为什么不能点」。
     val currentInteractive by rememberUpdatedState(interactive)
@@ -523,7 +525,15 @@ private fun SettingsPage.MenuRow(
                     if (row.enabled) {
                         null
                     } else {
-                        { tapDisabledRow(row.title, currentDisabledHint, probe, currentInteractive) }
+                        {
+                            tapDisabledRow(
+                                row.title,
+                                currentDisabledHint,
+                                currentDisabledChips,
+                                probe,
+                                currentInteractive,
+                            )
+                        }
                     },
                 // 文字由库按 `alert` 走 `DropdownColors.alertContentColor` —— 与图标的红同一档
                 alert = row.danger,
@@ -634,6 +644,7 @@ private fun SettingsPage.MenuRow(
 private fun SettingsPage.tapDisabledRow(
     title: String,
     hintText: String?,
+    hintChips: List<String>,
     probe: GestureProbe?,
     interactive: Boolean,
 ) {
@@ -649,6 +660,6 @@ private fun SettingsPage.tapDisabledRow(
     if (!interactive || dragged) return
     //  **空串当没有**：`?:` 只在 `null` 时才落到页面那条统一原因，写成 `""` 的行会让这次点击
     //  变成「什么都没说」，而屏幕上还留着上一条提示（用户口径：空文案会回退到上一个消息文案）。
-    val say = hintText?.takeIf { it.isNotBlank() } ?: disabledClickReason()
-    hint(say, slot = HINT_SLOT_DISABLED)
+    val say = hintText?.takeIf { it.isNotBlank() }?.let { HintText(it, hintChips) } ?: disabledClickReason()
+    hint(say.template, slot = HINT_SLOT_DISABLED, chips = say.chips)
 }

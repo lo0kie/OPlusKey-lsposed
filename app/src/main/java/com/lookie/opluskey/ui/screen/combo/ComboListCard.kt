@@ -1,21 +1,16 @@
 package com.lookie.opluskey.ui.screen.combo
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,13 +34,11 @@ import com.lookie.opluskey.ui.feedback.keyStateLabel
 import com.lookie.opluskey.ui.model.icon.DrawnIcons
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.row.CHIP_FLOW_GAP
 import com.lookie.opluskey.ui.row.CHIP_H_PAD
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.ChipFlow
-import com.lookie.opluskey.ui.row.ChipLook
-import com.lookie.opluskey.ui.row.NameChip
+import com.lookie.opluskey.ui.row.ChipSentence
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SectionTitleClick
 import com.lookie.opluskey.ui.row.TitleCounter
@@ -328,39 +321,6 @@ private fun SettingsPage.ComboTitle(
         modifier = Modifier.fillMaxWidth(),
         chipWidth = widths.chip,
     )
-}
-
-/**
- * 一句话里夹几枚名字框 —— 把模板按 `%s` 切成几段，段与框交替排。
- *
- *  给「按住 A 后再按 B」那一档用：语序是翻译的事（模板里自带 `%s`），框是界面的事
- *  （`NameChip`）。这里不套统一的框宽 —— 那是一列对齐用的（见 [comboTitleWidths]），
- *  而这一行是**一句话**，框跟着自己的字宽走才像句子里的名字。
- *
- *  装不下时由 `FlowRow` 换行；段与框之间不留额外间距（模板自己的空格已经隔开了）。
- */
-@Composable
-private fun ChipSentence(
-    template: String,
-    names: List<String>,
-    look: ChipLook,
-    style: TextStyle,
-    color: Color,
-) {
-    val parts = template.split("%s")
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(0.dp),
-        verticalArrangement = Arrangement.spacedBy(CHIP_FLOW_GAP),
-        itemVerticalAlignment = Alignment.CenterVertically,
-    ) {
-        names.forEachIndexed { at, name ->
-            Text(text = parts.getOrElse(at) { "" }, style = style, color = color)
-            NameChip(text = name, look = look, modifier = Modifier)
-        }
-        //  模板末尾那一段（「%s 后再按 %s」的尾巴，通常是空串）
-        Text(text = parts.getOrElse(names.size) { "" }, style = style, color = color)
-    }
 }
 
 /**

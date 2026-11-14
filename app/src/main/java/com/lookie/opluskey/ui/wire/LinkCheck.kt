@@ -10,9 +10,11 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.trigger
+import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.text.API_MISMATCH_HINT
 import com.lookie.opluskey.ui.model.text.CHECKING_HINT
@@ -579,7 +581,7 @@ internal fun SettingsPage.statusTipText(): String? {
  *
  *  停用**任何一颗**（含侧键）之后，打开它的入口都是同一个 ⋮ 菜单里那一行。
  */
-internal fun SettingsPage.disabledClickReason(): String {
+internal fun SettingsPage.disabledClickReason(): HintText {
     val f = linkFacts
     val cfg = configState.config.value
     val key = KeyWatchState.editing(cfg)
@@ -598,22 +600,41 @@ internal fun SettingsPage.disabledClickReason(): String {
         }?.pageBlockedReason(cfg)
     return when {
         //  配置都没读成功：什么都改不了，说别的都是空话
-        f.readOnly -> CONFIG_READ_FAILED_HINT
+        f.readOnly -> {
+            HintText(CONFIG_READ_FAILED_HINT)
+        }
 
         //  总闸关着：用户自己关的，能就地开回来
-        f.masterOff -> KEY_DISABLED_HINT
+        f.masterOff -> {
+            HintText(KEY_DISABLED_HINT)
+        }
 
-        targetBlocked != null -> targetBlocked
+        targetBlocked != null -> {
+            targetBlocked
+        }
 
-        !cfg.key(key).enabled -> I18n.format(Strings.KEY_DISABLED_ITEM, key.label)
+        //  带键名的两句：名字画成标签（模板里只留 `%s`）
+        !cfg.key(key).enabled -> {
+            HintText(
+                I18n.get(Strings.KEY_DISABLED_ITEM, "%s 已停用，可在菜单里启用"),
+                listOf(keyName(key)),
+            )
+        }
 
         //  「只参与组合按键」：绑定页整页灰着（见 `bindingTargetEnabled`），原因要说在这 ——
         //  否则用户只看到一片灰，去翻「是不是停用了」（停用是另一回事，旁边那句才是它）
-        cfg.key(key).comboOnly -> I18n.format(Strings.BINDING_COMBO_ONLY_BLOCKED, key.label)
+        cfg.key(key).comboOnly -> {
+            HintText(
+                I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED, "按键 %s 只参与组合按键"),
+                listOf(keyName(key)),
+            )
+        }
 
         //  这一项自己没有原因 ⇒ 才轮到「整页为什么不对」（重启 / 勾作用域那几句）；
         //  页面是通的、这一项仍然点不动（比如行要求先选一颗键）：说结论，不编一个「没就绪」
-        else -> blockedReason() ?: I18n.get(Strings.CONTROL_UNAVAILABLE, "这一项现在不可用")
+        else -> {
+            HintText(blockedReason() ?: I18n.get(Strings.CONTROL_UNAVAILABLE, "这一项现在不可用"))
+        }
     }
 }
 

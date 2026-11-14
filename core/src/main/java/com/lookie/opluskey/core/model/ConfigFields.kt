@@ -233,14 +233,6 @@ object ConfigFields {
     const val COMBO_HOLD_MIN_MS_EXTRA = "combo_hold_min_ms"
 
     /**
-     * 组合键的**无操作透传**（`GlobalConfig.comboPassthrough`）—— 走广播。
-     *
-     *  读它的不只是宿主执行器：注入侧的 `ChordGuard` 判「这一对键的 ROM 判定吞不吞」时也要它
-     *  （`Config.comboPassthroughFor` 跑在那一边）—— 不带这一项，那边永远按默认值判。
-     */
-    const val COMBO_PASSTHROUGH_EXTRA = "combo_passthrough"
-
-    /**
      * **模块总闸**（首页「启用按键绑定」那一行）—— 与 [ENABLED_EXTRA] 是两件事，别混：
      *
      *  · 本项：整个模块接管不接管（关掉 ⇒ 一颗键都不接管，页面整片灰）；
@@ -602,8 +594,8 @@ object ConfigFields {
     val F_TOAST_FLUID = Field(null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_FLUID))
 
     /**
-     * 「执行时提示」那一句的**文案模板**（`$key` / `$gesture` / `$action`，见 `ToastNotice`）
-     * —— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：它由宿主侧弹，注入侧不读它。
+     * 「执行时提示」那一句的**文案模板**（`$key` / `$gesture` / `$action` 与 `$action` 拆开的三段，
+     * 见 `ToastNotice`）—— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：它由宿主侧弹，注入侧不读它。
      */
     val F_TOAST_TEMPLATE = Field(null, Kind.Text(GlobalConfig.DEFAULT_TOAST_TEMPLATE))
 
@@ -633,14 +625,6 @@ object ConfigFields {
      * 读它的是宿主进程里的执行器，它本来就读配置文件。
      */
     val F_MINI_WINDOW_ANIM = Field(null, Kind.Bool(GlobalConfig.DEFAULT_MINI_WINDOW_ANIM))
-
-    /**
-     * 组合键的**无操作透传**（见 [COMBO_PASSTHROUGH_EXTRA]）。
-     *
-     *  开 = 组合那一格没绑动作时，两颗键各按自己这一档照常执行；关 = 什么都不做。
-     *  默认值与 [GlobalConfig.DEFAULT_COMBO_PASSTHROUGH] 同源：缺项时行为与这一位出现之前一致。
-     */
-    val F_COMBO_PASSTHROUGH = Field(COMBO_PASSTHROUGH_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_PASSTHROUGH))
 
     /**
      * 组合键：**两颗键按下之间最多隔多久**（毫秒）。
@@ -683,6 +667,14 @@ object ConfigFields {
         )
 
     /**
+     * 按住那两档的**场景在什么时候定下来**（首键按下 / 成员键按下）。
+     *
+     *  只落盘、不进广播：判场景的是宿主（`ConditionProbe`），注入侧只负责把「首键按下」
+     *  「组合凑成」两个时刻报上来，用哪一份快照由宿主按这一位决定。
+     */
+    val F_COMBO_SCENE_ON_STARTER = Field(null, Kind.Bool(GlobalConfig.DEFAULT_COMBO_SCENE_ON_STARTER))
+
+    /**
      * 页面缩放（百分比）—— 同样只有落盘那一列。上下限就是滑杆两端（[GlobalConfig.PAGE_SCALE_MIN]
      * ~ [GlobalConfig.PAGE_SCALE_MAX]）：手改文件写进 10 或 900 会被这一层钳回来。
      */
@@ -717,9 +709,9 @@ object ConfigFields {
             F_THEME,
             F_COLOR_OS_API,
             F_MINI_WINDOW_ANIM,
-            F_COMBO_PASSTHROUGH,
             F_COMBO_WINDOW_MS,
             F_COMBO_HOLD_MIN_MS,
+            F_COMBO_SCENE_ON_STARTER,
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
             F_ICON_TINT_SEED,

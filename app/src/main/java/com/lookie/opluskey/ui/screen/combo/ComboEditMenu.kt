@@ -253,7 +253,8 @@ private fun SettingsPage.comboMenuEntries(
                 submenu = true,
                 trailingIcon = PageIcons.EnterArrow,
                 enabled = settingsBlocked == null,
-                disabledHint = settingsBlocked,
+                disabledHint = settingsBlocked?.template,
+                disabledChips = settingsBlocked?.chips.orEmpty(),
                 onPick = actions.onOpenBranches,
             ),
             MenuEntry.Row(
@@ -262,7 +263,8 @@ private fun SettingsPage.comboMenuEntries(
                 submenu = true,
                 trailingIcon = PageIcons.EnterArrow,
                 enabled = settingsBlocked == null,
-                disabledHint = settingsBlocked,
+                disabledHint = settingsBlocked?.template,
+                disabledChips = settingsBlocked?.chips.orEmpty(),
                 onPick = actions.onOpenSettings,
             ),
             MenuEntry.Row(

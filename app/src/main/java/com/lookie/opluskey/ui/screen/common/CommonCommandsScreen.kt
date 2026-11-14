@@ -26,7 +26,6 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.GlobalConfig
-import com.lookie.opluskey.core.model.withoutAction
 import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
@@ -40,6 +39,7 @@ import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.feedback.Feedback
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
+import com.lookie.opluskey.ui.model.icon.FluidIconPicker
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.icon.commonCommandIcon
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
@@ -68,18 +68,22 @@ import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 
-// 「常用命令」页 —— 管那张**自己的清单**：收录哪几条、每条叫什么、哪些出现在按键绑定页。
+// 「常用命令」页 —— 管那张**自己的清单**：收录哪几条、每条叫什么、每格画哪颗图标、要不要固定。
 //
 // 与「自定义命令」页是两套东西：那边写命令正文（可编辑、会出现在命令页），这边只是一串指向动作
 // 的指针（`cmd:` 那一族 —— 命令库里的某条、或任意动作写法），正文由动作本身决定 ——
-// 用户能动的只有名字与显不显示。两页各管各的，谁也不进对方的列表；但挑的时候**列的是同一张表**
-// （命令库那一组也在，见 `addSheet`）：一条常用命令指向自己存的那条命令是正经用法。
+// 用户能动的只有名字、那张脸、以及「要不要出现在按键绑定页」。两页各管各的，谁也不进对方的列表；
+// 但挑的时候**列的是同一张表**（命令库那一组也在，见 `addSheet`）：一条常用命令指向自己存的那条命令
+// 是正经用法。
+//
+//  「固定」是**每条自己的**开关（`CommonCommand.showInBinding`）：这一页没有「全部显示 / 全部隐藏」
+//  那种总闸 —— 常用命令只是快捷方式，哪几条值得常按由用户自己挑。
 
 /**
  * 这一页（[com.lookie.opluskey.ui.Screen.COMMON_COMMANDS]）。
  *
  *  三种状态都在同一页上，各有各的落点：
- *  · 点一行 → 一层菜单（改名 / 在按键绑定页显示 / 移除）；
+ *  · 点一行 → 一层菜单（重命名 / 图标 / 显示在按键绑定页 / 移除）；
  *  · 右下角那颗 → 抽屉（复用命令页那一支，与「额外动作」同一套过滤）；
  *  · 空清单时给居中的空态（见 [CommonCommandsSection]），别让页面看起来像坏了。
  *
@@ -139,6 +143,8 @@ internal fun SettingsPage.CommonCommandsScreen(scrollBehavior: ScrollBehavior) {
         st.renameToken = null
     }
     CommonCommandsRemove(list, st)
+    //  换图标：与命令页那一个选择器（`FluidIconPicker`）同一份，只是写回清单里这一条
+    CommonCommandsIcon(st)
     CommonCommandsAdd(list, st)
 }
 
@@ -241,6 +247,9 @@ private class CommonCommandsUiState {
     /** 改名窗开着哪一条。 */
     var renameToken by mutableStateOf<String?>(null)
 
+    /** 换图标的选择器开着哪一条（与改名同学交付：菜单点一下就把 token 挪到这里）。 */
+    var iconToken by mutableStateOf<String?>(null)
+
     /** 移除确认窗开着哪一条。 */
     var removingToken by mutableStateOf<String?>(null)
 
@@ -293,10 +302,55 @@ private fun SettingsPage.CommonCommandsMenu(
             st.menuToken = null
             st.renameToken = it.token
         },
+        onIcon = {
+            st.menuToken = null
+            st.iconToken = it.token
+        },
+        onToggleShow = {
+            //  菜单关掉、就地写这一位（不新开一层窗）：这是个即时生效的开关，
+            //  留一层「确定」只是多一次点击。
+            st.menuToken = null
+            //  现读一次配置再拼：改名 / 换图标可能刚在同一轮里落过盘
+            val now = configState.config.value.global.commonCommands
+            setCommonCommands(
+                now.map { row -> if (row.token == it.token) row.copy(showInBinding = !row.showInBinding) else row },
+            )
+        },
         onRemove = {
             st.menuToken = null
             st.removingToken = it.token
         },
+    )
+}
+
+/**
+ * 换图标 —— 与命令页那一格**同一个选择器**（[FluidIconPicker]，网格、副标题、写盘全在那边）。
+ *
+ *  这一页不摆「图标」那一行（[FluidIconRow] 的入口形状是卡片行，而这里每一条的入口是行菜单），
+ *  所以直接调选择器，不做那一行。
+ *
+ *  选中之后**照当前配置重算整张清单**再写：改名 / 移除可能刚在同一轮里落过盘，拿调用点那份
+ *  旧列表拼会把别的改动覆盖回去 —— 与 `renameDialog` 现读配置是同一条理由。
+ *
+ *  `cmd == null` 仍照常调用（`show = false`）：壳自己播退场，在这里 `?.let` 一刀切掉的话
+ *  那一层是「啪」地消失的。
+ */
+@Composable
+private fun SettingsPage.CommonCommandsIcon(st: CommonCommandsUiState) {
+    val cmd =
+        configState.config.value.global.commonCommands
+            .firstOrNull { it.token == st.iconToken }
+    FluidIconPicker(
+        show = cmd != null,
+        onPick = { id ->
+            val token = cmd?.token
+            st.iconToken = null
+            if (token != null) {
+                val now = configState.config.value.global.commonCommands
+                setCommonCommands(now.map { row -> if (row.token == token) row.copy(icon = id) else row })
+            }
+        },
+        onDismiss = { st.iconToken = null },
     )
 }
 
@@ -306,13 +360,16 @@ private fun SettingsPage.CommonCommandsMenu(
  *  直接从清单里删的话那一行是硬消失（与页里其它行的规格不一致）；这里让 `CardList` 先把那一条
  *  收起（`visible = false`），退场播完再从清单里删 —— 删的那一刻它已经是零高，看不出跳变。
  *
- *  **真删不是「只从清单里摘一行」**：绑过这条动作的地方（按键的每一档、组合键、各自的场景块）
- *  一起清成「无操作」（见 `Config.withoutAction`）。只摘清单的话，那颗键会继续按那串已经念不出
- *  名字的 token 执行 —— 而用户按的是「移除」，期待的是「这一条不再存在」。
+ *  **只摘清单，绑定保持原样**（用户口径）：常用命令只是一条快捷方式，把它从这张表里拿掉
+ *  不等于「这条动作不存在了」—— 已经绑到按键上的那一处该继续按原样执行。
+ *  所以这里**不调 `Config.withoutAction`**：早先那一步会把绑过它的地方全清成「无操作」，
+ *  用户只是想收拾一下这张清单，结果那颗键一起失灵，代价比收益大得多。
  *
- *  两笔**落在同一次落盘里**：分两次写就会出现「清单没了、绑定还在」的中间态。
- *  不给提示：后果在确认窗里已经说过（见 `removeDialog`），这一下之后那一行还会自己退场 ——
- *  再弹一句「已保存」只是噪音；写失败由 `write` 那条共同收尾报。
+ *  （真正「这条命令不存在了」发生在删除自定义命令那一侧：那里会把指向它的常用命令条目
+ *  一并摘掉，见 `removeCommand` 的 `clearCommandBindings`。）
+ *
+ *  不给提示：这一下之后那一行还会自己退场 —— 再弹一句「已保存」只是噪音；写失败由 `write`
+ *  那条共同收尾报。
  *
  *  **确认窗的显隐与内容分两位**：`show` 看这一条在不在，正文照**最后画过的那一条**画（见
  *  `LastCommand`）—— 清数据发生在退场之前，正文跟着变空的话那两百毫秒里会闪成「将「」移除」。
@@ -343,9 +400,9 @@ private fun SettingsPage.CommonCommandsRemove(
         st.leavingToken = null
         val cfg = configState.config.value
         write(
-            cfg
-                .copy(global = cfg.global.copy(commonCommands = cfg.global.commonCommands.filterNot { it.token == token }))
-                .withoutAction(token),
+            cfg.copy(
+                global = cfg.global.copy(commonCommands = cfg.global.commonCommands.filterNot { it.token == token }),
+            ),
             "common_commands=remove",
         )
     }
@@ -416,9 +473,8 @@ private fun SettingsPage.renameDialog(
 /**
  * 移除确认窗 —— `show` 是开关，`cmd` 是**画什么**（两者分开：退场期间 `cmd` 仍是最后画过的那条）。
  *
- *  正文要写清**绑过它的按键会一起变成「无操作」**：这一下不只是把清单里那一行拿掉，而是把这条
- *  动作从配置里所有引用它的地方清掉（见 [com.lookie.opluskey.core.model.withoutAction]）。
- *  不写就会有人以为「只是从这一段里收拾一下」，结果按那颗键什么也不发生了 —— 反过来也一样。
+ *  正文只有一句「把这一条从清单里移除」（用户口径）。**不再补一句「绑定保持原样」**：
+ *  移除是摘一条快捷方式，不是撤销一次绑定 —— 多解释一句反而让人以为这里会动绑定。
  *
  *  **真删不在这一层**：确认之后把 token 交给调用点，由它先播退场、再从清单里删
  *  （见 `CommonCommandsScreen` 的 `leavingToken`）—— 在这里直接删的话那一行是硬消失。
@@ -531,24 +587,23 @@ private fun commonCommandRow(
         title = CommonCommands.displayName(cmd),
         //  自带那几条有自己的小字；用户自己收录的动作没有（小字里塞 token 只是噪音）
         summary = CommonCommands.entryOf(cmd.token)?.let { I18n.get(it.summaryKey, it.summaryFallback) },
-        icon = commonCommandIcon(cmd.token),
-        //  这一行**不再压暗**：常用命令一律显示在按键绑定页（那一项已改成固定），
-        //  清单里于是没有「不会出现」的那一档，压色会让每条都像被停用。
+        //  换过图标就画换的那颗（`commonCommandIcon(cmd)` 里判），没换过才按动作取
+        icon = commonCommandIcon(cmd),
+        //  在按键绑定页不显示的那几条压一档色：一眼能看出哪些不会出现在那一段
+        //  （每条自己一个开关，见上面菜单里的「显示在按键绑定页」）。
         enabled = enabled,
+        titleTint = if (cmd.showInBinding) null else COUITheme.colorScheme.onSurfaceVariantSummary,
         arrow = true,
         modifier = Modifier.preciseClickAnchor(anchor),
         onClick = onOpenMenu,
     )
 
 /**
- * 那一行点开的三项 —— 改名、「固定显示在按键绑定页」、移除。
+ * 那一行点开的四项 —— 重命名、图标、在按键绑定页显示、移除。
  *
  *  `cmd == null` = 关着，此时给**空行表**而不是整支不画：`PageMenu` 的开关就是「行表空不空」，
  *  而退场那两百毫秒里的内容与锚点由 `MenuPopup` 自己保住 —— 在这里 `if (cmd == null) return`
  *  的话菜单是「啪」地消失的（用户口径「菜单消失没有动画」）。
- *
- *  中间那一项**已经不可切**（`enabled = false`）：常用命令一律出现在按键绑定页，这条只是把
- *  结论摆出来 —— 所以关着的时候也不必特判，行表本身为空就画不到。
  */
 @Composable
 private fun SettingsPage.rowMenu(
@@ -556,6 +611,8 @@ private fun SettingsPage.rowMenu(
     anchor: PreciseClickState,
     onDismiss: () -> Unit,
     onRename: (CommonCommand) -> Unit,
+    onIcon: (CommonCommand) -> Unit,
+    onToggleShow: (CommonCommand) -> Unit,
     onRemove: (CommonCommand) -> Unit,
 ) {
     PageMenu(
@@ -571,23 +628,25 @@ private fun SettingsPage.rowMenu(
                     ) {
                         onRename(cmd)
                     },
-                    //  **固定项，不是开关**：常用命令一律出现在按键绑定页那一段里（用户口径
-                    //  「改成固定」），所以这一行只是结论 —— 留着是为了让人看得见它会出现在哪，
-                    //  而不是让他二选一。`enabled = false` + 那句 `disabledHint`：点一下就说清
-                    //  为什么切不动，比一个点了没反应的勾选行诚实。
-                    //
-                    //  字形从 `eye-cog` 换成 `pin`（[PageIcons.PinnedInBinding]）：`eye-cog` 是
-                    //  「露不露」的开关字形，挂在一个不可切换的结论上会招手让人去点它。
+                    //  「图标」这一行与命令页那一行**同一个字形、同一个说法**（`PageIcons.FluidIcon`）：
+                    //  两边点开的是同一个网格选择器（`FluidIconPicker`），只是写回去的落点不同 ——
+                    //  那边改命令正文，这边改清单里这一条的 `icon`。
                     MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_COMMANDS_SHOW_IN_BINDING_FIXED, "固定"),
+                        title = I18n.get(Strings.COMMON_COMMANDS_ICON, "图标"),
+                        icon = PageIcons.FluidIcon,
+                    ) {
+                        onIcon(cmd)
+                    },
+                    //  **每条自己的开关**（用户口径「每个都可以选是否固定」）：`selected` 给的是
+                    //  当前状态，行首那颗在选中时会换成对勾 —— 与「系统开关」那一族同一个读法。
+                    //  关掉只影响按键绑定页那一段，这一条仍留在这一页的清单里。
+                    MenuEntry.Row(
+                        title = I18n.get(Strings.COMMON_COMMANDS_PINNED, "固定"),
                         icon = PageIcons.PinnedInBinding,
-                        enabled = false,
-                        disabledHint =
-                            I18n.get(
-                                Strings.COMMON_COMMANDS_SHOW_IN_BINDING_LOCKED,
-                                "常用命令始终显示",
-                            ),
-                    ) {},
+                        selected = cmd.showInBinding,
+                    ) {
+                        onToggleShow(cmd)
+                    },
                     MenuEntry.Row(
                         title = I18n.get(Strings.COMMON_COMMANDS_REMOVE, "移除"),
                         icon = PageIcons.CommandDelete,

@@ -85,7 +85,7 @@ data class ComboKey(
     override val longFireOnRelease: Boolean = false,
     /** 「松手执行额外动作」的开关 —— 与单键 `KeyConfig.longReleaseOn` 同一档语义。 */
     override val longReleaseOn: Boolean = false,
-    /** 松手那一档执行的动作（`Action.None` = 没挑）。只在 [MODE_WAIT] 上有意义，见 [releaseBound]。 */
+    /** 松手那一档执行的动作（`Action.None` = 没挑）—— 三种触发方式都可用，见 [releaseBound]。 */
     override val longRelease: Action = Action.None,
     /**
      * **系统场景** —— 与单键 `KeyConfig.scenes` 同一套 [SceneRule]、同一个判定口径。
@@ -120,22 +120,6 @@ data class ComboKey(
     /** 上面那几项被公共设置播过种没有 —— 见 [OwnSettings.ownSettingsSeeded]。 */
     override val ownSettingsSeeded: Boolean = false,
     /**
-     * **这一档自己的**「无操作时执行按键命令」—— `null` = 跟随公共设置。
-     *
-     *  与 `GlobalConfig.comboPassthrough` 是同一件事，只是这一档可以另设一份：
-     *  「配了 A+B，但只给长按绑了动作」时，短按到底要不要让两颗键各干各的，
-     *  不同档往往不一样（临时组合希望透传、专用组合希望吞掉）。
-     *
-     *  **受 `useOwnSettings` 管**，与那几项同一条规则：关着就整份跟公共，开着才用这一位。
-     *  打开独立设置那一刻这一位会被**播成当时的公共值**（`KeySettingsScreen.withSeededComboFields`），
-     *  所以「开着独立设置却还在跟随公共」只会出现在还没被拨过的老配置上（`null` 就是那一档）。
-     *
-     *  **只在 [MODE_WAIT] 上有意义**：按住那两档的判据是「这一下就是把这一按交给组合」，
-     *  不存在「按出来了但没绑动作」这个形状，所以它们恒不透传（取值只走
-     *  `Config.comboPassthroughFor`，执行侧不自己看全局）。
-     */
-    val passthrough: Boolean? = null,
-    /**
      * 这一档的「两颗键按下之间最多隔多久」（毫秒）—— 只在 [MODE_WAIT] 上有意义。
      *
      *  这个数同时管两件事：**算不算同时按下**，以及**第一颗键要等多久才回落单击**。
@@ -167,6 +151,16 @@ data class ComboKey(
      *  取值一律走 `Config.comboHoldMinFor`（判定侧与界面都只走这一处）。
      */
     val holdMinMs: Int = HOLD_MIN_FOLLOW_GLOBAL,
+    /**
+     * 这一档的**系统场景在什么时候定下来** —— `true` = 首键按下，`false` = 成员键按下（组合凑成）。
+     *
+     *  只在**按住**那两档上有意义；等窗口那一档没有「先按住哪一颗」，也不会收到首键那条通知。
+     *
+     *  `null` = 还没写过 ⇒ 跟随公共设置（`GlobalConfig.comboSceneOnStarter`）：
+     *  布尔没有第三个值，靠 `null` 表达「跟随」。
+     *  取值一律走 `Config.comboSceneOnStarterFor`（独立设置关着就看公共那份）。
+     */
+    val sceneOnStarter: Boolean? = null,
 ) : OwnSettings,
     LongPressParams {
     /** 这一档现在算不算数 —— 关掉了、或成员不足两键（配置文件被手改坏）都不算。 */
@@ -231,12 +225,14 @@ data class ComboKey(
      *  场景块里配的松手动作也算一位 —— 组合的场景表**本来就随广播带过来**（`ComboWire`），
      *  所以这一位在注入侧能就地算出来，不必像单键那样另开一个广播字段。
      *
-     *  **按住那两档不参与**：抬手只收尾，不再补一个松手动作（判据在 `ComboDetector.onUp`）。
+     *  **三种触发方式一视同仁**（用户口径）：按住那两档同样是「长按执行完之后再补一条」，
+     *  它的长按照样有动作，抬手照样是那一按的收尾 —— 没有理由把它排除在外。
+     *  早先这一位带着 `!isHold`（那时按住档被认为是「抬手只收尾」），
+     *  结果是界面上能配、配了却不生效。
      */
     override val releaseBound: Boolean
         get() =
-            !isHold &&
-                (long.isBound || scenes.any { (it.actions[GestureTrigger.LongPress] ?: Action.None).isBound }) &&
+            (long.isBound || scenes.any { (it.actions[GestureTrigger.LongPress] ?: Action.None).isBound }) &&
                 !longFireOnRelease &&
                 ((longReleaseOn && longRelease.isBound) || scenes.any { it.hasRelease })
 

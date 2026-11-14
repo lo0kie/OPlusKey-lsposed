@@ -311,14 +311,47 @@ sendSeeding logoPath:content://com.oplus.gesture.FileShareProvider/share_images/
 AGENTS 一、7 不许自己重启）。若真机上出现过我们这条胶囊在滚的画面，说明还有一处
 `setSelected(true)` 没找到 —— 先记下来，下次带着截图再查。
 
-## 四十三、执行时提示的两个落点：Toast 与流体云（2026-11-13）
+### 42.7 左侧那一位：图标还是文字，由模板里的两个互斥子节点决定（2026-11-14 反编译）
 
+问的是「京东怎么在胶囊左边显示文字」。结论：**第三方 App 不打包模板，左侧放不放文字是模板的事**。
+
+- **京东的 base.apk 里没有任何 seedling / pantanal 代码**（`grep` 全包 0 命中），它只发数据；
+  模板是系统侧从云端下发到 UMS 的 `files/store/<hash>/京东外卖订单进度-release-1.3.15-20250625.upk`，
+  `card-config.json` 的宿主是 `com.coloros.sceneservice`（场景服务），
+  `identifier.url = pantanal.intent.takeout.order_jingdong_v1`。
+- 它的 `pages/index.json` 里，`compact > leading` 下**并列两个子节点**：
+
+  ```json
+  { "type": "image", "attr": { "src": "{{capsuleLogo}}", "shapeStyle": "circle" }, "shown": "{{showCapsuleIcon}}" }
+  { "type": "text",  "attr": { "value": "{{capsuleTitle}}" },                    "shown": "{{!(showCapsuleIcon)}}" }
+  ```
+
+  `data` 里 `showCapsuleIcon` 默认 **false** ⇒ 默认就是文字；右侧 `trailing` 另有一个 text
+  取 `{{capsuleCardStatus}}`（`09:45送达`）。版式里还有 `expanded` + `progress`（履约进度条），
+  那是 `runtime.type = "interactive"` 才有的，我们这条是 `immediate`（§42.4）。
+- **我们这张模板也有那个槽**：宿主 `assets/ActionKeyTip.upk` 的 `leading` 是
+  `lottie({{logo}})` / `image({{logo}})` / **`text`（`level: "B*"`，没有 `value`）** 三个子节点，
+  第三个的开关是 `data.showB`（默认 `"false"`）。
+- **但这条通道传不到它**：`q(logo, text, showA)` 固定只塞 `initData{title, logo, showA}`，
+  宿主三个 dex 里 `showB` 这个字符串一次都没出现（没人用过）。要开只能**绕开 `q` 自己组
+  `SeedlingTool.sendSeedling`** 的 businessData（`showB=true`）；而那个 text 节点没写 `value`，
+  填什么由渲染端决定（大概率取卡片正文 `title`），我们控制不了。
+
+⇒ 左侧文字在这套卡片里是**模板决定**的：京东能写，是因为它的模板归系统下发；我们这条模板只有
+图标槽 + 一个没人用的 `showB` 文字槽。真要在左边出文字，只有两条：绕开 `q` 自己发（能开 `showB`，
+内容不可控），或者把文字画成 png 塞进 `logo` 槽（§42.5 那条 `content://`，现成机制，宽度不可控）。
+
+复核路径：`adb` 拉 `com.jingdong.app.mall` 的 base.apk（`grep -a pantanal` 应为空）与
+`/data/data/com.oplus.pantanal.ums/files/store/` 下那份京东 upk，`unzip -p <upk> pages/index.json`；
+宿主那张同理从 `OplusGestureUI.apk` 的 `assets/ActionKeyTip.upk` 取。
+
+## 四十三、执行时提示的两个落点：Toast 与流体云（2026-11-13）
 「执行时提示」（§40）原先只有 Toast 一条路。这一版多一档**用流体云提示**：同一句文案改由 §42
 那条宿主 Seedling SDK 发，左边那颗图标取**这一次执行的动作**。
 
 - **通道完全复用 §42**：`FluidAction.runText(text, logoFile)` 走的就是 `q(logo, text, showA)`
   那一个方法 —— 执行提示不另开接口，也不碰 SystemUI 那条 `SEEDLING_SERVICE`。
-- **文案不换**：仍是 `ToastNotice.render` 拼出来的那一句（`$key` / `$gesture` / `$action`）。
+- **文案不换**：仍是 `ToastNotice.render` 拼出来的那一句（六个占位符，见 `docs/runtime/key-to-gesture.md` 二之四）。
   换落点不换说法，所以「提示文案」那一行在两种落点下都读得通。
 - **图标为什么必须在界面层画**：动作图标是 Compose 的 `ImageVector`，而执行提示发生在宿主
   主进程 —— 那边没有 Compose 运行时。界面层把配置里出现过的动作（`Config.actionTokens`，

@@ -29,8 +29,8 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
  *
  *  这一点原先写错过：卡片直接读 `owner` 上的那几个值，而总开关关着时它们**不参与取值**。
  *  于是「公共开了振动、这颗键自己那份还是默认的关」时，这一页显示「振动反馈：关（灰）」——
- *  而按下去明明会振。同一页下半的「组合按键设置」两行一直读的是生效值
- *  （`comboPassthroughFor` / `comboWindowFor`），只有上面这张卡不一样。
+ *  而按下去明明会振。同一页下半的「组合按键设置」几行一直读的是生效值
+ *  （`comboWindowFor` / `comboHoldMinFor`），只有上面这张卡不一样。
  *
  *  所以显示统一走 [effective]（`Config.effectiveFor(owner)`），**写入仍落到** [owner]：
  *  关着时看到的就是「现在实际在用的那份」，打开总开关后同一处立刻变成这一档自己的值。
@@ -162,7 +162,7 @@ private fun SettingsPage.useOwnRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.SETTING_USE_OWN, "使用独立设置"),
-        //  「等」字是刻意的：组合在这一档上还多两项（无操作时执行按键命令 / 按键之间的等待），
+        //  「等」字是刻意的：组合在这一档上还多几项（按键之间的等待 / 首键按住时长 / 场景时机），
         //  一句只列三项会让「想单独调这一组的窗口」的人以为跟这颗开关无关。
         summaryOn = I18n.get(Strings.SETTING_USE_OWN_ON, "接口、振动、提示等分别设置"),
         summaryOff = I18n.get(Strings.SETTING_USE_OWN_OFF, "接口、振动、提示等跟随公共设置"),
@@ -292,8 +292,8 @@ private fun SettingsPage.toastRows(
         },
         CardRow.Switch(
             title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"),
-            summaryOn = I18n.get(Strings.HOME_TOAST_FLUID_DESC_ON, "提示显示在状态栏的流体云里"),
-            summaryOff = I18n.get(Strings.HOME_TOAST_FLUID_DESC_OFF, "提示以 Toast 弹出"),
+            summaryOn = I18n.get(Strings.HOME_TOAST_FLUID_DESC_ON, "显示在状态栏的流体云里"),
+            summaryOff = I18n.get(Strings.HOME_TOAST_FLUID_DESC_OFF, "以 Toast 弹出"),
             icon = PageIcons.FormatFluid,
             checked = show.toastFluid,
             enabled = rowsEnabled,
@@ -349,6 +349,8 @@ private fun SettingsPage.OwnTemplateDialog(
         title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE, "提示文案"),
         label = I18n.get(Strings.HOME_TOAST_TEMPLATE_PLACEHOLDER, "留空将使用默认提示"),
         hint = I18n.get(Strings.HOME_TOAST_TEMPLATE_HINT),
+        //  与公共页那一支同一个清单（变量名画成名字框，顺序由 `ToastNotice.PLACEHOLDERS` 定）
+        hintChips = ToastNotice.PLACEHOLDERS,
         icon = PageIcons.ToastTemplate,
         initial = initial,
         maxLength = OWN_TEMPLATE_MAX,

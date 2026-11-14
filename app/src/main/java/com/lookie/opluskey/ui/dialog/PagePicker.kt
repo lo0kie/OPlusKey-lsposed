@@ -84,8 +84,10 @@ internal class PickerRowTraits(
  *  而两边各让出一条内缩会把选中那条带切成浮在中间的胶囊。
  *
  * @param selected 这一行是不是当前那个（多选时 = 已勾上）
- * @param enabled 这一行能不能点（`false` = 置灰，**并且收不到点击** —— 可点性挂在 `clickable` 上）。
- *   所以「为什么点不动」这类回执不能写在 `onClick` 里，要写在行上的字里（见「新增配置」已满那一档）。
+ * @param enabled 这一行能不能点（`false` = 置灰）。**注意可点性仍挂在 `clickable` 上**：
+ *   置灰行照样接得住点击（`enabled = false` 那一档会把这一下转给 [onDisabledClick]），
+ *   这样「为什么点不动」才有地方说出来 —— 点了毫无反应最像坏了。
+ * @param onDisabledClick `enabled = false` 时点这一行要做什么（`null` = 什么都不做）。
  * @param traits 行首字形与「这一层窗还在不在」（退场期间不派发但**不置灰**）—— 见 [PickerRowTraits]。
  */
 @Composable
@@ -94,6 +96,7 @@ internal fun PickerRow(
     selected: Boolean,
     onClick: () -> Unit,
     enabled: Boolean = true,
+    onDisabledClick: (() -> Unit)? = null,
     traits: PickerRowTraits = PickerRowTraits(),
     /** 文案里那几个 `%s` 位置换成名字框（见 [PickerOption.chips]）—— 空表 = 纯文字。 */
     chips: List<String> = emptyList(),
@@ -132,11 +135,20 @@ internal fun PickerRow(
                 .heightIn(min = PICKER_ROW_MIN_HEIGHT)
                 .background(selectedFill)
                 .clickable(
-                    //  **颜色仍按 `enabled`**：退场期间只是不派发，不把整列刷成灰
-                    enabled = enabled && traits.interactive,
+                    //  **颜色仍按 `enabled`**：退场期间只是不派发，不把整列刷成灰。
+                    //  置灰行**照样可点**（那一档转给 `onDisabledClick`），只有退场才真的断开 ——
+                    //  否则置灰行点了什么都不会发生，用户读到的就是「坏了」。
+                    enabled = traits.interactive,
                     onClick = {
-                        tick()
-                        onClick()
+                        if (enabled) {
+                            tick()
+                            onClick()
+                        } else {
+                            onDisabledClick?.let {
+                                tick()
+                                it()
+                            }
+                        }
                     },
                 ).padding(
                     horizontal = DialogDefaults.insideMargin.width,
@@ -234,6 +246,7 @@ private fun RowScope.PickerRowContent(
  *  @param isSelected 第几行是不是选中的那个（多选时 = 已勾上）
  *  @param onClick 点了第几行 —— 单选那边由调用方关窗，多选那边是切换
  *  @param interactive 这一层窗还在不在（退场时不派发，见 [PickerRow]）
+ *  @param onDisabledClick 点了**置灰那一行**要做什么（`null` = 不响应，见 [PickerRow]）
  */
 @Composable
 internal fun ColumnScope.PickerRows(
@@ -253,6 +266,7 @@ internal fun ColumnScope.PickerRows(
     isSelected: (Int) -> Boolean,
     onClick: (Int) -> Unit,
     interactive: Boolean = true,
+    onDisabledClick: ((Int) -> Unit)? = null,
 ) {
     Column(
         Modifier
@@ -278,6 +292,7 @@ internal fun ColumnScope.PickerRows(
                 selected = isSelected(index),
                 onClick = { onClick(index) },
                 enabled = option.enabled,
+                onDisabledClick = onDisabledClick?.let { pick -> { pick(index) } },
                 traits = PickerRowTraits(interactive = interactive),
                 chips = option.chips,
             )
@@ -335,13 +350,20 @@ internal fun SettingsPage.PickerActionDialog(
  *  与「系统开关」那一层（切换 / 打开 / 关闭）同一个形状：那三档是在问「这个开关怎么用」，
  *  需要看清、选完就作数，不是随手划一下的清单。所以是模态弹窗、不是第二层菜单。
  *
- * ## 为什么参数到 6 个（`@Suppress("LongParameterList")`）
+ * ## 为什么参数到 8 个（`@Suppress("LongParameterList")`）
  *
  *  与 `FrostedDialog` / `ConfirmDialog` 同一个理由：`show` / `title` / `onDismiss` 是弹窗自己的
  *  开关与出口，`labels` / `selectedIndex` / `onPick` 是这一列选项的三样 —— 全是行参，
- *  拆成一个 options 对象只会让调用点各多一层壳。
+ *  拆成一个 options 对象只会让调用点各多一层壳。`onDisabledPick` / `onDismissFinished` 是
+ *  「置灰那几行点了要有话说」「关窗之后才接着做下一件事」这两格，只有少数调用点给。
  *
  * @param selectedIndex 当前那一个（`-1` = 一个都不打勾）
+ * @param onDisabledPick 点了**置灰那一行**要做什么（`null` = 置灰行点了就是没反应）。
+ *   `PickerRow` 的可点性挂在 `clickable(enabled = …)` 上，置灰行收不到 `onClick` ——
+ *   所以「为什么点不动」这句回执只能从这里出，否则那一行点了什么都不会发生。
+ * @param onDismissFinished 退场动画**播完**时回调（见 `FrostedDialog` 的同名参数）——
+ *   「窗先收、收完再让调用方真正把数据清掉」那种流程要它，否则数据一空整支窗就从组合里
+ *   消失，退场来不及播。
  * @param onPick 选中第几行 —— **窗已经关了**再回调，调用方不用自己收
  */
 @Composable
@@ -373,11 +395,14 @@ internal fun SettingsPage.SinglePickerDialog(
     selectedIndex: Int,
     onDismiss: () -> Unit,
     onPick: (Int) -> Unit,
+    onDisabledPick: ((Int) -> Unit)? = null,
+    onDismissFinished: (() -> Unit)? = null,
 ) {
     FrostedDialog(
         show = show,
         title = title,
         onDismiss = onDismiss,
+        onDismissFinished = onDismissFinished,
     ) {
         PickerRows(
             options = options,
@@ -388,6 +413,7 @@ internal fun SettingsPage.SinglePickerDialog(
                 onDismiss()
                 onPick(index)
             },
+            onDisabledClick = onDisabledPick?.let { pick -> { index -> pick(index) } },
         )
     }
 }

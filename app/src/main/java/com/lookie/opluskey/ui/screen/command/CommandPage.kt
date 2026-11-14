@@ -597,6 +597,13 @@ private fun SettingsPage.SingleCommandField(
             //  `AppInputField` 默认那道折成空格，折成空格就成了一条语法错误的命令。
             sanitize = ::singleLine,
         )
+        //  输入框底下那句**格式提示**：现在写的是哪个前缀，就说那一种后面该跟什么
+        //  （`keyevent:<keycode>（数字）`）。认不出前缀时整句不画、也不占位 ——
+        //  于是它和上面那条红字天然互斥：红字出现时前缀本来就不合法。
+        //
+        //  画在**这一层**（不是页面那一层）：`raw` 已经在这儿读着了，页面那边再读一次
+        //  等于把整页拖进每一次击键的重组里（见 `CommandNameField` 同一个理由）。
+        CommandFormatTip(raw)
     }
 }
 

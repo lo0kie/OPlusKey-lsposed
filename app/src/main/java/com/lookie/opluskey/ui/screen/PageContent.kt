@@ -38,6 +38,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.onDebugCommand
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
+import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.LocalDisabledHint
 import com.lookie.opluskey.ui.feedback.LocalHint
 import com.lookie.opluskey.ui.feedback.LocalTick
@@ -166,7 +167,10 @@ internal fun SettingsPage.PageContent() {
             LocalHint provides remember { { hint(it) } },
             //  卡片行的「这一行为什么不能点」—— **与整页那条同一个槽位**：
             //  行级说法与本页原因共用一个位，连点几行只会改同一条提示里的字，不叠条。
-            LocalDisabledHint provides remember { { hint(it, slot = HINT_SLOT_DISABLED) } },
+            LocalDisabledHint provides
+                remember {
+                    { t: HintText -> hint(t.template, slot = HINT_SLOT_DISABLED, chips = t.chips) }
+                },
             //  能点的行默认振一下（见 `LocalTick`）：控件层拿不到页面实例，走这一条下来。
             //  `remember` 住同一个理由：每次重组换新实例会让读它的控件白白重组。
             LocalTick provides remember { { tickNow() } },
@@ -180,7 +184,13 @@ internal fun SettingsPage.PageContent() {
             //  `remember` 住这个 lambda：`hint` / `disabledClickReason()` 都在**调用那一刻**才读，
             //  每次重组换一个新实例会让所有读它的控件白白重组一遍。
             //  同一个语义位（[HINT_SLOT_DISABLED]）：连点几下是这一条在改字，不叠一串
-            LocalDisabledClick provides remember { { hint(disabledClickReason(), slot = HINT_SLOT_DISABLED) } },
+            LocalDisabledClick provides
+                remember {
+                    {
+                        val reason = disabledClickReason()
+                        hint(reason.template, slot = HINT_SLOT_DISABLED, chips = reason.chips)
+                    }
+                },
         ) {
             Scaffold(
                 containerColor = COUITheme.colorScheme.surface,

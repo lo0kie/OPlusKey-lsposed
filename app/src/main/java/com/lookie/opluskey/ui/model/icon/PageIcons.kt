@@ -33,7 +33,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Circle
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
-import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
+import io.github.lyxnx.compose.ui.tablericons.outline.ClockBolt
+import io.github.lyxnx.compose.ui.tablericons.outline.ClockPause
+import io.github.lyxnx.compose.ui.tablericons.outline.ClockPlay
+import io.github.lyxnx.compose.ui.tablericons.outline.ClockRecord
 import io.github.lyxnx.compose.ui.tablericons.outline.CloudSearch
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.ColorSwatch
@@ -48,7 +51,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Download
 import io.github.lyxnx.compose.ui.tablericons.outline.Edit
 import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
 import io.github.lyxnx.compose.ui.tablericons.outline.ExternalLink
-import io.github.lyxnx.compose.ui.tablericons.outline.EyeCog
 import io.github.lyxnx.compose.ui.tablericons.outline.FileDownload
 import io.github.lyxnx.compose.ui.tablericons.outline.FileMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.FilePlus
@@ -61,7 +63,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandClick
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFinger
-import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
 import io.github.lyxnx.compose.ui.tablericons.outline.HandMove
 import io.github.lyxnx.compose.ui.tablericons.outline.HandRingFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandThreeFingers
@@ -76,6 +77,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.ListDetails
 import io.github.lyxnx.compose.ui.tablericons.outline.Lock
+import io.github.lyxnx.compose.ui.tablericons.outline.LockCog
 import io.github.lyxnx.compose.ui.tablericons.outline.LockOpen
 import io.github.lyxnx.compose.ui.tablericons.outline.Logs
 import io.github.lyxnx.compose.ui.tablericons.outline.Message
@@ -99,7 +101,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer2
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
-import io.github.lyxnx.compose.ui.tablericons.outline.Refresh
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
 import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber2
@@ -134,7 +135,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.UsersGroup
 import io.github.lyxnx.compose.ui.tablericons.outline.Versions
 import io.github.lyxnx.compose.ui.tablericons.outline.Window
 import io.github.lyxnx.compose.ui.tablericons.outline.World
-import io.github.lyxnx.compose.ui.tablericons.outline.X
 import io.github.lyxnx.compose.ui.tablericons.outline.ZoomIn
 
 // 页面自己的小图标 —— 从 `ActionIcons.kt` 分出来一支：那个文件已经贴着「单文件 ≤ 1000 行」
@@ -194,14 +194,6 @@ internal object PageIcons {
      */
     val Cancel: ImageVector get() = TablerIcons.Outline.Cancel
 
-    /**
-     * 「关掉这一层」那一颗 —— 光秃秃的叉（`x`）。
-     *
-     *  与 [Cancel]（圆圈叉）分开用：圆圈叉读作「取消 / 停用」，是**动作的否定**；
-     *  全屏预览那种「收起这一屏」要的是一个不带圈的叉，读作「关掉」。
-     */
-    val Close: ImageVector get() = TablerIcons.Outline.X
-
     /** 「系统导航」格的行首 —— 指北针 + 齿轮（`navigation-cog`）：这一格后面是一组导航动作。 */
     val NavigationCog: ImageVector get() = TablerIcons.Outline.NavigationCog
 
@@ -218,22 +210,12 @@ internal object PageIcons {
     /**
      * 「前台转小窗」格的行首 —— 画中画（`picture-in-picture-on`）。
      *
-     * 与 [SmallWindow] / [TileSmallWindow] 同字形但**各留一份名字**（三处语义不同：入口格 /
-     * 「选择应用」菜单项 / 格子上的状态标记），以后要分开改的时候不用先拆共用。
+     * 与 [SmallWindow]（菜单项）同字形，各留一份名字（两处语义不同：入口格 / 「选择应用」菜单项），
+     * 以后要分开改的时候不用先拆共用。
      *  它菜单里那两档仍是自己的字形（展开 = 窗口 + 底部块、收起 = 画中画挂顶，
      * 见 `actionIcon` 里 `zoom:mini` 那两行）。
      */
     val MiniWindow: ImageVector get() = TablerIcons.Outline.PictureInPictureOn
-
-    /**
-     * 「打开应用」格绑成**小窗打开**（`window:`）时，标题右边那枚小标记 ——
-     * 画中画（`picture-in-picture-on`）。
-     *
-     *  与行尾那颗右箭头（[EnterArrow]）分工不同：那颗说明「点开进另一个页面」，这颗说明
-     *  **这一格绑的是小窗起** —— 这一格只有一行标题，不点开「选择应用」菜单看不出绑的是哪一档。
-     *  与 [SmallWindow]（菜单项）/ [MiniWindow]（入口格）同字形，各留一份名字。
-     */
-    val TileSmallWindow: ImageVector get() = TablerIcons.Outline.PictureInPictureOn
 
     /**
      * 「用哪条接口接管侧键」—— 首页那行开关的行首图标（Tabler 的 `plug-connected`）。
@@ -587,6 +569,15 @@ internal object PageIcons {
      */
     val Scene: ImageVector get() = TablerIcons.Outline.AdjustmentsAlt
 
+    /**
+     * 「系统场景在首键按下时固定」那一行 —— `lock-cog`（一把锁 + 齿轮）。
+     *
+     *  锁读作「定在这一刻」：场景在首键按下那一瞬就被锁住，按住期间换应用也不改判。
+     *  与 [Scene]（调整滑杆，说的是「哪一块场景」）分开：这一行说的是**什么时候取**，
+     *  不是取哪一块 —— 同一颗字形会把「选场景」和「锁定时机」读成同一件事。
+     */
+    val ScenePin: ImageVector get() = TablerIcons.Outline.LockCog
+
     /** **多配置** —— `stack-2`（一叠纸）：切换就是抽哪一张。 */
     val Profiles: ImageVector get() = TablerIcons.Outline.Stack2
 
@@ -601,19 +592,6 @@ internal object PageIcons {
      *  两处共用一颗字，早先只是碰巧读得通。
      */
     val ComboOnly: ImageVector get() = TablerIcons.Outline.ArrowsDoubleNeSw
-
-    //  组合的**触发方式**（`ComboKey.mode` 那三档）共用一颗钟：那条判据量的是**时间**
-    //  （两颗键之间最多隔多久、首键要按满多久），三种方式只有时间轴上的差别。
-    //
-    //  不复用下面的 [DelayHold] / [DelayStep]：那两颗是「延时」那一族（长按延迟、连发间隔），
-    //  与触发方式分属两处设置，共用字会让两个概念在界面上长得一样。
-
-    /**
-     * **触发方式** —— 这一档组合怎么按出来（见 `ComboKey.mode`）。
-     *
-     *  ⋮ 菜单里那一行与它的选择窗共用这一颗。
-     */
-    val HoldWindow: ImageVector get() = TablerIcons.Outline.ClockHour4
 
     /** **新建配置** —— `file-plus`：加一份。 */
     val ProfileAdd: ImageVector get() = TablerIcons.Outline.FilePlus
@@ -654,15 +632,6 @@ internal object PageIcons {
      *  添加分支），这一颗是「**那一页**」这个去处 —— 入口行的图标该表示目的地，不是动作。
      */
     val CommandCode: ImageVector get() = TablerIcons.Outline.CodePlus
-
-    /**
-     * 「显示常用命令」那一行 —— `eye-cog`（一只眼睛 + 齿轮，用户指定）。
-     *
-     *  说的是「这一段**露不露**」：眼睛管「看得见」，齿轮点出「露出来之后长什么样 / 能配什么」。
-     *  与下面「管理常用命令」那一行（[CommonCommandsManage]，`notes`）分开 ——
-     *  同一张卡相邻两行，一个开关一个去处，字形不重。
-     */
-    val CommonCommands: ImageVector get() = TablerIcons.Outline.EyeCog
 
     /**
      * 「管理常用命令」那一行 —— `notes`（一页写满字的纸，用户指定，原名单页那一行用的字形）。
@@ -954,8 +923,8 @@ internal object PageIcons {
     /** 「单击延迟」—— `device-mobile-pause`（手机屏上一个暂停记号：等「还有没有第二下」）。 */
     val DelayTap: ImageVector get() = TablerIcons.Outline.DeviceMobilePause
 
-    /** 「长按延迟」—— `hand-grab`（一把抓住：按住不放多久算长按）。 */
-    val DelayHold: ImageVector get() = TablerIcons.Outline.HandGrab
+    /** 「长按延迟」—— `clock-bolt`（钟 + 闪电：按到这一刻就是长按那一下）。 */
+    val DelayHold: ImageVector get() = TablerIcons.Outline.ClockBolt
 
     /** 「触发间隔」—— `spacing-horizontal`（左右两支箭头拉开：管「隔多久来一次」）。 */
     val DelayRepeat: ImageVector get() = TablerIcons.Outline.SpacingHorizontal
@@ -966,18 +935,10 @@ internal object PageIcons {
     /**
      * 「松手执行额外动作」行的行首 —— `pointer-up`（一根手指点着、上方一支向上的箭头）。
      *
-     *  读作「抬手那一下」：与「长按延迟」那只 [DelayHold]（`hand-grab`，一把抓住）分开 ——
+     *  读作「抬手那一下」：与「长按延迟」那只 [DelayHold]（`clock-bolt`）分开 ——
      *  那一行管「按住多久算长按」，这一行管「松手才执行」。
      */
     val LongRelease: ImageVector get() = TablerIcons.Outline.PointerUp
-
-    /**
-     * 「松手沿用按下时的场景」那一行 —— 一把锁：把这一按**锁在**按下那一刻命中的那一块上。
-     *
-     *  与 [LongRelease]（抬手）分工：那颗说的是「松手再执行一个动作」，这颗说的是「归哪一块」。
-     *  图标库里没有图钉，锁与它有同一层意思（锁住 / 不再重判），也能一眼与那一族里其它三颗分开。
-     */
-    val ReleasePin: ImageVector get() = TablerIcons.Outline.Lock
 
     /**
      * 「松手才触发」行的行首 —— `pointer-pause`（光标 + 暂停记号）。
@@ -988,19 +949,29 @@ internal object PageIcons {
      */
     val LongFireOnRelease: ImageVector get() = TablerIcons.Outline.PointerPause
 
-    /** 「命令间隔时长」—— `clock-hour-4`（指到四点的钟：等一段时间再走下一步）。 */
-    val DelayStep: ImageVector get() = TablerIcons.Outline.ClockHour4
+    /** 「命令间隔时长」—— `clock-play`（钟 + 播放：等这么久再走下一步）。 */
+    val DelayStep: ImageVector get() = TablerIcons.Outline.ClockPlay
+
+    /**
+     * 「按键之间的等待」—— `clock-pause`（钟 + 暂停记号）。
+     *
+     *  与 [DelayStep]（`clock-play`，命令步骤之间）分开：同一张页里两颗都是钟、都在量时间，
+     *  但一颗管「组合的两颗键之间允许隔多久」，一颗管「命令的下一步等多久」——
+     *  播放 / 暂停这一对记号正好把「继续走」与「先别判」分开。
+     */
+    val ComboWait: ImageVector get() = TablerIcons.Outline.ClockPause
+
+    /**
+     * 「首键按住时长」—— `clock-record`（钟 + 录制圆点）。
+     *
+     *  与 [DelayHold]（`clock-bolt`，长按延迟）分开：两行都在量「按住多久」—— 一颗管**单颗键**
+     *  按到哪一刻算长按，一颗管**组合**里先按住的那颗得撑满多久。录制的圆点读作「从这里开始一直记着」，
+     *  闪电则是「到这一下就触发」，一颗是持续、一颗是那一下。
+     */
+    val ComboHold: ImageVector get() = TablerIcons.Outline.ClockRecord
 
     /** 模块重启 —— `Reload`（回转箭头 + 竖线），读作「重新来一遍」。 */
     val ModuleRestart: ImageVector get() = TablerIcons.Outline.Reload
-
-    /**
-     * 「重新读一遍」—— `Refresh`（两段回转箭头），顶栏那颗刷新键用。
-     *
-     *  **与 [ModuleRestart] 分得开**：那一颗带竖线，是「把模块整个重启」；这一颗只是
-     *  「再查一次数据」，没有重启的意思（两件事混用会让用户以为按一下会断链路）。
-     */
-    val Refresh: ImageVector get() = TablerIcons.Outline.Refresh
 
     /**
      * 「运行状态」里**整体状态**那一行 —— 好不好看两颗字形：`home-check` / `home-cancel`。

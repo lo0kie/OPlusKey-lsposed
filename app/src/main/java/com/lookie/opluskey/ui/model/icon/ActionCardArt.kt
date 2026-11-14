@@ -128,8 +128,9 @@ private fun pruneActionIcons(
 ) {
     val dir = File(ctx.filesDir, FluidCard.SHARE_DIR)
     val stale =
-        dir.listFiles { f -> f.isFile && f.name.startsWith(FluidCard.ACTION_PREFIX) && f.name !in keep }
-            ?: return
+        dir.listFiles { f ->
+            f.isFile && f.name.startsWith(FluidCard.ACTION_PREFIX) && f.name !in keep
+        } ?: return
     if (stale.isEmpty()) return
     var gone = 0
     for (f in stale) {

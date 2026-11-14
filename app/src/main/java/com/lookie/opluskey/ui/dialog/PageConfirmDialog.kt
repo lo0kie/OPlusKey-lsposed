@@ -514,12 +514,13 @@ private object CenteredTitleMeasure : MeasurePolicy {
 /**
  * 通用确认窗：一句标题 + 一段正文 + 「取消 / 动作」两颗按钮。
  *
- * ## 为什么参数到 8 个（`@Suppress("LongParameterList")`）
+ * ## 为什么参数到 9 个（`@Suppress("LongParameterList")`）
  *
- *  与 [FrostedDialog] 同一个理由：这七样都是「这个窗自己长什么样、点完干什么」，
+ *  与 [FrostedDialog] 同一个理由：这八样都是「这个窗自己长什么样、点完干什么」，
  *  平铺成行参是 Compose 的惯例；拆成 options 对象只会让二十多个调用点各多一层壳。
  *  最后那个 `onDismissFinished` 是「关掉之后才接着做下一件事」用的（目前只有「填前缀」那一处），
  *  它和 `onConfirm` 是**先后**关系而不是同一件事，不能合并。
+ *  `body` 与 `summary` 是同一个槽的两条路（纯文本 / 自己画），给了 `body` 就不看 `summary`。
  */
 @Composable
 internal fun SettingsPage.ConfirmDialog(
@@ -551,6 +552,13 @@ internal fun SettingsPage.ConfirmDialog(
      *  用户看到的就是「键盘闪一下又没了」。「填前缀」那一处正是这个形状。
      */
     onDismissFinished: (() -> Unit)? = null,
+    /**
+     * 正文的**可组合版**（`null` = 用 [summary] 那一整段纯文本）。
+     *
+     *  给「正文里要画键名框 / 组合列表」那种窗用：`summary` 只收字符串，把 `[侧键]` 写进字里
+     *  就成了另一套记号（这个界面里键名一直是圆角框）。两格互斥 —— 给了这个就不再看 `summary`。
+     */
+    body: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     FrostedDialog(
         show = show,
@@ -574,6 +582,9 @@ internal fun SettingsPage.ConfirmDialog(
         },
     ) {
         // 正文走 [DialogBody]（可滚、可收缩）
-        summary?.let { DialogBody(it) }
+        when {
+            body != null -> DialogBody(body)
+            summary != null -> DialogBody(summary)
+        }
     }
 }

@@ -1025,6 +1025,11 @@ internal class ShortcutThenMinimize(
  *  **只加在这一份副本上**：兜底那条路（[AppLaunchAsUser.start]）用的还是原 intent ——
  *  补了 `CATEGORY_LAUNCHER` 的 intent 拿去起一个没声明这个 category 的组件，可能解析失败。
  *  副本是浅拷贝（extras 共享），原版链路只读不写，够用。
+ *
+ *  **别照着原版入口去补 `RESET_TASK_IF_NEEDED` / `android_action_key_launch_type`**：
+ *  2026-11-14 照 `ActionRemoteStartContentProvider` 那样补过一版，结果**原本有原版动画的应用
+ *  全都不动了** —— 那两样是原版 provider 那条入口的配套，不是这条转场的前置条件。
+ *  这条链路只认「一次桌面启动」这两个标记，多给反而把它带偏。
  */
 internal fun stockLaunchIntent(intent: Intent): Intent =
     if (intent.component != null && intent.action == null) {

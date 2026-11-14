@@ -88,20 +88,20 @@ internal fun SettingsPage.setLanguage(code: String) {
 }
 
 /**
- * 切「无操作时执行按键命令」**公共那一档** —— 同一参数还有每组的落点（`ComboKey.passthrough`，
- * 见 `Config.comboPassthroughFor`：独立设置开着时那一组自己说了算）。
+ * 切「系统场景在首键按下时固定」**公共那一档** —— 同一参数还有每组的落点
+ * （`ComboKey.sceneOnStarter`，见 `Config.comboSceneOnStarterFor`：独立设置开着时那一组自己说了算）。
  *
  *  回执位与其它组合项一致（`HINT_SLOT_COMBO`）：同一个开关在这两处各拨一下，屏幕上始终是
  *  那一条在改字，而不是两条叠着。
  */
-internal fun SettingsPage.setComboPassthrough(on: Boolean) {
+internal fun SettingsPage.setComboSceneOnStarter(on: Boolean) {
     val cfg = configState.config.value
     writeAndNotice(
-        cfg.copy(global = cfg.global.copy(comboPassthrough = on)),
-        "combo_passthrough=${if (on) 1 else 0}",
+        cfg.copy(global = cfg.global.copy(comboSceneOnStarter = on)),
+        "combo_scene_on_starter=${if (on) 1 else 0}",
         slot = HINT_SLOT_COMBO,
     ) {
-        switchNotice(I18n.get(Strings.COMBO_PASSTHROUGH_TITLE, "无操作时执行按键命令"), on)
+        switchNotice(I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE, "系统场景在首键按下时固定"), on)
     }
 }
 
@@ -211,7 +211,7 @@ internal fun SettingsPage.setToastFluid(on: Boolean) =
     }
 
 /**
- * 写「执行时提示」的文案模板（`$key` / `$gesture` / `$action`，见 `ToastNotice`）。
+ * 写「执行时提示」的文案模板（`$key` / `$gesture` / `$action` 与 `$action` 拆开的三段，见 `ToastNotice`）。
  *
  *  **空串就是「用默认那句」**：默认文案只在 `ToastNotice.DEFAULT_TEMPLATE` 存一份，
  *  这里不塞字面量 —— 否则「默认是什么」会有两处各写一遍。

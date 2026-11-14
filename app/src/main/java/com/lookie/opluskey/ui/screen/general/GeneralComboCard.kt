@@ -12,7 +12,7 @@ import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.screen.combo.setComboWindow
 import com.lookie.opluskey.ui.write.setComboHoldMin
-import com.lookie.opluskey.ui.write.setComboPassthrough
+import com.lookie.opluskey.ui.write.setComboSceneOnStarter
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 
 // 「组合按键设置」那张卡 —— 从「按键功能」页搬来（用户口径）：这两项都是**全局**的，
@@ -21,18 +21,19 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
 /**
  * 「组合键设置」那张卡 —— 都不针对某一组，只剩三个**参数**：
  *
- *  1. **无操作时执行按键命令**：组合绑的是「无操作」时，两颗键怎么办（开关打开 = 各按自己那一档
- *     照常执行；关闭 = 什么都不做）。为什么值得一个开关：「配了组合、但只给长按绑了动作」很常见，
- *     这时短按那一格是空的，用户要么希望「两颗键各干各的」，要么希望「这颗组合键短按没功能」。
- *  2. **按键之间的等待**：两颗键最多隔多久才算「一起按下」。这一行有代价，副标题里写清楚了。
- *  3. **首键按住时长**：按住那两档的下限。
+ *  1. **按键之间的等待**：两颗键最多隔多久才算「一起按下」。这一行有代价，副标题里写清楚了。
+ *  2. **首键按住时长**：按住那两档的下限。
+ *  3. **系统场景在首键按下时固定**：按住那两档的场景什么时候取 —— 按下那一刻固定，还是凑成那一刻
+ *     再取（关掉）。取早了不怕「按住期间换了应用」，取晚了才反映「刚切过去」；两种口径各有道理，
+ *     所以给成开关而不是替用户定死。
  *
  *  **「使用等待手势 / 使用按住手势」这两颗不在这里了**：一档组合只认一种触发方式，那是它的
  *  身份（`ComboKey.mode`），入口在「组合键」编辑页那颗 ⋮ 的「触发方式」一行。于是这里没有
  *  「公共默认认哪条」这件事，也就没有按它显隐的理由 —— 三个参数都一直在。
  *
- *  上面第 2、3 行是**两条互斥触发方式各自的**参数，只在用到那一条的组合上生效
- *  （等窗口读窗口这个数、按住读下限，见 `Config.comboWindowFor` / `comboHoldMinFor`）；
+ *  上面第 1、2、3 行是**两条互斥触发方式各自的**参数，只在用到那一条的组合上生效
+ *  （等窗口读窗口这个数、按住读下限与上面那条取场景的口径，见 `Config.comboWindowFor` /
+ *  `comboHoldMinFor` / `comboSceneOnStarterFor`）；
  *  这里只管**公共默认**，某一组的「独立设置」页管那一组自己的值。
  */
 @Composable
@@ -41,20 +42,6 @@ internal fun SettingsPage.ComboSettingsCard(enabled: Boolean) {
     CardList(
         rows =
             buildList {
-                add(
-                    CardRow.Switch(
-                        title = I18n.get(Strings.COMBO_PASSTHROUGH_TITLE, "无操作时执行按键命令"),
-                        summaryOn = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_ON, "每颗键各执行自己的绑定"),
-                        summaryOff = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_OFF, "什么都不做"),
-                        icon = PageIcons.NoMatch,
-                        checked = cfg.global.comboPassthrough,
-                        enabled = enabled,
-                    ) { on ->
-                        //  走 `setComboPassthrough`（现读配置 + 回执）：与同卡其它控件同一条路，
-                        //  不用这一帧的 `cfg` 快照 —— 同一页两根控件先后动时，快照会把先写的那一位顶回去。
-                        setComboPassthrough(on)
-                    },
-                )
                 //  两颗键之间的等待窗口 —— 滑杆另起一支（这一行比开关长得多）。
                 add(
                     CardRow.Custom { position ->
@@ -65,6 +52,29 @@ internal fun SettingsPage.ComboSettingsCard(enabled: Boolean) {
                 add(
                     CardRow.Custom { position ->
                         ComboHoldMinRow(position, enabled)
+                    },
+                )
+                //  按住那两档的**系统场景什么时候取**：按下那一刻固定，还是凑成那一刻再取。
+                //  与上面几行一样**一直在**（不按「有没有按住组合」显隐）—— 这一整张卡都是参数，
+                //  没有哪一行是跟着列表内容变的。
+                add(
+                    CardRow.Switch(
+                        title = I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE, "系统场景在首键按下时固定"),
+                        summaryOn =
+                            I18n.get(
+                                Strings.COMBO_SCENE_ON_STARTER_DESC_ON,
+                                "首键按下那一刻就定下用哪块场景，按住期间换应用不改变动作",
+                            ),
+                        summaryOff =
+                            I18n.get(
+                                Strings.COMBO_SCENE_ON_STARTER_DESC_OFF,
+                                "组合凑成那一刻再取场景",
+                            ),
+                        icon = PageIcons.ScenePin,
+                        checked = cfg.global.comboSceneOnStarter,
+                        enabled = enabled,
+                    ) { on ->
+                        setComboSceneOnStarter(on)
                     },
                 )
             },
@@ -96,8 +106,8 @@ internal fun SettingsPage.ComboWindowRow(
             SliderSpec(
                 title = I18n.get(Strings.COMBO_WINDOW_TITLE, "按键之间的等待"),
                 summary = I18n.get(Strings.COMBO_WINDOW_DESC, "调大后，参与组合的按键等待更久"),
-                //  「等一段时间再继续」那一颗钟（与「命令间隔时长」同一个字形）
-                icon = PageIcons.DelayStep,
+                //  「等一段时间再继续」那一颗钟 + 暂停（与「命令间隔时长」的播放记号分开）
+                icon = PageIcons.ComboWait,
                 min = GlobalConfig.COMBO_WINDOW_MIN_MS,
                 max = GlobalConfig.COMBO_WINDOW_MAX_MS,
                 value = configState.config.value.global.comboWindowMs,
@@ -136,8 +146,8 @@ internal fun SettingsPage.ComboHoldMinRow(
             SliderSpec(
                 title = I18n.get(Strings.COMBO_HOLD_MIN_TITLE, "首键按住时长"),
                 summary = I18n.get(Strings.COMBO_HOLD_MIN_DESC, "先按住的那颗按满这么久、还没抬手，再按另一颗才算组合"),
-                //  「按住不放」那只手（与「按键延迟」同一个字形）
-                icon = PageIcons.DelayHold,
+                //  「按住不放」那只钟（`clock-record`，与「长按延迟」那颗闪电分开）
+                icon = PageIcons.ComboHold,
                 min = GlobalConfig.COMBO_HOLD_MIN_MIN_MS,
                 max = GlobalConfig.COMBO_HOLD_MIN_MAX_MS,
                 value = configState.config.value.global.comboHoldMinMs,

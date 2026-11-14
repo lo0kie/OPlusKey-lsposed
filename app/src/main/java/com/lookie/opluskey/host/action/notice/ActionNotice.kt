@@ -3,6 +3,7 @@ package com.lookie.opluskey.host.action.notice
 import android.content.Context
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ActionReading
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.resolveAppName
 import com.lookie.opluskey.core.model.resolveTargetName
@@ -20,10 +21,13 @@ import com.lookie.opluskey.core.present.commandTitleOf
  *  （`系统开关: WIFI - 打开`），与步骤行、命令卡摘要、系统场景那一格说的是同一句。
  *  以前这条路上另有一份 `actionFinalTitle`，同一个动作因此在提示里和步骤行里两个样子。
  *
+ *  返回的是**整句 + 拆开的三段**（`ActionReading`）而不是一个字符串：模板里的 `$action` 要整句，
+ *  `$parent` / `$name` / `$state` 要拆开的各段，而两者由 `CommandTitle.reading` 一次算出来。
+ *
  *  **「无操作」在这一层不弹**（判在 `GestureExec.noticeIfNeeded`，不在这里）：这个函数只管
  *  把句子念出来，`None` 念出来就是「无操作」四个字。该不该弹是提示这个位置的规矩。
  */
-internal fun actionNoticeText(
+internal fun actionNoticeReading(
     context: Context?,
     action: Action,
     /**
@@ -33,8 +37,8 @@ internal fun actionNoticeText(
      * 只有应用已经卸载时这一份才有用。
      */
     appNames: Map<String, String> = emptyMap(),
-): String =
-    commandTitleOf(action).forSentence(
+): ActionReading =
+    commandTitleOf(action).reading(
         action = action,
         // 顺序不在这里：`resolveAppName` / `resolveTargetName` 是唯一声明处（现查系统 →
         //  落盘那份 → 老 `|名字` → 包名）。这里只回答「宿主这一侧那两档拿什么」——
