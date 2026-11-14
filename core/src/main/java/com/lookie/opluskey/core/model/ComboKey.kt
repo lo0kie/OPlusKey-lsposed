@@ -120,6 +120,8 @@ data class ComboKey(
     override val vibrate: Boolean = false,
     /** 这一档自己的「振动强度」—— 只在 [useOwnSettings] 开着时算数。 */
     override val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
+    /** 这一组自己的「无操作时振动」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val vibrateOnNone: Boolean = GlobalConfig.DEFAULT_VIBRATE_ON_NONE,
     /** 这一档自己的「执行时提示」—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
     /** 这一档自己的「提示走流体云」—— 只在 [useOwnSettings] 开着时算数。 */

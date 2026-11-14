@@ -91,11 +91,27 @@ def code_only(path: Path) -> str:
 def measure() -> dict[str, int]:
     """实测值 —— 键与 `tools/ratchet.txt` 一一对应。"""
     ext = sum(len(EXT_RE.findall(code_only(p))) for p in APP.rglob("*.kt"))
-    return {
+    counts = {
         "count.detekt_baseline": BASELINE.read_text(encoding="utf-8", errors="replace").count("<ID>"),
         "count.settings_page_fields": len(FIELD_RE.findall(code_only(SETTINGS_PAGE))),
         "count.settings_page_ext": ext,
     }
+    #  **量到 0 一律判失败**（除 detekt 基线那一条：它的目标值本来就是 0，见 `ratchet.txt`）：
+    #  这不是「规模降到 0」，而是判据坏了 —— 缩进 / 成员写法一变（比如给 SettingsPage 的成员
+    #  加一层修饰、或换 tab 缩进），正则就恒不匹配；而下面那道闸是 `实测 <= 上限`，
+    #  对 0 恒真 —— CI 全绿、这道闸从此永久失效。
+    zero = [
+        k
+        for k, v in counts.items()
+        #  `count.detekt_baseline` 不在此列：它量的是「豁免条数」，0 是目标而不是故障
+        if v <= 0 and k != "count.detekt_baseline"
+    ]
+    if zero:
+        sys.exit(
+            "规模实测为 0（判据坏了，不是规模降了）：" + ", ".join(zero) +
+            " —— 先修 tools/audit-ratchet.py 里的正则，别调阈值"
+        )
+    return counts
 
 
 def read_limits() -> dict[str, int]:

@@ -85,6 +85,13 @@ internal enum class CommandFailure(
     UNKNOWN(Strings.COMMAND_FAILURE_UNKNOWN, "这次没执行成功"),
 
     /**
+     * 这一条**指向本模块自己**（宿主包 / 设置页进程），拒绝执行 —— 与 [UNKNOWN] 分开。
+     *
+     *  报「这次没执行成功」会把用户推去查 root 与命令，而正确答案是换一个应用（多半是挑错了）。
+     */
+    SELF_TARGET(Strings.COMMAND_FAILURE_SELF_TARGET, "该命令指向本模块自身，已跳过"),
+
+    /**
      * 小窗：这个应用**收不起来小窗**（服务端没受理，或收完没出窗口）。
      *
      * 只提示、**什么都不做** —— 不再退「按包名另起一份实例」( 用户口径)：

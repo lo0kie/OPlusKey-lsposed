@@ -621,11 +621,11 @@ internal fun SettingsPage.disabledClickReason(): HintText {
             )
         }
 
-        //  「只参与组合按键」：绑定页整页灰着（见 `bindingTargetEnabled`），原因要说在这 ——
+        //  「只参与非首键的按住组合」：绑定页整页灰着（见 `bindingTargetEnabled`），原因要说在这 ——
         //  否则用户只看到一片灰，去翻「是不是停用了」（停用是另一回事，旁边那句才是它）
         cfg.key(key).comboOnly -> {
             HintText(
-                I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED, "按键 %s 只参与组合按键"),
+                I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED, "按键 %s 只能作按住组合的后续成员"),
                 listOf(keyName(key)),
             )
         }

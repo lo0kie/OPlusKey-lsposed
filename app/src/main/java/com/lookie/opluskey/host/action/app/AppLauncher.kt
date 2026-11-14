@@ -543,9 +543,19 @@ internal class AppLauncher(
                         target.action?.let { action = it }
                         putExtrasOf(target.extras, feature)
                     }
-            if (target.foreground) ctx.startForegroundService(explicit) else ctx.startService(explicit)
-            XLog.w("oplus:$feature → 显式组件退路成功（${target.owner}/${service.substringAfterLast('.')}）")
-            null
+            //  **返回 null 就是没这个服务**：这两个 API 对「解析不到的显式组件」只回 null、
+            //  不抛异常。不判它，日志照样写「退路成功」、`toggledOn` 那笔「现在是开」的账也留着
+            //  —— 下一次按同一个开关会被当成「关」，去发一条没人接的停止广播（用户看到的是
+            //  「按一下什么都没发生」）。
+            val started =
+                if (target.foreground) ctx.startForegroundService(explicit) else ctx.startService(explicit)
+            if (started == null) {
+                XLog.w("oplus:$feature 的显式组件退路没找到服务：${target.owner}/$service")
+                IllegalStateException("显式组件不存在：${target.owner}/$service")
+            } else {
+                XLog.w("oplus:$feature → 显式组件退路成功（${target.owner}/${service.substringAfterLast('.')}）")
+                null
+            }
         } catch (e: Throwable) {
             XLog.w("oplus:$feature 的显式组件退路也失败：${e.javaClass.simpleName}: ${e.message}")
             e

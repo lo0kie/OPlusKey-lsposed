@@ -140,6 +140,8 @@ internal object VolumeAction {
         private val call: Call,
         private val min: Int,
         private val max: Int,
+        /** 两条写路都没落下去、注入又不适用时报出去（见 [injectFallback]）。 */
+        private val onFailure: (CommandFailure) -> Unit,
     ) {
         private val stream: Int get() = call.stream
 
@@ -213,6 +215,10 @@ internal object VolumeAction {
         ): Int? {
             if (stream == STREAM_RINGER) {
                 XLog.w("$label：几条路都没落下去 ⇒ 不做注入兜底（注入音量键调的是当前活跃流，不是铃声流）")
+                //  **这一档必须报失败**：上面「注入侧写 → 宿主写 → 静默重试」三条都试完了，
+                //  铃声流又不做注入兜底 —— 到这里已经是「这一次什么都没发生」。以前这里静默返回，
+                //  用户按了没反应、也没有任何回执，只能以为按键坏了。
+                onFailure(CommandFailure.UNKNOWN)
                 return null
             }
             return injectUntilReached(this, target, current)
@@ -341,7 +347,7 @@ internal object VolumeAction {
             //  铃声 `0..16`、媒体 `0..160`），两种写法等价；但别的 ROM 上流的 min 不一定是 0，
             //  那时写成 `max * p / 100` 会整体偏高一档。
             val min = am.getStreamMinVolume(call.stream)
-            val job = Job(am, call, min, max)
+            val job = Job(am, call, min, max, onFailure)
             val current = am.getStreamVolume(call.stream)
             val raw = (max - min) * call.percent / 100.0
             val target =

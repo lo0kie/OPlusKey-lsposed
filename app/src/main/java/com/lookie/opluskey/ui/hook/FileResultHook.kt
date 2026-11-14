@@ -31,6 +31,9 @@ internal object FileResultHook {
      */
     private val hookedClasses = mutableSetOf<Class<*>>()
 
+    /** 已经**挂成功的那个方法声明在哪一层**（见 [hookedClasses] 旁边那段说明）—— 防重复挂钩。 */
+    private val hookedDeclarations = mutableSetOf<Class<*>>()
+
     /** 装平台 hook 时记下的模块实例（本文件在 `ui/hook`，与那处安装同一个进程）。 */
     private var module: XposedModule? = null
 
@@ -62,11 +65,21 @@ internal object FileResultHook {
             val declared = declaredResult(cur)
             if (declared != null) {
                 anyDeclared = true
+                //  同一个**声明类**上这个方法已经挂过 ⇒ 这一层什么都不用做，只把叶子类记账收工。
+                if (declared.declaringClass in hookedDeclarations) {
+                    hookedClasses += cls
+                    XLog.w("文件选择：${declared.declaringClass.simpleName}#$METHOD 已经挂过，这一层跳过")
+                    return
+                }
                 //  挂钩**成功**才记账。没记上就把 `hookedClass` 提前写上、还打一句「已挂钩」，
                 //  后面每次进来都会被开头那句 `hookedClass === cls` 挡回去 —— 结果是这条路
                 //  **一次都没接上、日志还说自己接上了**（导入导出整条静默归零）。
                 if (module.hookGuarded(declared, hooker) != null) {
                     hookedClasses += cls
+                    //  **声明类也记一笔**：同一个方法可能被不同的 Activity 子类各 arm 一次
+                    //  （分身、不同入口各是一个叶子类），记了它就不会把同一个方法挂第二遍
+                    //  （挂两遍 = 回调跑两次，导入导出各收一次）。
+                    hookedDeclarations += declared.declaringClass
                     XLog.w("文件选择：宿主的 ${cur.simpleName}#$METHOD 已单独挂钩（它不往上调也能收到）")
                     return
                 }

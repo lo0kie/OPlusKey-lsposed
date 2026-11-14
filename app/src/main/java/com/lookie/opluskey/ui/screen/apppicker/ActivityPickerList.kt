@@ -113,7 +113,11 @@ internal fun SettingsPage.ActivityPickerScreen(
     }
     //  条数交给顶栏那条搜索带（它读不到这里的 `loaded`）：清单没到手时写 0，占位就不显示数字。
     //  写的是**这一页列出来的界面数**，不含快捷方式那一节 —— 占位写的是「搜索应用组件」。
-    LaunchedEffect(loaded) { picker.activityCount.value = loaded.orEmpty().size }
+    LaunchedEffect(loaded) {
+        //  **不含快捷方式那一节**：清单是「界面 + 快捷方式」两节拼起来的，占位写的是
+        //  「搜索应用组件」，数字跟着那一节的条数走。
+        picker.activityCount.value = loaded.orEmpty().count { it.shortcutId == null }
+    }
 
     val term = filter.trim()
     // 过滤与分节只在「清单 / 搜索词 / 选中项」变时算一次，**不能**留在这段组合体里直接算：

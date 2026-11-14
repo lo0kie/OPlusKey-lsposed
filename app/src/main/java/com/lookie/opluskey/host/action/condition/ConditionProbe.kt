@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.provider.Settings
+import com.lookie.opluskey.bridge.host.RingerController
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.BranchCondition
@@ -243,7 +244,11 @@ internal object ConditionProbe {
             it == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
                 it == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
                 it == AudioDeviceInfo.TYPE_USB_HEADSET ||
-                it == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                it == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                //  LE Audio 那一族：耳机只报 BLE_HEADSET、**不产生 A2DP 设备**，少了这两档
+                //  「耳机 = 连接」会永不成立、「= 没接」在真接着时成立（条件正好反着走）。
+                it == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                it == AudioDeviceInfo.TYPE_BLE_SPEAKER
         }
     }
 }
@@ -328,7 +333,9 @@ internal fun wifiMatches(
             .getOrDefault(-1)
     if (state != 0 && state != 1) {
         //  2 / 3 是「正在开 / 正在关」，与读不到同一档：此刻既不算开也不算关。
-        XLog.d("Wi-Fi 状态读不到确定的开/关（WIFI_ON=$state）⇒ 这条条件按不成立")
+        //  判据级（为什么这条条件不成立）：必须用 w —— `d` 在 release 里被编译期消除，
+        //  现场日志就只剩「规则没走对」，看不出是 Wi-Fi 正处在开关中途。
+        XLog.w("Wi-Fi 状态读不到确定的开/关（WIFI_ON=$state）⇒ 这条条件按不成立")
         return false
     }
     return when (value) {
@@ -366,7 +373,10 @@ internal fun ringerMatches(
     ctx: Context,
     value: String,
 ): Boolean {
-    val mode = audio(ctx)?.ringerMode ?: return false
+    //  档位按**内部通道**读，与切换档位那条路共用一份（见 `RingerController.readModeOrNull`）：
+    //  公共视图 `am.ringerMode` 在免打扰下**恒读静音**，照它判会把「响铃 / 振动」判成「静音」——
+    //  动作按内部档位切、条件按公共视图判，两边正好相反（系统场景走错分支、变量念错档位）。
+    val mode = RingerController.readModeOrNull(ctx) ?: return false
     val now =
         when (mode) {
             AudioManager.RINGER_MODE_NORMAL -> "normal"

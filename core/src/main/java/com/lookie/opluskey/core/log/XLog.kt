@@ -142,7 +142,11 @@ object XLog {
             }
             //  完整堆栈另存一格（见 [lastStack]）。取栈有成本，但这条路径只在真出异常时走一次，
             //  而缓冲里那一行只有「类型 + message」—— 没有这一份，栈就彻底没了。
-            if (tr != null) lastStack = "$msg\n${Log.getStackTraceString(tr)}".take(LAST_STACK_MAX)
+            //
+            //  **超长时不能只留头**：`Log.getStackTraceString` 把「Caused by / 根因」放在**最末**，
+            //  从尾部 `take` 会把根因整段切掉，只剩一串自己的调用链 —— 那时日志看不出真正失败的原因。
+            //  所以超长就留头留尾，中间标一句「已截断」。
+            if (tr != null) lastStack = clipStack("$msg\n${Log.getStackTraceString(tr)}")
         }
         runCatching { Log.println(priority, TAG, text) }
         module?.let { m ->
@@ -150,6 +154,20 @@ object XLog {
                 if (tr == null) m.log(priority, TAG, msg) else m.log(priority, TAG, msg, tr)
             }
         }
+    }
+
+    /**
+     * 把一段日志裁到 [LAST_STACK_MAX]：**留头留尾**，中间标一句截断说明。
+     *
+     *  `Log.getStackTraceString` 把 `Caused by` / 根因放在**最末** —— 从尾部 `take` 会把它整段切掉，
+     * 只剩自己的调用链，那时用户交回来的日志看不出真正失败的原因。
+     */
+    private fun clipStack(text: String): String {
+        if (text.length <= LAST_STACK_MAX) return text
+        val marker = "\n…（中段已截断，原文 ${text.length} 字符）…\n"
+        //  尾部分三成：根因链通常就在最后一两段 `Caused by` 里。
+        val tail = LAST_STACK_MAX / 3
+        return text.take(LAST_STACK_MAX - tail - marker.length) + marker + text.takeLast(tail)
     }
 
     /**

@@ -101,9 +101,24 @@ private fun SettingsPage.CommandHeaderEdit() {
     )
     DisabledHint(
         when {
-            canEdit -> null
-            configState.commands.value.isEmpty() -> HintText(I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令"))
-            else -> disabledClickReason()
+            canEdit -> {
+                null
+            }
+
+            configState.commands.value.isEmpty() -> {
+                //  空着的两种原因分开说：读不出来时「没有保存的命令」是错的（用户没删过任何东西）。
+                HintText(
+                    if (configState.commandsReadOnly) {
+                        I18n.get(Strings.COMMAND_UNREADABLE, "命令库无法读取（文件损坏或权限不足），已切换为只读")
+                    } else {
+                        I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令")
+                    },
+                )
+            }
+
+            else -> {
+                disabledClickReason()
+            }
         },
     ) {
         HeaderIconButton(

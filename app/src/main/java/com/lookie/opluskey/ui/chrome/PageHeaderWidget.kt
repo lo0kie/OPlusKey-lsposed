@@ -93,8 +93,25 @@ internal fun currentHeaderBand(): BandHeight =
         BandHeight()
     }
 
+/**
+ * 系统栏顶边那一档（状态栏高度）。
+ *
+ * ## 为什么 0 时不跟
+ *
+ *  进入**最近任务**（或分屏预览）那一帧，窗口已经不可见了，系统会把 `WindowInsets` 清成 0。
+ *  直接跟着它走，顶栏就矮掉一个状态栏、整页内容上移 —— 真机上就是「状态栏区域没了、界面整体
+ *  上移了一个状态栏」（用户报的现象）。
+ *
+ *  所以只在**读到一个真值**（> 0）时才更新，读到 0 就沿用上一次那一档：旋转屏那种「真的变了」
+ *  照样跟得上（新值也是 > 0），只有「窗口暂时不可见」这一种情形被挡住。
+ */
 @Composable
-internal fun SettingsPage.headerStatusBarPadding(): Dp = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
+internal fun SettingsPage.headerStatusBarPadding(): Dp {
+    val live = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
+    val last = remember { mutableStateOf(live) }
+    if (live > 0.dp) last.value = live
+    return last.value
+}
 
 /**
  * 顶栏的**展开高度**（含系统栏顶边）—— 内容从哪儿开始就是按它算的。

@@ -81,8 +81,13 @@ internal object ClockAction {
             return
         }
         if (seconds != null) {
-            //  这一条**不靠起界面完成**：广播交给注入侧，由 system_server 自己起那个活动
-            setTimer(context, seconds)
+            //  这一条**不靠起界面完成**：广播交给注入侧，由 system_server 自己起那个活动。
+            //  广播都发不出去时不能就这么收场：按下去了、倒计时没跑、屏幕上也没有任何反馈，
+            //  用户只会以为「这颗键坏了」。按类注释那条降级顺序退回倒计时页，让用户自己按开始。
+            if (!setTimer(context, seconds)) {
+                XLog.w("timer:$seconds 的广播没发出去 —— 退回倒计时页")
+                openPage(context, ACTION_TIMER, onFailure)
+            }
             return
         }
         //  不带秒数：把倒计时页调出来，让用户自己拨
@@ -107,9 +112,7 @@ internal object ClockAction {
     private fun setTimer(
         context: Context,
         seconds: Int,
-    ) {
-        StatusBarBridge.sendTimer(context, seconds)
-    }
+    ): Boolean = StatusBarBridge.sendTimer(context, seconds)
 
     /** 起时钟里那一页；失败退回主界面，再失败才报出去。 */
     private fun openPage(

@@ -112,6 +112,7 @@ internal fun SettingsPage.OwnSettingsCard(
         rows =
             buildList {
                 add(vibrateRow(effective, rowsEnabled, ownHint, ::edit))
+                add(vibrateOnNoneRow(effective, rowsEnabled, ownHint, ::edit))
                 //  滑杆值取 `owner`（这一档自己的），**不取** `effective` —— 见类注释那段
                 //  「滑杆显示的是这一档自己的值」。取生效值的话，拨一下总开关它就从公共值
                 //  跳到这一档自己的值，看着像刚调好的强度被改了。
@@ -216,6 +217,29 @@ private fun SettingsPage.vibrateRow(
         disabledHint = ownHint,
     ) {
         edit(OwnField.VIBRATE) { v -> v.copy(vibrate = it) }
+    }
+
+/**
+ * 「无操作时振动」—— 与 [vibrateRow] 是两颗开关：那一颗管「执行了动作」，
+ * 这一颗管「按了、但这一档什么动作都没有」。
+ */
+@Composable
+private fun SettingsPage.vibrateOnNoneRow(
+    show: OwnSettings,
+    rowsEnabled: Boolean,
+    ownHint: String?,
+    edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
+): CardRow =
+    CardRow.Switch(
+        title = I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE, "无操作时振动"),
+        summaryOn = I18n.get(Strings.HOME_VIBRATE_ON_NONE_DESC_ON, "未配置动作时同样振动"),
+        summaryOff = I18n.get(Strings.HOME_VIBRATE_ON_NONE_DESC_OFF, "未配置动作时不振动"),
+        icon = PageIcons.VibrateOnNone,
+        checked = show.vibrateOnNone,
+        enabled = rowsEnabled,
+        disabledHint = ownHint,
+    ) {
+        edit(OwnField.VIBRATE_ON_NONE) { v -> v.copy(vibrateOnNone = it) }
     }
 
 /**
@@ -415,7 +439,7 @@ internal fun ComboKey.withOwn(values: OwnSettingsValues): ComboKey =
  *  那一颗自己又关回去了」）。按字段合并之后，**只有手指真点到的那一项会变**，
  *  别的项有多旧都不影响。
  */
-internal enum class OwnField { USE_OWN, COLOR_OS, VIBRATE, STRENGTH, TOAST, FLUID, TEMPLATE }
+internal enum class OwnField { USE_OWN, COLOR_OS, VIBRATE, VIBRATE_ON_NONE, STRENGTH, TOAST, FLUID, TEMPLATE }
 
 /** 用 [src] 里那一项的值替换自己这一项（其余字段不动）。 */
 internal fun OwnSettingsValues.withField(
@@ -426,6 +450,7 @@ internal fun OwnSettingsValues.withField(
         OwnField.USE_OWN -> copy(useOwn = src.useOwnSettings)
         OwnField.COLOR_OS -> copy(colorOsApi = src.colorOsApi)
         OwnField.VIBRATE -> copy(vibrate = src.vibrate)
+        OwnField.VIBRATE_ON_NONE -> copy(vibrateOnNone = src.vibrateOnNone)
         OwnField.STRENGTH -> copy(vibrateStrength = src.vibrateStrength)
         OwnField.TOAST -> copy(toastOnRun = src.toastOnRun)
         OwnField.FLUID -> copy(toastFluid = src.toastFluid)
@@ -442,6 +467,7 @@ internal data class OwnSettingsValues(
     override val colorOsApi: Boolean,
     override val vibrate: Boolean,
     override val vibrateStrength: Int,
+    override val vibrateOnNone: Boolean,
     override val toastOnRun: Boolean,
     override val toastFluid: Boolean,
     override val toastTemplate: String,
@@ -457,6 +483,7 @@ internal fun OwnSettings.values(): OwnSettingsValues =
         colorOsApi = colorOsApi,
         vibrate = vibrate,
         vibrateStrength = vibrateStrength,
+        vibrateOnNone = vibrateOnNone,
         toastOnRun = toastOnRun,
         toastFluid = toastFluid,
         toastTemplate = toastTemplate,

@@ -131,11 +131,15 @@ internal object StatusBarBridge {
      *
      *  与 [send] 同一个通道、同一个接收器，区别是带一个数值。为什么不在宿主里直接
      *  `startActivity`：那一下会被**后台起活动**静默丢掉（见 [CMD_TIMER] 的注释）。
+     *
+     *  @return 广播**发出去了**没有（`sendBroadcast` 抛 = false）。它**不表示有人接**：
+     *   注入侧没装 / 是老版本不认识这一条时，这里照样是 true —— 那种情况只能靠注入侧的日志认。
+     *   调用方要按「false 就得自己兜底」处理，别把 true 当成「倒计时已经跑起来了」。
      */
     fun sendTimer(
         context: Context,
         seconds: Int,
-    ) {
+    ): Boolean =
         try {
             context.sendBroadcast(
                 Intent(ACTION_STATUSBAR)
@@ -145,10 +149,11 @@ internal object StatusBarBridge {
                     .putExtra(EXTRA_TIMER_SECONDS, seconds),
             )
             XLog.w("timer:$seconds 已转给 system_server 起倒计时")
+            true
         } catch (e: Throwable) {
             XLog.w("发 timer 广播失败：$seconds", e)
+            false
         }
-    }
 
     /**
      * 调用点在 AMS 广播入口的 hooker 里（热路径 + system_server），

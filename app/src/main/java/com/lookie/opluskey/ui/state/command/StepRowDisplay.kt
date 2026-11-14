@@ -85,6 +85,11 @@ internal class StepRowDisplay {
 
     /** 与 [steps] 对齐（见类注释里那段差分规则）。 */
     fun sync(steps: List<String>) {
+        //  退场动画播完的行**没有第二个摘除点**：下面只把「正在退场」的行按锚插回去，
+        //  `clear()` 又只在出栈时调 —— 于是反复删 / 加步骤时 `rows` 只增不减，每次重组
+        //  都要为这些看不见的行再算一遍 `indexOf` 与整张 `CardList`。这里先摘掉**上一批**里
+        //  已经收干净的那些（`isIdle && !targetState` = 退场动画结束）。
+        rows.removeAll { it.exiting && it.state.isIdle && !it.state.targetState }
         val kept = rows.filter { !it.exiting }
         //  **换一步**：同长度、只有一个位置对不上 ⇒ 那一行就地换字。
         //  走差分的话旧行收缩、新行展开，用户看到的是「这一行先变矮又长回来」。

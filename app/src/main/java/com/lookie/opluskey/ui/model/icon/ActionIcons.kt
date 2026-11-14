@@ -8,6 +8,7 @@ import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.core.model.SwitchKind
 import com.lookie.opluskey.core.model.SystemSwitches
 import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.core.present.ClockCatalog
 import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.ui.model.text.formatIconOf
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
@@ -57,11 +58,11 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Location
 import io.github.lyxnx.compose.ui.tablericons.outline.MessageAi
 import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
+import io.github.lyxnx.compose.ui.tablericons.outline.Music
 import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Nfc
 import io.github.lyxnx.compose.ui.tablericons.outline.Notification
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilAi
-import io.github.lyxnx.compose.ui.tablericons.outline.PhotoVideo
 import io.github.lyxnx.compose.ui.tablericons.outline.Plane
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPlay
@@ -318,10 +319,23 @@ internal fun actionIcon(token: String): ImageVector =
                     ringerVolumeGlyph((ActionCatalog.actionOf(token) as? Action.RingerVolume)?.mode)
                 }
 
+                // 计时器（`timer:<秒>` / 不带时长的 `timer:`）—— 清单里只有 `clock:` 那一格
+                //  （点它才挑时长），挑完落成的这一条**不在索引里**（`ClockCatalog.timerSpecOf` 是
+                //  现造的），原先掉到下面那颗 `Dots`：常用命令 / 步骤行里看着像「没配图标」。
+                //  字形取格子那一份（[ClockCatalog.TILE_SPEC]），同一件事不写第二颗。
+                token.startsWith(Action.TIMER_PREFIX) -> {
+                    specIcon(ClockCatalog.TILE_SPEC)
+                }
+
                 //  最后一道：**清单里有这一条就按 `Spec.glyph` 画** —— 字形只声明在清单一处，
                 //  这张表不再抄第二遍（这一支原先掉到 `Dots`，于是「清单里明明有、步骤行却没图标」）。
+                //  再退一步是「支持的命令格式」那几族（`notify:` / `fluid:` / `toast:` /
+                //  `keyevent:`）：它们没有图形入口、只能手写，字形与那张卡同一份 —— 手改过的配置
+                //  落在常用命令里时，行首也该是那张卡上那颗，而不是 `Dots`。
                 else -> {
-                    ActionCatalog.specOfToken(token)?.let(::specIcon) ?: TablerIcons.Outline.Dots
+                    ActionCatalog.specOfToken(token)?.let(::specIcon)
+                        ?: formatIconOf(token)
+                        ?: TablerIcons.Outline.Dots
                 }
             }
         }
@@ -454,7 +468,9 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         // 响铃状态的「循环」那一档：与铃声音量那三颗同一颗铃铛，角标换成一圈箭头
         ActionCatalog.Glyph.Repeat -> DrawnIcons.RingerCycle
 
-        ActionCatalog.Glyph.MediaTile -> TablerIcons.Outline.PhotoVideo
+        //  媒体控制那一格是**音符**（清单里这一档的语义就是「播放 / 上一首 / 下一首」）——
+        //  原先这里换成了 `PhotoVideo`，图标与那一格的动作完全对不上。
+        ActionCatalog.Glyph.MediaTile -> TablerIcons.Outline.Music
 
         ActionCatalog.Glyph.NavigationCog -> PageIcons.NavigationCog
 

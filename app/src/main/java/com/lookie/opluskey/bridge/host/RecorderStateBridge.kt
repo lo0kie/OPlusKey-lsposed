@@ -44,9 +44,13 @@ internal object RecorderStateBridge {
      *
      *  原先两段各等 [TIMEOUT_MS]，于是一次 `state()` 最坏 3 秒、`state()` + `stop()` 最坏 6 秒；
      *  而这条链跑在 `ActionRunner` 的锁里（另一颗键的执行要等它）与设置页的「测试」线程上。
-     *  收成一个总预算之后，一次动作最坏 2 秒，且「对端卡住」这件事的状态不变（照样报失败）。
+     *  收成一个总预算之后，一次调用最坏 2 秒，且「对端卡住」这件事的状态不变（照样报失败）。
+     *
+     *  取 1 秒而不是 2 秒：**一次录屏动作会连调两次桥**（`state()` 再 `stop()`，见
+     *  `AppLauncher.aidlDecision` / `stopByAidl`），按每次 2 秒算，一次动作最坏仍是 4 秒 ——
+     *  对端卡死时另一颗键要多等 4 秒才有反应。1 秒 × 2 才和这一族原本那句「一次动作最坏 2 秒」对上。
      */
-    private const val BUDGET_MS = 2_000L
+    private const val BUDGET_MS = 1_000L
 
     /**
      * 事务线程最多换几条（见 [replaceWorker]）。

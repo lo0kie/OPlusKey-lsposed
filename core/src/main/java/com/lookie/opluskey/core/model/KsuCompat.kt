@@ -80,6 +80,15 @@ object KsuCompat {
         return text.length == prefix.length || text[prefix.length].isWhitespace()
     }
 
-    /** 这条 shell 文本里是不是串了别的命令（`;` / `&` / `|` / 换行）。 */
-    private fun hasCommandChain(command: String): Boolean = command.any { it == ';' || it == '&' || it == '|' || it == '\n' || it == '\r' }
+    /**
+     * 这条 shell 文本里是不是串了别的命令。
+     *
+     *  除了 `;` / `&` / `|` / 换行，**重定向与命令替换也算**（`>` / `<` / `` ` `` / `$(` / `${`）：
+     *  那些写法会把「长得像别名」的那条命令拆成两段执行，而别名匹配只认整串 ——
+     *  认下来就等于把原命令整条换成一次原生调用，后半截被静默丢掉。
+     */
+    private fun hasCommandChain(command: String): Boolean =
+        command.any { it == ';' || it == '&' || it == '|' || it == '\n' || it == '\r' || it == '>' || it == '<' || it == '`' } ||
+            command.contains("\$(") ||
+            command.contains("\${")
 }

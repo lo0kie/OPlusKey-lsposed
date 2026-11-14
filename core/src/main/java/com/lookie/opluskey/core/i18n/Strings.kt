@@ -132,18 +132,18 @@ object Strings {
      */
     const val BINDING_NO_MULTI_GESTURE = "binding.no_multi_gesture"
 
-    /** 「只参与组合按键」那行开关（开 / 关各一句副标题）—— 见 `KeyConfig.comboOnly`。 */
+    /** 「只参与非首键的按住组合」那行开关（开 / 关各一句副标题）—— 见 `KeyConfig.comboOnly`。 */
     const val BINDING_COMBO_ONLY = "binding.combo_only"
     const val BINDING_COMBO_ONLY_ON = "binding.combo_only_on"
     const val BINDING_COMBO_ONLY_OFF = "binding.combo_only_off"
 
-    /** 绑定页整页灰掉时那句原因（「只参与组合按键」）—— 参数是这颗键的名字。 */
+    /** 绑定页整页灰掉时那句原因（「只参与非首键的按住组合」）—— 参数是这颗键的名字。 */
     const val BINDING_COMBO_ONLY_BLOCKED = "binding.combo_only_blocked"
 
     /**
-     * 按键列表行尾那半句 —— 「只参与组合」（与「已停用」占同一格，三态互斥）。
+     * 按键列表行尾那半句 —— 「只参与非首键的按住组合」（与「已停用」占同一格，三态互斥）。
      *
-     *  比 [BINDING_COMBO_ONLY] 短：那一行是整句标题（`只参与组合按键`），而这一格与「已停用」
+     *  比 [BINDING_COMBO_ONLY] 短：那一行是整句标题（`只参与非首键的按住组合`），而这一格与「已停用」
      *  同宽，太长会把标题挤掉一截。
      */
     const val BINDING_COMBO_ONLY_BADGE = "binding.combo_only_badge"
@@ -269,6 +269,12 @@ object Strings {
     /** 这张清单到上限了（`GlobalConfig.MAX_COMMON_COMMANDS`），参数是那个上限。 */
     const val COMMON_COMMANDS_LIMIT = "common_commands.limit"
 
+    /**
+     * 行菜单里的「修改」—— 换掉这一条**指向哪个动作**（点开的是「添加命令」那层抽屉，
+     * 抽屉标题也用它）。
+     */
+    const val COMMON_COMMANDS_EDIT = "common_commands.edit"
+
     /** 行菜单 / 改名窗共用的「重命名」。 */
     const val COMMON_COMMANDS_RENAME = "common_commands.rename"
 
@@ -296,13 +302,13 @@ object Strings {
      */
     const val COMMON_COMMANDS_ICON = "common_commands.icon"
 
-    /** 行菜单里那一项：从清单里拿掉。 */
+    /** 行菜单里那一项：把这一条从清单里删掉。 */
     const val COMMON_COMMANDS_REMOVE = "common_commands.remove"
 
-    /** 移除前那道确认窗的标题。 */
+    /** 删除前那道确认窗的标题。 */
     const val COMMON_COMMANDS_REMOVE_TITLE = "common_commands.remove_title"
 
-    /** 同上那段正文（`%s` = 这一条的名字）—— 就一句「把这一条从清单里移除」。 */
+    /** 同上那段正文（`%s` = 这一条的名字）—— 就一句「把这一条从清单里删除」。 */
     const val COMMON_COMMANDS_REMOVE_BODY = "common_commands.remove_body"
 
     /** 右下角那颗加号打开的那层抽屉的标题。 */
@@ -590,7 +596,7 @@ object Strings {
     const val COMBO_MODE_ASK_ACTION = "combo.mode_ask_action"
 
     /**
-     * 「这颗键只参与组合，当不了按住起点」那一道拦截（标题 + 正文 + 动作项）。
+     * 「这颗键只参与非首键的按住组合，当不了按住起点」那一道拦截（标题 + 正文 + 动作项）。
      *
      *  为什么拦：那一档位说「这颗键不判单键手势」，它自己的「松手时触发」在按键设置页是灰的 ——
      *  放它继续走「切换为松手时触发」那条问句，用户点完也不会有任何效果，只会落下一份
@@ -603,7 +609,7 @@ object Strings {
     const val COMBO_STARTER_BLOCKED_BODY = "combo.starter_blocked_body"
 
     /**
-     * 「这颗键只参与组合，不能加入等待组合」那一条 —— 与 [COMBO_STARTER_BLOCKED_BODY] 同一道
+     * 「这颗键只参与非首键的按住组合，不能加入等待组合」那一条 —— 与 [COMBO_STARTER_BLOCKED_BODY] 同一道
      * 拦截的另一端：那一档按下要吞一个窗口等第二颗，与「单键归系统」叠起来就是
      * 「单击没了、原生还晚一个窗口」。
      */
@@ -612,10 +618,10 @@ object Strings {
     const val COMBO_STARTER_BLOCKED_ACTION = "combo.starter_blocked_action"
 
     /**
-     * 「这颗键已经是按住组合的起点，不能设成只参与组合」—— 与 [COMBO_STARTER_BLOCKED_*]
-     * **方向相反**的那一道：那一组是「先开了只参与组合，再想拿它当起点」，这一组是反过来的。
+     * 「这颗键已经是按住组合的起点，不能设成只参与非首键的按住组合」—— 与 [COMBO_STARTER_BLOCKED_*]
+     * **方向相反**的那一道：那一组是「先开了只参与非首键的按住组合，再想拿它当起点」，这一组是反过来的。
      *
-     *  两条说的是同一个矛盾的两端（起点键必须按住到点，而只参与组合的键不判单键手势），
+     *  两条说的是同一个矛盾的两端（起点键必须按住到点，而只参与非首键的按住组合的键不判单键手势），
      *  所以正文里那个 `%s` 同样是**键名**（画成名字框）。
      *
      *  [COMBO_ONLY_BLOCKED_TAIL] 是第二段「怎么解」：这一条不像反向那道那样无可挽回 ——
@@ -626,7 +632,7 @@ object Strings {
     const val COMBO_ONLY_BLOCKED_BODY = "combo.combo_only_blocked_body"
 
     /**
-     * 同一道拦截的另一半：这颗键已经是某档**等待组合的成员**，不能再设成「只参与组合」。
+     * 同一道拦截的另一半：这颗键已经是某档**等待组合的成员**，不能再设成「只参与非首键的按住组合」。
      *
      *  与 [COMBO_ONLY_BLOCKED_BODY]（按住组合的起点）是两个方向、同一条矛盾 ——
      *  两处都拦，用户不管从哪头配都走不进那个自相矛盾的状态。
@@ -815,6 +821,9 @@ object Strings {
     const val COMMAND_NEED_STEP = "command.need_step"
     const val COMMAND_NAME_HINT = "command.name_hint"
     const val COMMAND_NO_SAVED_COMMANDS = "command.no_saved_commands"
+
+    /** 命令库**读不出来**（文件被手改坏 / 权限不足）—— 与「一条都没有」分开说，后者会让人以为是自己删光了。 */
+    const val COMMAND_UNREADABLE = "command.unreadable"
 
     /** 「命令列表」编辑态：删掉勾中那几条的确认窗（标题 / 正文，正文里报条数）。 */
     const val COMMAND_DELETE_PICKED_TITLE = "command.delete_picked_title"
@@ -1079,6 +1088,9 @@ object Strings {
     const val COMMAND_FAILURE_REF_NOT_ALLOWED = "command_failure.ref_not_allowed"
     const val COMMAND_FAILURE_REF_ONLY_SINGLE = "command_failure.ref_only_single"
     const val COMMAND_FAILURE_UNKNOWN = "command_failure.unknown"
+
+    /** 「结束应用」指向本模块自己 —— 拒绝执行那一档（与 `unknown` 分开：那句会指错方向）。 */
+    const val COMMAND_FAILURE_SELF_TARGET = "command_failure.self_target"
     const val COMMON_BACK = "common.back"
 
     /**
@@ -1404,6 +1416,9 @@ object Strings {
     const val HOME_ACTIVATION_DISABLED = "home.activation_disabled"
     const val HOME_ACTIVATION_INACTIVE = "home.activation_inactive"
     const val HOME_ACTIVATION_INACTIVE_DESC = "home.activation_inactive_desc"
+
+    /** 链路自检那三条广播**注册失败**时说的那句（页面收不到状态，会一直显示「未就绪」）。 */
+    const val HOME_LINK_CHECK_FAILED = "home.link_check_failed"
     const val HOME_ACTIVATION_CHECKING = "home.activation_checking"
 
     /**
@@ -1458,6 +1473,14 @@ object Strings {
     const val HOME_VIBRATE_STRENGTH_WEAK = "home.vibrate_strength_weak"
     const val HOME_VIBRATE_STRENGTH_TITLE = "home.vibrate_strength_title"
     const val HOME_VIBRATE_TITLE = "home.vibrate_title"
+
+    /**
+     * 「无操作时振动」—— 与 [HOME_VIBRATE_TITLE]（真的执行了动作才振）是两颗开关：
+     * 这一颗管「按下去有反应、但这一档什么动作都没有」那一档，默认关。
+     */
+    const val HOME_VIBRATE_ON_NONE_TITLE = "home.vibrate_on_none_title"
+    const val HOME_VIBRATE_ON_NONE_DESC_ON = "home.vibrate_on_none_desc_on"
+    const val HOME_VIBRATE_ON_NONE_DESC_OFF = "home.vibrate_on_none_desc_off"
     const val LINK_CHECK_ALL_NORMAL = "link_check.all_normal"
     const val LINK_CHECK_BROKEN_FORMAT = "link_check.broken_format"
     const val LINK_CHECK_CONFIG_EFFECTIVE = "link_check.config_effective"
@@ -1625,6 +1648,17 @@ object Strings {
     /** 「页面缩放」那一行（只在「跟随系统显示大小」关掉时出现）。 */
     const val MORE_PAGE_SCALE = "more.page_scale"
     const val MORE_PAGE_SCALE_DESC = "more.page_scale_desc"
+
+    /**
+     * 「界面振动反馈」那一行（外观卡）—— 点行 / 拨开关 / 拖滑杆那一下。
+     *
+     *  与 `HOME_VIBRATE_TITLE`（命令**执行**时振一次）是两颗不同的开关，键前缀也跟着各自
+     *  所在的页面走：那一颗在「按键设置」页，这一颗在「更多选项」页。
+     */
+    const val MORE_UI_VIBRATE_TITLE = "more.ui_vibrate_title"
+    const val MORE_UI_VIBRATE_ON = "more.ui_vibrate_on"
+    const val MORE_UI_VIBRATE_OFF = "more.ui_vibrate_off"
+
     const val MORE_THEME_AUTO = "more.theme_auto"
 
     /** 「跟随系统 (Monet)」—— 跟随系统，且整页用系统那套壁纸取色。 */
@@ -1677,6 +1711,14 @@ object Strings {
     const val STATUS_DISABLED = "status.disabled"
     const val STATUS_HOST_STALE = "status.host_stale"
     const val STATUS_KEY_DISABLED = "status.key_disabled"
+
+    /**
+     * 整页闸门关着时那句**通用**原因（主开关 / 链路 / 只读三档共用一句）。
+     *
+     *  与 [STATUS_KEY_DISABLED] 分开：那句说的是「按键绑定关了」，而这一页改不动可能只是链路没
+     * 就绪或配置只读 —— 报错报错原因，用户会去翻一颗本来好好的开关。
+     */
+    const val STATUS_PAGE_LOCKED = "status.page_locked"
     const val STATUS_PENDING_OR_SCOPE = "status.pending_or_scope"
     const val STATUS_SERVICE_NOT_RUNNING = "status.service_not_running"
     const val STATUS_SYSTEM_STALE = "status.system_stale"
@@ -1759,6 +1801,14 @@ object Strings {
     const val TOAST_LOG_EXPORT_FAILED = "toast.log_export_failed"
     const val TOAST_SERVICE_RESTART_FAILED = "toast.service_restart_failed"
     const val TOAST_SERVICE_RESTARTED = "toast.service_restarted"
+
+    /**
+     * 「重启服务」这一下没杀页面，而是先把宿主重载掉 —— 宿主进程里跑的还是老代码时说的那句。
+     *
+     *  为什么单独一句：这种情况不是失败（页面没丢、宿主随后会自己重来），说「重启失败」会让人
+     *  去检查别的东西；用户该做的只是**再点一次**。
+     */
+    const val TOAST_SERVICE_RESTART_NEED_RELAUNCH = "toast.service_restart_need_relaunch"
     const val TOOL_MINI_WINDOW = "tool.mini_window"
     const val TOOL_OPEN_APP = "tool.open_app"
     const val TOOL_SYSTEM_SWITCHES = "tool.system_switches"

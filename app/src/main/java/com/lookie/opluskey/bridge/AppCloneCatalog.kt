@@ -194,7 +194,9 @@ internal object AppCloneCatalog {
         //  界面上「微信 1」被画成「微信」，与真主用户那一行同名（撞号）。
         if (!already) {
             unresolvedUsers += userId
-            XLog.w("槽号：user=$userId 不在分身用户表里（${known.joinToString()}），按 user id 显示")
+            //  报**重列之后**那张表：`known` 是缓存里那份（用户明明不在里面才走到这一步），
+            //  把它打出来等于告诉排查的人「这个 user 不在它已经不在的那张表里」。
+            XLog.w("槽号：user=$userId 不在分身用户表里（${fresh.joinToString()}），按 user id 显示")
         }
         return UNKNOWN_SLOT
     }

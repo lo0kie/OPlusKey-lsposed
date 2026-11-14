@@ -90,7 +90,7 @@ private const val HOLD_FOLLOWER_WINDOW_MS = 150L
  *  **「松手时触发」的键没有这条上界**：那一档到点并不执行（动作押在抬手），所以「已经执行过」不成立
  *  —— 按住手势要的正是「按住久一点再补一颗」。凑成之后那颗键的状态机被摘掉，押着的那次长按跟着没。
  *
- *  这条与「只参与组合」（`KeyConfig.comboOnly`）是两件事：那个说的是「这颗键不判单键」，
+ *  这条与「只参与非首键的按住组合」（`KeyConfig.comboOnly`）是两件事：那个说的是「这颗键不判单键」，
  *  这个说的是「按住了多久都还算组合的第一颗」。
  *
  *  长按是另一条判据：必须成员**都还按着**（读 [down]）—— 先松开一颗就凑不出「一起按住不放」。
@@ -234,7 +234,7 @@ internal class ComboDetector(
      *
      *  组合只在这颗键的长按判出来**之前**成立：判过之后它已经执行了自己的长按动作，再认组合
      *  就是一次按压两个动作。判定层读不到 `KeyConfig`，所以由装配方按那颗键自己的
-     *  `longPressMs` 算；「只参与组合」的键恒返回 `false`（它压根不判单键）。
+     *  `longPressMs` 算；「只参与非首键的按住组合」的键恒返回 `false`（它压根不判单键）。
      */
     private val longPressPassed: (KeyId, Long, Long) -> Boolean = { _, _, _ -> false },
 ) {
@@ -893,8 +893,11 @@ internal class ComboDetector(
             } ?: return null
         //  成员按**命中那一档自己的清单**取：候选里夹的别的键不算成员（它们还得自己走单键判定）
         val members = List(hit.keys.size) { i -> pool.first { it.id == hit.keys[i] } }
-        //  间隔按**成员**里最早那一颗算（候选里可能夹着不相干的键，那是别人的按下时刻）
-        val span = now - (recent[members.first()] ?: now)
+        //  间隔按**成员**里最早那一颗算（候选里可能夹着不相干的键，那是别人的按下时刻）。
+        //  取 `minOf` 而不是 `members.first()`：成员顺序是**配置里的键序**，与真实按下顺序
+        //  不一定一致（用户先按配置里的第二颗）。拿配置首键算，跨度会被算小，超过这一档
+        //  自己窗口的组合也照样认下 —— 误触发，且这几颗键的单击 / 长按被一起吞掉。
+        val span = now - members.minOf { recent[it] ?: now }
         if (hit.isHold) {
             //  按住档：**首键按多久都行**（下限由 [holdReady] 管），但后续成员每颗都得是
             //  窗口内刚落下的 —— 那个窗口是常量（见 [HOLD_FOLLOWER_WINDOW_MS]），

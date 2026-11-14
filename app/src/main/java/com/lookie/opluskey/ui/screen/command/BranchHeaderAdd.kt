@@ -7,6 +7,7 @@ import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.HeaderIconButton
 import com.lookie.opluskey.ui.feedback.DisabledHint
+import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import io.github.suqi8.coui.kmp.basic.Icon
 
@@ -41,14 +42,22 @@ import io.github.suqi8.coui.kmp.basic.Icon
 internal fun SettingsPage.BranchHeaderAdd() {
     val scenes = branchDraftNow().scenes
     val atLimit = scenes.size >= SceneRule.MAX_SCENES
+    //  **整页闸门也要盖到这颗**（主开关 / 链路 / 只读）：只盖行的话，只读态下还能插一块空场景，
+    //  而空条件让 `isReady` 为假 —— 草稿既退不出也存不下。原因与行上那颗同一句。
+    val blocked = branchWritableHint()
     DisabledHint(
-        //  只在到顶时给这一句：没到顶时这颗按钮能点，`null` 就是「这一块没有自己的说法」——
-        //  不许拿页面那句「整页为什么改不了」来顶替（那一句说的是另一件事）。
-        text = if (atLimit) I18n.format(Strings.COMMAND_BRANCH_LIMIT, SceneRule.MAX_SCENES) else null,
+        //  到顶与「整页改不动」是两件事，各说各的；都没事时 `null` = 这一块没有自己的说法。
+        //  （不许拿页面那句「整页为什么改不了」去顶替到顶那一句 —— 那一句说的是另一件事。）
+        text =
+            when {
+                blocked != null -> HintText(blocked)
+                atLimit -> HintText(I18n.format(Strings.COMMAND_BRANCH_LIMIT, SceneRule.MAX_SCENES))
+                else -> null
+            },
     ) {
         //  「按一下振一下」由顶栏那一层统一挂（见 `PageHeader` 的 `headerPressTick`），这里不再自己振
         HeaderIconButton(
-            enabled = !atLimit,
+            enabled = blocked == null && !atLimit,
             onClick = { addScene() },
         ) {
             Icon(

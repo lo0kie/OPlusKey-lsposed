@@ -61,6 +61,12 @@ echo "用 $GRADLE 构建（当前目录 $PWD）"
 # 产物搬进 patches/repo，版本改写为 $VER_TO
 SRC="coui-ui/build/repository/local/io/github/suqi8/coui/kmp/coui-ui-android/$VER_FROM"
 DST="$ROOT/patches/repo/io/github/suqi8/coui/kmp/coui-ui-android/$VER_TO"
+#  **先确认源在，再动 DST**：先 `rm -rf` 再 `cp` 的话，源缺一个（构建没出产物 / 版本号看错）
+#  就把 `patches/repo` 里已发布的那份**删空**，而脚本还回 0 —— 仓库从此缺这一版，且没人发现。
+if [ ! -d "$SRC" ]; then
+  echo "源目录不存在：$SRC —— 不碰 $DST（先确认 publish 成功、VER_FROM 对不对）" >&2
+  exit 1
+fi
 rm -rf "$DST"
 mkdir -p "$DST"
 for f in "$SRC"/*; do

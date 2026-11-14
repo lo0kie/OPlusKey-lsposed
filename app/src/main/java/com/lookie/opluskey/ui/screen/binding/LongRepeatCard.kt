@@ -219,7 +219,13 @@ private fun longPressBlockedReason(
         }
 
         !pageEnabled -> {
-            I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，按系统原生行为")
+            //  三种原因共用这一档（主开关 / 链路未就绪 / 配置只读），所以只能说**通用**的那一句 ——
+            //  报「按键绑定已关闭」会让用户去翻一颗本来好好的开关（`STATUS_KEY_DISABLED` 的正文
+            //  说的就是「按键绑定」这件事）。
+            I18n.get(
+                Strings.STATUS_PAGE_LOCKED,
+                "这一页暂不可修改（主开关已关闭 / 链路未就绪 / 配置只读），按系统原生行为",
+            )
         }
 
         else -> {

@@ -115,7 +115,7 @@ data class SceneRule(
      *  两个读者：判定侧（`releaseBound` 要不要为真）与广播（宿主算给注入侧那一位）。
      *  停用的块不算：它命中不了，抬手那一刻也不该为它发 `Release`。
      */
-    val hasRelease: Boolean get() = enabled && releaseOn && release.isBound
+    val hasRelease: Boolean get() = enabled && isReady && releaseOn && release.isBound
 
     /**
      * 这一块**有没有自己的「单击后长按」松手动作** —— 与 [hasRelease] 同一条判据。
@@ -123,7 +123,7 @@ data class SceneRule(
      *  读者也是两个：判定侧（`finishLong` 要不要发 `ClickThenLongRelease`）与广播
      *  （宿主算给注入侧那一位 —— 注入侧看不到场景表）。
      */
-    val hasChainRelease: Boolean get() = enabled && chainReleaseOn && chainRelease.isBound
+    val hasChainRelease: Boolean get() = enabled && isReady && chainReleaseOn && chainRelease.isBound
 
     /**
      * 这一块**开着、且长按这一档配了动作** —— 「这一档到底有没有动作」只认这种块。
@@ -132,10 +132,10 @@ data class SceneRule(
      *  也就不该让「松手额外动作」成立。算上它的话，判定侧会白等一个窗口并发一条 `Release`，
      *  界面上「松手时触发」那一格还压不灰 —— 两处都指向一个不会发生的动作。
      */
-    val longBound: Boolean get() = enabled && (actions[GestureTrigger.LongPress] ?: Action.None).isBound
+    val longBound: Boolean get() = enabled && isReady && (actions[GestureTrigger.LongPress] ?: Action.None).isBound
 
     /** 同上，这一块给「单击后长按」配了动作。 */
-    val chainBound: Boolean get() = enabled && (actions[GestureTrigger.ClickThenLong] ?: Action.None).isBound
+    val chainBound: Boolean get() = enabled && isReady && (actions[GestureTrigger.ClickThenLong] ?: Action.None).isBound
 
     /**
      * 配完了没有 —— 至少一条条件、且每一条都**认得出并且取值填了**（`isUsable`）。

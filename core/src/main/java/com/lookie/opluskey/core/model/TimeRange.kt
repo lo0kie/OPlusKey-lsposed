@@ -105,8 +105,10 @@ data class TimeRange(
             if (parts.size != 2) return null
             //  两段各自「解析不出来」与「越界」都收进 `takeIf`，最后只剩一个结论 ——
             //  逐条 `?: return null` 会顶到 detekt 的 ReturnCount（4 档）
-            val hour = parts[0].trim().toIntOrNull()?.takeIf { it in 0..23 }
+            val hour = parts[0].trim().toIntOrNull()?.takeIf { it in 0..24 }
             val minute = parts[1].trim().toIntOrNull()?.takeIf { it in 0..59 }
+            //  **`24:00` 是合法终点**（[clock] 写的也是它）；`24:01` 之类仍然认不出
+            if (hour == 24 && minute != 0) return null
             return if (hour != null && minute != null) hour * 60 + minute else null
         }
 
@@ -117,9 +119,11 @@ data class TimeRange(
          *  （与 `CommandKind.fromId` 用 `Locale.ROOT` 同一条纪律）。越界值夹到两端。
          */
         fun clock(minuteOfDay: Int): String {
-            val h = (minuteOfDay / 60).coerceIn(0, 23)
-            val m = (minuteOfDay % 60).coerceIn(0, 59)
-            return String.format(Locale.ROOT, "%02d:%02d", h, m)
+            //  **一天的结束写成 `24:00`**（= [MINUTES_PER_DAY]）：区间末端用它表示「到当天结束」。
+            //  一律夹到 23 的话它会变成 `23:00` —— 少一小时，而且 [minuteOf] 也认不回原值。
+            if (minuteOfDay >= MINUTES_PER_DAY) return "24:00"
+            val m0 = minuteOfDay.coerceAtLeast(0)
+            return String.format(Locale.ROOT, "%02d:%02d", m0 / 60, m0 % 60)
         }
     }
 }

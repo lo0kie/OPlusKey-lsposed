@@ -83,6 +83,8 @@ private fun SettingsPage.finishRestart(
     val acked =
         java.util.concurrent.atomic
             .AtomicBoolean(false)
+    //  发请求那一刻（判「回执迟不迟」，见下面那一支）
+    val sentAt = android.os.SystemClock.elapsedRealtime()
     val receiver =
         object : android.content.BroadcastReceiver() {
             override fun onReceive(
@@ -90,6 +92,24 @@ private fun SettingsPage.finishRestart(
                 intent: android.content.Intent?,
             ) {
                 if (!acked.compareAndSet(false, true)) return
+                val late = android.os.SystemClock.elapsedRealtime() - sentAt
+                if (late > ACK_LATE_MS) {
+                    //  **回执来得太晚 ⇒ 宿主还在老顺序上**（先 `startPage`、后回执）：它拉起的那一刻
+                    //  本页这个实例还活着（`singleInstance` 只会把它提到前台），这时候再自杀就是
+                    //  「页面没了、也没人再把它叫回来」—— 2026-11-15 真机踩到的正是这一档。
+                    //  所以不杀自己，并把「需要重启一次」说出来：
+                    //  这一轮里宿主随后会看到「页面还在」而自杀重来，它重来后才加载新代码；
+                    //  下一次点重启就走新顺序（回执即刻到、本页先死、新进程再被拉起）。
+                    XLog.w("重启：回执迟了 ${late}ms（宿主是老顺序）⇒ 不杀本进程，请再点一次")
+                    requestSystemToast(
+                        context,
+                        I18n.get(
+                            Strings.TOAST_SERVICE_RESTART_NEED_RELAUNCH,
+                            "宿主还是旧代码：已替你重载宿主，请再点一次重启服务",
+                        ),
+                    )
+                    return
+                }
                 XLog.w("重启：宿主主进程回了回执（已接下这一轮），${PAGE_KILL_DELAY_MS}ms 后杀本进程")
                 // 回执用**注入侧**那条通道弹：本进程马上要死，页面里的提示条留不住；
                 // 注入侧（system_server）那个 toast 不随这两个进程消失。
@@ -126,8 +146,23 @@ private fun SettingsPage.finishRestart(
     }, ACK_WAIT_MS)
 }
 
-/** 等宿主回执的上限：同 uid 进程间一条广播的往返是毫秒级，1 秒已经够宽裕（等不到就是不接）。 */
+/**
+ * 等宿主回执的上限。
+ *
+ *  宿主收到请求后**立刻**回执、随后才排拉起（顺序见 `host/PageRelaunch`：必须先回执，页面
+ *  才先死，`startPage` 才会拉起新进程）。同 uid 进程间一条广播是毫秒级，1 秒已经很宽裕；
+ *  等不到就是不接：本页**不自杀**，报一句失败留在原地（自杀等于把页面弄丢）。
+ */
 private const val ACK_WAIT_MS = 1_000L
+
+/**
+ * 回执「迟了」的门槛（毫秒）。
+ *
+ *  新宿主是**收到请求立刻**回执（同 uid 进程间一条广播，几毫秒）；老宿主是「先 `startPage`、
+ *  900ms 之后才回执」。所以超过这个值就说明宿主还是老顺序 —— 那时页面**绝不能**自杀
+ *  （它拉起的是本页这个旧实例，自杀就等于把页面弄丢）。
+ */
+private const val ACK_LATE_MS = 600L
 
 /** 本包此刻的进程表（`包名:pid` 拼成一行）—— 只进日志。
  *

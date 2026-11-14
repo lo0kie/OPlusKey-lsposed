@@ -353,7 +353,7 @@ internal fun SettingsPage.bindingTargetEnabled(s: Screen): Boolean =
         }
 
         // 一颗键那一页吃它自己的 `enabled`（模块总闸另有一层，关着时整页走 `blockedReason`），
-        // 外加**「只参与组合按键」**：那颗键不判单键手势，配一档动作也没处执行 —— 整页灰掉。
+        // 外加**「只参与非首键的按住组合」**：那颗键不判单键手势，配一档动作也没处执行 —— 整页灰掉。
         // **只灰绑定页**：独立设置 / 按键设置不走这个函数，用户仍要能把这一位关回来。
         else -> {
             val cfg = configState.config.value
@@ -372,7 +372,7 @@ internal fun SettingsPage.bindingTargetEnabled(s: Screen): Boolean =
  * ## 两个来源，同一条结论
  *
  *  · **这一份自己被停用**（`enabled = false`）—— 用户把它关了；
- *  · **「只参与组合按键」**（`KeyConfig.comboOnly`）—— 这颗键不判单键手势，配一档动作没处执行。
+ *  · **「只参与非首键的按住组合」**（`KeyConfig.comboOnly`）—— 这颗键不判单键手势，配一档动作没处执行。
  *
  *  后者原先只拦住绑定页整页（见 [bindingTargetEnabled]），这一族四处却还亮着：系统场景能点进去、
  *  FAB 还在、菜单里那行还能选 —— 而那里配出来的东西永远不会被执行。用户口径是「一并不给用」，
@@ -380,7 +380,7 @@ internal fun SettingsPage.bindingTargetEnabled(s: Screen): Boolean =
  *
  *  说法**不在这里另写**：停用那句与「独立设置」入口、两页顶栏那颗设置键同一个出口
  *  （[SettingsTarget.disabledReason]，`按键「X」已停用` / `组合键「X」已停用`）；
- *  「只参与组合按键」那句与绑定页整页灰共用 `BINDING_COMBO_ONLY_BLOCKED` —— 同一件事在页面上
+ *  「只参与非首键的按住组合」那句与绑定页整页灰共用 `BINDING_COMBO_ONLY_BLOCKED` —— 同一件事在页面上
  *  与这四个入口上说成两句不同的话，用户会以为是两个毛病。
  *
  *  **只认「这一份」**：整页闸门（主开关 / 链路 / 只读）不在这里 —— 那是另一件事，
@@ -395,7 +395,7 @@ internal fun SettingsPage.bindingTargetStopped(target: BindingTarget): String? {
                 SettingsTarget.Key(target.id).disabledReason(cfg)
                     ?: if (cfg.key(target.id).comboOnly) {
                         HintText(
-                            I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED, "按键 %s 只参与组合按键"),
+                            I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED, "按键 %s 只能作按住组合的后续成员"),
                             listOf(keyName(target.id)),
                         )
                     } else {

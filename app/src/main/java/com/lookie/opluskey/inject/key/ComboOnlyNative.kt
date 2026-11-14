@@ -27,7 +27,7 @@ private const val ECHO_TTL_MS = 2_000L
 private const val HOLD_GUARD_MS = 10_000L
 
 /**
- * 「只参与组合」那颗键的收尾账本 —— **压住的那一下怎么还给系统**，只有这一处说了算。
+ * 「只参与非首键的按住组合」那颗键的收尾账本 —— **压住的那一下怎么还给系统**，只有这一处说了算。
  *
  * ## 为什么按下要压住
  *
@@ -217,14 +217,14 @@ internal class ComboOnlyNative(
             }
         }
         if (taken) {
-            XLog.w("${id.label}（$point）：这一下归组合（只参与组合），连原生事件一起吞掉")
+            XLog.w("${id.label}（$point）：这一下归组合（只参与非首键的按住组合），连原生事件一起吞掉")
         } else if (waitForRelease) {
-            XLog.w("${id.label}（$point）：按下先压住（只参与组合，按住手势），抬手时再还回去")
+            XLog.w("${id.label}（$point）：按下先压住（只参与非首键的按住组合），抬手时再还回去")
         } else {
             //  时间戳当这一下的**版本号**：同一颗键在窗口内又被按到时，旧任务到点会发现
             //  账已经被新的一次改写了，不会替新的那一下做主（补发错次数比不补发更难查）。
             scheduleFallback(id, keyEvent.keyCode, downAt)
-            XLog.w("${id.label}（$point）：按下先压住（只参与组合），窗口内没凑成就把原生事件还回去")
+            XLog.w("${id.label}（$point）：按下先压住（只参与非首键的按住组合），窗口内没凑成就把原生事件还回去")
         }
         return true
     }
@@ -274,17 +274,27 @@ internal class ComboOnlyNative(
                 //  这一下从此结清：留着这笔账会让「下一颗键按下照原样放行、抬手却被吞」
                 //  —— 系统那边那颗键就卡在按住状态。
                 swallowed.remove(id.id)
-                XLog.w("${id.label}（$point）：补发的原生按下已松开（只参与组合）")
+                XLog.w("${id.label}（$point）：补发的原生按下已松开（只参与非首键的按住组合）")
                 return true
             }
 
             deferredCode != null && !claimed -> {
-                XLog.w("${id.label}（$point）：没凑成组合（只参与组合），抬手时把原生短按补发回去")
+                XLog.w("${id.label}（$point）：没凑成组合（只参与非首键的按住组合），抬手时把原生短按补发回去")
+                return true
+            }
+
+            //  被组合认领的这一下：**DOWN 已经被吞**（「要压」那一段必进 `swallowed`），
+            //  真实抬手必须跟着吞。认领那一刻 `scheduleFallback` 会把 `swallowed` 摘掉，
+            //  于是这里会落到最后那行 `remove` 返回 false ⇒ 系统收到一条**没有 DOWN 的孤立抬手**，
+            //  按 UP 判定的原生动作（相机快门、电源短按那一类）可能被误触发。
+            claimed -> {
+                swallowed.remove(id.id)
+                XLog.w("${id.label}（$point）：这一下归组合，真实抬手一并吞掉")
                 return true
             }
 
             stillPending -> {
-                XLog.w("${id.label}（$point）：窗口内就松手了（只参与组合），到点补一对原生短按")
+                XLog.w("${id.label}（$point）：窗口内就松手了（只参与非首键的按住组合），到点补一对原生短按")
                 return true
             }
         }
@@ -315,59 +325,75 @@ internal class ComboOnlyNative(
         val wait = (downAt + windowMs(id) - SystemClock.uptimeMillis()).coerceAtLeast(0L)
         handler.postDelayed(
             {
-                //  四种结局各自只做一件事，「改表」与「投递」在同一把锁里：
-                //  · 账已经换过（同一颗键又被按下）⇒ 什么都不做，别替新的那一下做主；
-                //  · 被组合认领了（晚到）⇒ 什么都不做；
-                //  · 窗口内就松手了 ⇒ 补一对（系统只该看到一闪）；
-                //  · 还按着 ⇒ 补 DOWN，记进 holding，等真实抬手收尾。
-                var outcome = 0
-                synchronized(lock) {
-                    if (pending.remove(id.id) == downAt) {
-                        when {
-                            combo.comboCovers(id) -> {
-                                swallowed.remove(id.id)
-                                released.remove(id.id)
-                                outcome = 1
-                            }
-
-                            released.remove(id.id) -> {
-                                swallowed.remove(id.id)
-                                forward(keyCode, KeyEvent.ACTION_DOWN, 0)
-                                forward(keyCode, KeyEvent.ACTION_UP, 0)
-                                outcome = 3
-                            }
-
-                            swallowed.contains(id.id) -> {
-                                holding[id.id] = keyCode
-                                forward(keyCode, KeyEvent.ACTION_DOWN, 0)
-                                outcome = 2
-                            }
-
-                            else -> {
-                                forward(keyCode, KeyEvent.ACTION_DOWN, 0)
-                                forward(keyCode, KeyEvent.ACTION_UP, 0)
-                                outcome = 3
-                            }
-                        }
-                    }
-                }
-                when (outcome) {
-                    1 -> {
-                        XLog.w("${id.label}：这一下被组合认领（晚到），不再补发原生事件")
-                    }
-
-                    2 -> {
-                        scheduleHoldGuard(id, keyCode)
-                        XLog.w("${id.label}：没凑成组合（只参与组合），原生按下已补发（按住可出长按）")
-                    }
-
-                    3 -> {
-                        XLog.w("${id.label}：没凑成组合（只参与组合），已把原生短按补发回去")
-                    }
+                //  这一枪跑在 **system_server 的主 looper** 上：抛出去就是整机崩。同族的
+                //  `scheduleHoldGuard` 与 `GestureDetector` 那几枪都包了兜底，这两枪当初漏了 ——
+                //  现在只是 callee 恰好不抛，属于潜伏。正文拆到 [fallbackTick] 只为整段包得住。
+                try {
+                    fallbackTick(id, keyCode, downAt)
+                } catch (e: Throwable) {
+                    XLog.w("${id.label}：组合窗口到点那一枪失败（已忽略）", e)
                 }
             },
             wait,
         )
+    }
+
+    /** [scheduleFallback] 那一枪的正文（见那里为什么单独拆出来）。 */
+    private fun fallbackTick(
+        id: KeyId,
+        keyCode: Int,
+        downAt: Long,
+    ) {
+        //  四种结局各自只做一件事，「改表」与「投递」在同一把锁里：
+        //  · 账已经换过（同一颗键又被按下）⇒ 什么都不做，别替新的那一下做主；
+        //  · 被组合认领了（晚到）⇒ 什么都不做；
+        //  · 窗口内就松手了 ⇒ 补一对（系统只该看到一闪）；
+        //  · 还按着 ⇒ 补 DOWN，记进 holding，等真实抬手收尾。
+        var outcome = 0
+        synchronized(lock) {
+            if (pending.remove(id.id) == downAt) {
+                when {
+                    combo.comboCovers(id) -> {
+                        swallowed.remove(id.id)
+                        released.remove(id.id)
+                        outcome = 1
+                    }
+
+                    released.remove(id.id) -> {
+                        swallowed.remove(id.id)
+                        forward(keyCode, KeyEvent.ACTION_DOWN, 0)
+                        forward(keyCode, KeyEvent.ACTION_UP, 0)
+                        outcome = 3
+                    }
+
+                    swallowed.contains(id.id) -> {
+                        holding[id.id] = keyCode
+                        forward(keyCode, KeyEvent.ACTION_DOWN, 0)
+                        outcome = 2
+                    }
+
+                    else -> {
+                        forward(keyCode, KeyEvent.ACTION_DOWN, 0)
+                        forward(keyCode, KeyEvent.ACTION_UP, 0)
+                        outcome = 3
+                    }
+                }
+            }
+        }
+        when (outcome) {
+            1 -> {
+                XLog.w("${id.label}：这一下被组合认领（晚到），不再补发原生事件")
+            }
+
+            2 -> {
+                scheduleHoldGuard(id, keyCode)
+                XLog.w("${id.label}：没凑成组合（只参与非首键的按住组合），原生按下已补发（按住可出长按）")
+            }
+
+            3 -> {
+                XLog.w("${id.label}：没凑成组合（只参与非首键的按住组合），已把原生短按补发回去")
+            }
+        }
     }
 
     /**
@@ -381,19 +407,32 @@ internal class ComboOnlyNative(
     ) {
         handler.postDelayed(
             {
-                var orphan = false
-                synchronized(lock) {
-                    if (holding.remove(id.id) != null) {
-                        forward(keyCode, KeyEvent.ACTION_UP, 0)
-                        orphan = true
-                    }
-                }
-                if (orphan) {
-                    XLog.w("${id.label}：按住超过 ${HOLD_GUARD_MS}ms 仍没等到抬手，替它补了一条抬起")
+                //  同 [scheduleFallback]：主 looper 上不许抛出
+                try {
+                    holdGuardTick(id, keyCode)
+                } catch (e: Throwable) {
+                    XLog.w("${id.label}：按住兜底那一枪失败（已忽略）", e)
                 }
             },
             HOLD_GUARD_MS,
         )
+    }
+
+    /** [scheduleHoldGuard] 那一枪的正文。 */
+    private fun holdGuardTick(
+        id: KeyId,
+        keyCode: Int,
+    ) {
+        var orphan = false
+        synchronized(lock) {
+            if (holding.remove(id.id) != null) {
+                forward(keyCode, KeyEvent.ACTION_UP, 0)
+                orphan = true
+            }
+        }
+        if (orphan) {
+            XLog.w("${id.label}：按住超过 ${HOLD_GUARD_MS}ms 仍没等到抬手，替它补了一条抬起")
+        }
     }
 
     /**
@@ -437,7 +476,7 @@ internal class ComboOnlyNative(
                     else -> Echo(cur.left - 1, cur.until)
                 }
             }
-            XLog.w("只参与组合：原生事件没补出去（keyevent:$keyCode action=$action）")
+            XLog.w("只参与非首键的按住组合：原生事件没补出去（keyevent:$keyCode action=$action）")
         }
     }
 }

@@ -485,17 +485,30 @@ private fun CommandTileName(cmd: Command) {
  *  · 文案通用一句（不按当前那一栏分单条 / 多条）：两栏是同一个命令库的两份视图。
  *  · 不铺卡片：这块地方本来就没东西，画一张空壳卡像「卡在、内容没出来」。
  *  · 字形比「选择应用」页那几块空态小一档（那是整页空态，这里只是页内一段），取色同一份。
+ *
+ *  @param unreadable 这一页空着是因为**命令库读不出来**（`ConfigState.commandsReadOnly`）——
+ *   那时说「没有保存的命令」是错的：用户会以为是自己删光了，还找不到为什么存不进去。
  */
 @Composable
-internal fun SavedCommandEmptyState() {
+internal fun SavedCommandEmptyState(unreadable: Boolean = false) {
     //  排版走 [Feedback]（与「选择应用」「条件执行」那两块同一份）；这一档只是页内一段，
     //  所以上下留一档白，不当整页空态居中。
     Feedback(
         glyph = { tint ->
-            //  与「选择应用」「条件执行」那两块**同一颗脸**：三处说的都是「这里什么都没有」。
-            Icon(PageIcons.NoMatch, contentDescription = null, modifier = Modifier.fillMaxSize(), tint = tint)
+            //  读不出来换成告警那颗：同一处空态，但这是「出事了」而不是「还没有」。
+            Icon(
+                if (unreadable) PageIcons.HintAlert else PageIcons.NoMatch,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                tint = tint,
+            )
         },
-        text = I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令"),
+        text =
+            if (unreadable) {
+                I18n.get(Strings.COMMAND_UNREADABLE, "命令库无法读取（文件损坏或权限不足），已切换为只读")
+            } else {
+                I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令")
+            },
         modifier = Modifier.fillMaxWidth().padding(vertical = EMPTY_STATE_VERTICAL_PADDING),
     )
 }

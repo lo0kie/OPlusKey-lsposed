@@ -46,6 +46,14 @@ interface OwnSettings {
     /** 这一档自己的「振动强度」（弱 / 中 / 强，见 `GlobalConfig.VIBRATE_STRENGTH_RANGE`）。 */
     val vibrateStrength: Int
 
+    /**
+     * 这一档自己的「**无操作时振动**」—— 只在 [useOwnSettings] 开着时算数。
+     *
+     *  与 [vibrate] 分开：那一位管「真的执行了动作」的那一下；这一位管「按了、但这一档
+     *  什么动作都没有」时也给一次触觉回执 —— 否则用户分不出「这一档没绑」与「模块没生效」。
+     */
+    val vibrateOnNone: Boolean
+
     /** 这一档自己的「执行时提示」—— 只在 [useOwnSettings] 开着时算数。 */
     val toastOnRun: Boolean
 

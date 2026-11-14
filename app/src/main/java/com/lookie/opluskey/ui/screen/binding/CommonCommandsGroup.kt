@@ -64,16 +64,18 @@ internal fun SettingsPage.CommonCommandsGroup(
     target: BindingTarget,
     enabled: Boolean,
 ) {
-    //  总开关（`CommonCommands.SHOW`）关着就整段不画。判断放在这一支里而不是调用点，
-    //  这样调用点那边一行都不动 —— 关回去时也不必回去找哪一页少画了一段。
-    if (!CommonCommands.SHOW) return
+    //  两档总闸：模块自带的 `CommonCommands.SHOW`（编译期常量），以及用户在「按键设置」里
+    //  拨的 `GlobalConfig.showCommonCommands`（纯界面项，只落盘、不进广播）—— 任一关着就整段不画。
+    //  判断放在这一支里而不是调用点，这样调用点那边一行都不动 —— 关回去时也不必回去找哪一页少画了一段。
+    val global = configState.config.value.global
+    if (!CommonCommands.SHOW || !global.showCommonCommands) return
     //  **只画这一条勾了「在按键绑定页显示」的那些**（每条各有自己的开关，见「常用命令」页的行菜单）。
     //  没有「全显示 / 全隐藏」的总闸：常用命令只是快捷方式，哪几条值得常按由用户自己挑。
     //
     //  一张清单都没钉住、或者一条都没勾显示时，这一段**仍在**，只是下面换成一行「去添加」——
     //  整段不画的话，这一页上就看不出还有「常用命令」这回事，用户也不会想到去别处先建一条再回来。
     //  这与下面「自定义命令」那一段同一个读法。
-    val all = configState.config.value.global.commonCommands
+    val all = global.commonCommands
     val entries = all.filter { it.showInBinding }
     //  这一档现在绑的是哪一条 —— 「勾」只服务这一段的**独立**身份：它不在下面那个网格里，
     //  网格不会替它点亮任何一格，不在这里标就完全看不出绑没绑上。

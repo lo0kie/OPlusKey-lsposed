@@ -82,7 +82,7 @@ internal fun SettingsPage.KeySettingsScreen(
         // 顶栏叠在内容上，顶部要自己让出（动态值）—— 这一页顶上那张卡自己带一档上边距
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
-        //  「只参与组合按键」开着时，这一页**只剩那一行能动**。
+        //  「只参与非首键的按住组合」开着时，这一页**只剩那一行能动**。
         //  这一位说的是「这颗键不判单键手势」—— 那么多击、接口、振动、提示就都没有执行的机会，
         //  亮着就是在骗人「还能调」。留那一行是因为**关回来**得走它（关不掉就成了死路）。
         //  判据与绑定页那一族同一份（`bindingTargetStopped`），两处各判一遍迟早漂。
@@ -114,7 +114,7 @@ internal fun SettingsPage.KeySettingsScreen(
             //  **显示用生效值、写入仍落到这一档**：总开关关着时那几项不参与取值，直接读
             //  `owner` 会让这一页显示「振动反馈：关」而按下去明明会振（口径见 `OwnSettingsCard`）。
             effective = cfg.effectiveFor(owner),
-            //  「只参与组合按键」时整张卡灰掉：接口 / 振动 / 提示都是**单键按下去那一下**的行为，
+            //  「只参与非首键的按住组合」时整张卡灰掉：接口 / 振动 / 提示都是**单键按下去那一下**的行为，
             //  这颗键不判单键手势，它们一次也用不上。灰着点一下落到页面那句原因上
             //  （`disabledClickReason` 的 comboOnly 那一支），卡片里不必再写一句。
             enabled = pageEnabled && !comboOnly,
@@ -148,7 +148,7 @@ internal fun SettingsPage.KeySettingsScreen(
         }
     }
 
-    //  「只参与组合」被拦下时的说明窗 —— **必须挂在这一页**：开关就在上面那张卡里，
+    //  「只参与非首键的按住组合」被拦下时的说明窗 —— **必须挂在这一页**：开关就在上面那张卡里，
     //  没有这一行就没人画那张窗，用户只会看到开关自己弹回来（`ComboOnlyBlocked`）。
     ComboOnlyBlockedDialog()
 }
@@ -174,14 +174,14 @@ private fun SettingsPage.ExtraClicksCard(
     enabled: Boolean,
 ) {
     val key = cfg.key(target.id)
-    //  「只参与组合按键」开着时，这张卡里**只有那一行自己还能动**：以下几档都是单键手势，
+    //  「只参与非首键的按住组合」开着时，这张卡里**只有那一行自己还能动**：以下几档都是单键手势，
     //  这颗键不判单键手势 ⇒ 配了也没处执行。留中间这三行亮着，用户会以为「多击还能用」。
     //  点一下会落到页面那句原因上（`disabledClickReason` 的 comboOnly 那一支），不必在这重写。
     val restEnabled = enabled && !key.comboOnly
     CardList(
         rows =
             listOf(
-                //  「只参与组合按键」排在这一族的最前面：它决定这颗键**还算不算一颗单键** ——
+                //  「只参与非首键的按住组合」排在这一族的最前面：它决定这颗键**还算不算一颗单键** ——
                 //  开着时下面那几档配了也没处执行（绑定页整页灰，见 `bindingTargetEnabled`）。
                 comboOnlyRow(target, key, enabled),
                 //  双击排在三击上面：档位由少到多，与绑定页的页序（单击 / 双击 / 长按 / 三击）同一方向。
@@ -195,20 +195,20 @@ private fun SettingsPage.ExtraClicksCard(
 }
 
 /**
- * 「只参与组合按键」那一行 —— 这颗键不判单键手势、只等组合成员（见 `KeyConfig.comboOnly`）。
+ * 「只参与非首键的按住组合」那一行 —— 这颗键不判单键手势、只等组合成员（见 `KeyConfig.comboOnly`）。
  *
  *  与上面那张卡同族：**不吃 `useOwnSettings`**（公共设置里没有这一项，跟随无从谈起），
  *  只吃整页闸门。
  *
  *  开着时**绑定页整页灰掉**（`bindingTargetEnabled`）：这颗键不判单键手势，配一档动作没处执行。
  *  但**这一页照旧能改** —— 否则用户想关回来都点不动；页面上那句原因由
- *  `disabledClickReason` 给（「只参与组合按键」那一支）。
+ *  `disabledClickReason` 给（「只参与非首键的按住组合」那一支）。
  *
  *  ## 打开这一项要拦一道
  *
  *  这颗键如果已经是某档**按住组合的起点**（`Config.holdCombosStartedBy`），这一项就开不了：
- *  按住那一档要求起点键「按住到点」再松手，而只参与组合的键根本不判单键手势 —— 两个要求
- *  互斥，落下去就是一份自相矛盾的配置（与 `ComboActions.addCombo` 里「起点键只参与组合」
+ *  按住那一档要求起点键「按住到点」再松手，而只参与非首键的按住组合的键根本不判单键手势 —— 两个要求
+ *  互斥，落下去就是一份自相矛盾的配置（与 `ComboActions.addCombo` 里「起点键只参与非首键的按住组合」
  *  那一道拦截是同一条账，方向相反）。
  *
  *  拦法是**弹窗说明**而不是悄悄不生效：这一项点下去会变、配置却不变的话，用户看到的是一颗
@@ -221,8 +221,8 @@ private fun SettingsPage.comboOnlyRow(
     enabled: Boolean,
 ): CardRow =
     CardRow.Switch(
-        title = I18n.get(Strings.BINDING_COMBO_ONLY, "只参与组合按键"),
-        summaryOn = I18n.get(Strings.BINDING_COMBO_ONLY_ON, "单键手势交还系统，模块只用它凑组合"),
+        title = I18n.get(Strings.BINDING_COMBO_ONLY, "只参与非首键的按住组合"),
+        summaryOn = I18n.get(Strings.BINDING_COMBO_ONLY_ON, "单键手势交还系统，只作为按住组合的后续成员（不能当首键）"),
         summaryOff = I18n.get(Strings.BINDING_COMBO_ONLY_OFF, "单键手势由模块接管"),
         icon = PageIcons.ComboOnly,
         checked = key.comboOnly,
@@ -239,7 +239,7 @@ private fun SettingsPage.comboOnlyRow(
             starters.isNotEmpty() -> {
                 //  可能不止一档（同一颗键可以是好几个按住组合的起点），日志把挡着的都列出来
                 XLog.w(
-                    "只参与组合：${target.id.label} 是 ${starters.size} 档按住组合的起点" +
+                    "只参与非首键的按住组合：${target.id.label} 是 ${starters.size} 档按住组合的起点" +
                         "（${starters.joinToString { it.keys.joinToString("+") }}），拒绝开启",
                 )
                 ComboOnlyBlocked.ask(target.id, ComboOnlyBlocked.Reason.HOLD_STARTER)
@@ -247,7 +247,7 @@ private fun SettingsPage.comboOnlyRow(
 
             waits.isNotEmpty() -> {
                 XLog.w(
-                    "只参与组合：${target.id.label} 是 ${waits.size} 档等待组合的成员" +
+                    "只参与非首键的按住组合：${target.id.label} 是 ${waits.size} 档等待组合的成员" +
                         "（${waits.joinToString { it.keys.joinToString("+") }}），拒绝开启",
                 )
                 ComboOnlyBlocked.ask(target.id, ComboOnlyBlocked.Reason.WAIT_MEMBER)
@@ -258,7 +258,7 @@ private fun SettingsPage.comboOnlyRow(
                 val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(comboOnly = on)))
                 val what = "own_settings target=${settingsTargetLabel(target)} combo_only=${if (on) 1 else 0}"
                 writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
-                    switchNotice(I18n.get(Strings.BINDING_COMBO_ONLY, "只参与组合按键"), on)
+                    switchNotice(I18n.get(Strings.BINDING_COMBO_ONLY, "只参与非首键的按住组合"), on)
                 }
             }
         }
@@ -617,12 +617,36 @@ private fun ownSwitchNotice(
     values: OwnSettingsValues,
 ): String? =
     when (field) {
-        OwnField.USE_OWN -> switchNotice(I18n.get(Strings.SETTING_USE_OWN, "使用独立设置"), values.useOwnSettings)
-        OwnField.COLOR_OS -> switchNotice(I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"), values.colorOsApi)
-        OwnField.VIBRATE -> switchNotice(I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"), values.vibrate)
-        OwnField.TOAST -> switchNotice(I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"), values.toastOnRun)
-        OwnField.FLUID -> switchNotice(I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"), values.toastFluid)
-        OwnField.STRENGTH, OwnField.TEMPLATE -> null
+        OwnField.USE_OWN -> {
+            switchNotice(I18n.get(Strings.SETTING_USE_OWN, "使用独立设置"), values.useOwnSettings)
+        }
+
+        OwnField.COLOR_OS -> {
+            switchNotice(I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"), values.colorOsApi)
+        }
+
+        OwnField.VIBRATE -> {
+            switchNotice(I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"), values.vibrate)
+        }
+
+        OwnField.VIBRATE_ON_NONE -> {
+            switchNotice(
+                I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE, "无操作时振动"),
+                values.vibrateOnNone,
+            )
+        }
+
+        OwnField.TOAST -> {
+            switchNotice(I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"), values.toastOnRun)
+        }
+
+        OwnField.FLUID -> {
+            switchNotice(I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"), values.toastFluid)
+        }
+
+        OwnField.STRENGTH, OwnField.TEMPLATE -> {
+            null
+        }
     }
 
 /**
@@ -666,6 +690,7 @@ private fun SettingsPage.commitOwnField(
                     colorOsApi = cfgNow.global.colorOsApi,
                     vibrate = cfgNow.global.vibrate,
                     vibrateStrength = cfgNow.global.vibrateStrength,
+                    vibrateOnNone = cfgNow.global.vibrateOnNone,
                     toastOnRun = cfgNow.global.toastOnRun,
                     toastFluid = cfgNow.global.toastFluid,
                     toastTemplate = cfgNow.global.toastTemplate,

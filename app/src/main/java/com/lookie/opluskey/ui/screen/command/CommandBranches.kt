@@ -215,6 +215,12 @@ private val BRANCH_BODY_TRANSFORM: ContentTransform =
  * 里层再展开一遍就是同一条动画跑两遍（见 [NO_FRESH_ROW]）。
  */
 internal fun SettingsPage.addScene() {
+    //  **整页闸门先过**：只读 / 总闸关 / 链路未就绪时插出来的是一块永远填不完的空场景 ——
+    //  空条件让 `isReady` 为假，补填那一行自己又置灰，草稿退不出也存不下。
+    branchWritableHint()?.let { reason ->
+        hint(reason, slot = HINT_SLOT_DISABLED)
+        return
+    }
     val rules = branchDraftNow().scenes
     val onAdded: (Int) -> Unit = { branchDraftNow().freshId = it }
     //  **上限先判**：表满了就不该再听「还有场景没选完」那句 —— 那一句是「你可以再加，但先把这块填了」，

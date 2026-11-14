@@ -1,5 +1,7 @@
 package com.lookie.opluskey.core.model
 
+import com.lookie.opluskey.core.log.XLog
+
 // 「按键清单」的增删改 —— 与 `Config` 那批**只读取值**的方法分开放。
 //
 //  为什么不写在 `Config` 类里：那几个方法让类的方法数撞上 detekt 的 `TooManyFunctions`
@@ -7,13 +9,18 @@ package com.lookie.opluskey.core.model
 //  与「怎么读一份配置」分成两屏看。
 
 /**
- * 下一个可用的自定义键 id —— 序号**只增不减**（删掉中间那颗再收一颗，不能撞上还活着的 id）。
+ * 下一个可用的自定义键 id —— **现有最大序号 + 1**。
+ *
+ *  不回收「中间」的号：删掉第 2 颗再收一颗，拿到的仍是最大 + 1，不会撞上还活着的 id。
+ *  **但删掉最大的那颗之后，下一个会重新用上它** —— 配置里没有「历史最高号」这一位，
+ *  所以这里额外把**组合成员引用到的 id** 也算进「used」：那些引用还活在 `combos` 里，
+ *  复用同一个 id 会让旧组合突然指向新收的这颗键。
  */
 fun Config.nextCustomKeyId(): String {
-    //  **两份数据都要扫**：`customKeys` 是「有哪些键」，`keys` 里还可能留着已从清单摘掉的条目
-    //  （见 `ConfigActions` 那段说明）。只扫前者时，新分配的 id 会撞上那条还活着的条目，
-    //  `withCustomKey` 直接把它覆盖掉 —— 那颗键的绑定当场丢失。
-    val ids = customKeys.map { it.id } + keys.keys.map { it.id }
+    //  **三份数据都要扫**：`customKeys` 是「有哪些键」，`keys` 里还可能留着已从清单摘掉的条目
+    //  （见 `ConfigActions` 那段说明），`combos` 里还留着旧组合的成员 id。
+    //  只扫前者时，新分配的 id 会撞上那条还活着的条目，`withCustomKey` 直接把它覆盖掉。
+    val ids = customKeys.map { it.id } + keys.keys.map { it.id } + combos.flatMap { it.keys }
     val used = ids.mapNotNull { it.removePrefix(KeyId.CUSTOM_ID_PREFIX).toIntOrNull() }
     return KeyId.customId((used.maxOrNull() ?: 0) + 1)
 }
@@ -88,6 +95,12 @@ fun Config.withKeyName(
     if (index < 0) return this
     val old = customKeys[index]
     if (old.label == trimmed) return this
+    //  **重名不接**：名字是用户认键的唯一线索（绑定页、组合成员、提示全按它念），
+    //  两颗同名的键在界面上分不出谁是谁 —— 与「新建」那条查重同一个口径。
+    if (customKeys.any { it.id != id && it.label == trimmed }) {
+        XLog.w("按键改名：已经有一颗叫「$trimmed」了，忽略（id=$id）")
+        return this
+    }
     val renamed = old.copyName(trimmed)
     val renamedKeys =
         keys.entries.associate { (k, v) ->

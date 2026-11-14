@@ -142,8 +142,11 @@ private fun SettingsPage.comboRows(
         var seq = 0
         cfg.combos.forEach { combo ->
             if (combo.isHold != hold) return@forEach
+            //  序号**先取**再判筛选：这一列的编号是「它在全列里排第几」，筛掉几行不该让它重排
+            //  （KDoc 里那句「仍按全部里的位置算」说的就是这里）。
+            val index = seq++
             if (filter != null && filter !in combo.keys) return@forEach
-            add(comboRow(cfg, combo, seq++, writable, widths))
+            add(comboRow(cfg, combo, index, writable, widths))
         }
     }
 
@@ -189,7 +192,7 @@ private fun SettingsPage.comboRow(
                         DisabledStateWithPick(
                             picked = combo.id in picked,
                             enabled = writable,
-                            //  组合没有「只参与组合按键」这一位（那一位只属于单键），
+                            //  组合没有「只参与非首键的按住组合」这一位（那一位只属于单键），
                             //  所以这里只有「停用 / 不写」两种 —— 判据仍走同一份
                             state = keyStateLabel(enabled = !off, comboOnly = false),
                         )

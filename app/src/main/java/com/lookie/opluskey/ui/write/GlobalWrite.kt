@@ -48,6 +48,17 @@ internal fun SettingsPage.setVibrate(on: Boolean) =
     }
 
 /**
+ * 切「**无操作时振动**」—— 与 [setVibrate] 是两颗开关：
+ * 那一颗管「真的执行了动作」，这一颗管「按了、但这一档什么动作都没有」。
+ */
+internal fun SettingsPage.setVibrateOnNone(on: Boolean) =
+    toggleGlobal(
+        "vibrate_on_none=${if (on) 1 else 0}",
+        I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE, "无操作时振动"),
+        on,
+    ) { it.copy(vibrateOnNone = on) }
+
+/**
  * 切**公共设置里的判定时机**（`GlobalConfig.waitMultiWindow`）—— 落的是「固定窗口起点」的反面。
  *
  *  与独立设置页那颗同一句文案、同一套语义（见 `waitMultiWindowRow`）：开关说「固定窗口起点」，
@@ -57,7 +68,10 @@ internal fun SettingsPage.setGlobalWaitMultiWindow(on: Boolean) =
     toggleGlobal(
         "global_wait_multi_window=${if (on) 1 else 0}",
         I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW, "固定窗口起点"),
-        on,
+        //  回执说的是**界面上那颗**的状态（「固定窗口起点」开着没有），而 `on` 是存储位
+        //  `waitMultiWindow` —— 两者相反。与逐键那颗同一个坑（见 `setWaitMultiWindow`
+        //  那句「别照抄」）：照抄的话，拨开会说「已关闭」。
+        !on,
     ) {
         it.copy(waitMultiWindow = on)
     }
@@ -81,7 +95,7 @@ internal fun SettingsPage.setGlobalClickWindow(v: Int): Boolean {
  * 写**振动强度**（三档，见 [GlobalConfig.VIBRATE_STRENGTH_RANGE]）。
  *
  *  只改强度、不动 [GlobalConfig.vibrate]：那一行的开关管「振不振」，这一行管「振多重」，
- *  两层各自独立（关掉振动时这一行整体不出现，见 `HomeActionsCard`）。
+ *  两层各自独立（关掉振动时这一行整体不出现，见 `GeneralScreen.ActionsCard`）。
  *
  *  返回「写盘成没成」—— 滑杆失败时要拨回原值（见 `SliderRow` 的 `commit`）。
  */
@@ -254,11 +268,24 @@ internal fun SettingsPage.setToastTemplate(template: String) {
     )
 }
 
-// 「页面怎么显示」这一族的写入口：**跟随系统显示大小** + **页面缩放** + **显示常用命令**。
+// 「页面怎么显示」这一族的写入口：**跟随系统显示大小** + **页面缩放** + **界面振动反馈**
+// + **显示常用命令**。
 //
-//  这几项改的是页面自己的呈现（`global.followDisplaySize` / `global.pageScale` 在「外观」卡里
-//  成对出现，缩放那一行还跟着开关一起进出场；`global.showCommonCommands` 决定绑定页那一段
-//  露不露），与上面那批「按键怎么执行」的全局开关不是一类。
+//  这几项改的是页面自己的呈现（`global.followDisplaySize` / `global.pageScale` 在「更多选项」的
+//  「外观」卡里成对出现，缩放那一行还跟着开关一起进出场；`global.uiVibrate` 管页面自己振不振；
+//  `global.showCommonCommands` 决定绑定页那一段露不露），与上面那批「按键怎么执行」的全局开关不是一类。
+
+/**
+ * 切**界面振动反馈**（`GlobalConfig.uiVibrate`）—— 点行 / 拨开关 / 拖滑杆那一下的触觉。
+ *
+ *  与 [setVibrate]（命令**执行**时振一次）是两件事：那一颗管「按键触发之后」，这一颗管
+ *  「手指点在这个界面上」，所以入口在「更多选项」的「外观」卡里、不在「按键设置」页。
+ *  判据在 `PageHaptics.allowed`（它每次现查这一位，拨完立刻生效）。
+ */
+internal fun SettingsPage.setUiVibrate(on: Boolean) =
+    toggleGlobal("ui_vibrate=${if (on) 1 else 0}", I18n.get(Strings.MORE_UI_VIBRATE_TITLE, "界面振动反馈"), on) {
+        it.copy(uiVibrate = on)
+    }
 
 /**
  * 写**页面缩放**（百分比）。

@@ -362,6 +362,14 @@ internal object GestureExec {
             //
             //  **按松手那一刻的条件重判**（用户口径：不再沿用按下时命中的那一块）：
             //  松手本来就是一次独立的判定，条件和按下时不一样就该按新的来。
+            //
+            //  与单键那一支（[resolveAction]）同一道闸：长按这一档本身没有动作时，松手动作
+            //  「没有主语」，整条不成立。`ComboKey.releaseBound` 已经把「长按有动作 / 开关开着 /
+            //  挑过动作 / 松手才触发」四位收在一处，这里只读它。
+            if (!combo.releaseBound) {
+                XLog.w("组合键 ${combo.id} - 松手：长按这一档是无操作（或松手已让位），不派发")
+                return
+            }
             val fired = combo.resolveRelease(::matchesCondition)
             if (!fired.isBound) {
                 XLog.w("组合键 ${combo.id} - 松手：这一下没有可执行的动作（长按命中场景 / 这一组没配松手），不执行")
@@ -547,7 +555,8 @@ internal object GestureExec {
      *  代价是比「按下那刻就振」晚一趟广播（宿主常驻时几毫秒，感知不到；宿主刚被拉起时要等
      *  那 300ms 的补发，但那时**动作**也是 300ms 才发生 —— 振与动作仍然同时）。
      *
-     * 「振动反馈」开关关着、以及「无操作」（吞键什么都不做）都不振。连续触发的重复由那颗键自己的
+     * 「振动反馈」开关关着时不振；「无操作」那一档由它自己的「无操作时振动」决定
+     * （`OwnSettings.vibrateOnNone`，见下面派发前那一支）。连续触发的重复由那颗键自己的
      * 「连续触发时振动」决定：关着时只在长按那一下振一次，开着时每次重复都振。
      */
     private fun runAction(
@@ -570,7 +579,16 @@ internal object GestureExec {
         //  「松手执行额外动作」与系统场景的先后、以及「这一档到底绑了什么」——
         //  这一整段只回答一件事：**这一次到底执行哪个动作**。抽出去与「派发」分开，
         //  `runAction` 那条主线上就只剩顺序，不再一串嵌套判断。
-        val fired = resolveAction(id, trigger, keyConfig, ::matchesCondition) ?: return
+        val fired =
+            resolveAction(id, trigger, keyConfig, ::matchesCondition)
+                ?: run {
+                    //  **无操作时振动**：这一档什么都没执行，但用户确实按了 —— 按设置给一次触觉回执。
+                    //  与「振动反馈」分开（那一颗只服务真的执行了动作的那一下）：没有这一位时，
+                    //  「这一档没绑」与「模块没生效」在手上完全一样。
+                    //  连续触发的重复不再补振：那是同一次按压。
+                    if (!repeat) haptic(config, keyConfig, force = true)
+                    return
+                }
         val r =
             runner ?: run {
                 XLog.w("ActionRunner 还没建好，忽略 ${id.label} 的 ${trigger.id}")
@@ -642,27 +660,23 @@ internal object GestureExec {
             }
             return fired
         }
-        //  **多击档没有动作时逐级回退**（用户口径）：窗口结束时判定侧只报「数到了第几击」，
-        //  报上来的那一档未必配了动作 —— 比如只开了四击、按了两下，报上来的是 `Click(2)`，
-        //  而双击那一格空着。这时退到 `Click(1)`，让这一下仍然执行单击，而不是「按了没反应」。
-        //  注入侧看不到动作表（它只认 `judge_clicks`），所以这一层只能在这里做。
-        if (trigger is GestureTrigger.Click && trigger.count > 1) {
-            for (n in trigger.count downTo 1) {
-                val fallback = keyConfig.actionFor(GestureTrigger.Click(n), matchesCondition)
-                if (!fallback.isBound) continue
-                if (n != trigger.count) {
-                    XLog.w(
-                        "${id.label} - ${trigger.label}：这一档没有动作，回退到" +
-                            (if (n == 1) "单击" else "第 $n 击"),
-                    )
-                }
-                return fallback
-            }
-            return Action.None
-        }
+        //  **多击档没有动作就是什么都不做，不再退成单击**（用户口径 2026-11-15：
+        //  「双击 / 三击也会触发单击事件」—— 那一档空着，用户按下的是**双击那一套**，
+        //  退去执行单击等于「按两下反而跑了单击的命令」）。
+        //
+        //  要「单击」就别开双击 / 三击（关掉之后第二下按下就是新的一轮，各自按单击算）；
+        //  要「按两下什么都不做」就把它那格留着空。两条路都由用户自己掌着，这一层不再替他降级。
+        //  注入侧看不到动作表（它只认 `judge_clicks`），所以「这一档空着」只能在宿主这里收口。
         //  其余档位统一走**触发条件**：场景块能接管哪几档由它自己的 `actions` 说，
         //  所以「只给三击配了场景、直接绑定那一格空着」也照样命中（`pickAction` 一处收口）。
-        return keyConfig.actionFor(trigger, matchesCondition)
+        val picked = keyConfig.actionFor(trigger, matchesCondition)
+        //  这一档空着 ⇒ **不派发**（`null`），与松手那一支同一条：不能让它走 `run(None)` ——
+        //  那会把「什么都没做」记成一次成功执行（`lastActionAt` 与报活都会亮）。
+        if (!picked.isBound) {
+            XLog.w("${id.label} - ${trigger.label}：这一档没有动作，不派发")
+            return null
+        }
+        return picked
     }
 
     /**
@@ -766,7 +780,10 @@ internal object GestureExec {
         //  走哪一路：流体云是 **ColorOS 的能力**（Seedling 卡片只有已注册的 seedling 宿主发得出去），
         //  所以「使用 ColorOS 接口」关着时一律回落 Toast —— 那一档的语义就是「这一套都走 AOSP 通道」。
         //  用户口径「使用 ColorOS 接口时应该弹流体云」。
-        val viaFluid = own.toastFluid && config.global.colorOsApi
+        //  这一位读**这一档生效后**的那份（`own`，独立设置开着就看它自己那份），
+        //  与同文件里振动 / 执行侧那两处（`own.colorOsApi`）同一个口径：读公共值会让
+        //  「这一档走 AOSP」的独立设置在这一处失效。
+        val viaFluid = own.toastFluid && own.colorOsApi
         if (viaFluid) {
             //  换落点不换说法：同一句 `$key - $gesture → $action`，交给宿主自己的 Seedling SDK。
             //  图标取**这一次执行的动作**（界面层已按 `FluidCard.actionNameOf` 预渲染成 png）；
@@ -839,10 +856,17 @@ internal object GestureExec {
     private fun haptic(
         config: Config,
         owner: OwnSettings,
+        /**
+         * `true` = **不看**「振动反馈」那一位（「无操作时振动」这一路用它）：
+         * 那一颗管「执行了动作」，这一颗管「按了但没动作」，两者互不依赖。
+         */
+        force: Boolean = false,
     ) {
         //  一次解析，振不振与振多强都读它（判据见 `Config.effectiveFor`）
         val own = config.effectiveFor(owner)
-        if (!own.vibrate) return
+        if (!force && !own.vibrate) return
+        //  「无操作时振动」是独立开关：它开着才振，不看 `vibrate`
+        if (force && !own.vibrateOnNone) return
         try {
             val ctx = appContext ?: return
             val v = ctx.getSystemService(android.os.Vibrator::class.java) ?: return

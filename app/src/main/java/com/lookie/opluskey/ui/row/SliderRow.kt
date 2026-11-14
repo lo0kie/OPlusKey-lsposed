@@ -40,6 +40,13 @@ internal fun Modifier.tapSliderToSeek(
  *    = 跳到那个值 **+** 弹一个输入窗，而用户只是想拖到那儿。
  *  · **不落在带子里**（标题 / 摘要 / 行尾值 / 行内边距）：这里一概不碰，事件原样往上传，
  *    由外层那一层统一处理（波纹 + 振动 + 开窗）。
+ *
+ * ## 调用方的义务
+ *
+ *  `onSeek` 必须是**稳定的**闭包：`pointerInput` 的键里没有它，闭包停在首次组合那一刻。
+ *  直接捕获会变的参数（例如当前值）就一直用旧的那份 —— 轻点回初值会被调用方自己那句
+ *  「值没变就不提交」判掉。写法见 `PageSlider` 与 `PercentDialog`：闭包只捕获
+ *  `rememberUpdatedState` 出来的那个 State，调用时才读值。
  */
 internal fun Modifier.tapSliderToSeek(
     min: Int,

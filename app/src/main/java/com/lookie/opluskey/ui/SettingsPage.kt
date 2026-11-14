@@ -60,7 +60,8 @@ internal class SettingsPage(
      *  两个服务在建页期就拿好：第一次 `performHapticFeedback` 会同步创建 `SystemVibrator`，
      *  砸在 push 动画第一帧上。口径见 [PageHaptics]。
      */
-    internal val haptics = PageHaptics(context)
+    internal val haptics =
+        PageHaptics(context, uiVibrate = { configState.config.value.global.uiVibrate })
 
     /** 深浅色 / 磨砂取样那一域（建页期定一次、之后跟着系统与栈顶页走）。 */
     internal val chrome = PageChrome()
@@ -350,14 +351,34 @@ internal class SettingsPage(
         }
         val cfg = configState.config.value
         //  「松手执行额外动作」那一趟**走的不是手势槽**：`openForRelease` 会把 `gesture` /
-        //  `comboId` / `forStep` 一起清掉（那一趟写的是键上的 `longRelease`），照下面两条判都会
-        //  拿到 `null` —— 于是小窗开关恒关、当前绑定不高亮，用户重挑一次就把 `window:` 静默降级成 `app:`。
+        //  `comboId` / `forStep` 一起清掉，照下面几条判都会拿到 `null` —— 于是小窗开关恒关、
+        //  当前绑定不高亮，用户重挑一次就把 `window:` 静默降级成 `app:`。
+        //
+        //  读哪一格按**与写回侧同一套判据**（`PageEntryWrite.writeReleaseTo`）分三支：
+        //  草稿里那一块 / 「单击后长按」那一档的 `clickThenLongRelease` / 键或组合的 `longRelease`。
+        //  只认最后那一支的话，从「单击后长按」与「场景块」的松手格进来时读到的是**另一格**的动作：
+        //  那一行不亮、小窗与动画跟着算错，确认时还会把动作写到别人头上。
         if (picker.forRelease) {
+            val chain = picker.releaseChain
+            val at = picker.sceneAt
             val current =
-                picker.releaseComboId
-                    ?.let { id -> cfg.combos.firstOrNull { it.id == id }?.longRelease }
-                    ?: cfg.key(KeyWatchState.editing(cfg)).longRelease
-            return current.takeIf { it.isBound }
+                when {
+                    at >= 0 -> {
+                        val block = branchDraft.now().scenes.getOrNull(at)
+                        if (chain) block?.chainRelease else block?.release
+                    }
+
+                    chain -> {
+                        cfg.key(KeyWatchState.editing(cfg)).clickThenLongRelease
+                    }
+
+                    else -> {
+                        picker.releaseComboId
+                            ?.let { id -> cfg.combos.firstOrNull { it.id == id }?.longRelease }
+                            ?: cfg.key(KeyWatchState.editing(cfg)).longRelease
+                    }
+                }
+            return current?.takeIf { it.isBound }
         }
         val g = picker.gesture
         val comboId = picker.comboId

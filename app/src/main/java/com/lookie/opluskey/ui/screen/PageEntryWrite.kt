@@ -80,8 +80,15 @@ internal fun SettingsPage.writeToken(
                 popBackStack()
                 true
             } else {
-                //  写失败：把「为谁挑」放回去，留在这一页（否则这一页会退化成普通挑应用）
-                picker.openForRelease(combo = target.comboId, sceneAt = target.sceneAt)
+                //  写失败：把「为谁挑」**原样**放回去，留在这一页（否则这一页会退化成普通挑应用）。
+                //  四位都要放回：少了 `chain`，「单击后长按」那一格的松手动作会落进长按的松手槽；
+                //  少了 `stop`，「结束应用」那一趟重挑一次就变成「打开应用」。
+                picker.openForRelease(
+                    stop = picker.stopApp,
+                    combo = target.comboId,
+                    sceneAt = target.sceneAt,
+                    chain = target.chain,
+                )
                 false
             }
         }
@@ -94,10 +101,10 @@ internal fun SettingsPage.writeToken(
             if (target.index >= 0) replaceStep(target.index, token) else addStep(token)
         }
 
-        // 「常用命令」那张清单：挑中的应用 / 结束应用追加成新的一条，然后自己退页（同 [PickTarget.Release]
-        //  的纪律 —— 调用方拿到 true 就不要再补一次 `goBack()`）。
-        PickTarget.CommonCommand -> {
-            writeCommonCommand(Action.parse(token))
+        // 「常用命令」那张清单：挑中的应用 / 结束应用追加成一条、或换掉「修改」那一趟指的那一条，
+        //  然后自己退页（同 [PickTarget.Release] 的纪律 —— 调用方拿到 true 就不要再补一次 `goBack()`）。
+        is PickTarget.CommonCommand -> {
+            writeCommonCommand(Action.parse(token), target.replaceToken)
         }
 
         // 写的是**进这一页时那个手势**（见 picker.gesture），不是 pager 的当前页
@@ -326,20 +333,63 @@ internal fun SettingsPage.addCommonCommand(action: Action): Boolean {
 }
 
 /**
- * 「常用命令」那一趟：追加进清单，成功就自己退页（见 [PickTarget.CommonCommand]）。
+ * 把「常用命令」清单里的某一条**换成另一个动作**（行菜单的「修改」→ 抽屉 → 挑一条）。
+ *
+ *  与 [addCommonCommand] 分开：那边是**多一条**（还要吃上限），这边是**换这一条**（条数不变）。
+ *  名字 / 图标 / 固定位都留着 —— 改的是它指向什么，不是用户给它起的名字与挑的脸。
+ *
+ *  **不许撞上清单里已有的另一条**：`token` 是这张表的身份（改名 / 换图标都按它找行），
+ *  两条同一个 token 会一起被改。撞上了就当作「已经是这一条」，不写、也不报错
+ *  （与添加那条「本来就在里面就算成功」同一口径）。
+ *
+ * @param from 被换掉的那一条的 token
+ * @return 写下去没有（`false` = 这条动作根本不能执行 / 链路未就绪 / 写盘失败）
+ */
+internal fun SettingsPage.replaceCommonCommand(
+    from: String,
+    action: Action,
+): Boolean {
+    //  入口格那种「标记」写法不是能执行的动作，读盘那一道也会把它丢掉
+    if (action is Action.None) return false
+    val cfg = configState.config.value
+    val list = cfg.global.commonCommands
+    if (action.token == from) return true
+    if (list.any { it.token == action.token }) return true
+    val ok =
+        write(
+            cfg.copy(
+                global =
+                    cfg.global.copy(
+                        commonCommands = list.map { row -> if (row.token == from) row.copy(token = action.token) else row },
+                    ),
+            ),
+            "common_commands=replace",
+        ) != CommandsSave.Failed
+    XLog.w("常用命令：$from → ${action.token}（${if (ok) "已落盘" else "没写进去"}）")
+    return ok
+}
+
+/**
+ * 「常用命令」那一趟：追加进清单（[replaceToken] 非空时是换掉那一条），成功就自己退页
+ * （见 [PickTarget.CommonCommand]）。
  *
  *  为什么单独一支：`writeToken` 那个 `when` 已经把落点分派摊开了，把「写 + 退页 + 写失败
  *  放回目标」再摊在那里会搅成一团；而这三种结局本来就该在一处读。
  *
+ * @param replaceToken 非空 = 换掉清单里的这一条（「修改」那一趟）
  * @return 写下去了没有（`false` = 没地方写 / 这条动作不能执行 / 写盘失败，调用方留在原地）
  */
-private fun SettingsPage.writeCommonCommand(action: Action): Boolean {
-    if (addCommonCommand(action)) {
+private fun SettingsPage.writeCommonCommand(
+    action: Action,
+    replaceToken: String? = null,
+): Boolean {
+    val ok = if (replaceToken != null) replaceCommonCommand(replaceToken, action) else addCommonCommand(action)
+    if (ok) {
         popBackStack()
         return true
     }
     //  写失败：把「为谁挑」放回去，否则这一页会退化成普通挑应用（点一行就绑到手势上）
-    picker.openForCommonCommand(stop = picker.stopApp)
+    picker.openForCommonCommand(picker.stopApp, replaceToken)
     return false
 }
 

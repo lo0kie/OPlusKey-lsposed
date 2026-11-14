@@ -349,7 +349,9 @@ fun KeyConfig.gesturePlan(): KeyGesturePlan {
     val slots =
         buildSet {
             if (single.isBound) add(GestureTrigger.Click(1))
-            if (double.isBound) add(GestureTrigger.Click(2))
+            //  **双击要看开关**（与 `boundClicks` 同一条）：`doubleClickOn` 关着时执行侧对它回
+            //  「无操作」，排进计划只会让判定侧按 2 击封顶、单击白等一个窗口。
+            if (doubleClickOn && double.isBound) add(GestureTrigger.Click(2))
             if (long.isBound) add(GestureTrigger.LongPress)
             //  「单击后长按」与双击互斥（第二击按住 vs 快速抬起），但它**不延长**连击链：
             //  判定仍然只数到第 2 击，这一档是在第 2 击按住时另判的。
@@ -363,12 +365,14 @@ fun KeyConfig.gesturePlan(): KeyGesturePlan {
                 .keys
                 .forEach { add(GestureTrigger.Click(it)) }
         }
-    //  与判定器**同一个数**（[judgeCap]）：那个数现在按「开了哪几档」算 ——
-    //  开了三击但还没绑动作时判定照样数到第 3 击、照样要等窗口，这里跟着它才对得上。
+    //  与判定器**同一个数**（[judgeCap]）：那个数按**档位开关**算 —— 双击开着时即使还没绑
+    //  动作，判定也数到第 2 击、单击照样等满窗口，这里跟着它才对得上。
     //  计划里另算一遍 `maxOf(slots, clicksForJudge)` 的话，页面上写的「单击最多等 Xms」
     //  会比实际等待短一截。
     return KeyGesturePlan(
-        clickWindowMs = doubleClickMs,
+        //  **判定器实际用的是 `clickWindowMs`**（它把 `waitMultiWindow` 折进去了）：
+        //  这里写 `doubleClickMs` 的话，「每次松手重新起算」那一档页面上报的等待会比实际短。
+        clickWindowMs = clickWindowMs,
         longPressMs = longPressMs,
         maxClicks = judgeCap,
         slots = slots,

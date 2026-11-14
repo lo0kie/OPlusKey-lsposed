@@ -82,7 +82,9 @@ fun comboLabel(
     //
     //  不写成 `I18n.format(…)`：那条按顺序填占位，模板里只有两个 `%s`，第三颗会被静默丢掉；
     //  这里按段替换，后续成员有几个就连几个。
-    if (combo.isHold) {
+    //  成员不足两颗（配置被手改坏 / 迁移中途）：那句「按住 A 后再按 B」的后半截没有内容，
+    //  会念成「按住 [侧键] 后再按 」—— 退回普通念法，至少是句完整的话。
+    if (combo.isHold && names.size >= 2) {
         return I18n
             .get(Strings.COMBO_MODE_HOLD, "按住 %1\$s 后再按 %2\$s")
             .replace("%1\$s", chipOrBare(names.firstOrNull().orEmpty()))

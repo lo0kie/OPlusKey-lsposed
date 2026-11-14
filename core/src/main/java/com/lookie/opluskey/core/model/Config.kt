@@ -80,7 +80,7 @@ data class KeyConfig(
      */
     val doubleClickMs: Int = DEFAULT_DOUBLE_CLICK_MS,
     /**
-     * **这颗键只参与组合** —— 单键手势（单击 / 双击 / 长按）整条不接管，只留「等组合的另一半」。
+     * **这颗键只参与非首键的按住组合** —— 单键手势（单击 / 双击 / 长按）整条不接管，只留「等组合的另一半」。
      *
      *  默认 false = 与这一位出现之前完全一致。开着时：
      *  · 按下**先吞掉**（压一个窗口），再问组合：凑成了就永久吞，没凑成由注入侧把原生短按补发回去；
@@ -157,6 +157,8 @@ data class KeyConfig(
     override val vibrate: Boolean = false,
     /** 这颗键自己的「振动强度」—— 只在 [useOwnSettings] 开着时算数。 */
     override val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
+    /** 这颗键自己的「无操作时振动」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val vibrateOnNone: Boolean = GlobalConfig.DEFAULT_VIBRATE_ON_NONE,
     /** 这颗键自己的「执行时提示」—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
     /** 这颗键自己的「提示走流体云」—— 只在 [useOwnSettings] 开着时算数。 */
@@ -245,8 +247,10 @@ data class KeyConfig(
      *  · [boundClicks] / [sceneClicks] 不算它 ⇒ 判定侧不数第二击，第二下按下就是**新的一轮**；
      *  · 执行侧 [actionOf] 对双击恒回「无操作」。
      *
-     *  **开着但没绑动作时同样不等**：判定封顶按动作表算（[judgeCap]），没绑就没有第 2 击要等。
-     *  所以这一位现在只决定「绑定页出不出现这一格」，不再影响单击的手感。
+     *  **开着就要等**：判定封顶按**档位开关**算（[judgeCap]），所以这一位开着时，即使双击
+     *  暂时还没绑动作，单击也要先等一个窗口（默认 300ms，可配到 1s）。
+     *  不想等就把它关掉 —— 关掉之后第二下按下就是**新的一轮**，单击当场判。
+     *  （这里曾经写成「没绑动作就不等」，真机上就是「开关开着、单击却不等窗口」，已改回。）
      *
      *  表（[double]）本身**不动**：关掉再打开，之前配好的动作原样回来（与 [extraClicksOn] 同一条）。
      *  **不跟随** [useOwnSettings]：这颗键开着哪几档手势是它自己的形态。
@@ -525,11 +529,10 @@ data class KeyConfig(
      *  夹回来」必须是同一个数。两处各写一遍，改一处漏一处就是「配了双击、按三下却判成无操作」。
      *
      *  **按「开了哪几档」算**（[doubleClickOn] / [extraClicksOn] / [clickThenLongOn]），
-     *  不看那一档绑没绑动作：只要开着，判定侧就得数到那一档、就得多等窗口。
-     *  用户口径是「只要开了就要等；不想等就把多击手势全关掉」——
-     *  理由很直接：同时开两档、其中一档是无操作时，另一档照样要等那次窗口，
-     *  所以「没绑动作就不等」这条捷径在部分生效的配置上本来就不成立，只会让手感
-     *  跟着「绑没绑」跳。
+     *  **不看那一档绑没绑动作**。用户口径（2026-11-15 真机反馈）：**多击开关开着就要等**，
+     *  不想等就把那一档关掉。理由也直接：同时开两档、其中一档暂时是「无操作」时，
+     *  另一档照样要等那次窗口，所以「没绑动作就不等」这条捷径在部分生效的配置上本来就不成立，
+     *  只会让手感跟着「绑没绑」跳。
      *
      *  [clicksForJudge] 仍然要取大：三击 / 四击那种「只在场景里绑了动作」的配置，
      *  档位开关可能没开，但那一档真要执行。
@@ -667,11 +670,12 @@ data class KeyConfig(
                 scenes.any { it.chainBound }
 
     /**
-     * 「单击后长按」这一档**此刻算不算数** —— 开着，**且**这一档真有动作（直接绑定 / 场景里配过）。
+     * 「单击后长按」这一档**有没有事可做** —— 开着，**且**这一档真有动作（直接绑定 / 场景里配过）。
      *
-     *  「开着但动作是无操作」等同于「这一档不存在」：这一档的代价全在判定链上（第 2 击按住变长按、
-     *  `judge_clicks` 下限抬到 2），没有动作时这些代价只表现为「按住什么都不发生」。
-     *  与 [longActionExists] 同一条口径。
+     *  **它只回答「执行什么」，不再决定「这一档存不存在」**：判定侧认这一档看的是开关
+     * （`clickThenLongOn`），动作是无操作时照样把第 2 击按住收走、只是不执行 —— 否则
+     * 那一击会退到 `Click(2)` 再被逐级回退成**单击命令**（2026-11-15 真机口径）。
+     *  现在它的读者是松开开关那几处（松手动作要不要补、广播里 `judge_clicks` 的下限）。
      */
     val clickThenLongCounts: Boolean
         get() = clickThenLongOn && clickThenLongActionExists
@@ -761,6 +765,7 @@ data class KeyConfig(
                 ConfigFields.F_KEY_COLOR_OS_API to colorOsApi,
                 ConfigFields.F_KEY_VIBRATE to vibrate,
                 ConfigFields.F_KEY_VIBRATE_STRENGTH to vibrateStrength,
+                ConfigFields.F_KEY_VIBRATE_ON_NONE to vibrateOnNone,
                 ConfigFields.F_KEY_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_KEY_TOAST_FLUID to toastFluid,
                 ConfigFields.F_KEY_TOAST_TEMPLATE to toastTemplate,
@@ -942,6 +947,7 @@ data class KeyConfig(
                 colorOsApi = v.bool(ConfigFields.F_KEY_COLOR_OS_API),
                 vibrate = v.bool(ConfigFields.F_KEY_VIBRATE),
                 vibrateStrength = v.number(ConfigFields.F_KEY_VIBRATE_STRENGTH),
+                vibrateOnNone = v.bool(ConfigFields.F_KEY_VIBRATE_ON_NONE),
                 toastOnRun = v.bool(ConfigFields.F_KEY_TOAST_ON_RUN),
                 toastFluid = v.bool(ConfigFields.F_KEY_TOAST_FLUID),
                 toastTemplate = v.text(ConfigFields.F_KEY_TOAST_TEMPLATE),
@@ -982,6 +988,16 @@ data class GlobalConfig(
      */
     val enabled: Boolean = DEFAULT_ENABLED,
     /**
+     * **界面振动反馈** —— 点行、拨开关、拖滑杆、按滚动条时那一下触觉。
+     *
+     *  与 [vibrate]（命令**执行**时振一次）是两件事：那一颗管「按键触发之后」，这一颗管
+     *  「手指点在这个界面上」。原先界面那一路只看系统静音（见 `PageHaptics.allowed`），
+     *  没有自己的开关 —— 有人就是不喜欢点一下振一下。
+     *
+     *  默认开：装上模块之前这些交互本来就有系统自己的反馈，界面这一层不该比它更安静。
+     */
+    val uiVibrate: Boolean = true,
+    /**
      * 公共设置里的**单击延迟**（毫秒）—— 没开「使用独立设置」的键都用这一份。
      *
      *  与 `KeyConfig.doubleClickMs` 是同一件事的两层：那一层是「这颗键自己的一份」，
@@ -1001,6 +1017,11 @@ data class GlobalConfig(
      *  执行器（`host/GestureExec.haptic`），所以**只走落盘那一列**、不进广播 —— 注入侧不振。
      */
     override val vibrateStrength: Int = DEFAULT_VIBRATE_STRENGTH,
+    /**
+     * **无操作时也振一下** —— 「振动反馈」只在真的执行了动作时振；这一位管的是
+     * 「按下去有反应、但这一档什么动作都没有」那一档，默认**关**。
+     */
+    override val vibrateOnNone: Boolean = DEFAULT_VIBRATE_ON_NONE,
     /** 执行**任意动作**时弹一条提示（内容是动作名；自定义命令取命令名）。 */
     override val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
     /**
@@ -1160,6 +1181,7 @@ data class GlobalConfig(
                 ConfigFields.F_MODULE_ENABLED to enabled,
                 ConfigFields.F_VIBRATE to vibrate,
                 ConfigFields.F_VIBRATE_STRENGTH to vibrateStrength,
+                ConfigFields.F_VIBRATE_ON_NONE to vibrateOnNone,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_TOAST_FLUID to toastFluid,
                 ConfigFields.F_TOAST_TEMPLATE to toastTemplate,
@@ -1175,6 +1197,7 @@ data class GlobalConfig(
                 ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS to doubleClickMs,
                 ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to waitMultiWindow,
                 ConfigFields.F_GLOBAL_MULTI_WAIT_MS to multiWaitMs,
+                ConfigFields.F_GLOBAL_UI_VIBRATE to uiVibrate,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
                 ConfigFields.F_COMBO_HOLD_MIN_MS to comboHoldMinMs,
                 ConfigFields.F_COMBO_SCENE_ON_STARTER to comboSceneOnStarter,
@@ -1210,6 +1233,9 @@ data class GlobalConfig(
 
         /** [GlobalConfig.vibrateStrength] 的默认值：中档（与「开振动」原本那一下手感对齐）。 */
         const val DEFAULT_VIBRATE_STRENGTH = VIBRATE_MEDIUM
+
+        /** 「无操作时振动」的默认值：**关**（与「振动反馈」默认关同一条）。 */
+        const val DEFAULT_VIBRATE_ON_NONE = false
 
         /** [GlobalConfig.vibrateStrength] 的取值范围（滑杆两端与钳制共用）。 */
         val VIBRATE_STRENGTH_RANGE = VIBRATE_WEAK..VIBRATE_STRONG
@@ -1314,6 +1340,7 @@ data class GlobalConfig(
                 // 手改过的文件可能写进 7 —— 越界的幅度会直接交给 `VibrationEffect`，
                 //  所以在这一层就钳住（滑杆两端与这里同一个区间）。
                 vibrateStrength = v.number(ConfigFields.F_VIBRATE_STRENGTH).coerceIn(VIBRATE_STRENGTH_RANGE),
+                vibrateOnNone = v.bool(ConfigFields.F_VIBRATE_ON_NONE),
                 toastOnRun = v.bool(ConfigFields.F_TOAST_ON_RUN),
                 toastFluid = v.bool(ConfigFields.F_TOAST_FLUID),
                 toastTemplate = v.text(ConfigFields.F_TOAST_TEMPLATE),
@@ -1332,6 +1359,7 @@ data class GlobalConfig(
                 doubleClickMs = v.number(ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS),
                 waitMultiWindow = v.bool(ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW),
                 multiWaitMs = v.number(ConfigFields.F_GLOBAL_MULTI_WAIT_MS),
+                uiVibrate = v.bool(ConfigFields.F_GLOBAL_UI_VIBRATE),
                 //  与 pageScale 同一档：手改文件写进越界值，在这一层钳回滑杆两端
                 comboWindowMs = v.number(ConfigFields.F_COMBO_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
                 //  与 comboWindowMs 同一档：越界值在这一层钳回滑杆两端

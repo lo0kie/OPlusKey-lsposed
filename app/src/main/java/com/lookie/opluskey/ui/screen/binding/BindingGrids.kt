@@ -342,6 +342,10 @@ private fun SettingsPage.CustomTile(
 @Composable
 internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
     val current = st.target.actionIn(configState.config.value)
+    //  被点开那一格的 token **先取出来**：`onDismiss` 会把 `tileMenu` 置空，而 `ModeMenuPopups`
+    //  对「选完就收」的那一档是**先 dismiss 再 onPick**（见它自己那几支）—— 回调里再读
+    //  `st.tileMenu?.spec` 一次都读不到，`focusOn` 于是永不执行，焦点圈被后续 effect 写成 −1。
+    val tileToken = st.tileMenu?.spec?.token
     ModeMenuPopups(
         // 锚点就是**开着的那一格**自己那一份 —— 这里不再有「哪一格用哪一支」的表：
         // 那种表漏一个入口格，菜单就弹到别人身上（小窗、通知与控制中心，两次都是这么漏的）。
@@ -357,7 +361,7 @@ internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
         //  圈落回**被点开的那一格入口格**（本来就是点它才弹出的菜单），也是当场就挪 ——
         //  不靠「选中项变了再由 effect 收回来」（那条路真机上没跑起来，见 `bindingSelect`）。
         onPick = { spec ->
-            st.tileMenu?.spec?.let { st.focusOn(it.token) }
+            tileToken?.let { st.focusOn(it) }
             // 「应用控制」那一层：两行都**不是取值**，选完进下一页（打开 / 结束都进挑应用页），
             //  真正的落盘在那一页上（`app:` / `proc:stop:`）。
             when (spec.token) {

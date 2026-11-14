@@ -45,7 +45,7 @@ internal object ProcessController {
             //  宿主自己 / 设置页进程：停它们等于把模块自己弄死，而用户配这一条多半是手滑。
             //  日志里说清是「拒绝」而不是「失败」，免得去查 shell。
             XLog.w("结束应用：$pkg 是本模块/系统自身，拒绝执行")
-            onDone(CommandFailure.UNKNOWN)
+            onDone(CommandFailure.SELF_TARGET)
             return
         }
         XLog.w("结束应用：$pkg")

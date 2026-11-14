@@ -91,6 +91,20 @@ internal object ConfigTransfer {
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     /**
+     * 回主线程弹一句提示 —— **一律包住**：页面可能已经销毁、取字典也可能抛，漏出去就是顺主 looper
+     * 崩掉 `:ui`。同一族里本来有几处裸着（另外两处自己包了 try），收成一处才不会再漏。
+     */
+    private fun postHint(hint: () -> Unit) {
+        mainHandler.post {
+            try {
+                hint()
+            } catch (e: Throwable) {
+                XLog.w("回执没弹出来（已忽略）：${e.javaClass.simpleName}", e)
+            }
+        }
+    }
+
+    /**
      * 导出的是哪一样 —— 日志与配置**只在这一处分开**（请求码、日志前缀、成功与失败那两条提示）。
      *
      *  原来这三样散在调用点与 [writeExportFile] 里，而提示那两条**从不看导的是什么**：导出日志
@@ -149,12 +163,17 @@ internal object ConfigTransfer {
     /**
      * 给这一轮导出挂一个超时兜底（[EXPORT_TIMEOUT_MS] 后无条件解除占用）。
      *
-     *  不是精确的配对（新一轮导出会重新挂一个），只求「卡住之后能自己恢复」。
+     *  **必须带轮次**：两轮导出可以重叠（第一轮卡住 → 用户又点了一次并挑好了位置），
+     *  旧看门狗到点时不认人，会把**新一轮**的 [exportInFlight] / [pendingExport] 清掉 ——
+     *  用户挑好的位置一个字节都没写，界面只有一行「用户取消」的日志。
      */
     private val armExportWatchdog: () -> Unit = {
+        val round = ++exportRound
         mainHandler.postDelayed(
             {
-                if (exportInFlight) {
+                if (round != exportRound) {
+                    XLog.w("导出：上一轮的看门狗到点（新一轮已经开始），跳过")
+                } else if (exportInFlight) {
                     XLog.w("导出：${EXPORT_TIMEOUT_MS}ms 内没等到「保存到」的结果 ⇒ 解除占用（下次可以再点）")
                     exportInFlight = false
                     pendingExport = null
@@ -163,6 +182,9 @@ internal object ConfigTransfer {
             EXPORT_TIMEOUT_MS,
         )
     }
+
+    /** 导出的轮次（见 [armExportWatchdog]）—— 每次挂看门狗 +1，只有最新那一轮能清占用。 */
+    private var exportRound = 0
 
     /**
      * “导出日志”：弹系统的“保存到”选择器（SAF），用户挑完位置再把文本写进那个 uri。
@@ -310,7 +332,7 @@ internal object ConfigTransfer {
                 }
             } catch (e: Throwable) {
                 XLog.w("导出配置：读盘失败（已忽略）：${e.javaClass.simpleName}", e)
-                mainHandler.post { page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault)) }
+                postHint { page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault)) }
             }
         }
     }
@@ -470,7 +492,7 @@ internal object ConfigTransfer {
                 }
             } catch (e: Throwable) {
                 XLog.w("导入配置：读盘/解析失败（已忽略）：${e.javaClass.simpleName}", e)
-                mainHandler.post { page.hint(UNKNOWN_CONFIG_FORMAT) }
+                postHint { page.hint(UNKNOWN_CONFIG_FORMAT) }
             }
         }
     }
@@ -497,7 +519,7 @@ internal object ConfigTransfer {
         XLog.w("导入配置：这个文件太大（$bytes 字节 > $MAX_IMPORT_BYTES），不像是本模块导出的配置")
         //  提示要和原因对上：报「未知的配置格式」会让用户去检查格式，而该换的是文件。
         val tooLarge = I18n.get(Strings.CONFIG_TOO_LARGE, "文件太大，不像是本模块导出的配置")
-        mainHandler.post { HostSession.page?.hint(tooLarge) }
+        postHint { HostSession.page?.hint(tooLarge) }
         return true
     }
 

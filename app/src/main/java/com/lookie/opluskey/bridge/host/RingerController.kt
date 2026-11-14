@@ -162,22 +162,9 @@ internal class RingerController(
         zen: Boolean,
         ctx: Context,
     ): Int {
-        val service = Reflect.callStatic(AudioManager::class.java, "getService")
-        val internal = service?.let { Reflect.call(it, "getRingerModeInternal") }
-        if (internal is Int) return internal
-        // 两条反射在部分 ROM 上取不到 —— 说出来：否则「读到的档位为什么是这个」
-        //  在日志里没有任何依据，而下一档是拿它推出来的。
-        XLog.w("响铃档位：内部通道（AudioService.getRingerModeInternal）读不到，改读 Settings.Global")
-
-        val settingsMode =
-            runCatching {
-                android.provider.Settings.Global
-                    .getInt(ctx.contentResolver, MODE_RINGER_KEY, -1)
-            }.getOrDefault(-1)
-        if (settingsMode in 0..2) {
-            XLog.w("响铃档位：用 Settings.Global.$MODE_RINGER_KEY=$settingsMode 兜底")
-            return settingsMode
-        }
+        //  两条通道的读法只有一份（[readModeOrNull]）：条件执行判 `ringer:*` 也读它 ——
+        //  只在一边读公共视图，免打扰下就会「动作按内部档位切、条件按静音判」，两边一正一反。
+        readModeOrNull(ctx)?.let { return it }
         XLog.w(
             "响铃档位：内部通道与 Settings.Global.$MODE_RINGER_KEY 都没读到" +
                 (if (zen) "，免打扰开着 ⇒ 按上一档处理" else "，改读公共视图"),
@@ -298,13 +285,43 @@ internal class RingerController(
             else -> "未知($mode)"
         }
 
-    private companion object {
+    companion object {
         /**
          * 响铃档位在 `Settings.Global` 里的键 —— **AOSP 标准键**（不是 ColorOS 私有）。
          *
          *  只在「ColorOS 模式且内部通道读不到」时用它兜底：`AudioService` 内部档位那条反射
          *  在某些 ROM 上取不到，而这个键与它是同一个真值的另一份落点。换 ROM 时先回查它。
          */
-        const val MODE_RINGER_KEY = "mode_ringer"
+        private const val MODE_RINGER_KEY = "mode_ringer"
+
+        /**
+         * 档位的**判据口径**读法：内部通道 → `Settings.Global.mode_ringer` → `null`。
+         *
+         *  两份读者：切换档位那条路（[readCurrentMode] 读不到时再按 zen / 公共视图兜底），
+         *  以及条件执行（`ConditionProbe.ringerMatches` 读不到就判「条件不成立」）。
+         *  合一份的理由：公共视图在免打扰下**恒读静音** —— 条件那边照它判，会把「响铃 / 振动」
+         *  判成「静音」，与动作实际落的档位正好相反。
+         *
+         *  @return `null` = 两条通道都读不到（判不出；**不拿公共视图凑一个值**）
+         */
+        fun readModeOrNull(ctx: Context?): Int? {
+            val context = ctx ?: return null
+            val service = Reflect.callStatic(AudioManager::class.java, "getService")
+            val internal = service?.let { Reflect.call(it, "getRingerModeInternal") }
+            if (internal is Int) return internal
+            // 两条反射在部分 ROM 上取不到 —— 说出来：否则「读到的档位为什么是这个」
+            //  在日志里没有任何依据，而下一档是拿它推出来的。
+            XLog.w("响铃档位：内部通道（AudioService.getRingerModeInternal）读不到，改读 Settings.Global")
+            val settingsMode =
+                runCatching {
+                    android.provider.Settings.Global
+                        .getInt(context.contentResolver, MODE_RINGER_KEY, -1)
+                }.getOrDefault(-1)
+            if (settingsMode in 0..2) {
+                XLog.w("响铃档位：用 Settings.Global.$MODE_RINGER_KEY=$settingsMode 兜底")
+                return settingsMode
+            }
+            return null
+        }
     }
 }

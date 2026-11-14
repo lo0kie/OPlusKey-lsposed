@@ -28,9 +28,11 @@ import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
+import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.binding.BranchDraft
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.style.visibleAreaHeight
+import com.lookie.opluskey.ui.wire.disabledClickReason
 import com.lookie.opluskey.ui.write.branchKeyNow
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
@@ -101,6 +103,17 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
 }
 
 /**
+ * 场景页三道**写入口**共同的整页闸（顶栏「添加场景」/ 块末尾「添加条件」/ 右下角「确认」）。
+ *
+ *  以前只有行上的可点性看了整页闸（`enabled = spec.enabled`），这三个入口没看：只读态或
+ *  总闸关着时仍能插一块空场景 —— 而空条件让 `isReady` 为假，补填那一行又置灰，
+ *  草稿既退不出也存不下（用户口径里的「卡死在场景页」）。
+ *
+ *  @return `null` = 能写；否则是那一句为什么不能（与行上那颗同一句，见 `disabledClickReason`）
+ */
+internal fun SettingsPage.branchWritableHint(): String? = if (pageWritable()) null else disabledClickReason().template
+
+/**
  * 右下角那颗「确认」—— **有改动时才出现**，点下去那一刻才检查、才落盘。
  *
  *  页内的改动（加一块 / 换条件 / 换某一档的动作 / 上移下移删除）全是在改草稿：配置一个字节都不动。
@@ -124,7 +137,12 @@ private fun SettingsPage.BranchSaveFab() {
     PageFabButton(
         onClick = {
             tick()
+            //  整页闸门先判：只读 / 未就绪时草稿本来就不该有改动，走到这里只能是脏状态残留
             val blocked = branchRulesBlockedReason()
+            branchWritableHint()?.let { reason ->
+                hint(reason, slot = HINT_SLOT_DISABLED)
+                return@PageFabButton
+            }
             if (blocked != null) {
                 hint(blocked, slot = HINT_SLOT_DISABLED)
             } else if (saveScenes()) {

@@ -122,7 +122,13 @@ internal fun ProbeChannel.cornerOn(
             XLog.w("${describe(OP_CORNER)}：这个 ROM 的 Transaction 上没有 setCornerRadius(SurfaceControl,float)")
             return
         }
-        Reflect.call(tx, m, sc, radius)
+        //  `Reflect.call` 把失败吞成 null（见它自己那句「查不到就记账」），而
+        //  `Transaction.setCornerRadius` 是**链式返回**（返回 this）：null 就是没成。
+        //  不判它的话，上一行已经写了 invoke failed，下一行还打「已设为」，排查时会当成生效了。
+        if (Reflect.call(tx, m, sc, radius) == null) {
+            XLog.w("${describe(OP_CORNER)}：setCornerRadius 没调成功（上面那行写了断在哪），本次不生效")
+            return
+        }
         Reflect.call(tx, "apply")
         XLog.w("${describe(OP_CORNER)}：任务 #$taskId 的 surface 圆角已设为 $radius")
     } catch (e: Throwable) {
@@ -436,17 +442,23 @@ internal fun ProbeChannel.combo() {
                 downs.map { (key, at) -> ComboDown(key, at) },
                 plans,
             )
-        XLog.w("probe/combo：$name → 期望 $expected，实得 ${ComboSequence.describe(gather)}")
+        val actual = ComboSequence.describe(gather)
+        //  期望写成 `describe` 的**前缀**（`凑齐 cmb1` / `还差 2 颗（cmb3）`）—— 对不上就打一句
+        //  「不符」：只把两串并排写出来，真的漂了也没人看得出哪一行是坏的。
+        val hit = actual.startsWith(expected)
+        XLog.w("probe/combo：$name → 期望 $expected，实得 $actual${if (hit) "" else "  ← 不符"}")
     }
 
     // 1) 两颗顺序按下、间隔 100ms（窗口 300）—— 真机上走的就是这条
     report("两颗 / 间隔 100ms", "凑齐 cmb1", listOf(plus to 0L, ck1 to 100L))
 
-    // 2) 同一对超过窗口 ⇒ 哪一档都不成立
-    report("两颗 / 间隔 400ms", "不成立", listOf(plus to 0L, ck1 to 400L))
+    // 2) 同一对超过窗口：**cmb1 不成立**，但三颗 / 四颗那两档仍在等（跨度按成员数放大，
+    //    (n-1) 个窗口）—— 多档并行时报的是「成员最多的那一档还差几颗」，所以结论是
+    //    「还差 2 颗（cmb3）」而不是「不成立」。
+    report("两颗 / 间隔 400ms", "还差 2 颗（cmb3）", listOf(plus to 0L, ck1 to 400L))
 
-    // 3) 只按了第一颗 ⇒ 这条路仍成立，还差一颗
-    report("只按一颗", "还差 1 颗", listOf(plus to 0L))
+    // 3) 只按了第一颗 ⇒ 每一档都还差着，报**成员最多那一档**的缺口（cmb3 差 3 颗）
+    report("只按一颗", "还差 3 颗（cmb3）", listOf(plus to 0L))
 
     // 4) 中间夹一颗不相干的键 ⇒ 不影响（判定器那边叫「配不上的候选不占位」）
     report("中间夹一颗别的键", "凑齐 cmb1", listOf(plus to 0L, KeyId.customId(9) to 50L, ck1 to 100L))

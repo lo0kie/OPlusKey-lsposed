@@ -283,7 +283,11 @@ internal fun SettingsPage.CommandListPage(
             if (commands.isEmpty()) {
                 //  一条都没有：撑满可见区并正中（高度已减掉顶栏、分页带与页底留白，
                 //  所以居中落在**看得见的那块**正中间，不多出一段能拖的空白）。
-                VisibleAreaCentered(emptyHeight) { SavedCommandEmptyState() }
+                VisibleAreaCentered(emptyHeight) {
+                    //  「一条都没有」与「读不出来」是两件事：后者会让用户以为是自己删光了，
+                    //  也看不出为什么存进去的东西不见（见 `ConfigState.commandsReadOnly`）。
+                    SavedCommandEmptyState(unreadable = configState.commandsReadOnly)
+                }
             } else {
                 //  两段各一条小标题；**空的那一段整段不画**（一条命令都没有的那类，留一条光标题
                 //  + 空网格只是占地方）。

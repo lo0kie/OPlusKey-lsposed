@@ -29,6 +29,7 @@ import com.lookie.opluskey.ui.input.ImeFocusRelease
 import com.lookie.opluskey.ui.model.theme.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.row.TitleCounter
+import com.lookie.opluskey.ui.row.codePointLength
 import io.github.suqi8.coui.kmp.basic.TextField
 import io.github.suqi8.coui.kmp.basic.TextFieldDefaults
 import io.github.suqi8.coui.kmp.basic.TextFieldMode
@@ -126,7 +127,7 @@ internal fun SettingsPage.CommandFullscreenDialog(
                 },
             )
         },
-        titleTrailing = { TitleCounter(text.text.length, MAX_SINGLE_LENGTH) },
+        titleTrailing = { TitleCounter(codePointLength(text.text), MAX_SINGLE_LENGTH) },
     ) {
         //  **侧边距只给输入框**：库的按钮条是「两半平分整个宽度」（自己带内部边距），
         //  套在侧边距里就缩进一圈、与弹窗边缘对不上（`NameInputBody` 也是这么摆的）。

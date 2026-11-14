@@ -89,8 +89,13 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
     var confirmDelete by remember { mutableStateOf(false) }
     //  勾中的键会**连带删掉**「用到它的」组合（少一颗键的组合是废配置，见 `removePicked`）：
     //  确认窗要把这个数报出来，别让人以为只少两颗键。已经勾上的组合不重复算。
+    //  与 `removePicked` 同一条判据：内置侧键**删不掉**（那里会先把它滤掉），这里不滤的话，
+    //  「只勾了侧键」也会把用到侧键的组合算进连带条数 —— 数字比实际删掉的多。
+    val removableKeys = KeysEditState.pickedKeys - KeyId.PLUS.id
     val cascadeCombos =
-        cfg.combos.count { c -> c.id !in KeysEditState.pickedCombos && c.keys.any { it in KeysEditState.pickedKeys } }
+        cfg.combos.count { c ->
+            c.id !in KeysEditState.pickedCombos && c.keys.any { it in removableKeys }
+        }
     //  离开这一页时把编辑态收干净：下次进来是正常的一页，而不是顶栏写着「完成」、
     //  清单上还挂着一排勾。
     DisposableEffect(Unit) { onDispose { KeysEditState.clear() } }
@@ -252,7 +257,7 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
     //  **必须挂在这一页**：添加动作发生在这里，没有这一行就没人画那张窗 ——
     //  那一档会静悄悄地不生效（或者说，用户点了添加却什么都不会发生）。
     ComboModeAskDialog()
-    //  起点键「只参与组合」那一道拦截 —— 同一处添加动作，同样的挂法（见 `ComboStarterBlocked`）
+    //  起点键「只参与非首键的按住组合」那一道拦截 —— 同一处添加动作，同样的挂法（见 `ComboStarterBlocked`）
     ComboStarterBlockedDialog()
 }
 

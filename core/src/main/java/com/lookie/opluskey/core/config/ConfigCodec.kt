@@ -120,7 +120,7 @@ object ConfigCodec {
      *  46 = `GlobalDto` 多了 `common_commands`（「常用命令」那张**用户自己的清单**）——
      *       老文件缺这一格是 `null`（= 用模块自带那几条），与「进过那一页又全删了」的空表分得开。
      *
-     *  47 = `KeyDto` 多了 `combo_only` / `wait_multi_window`（**只参与组合** / **逐次等满多击窗口**）——
+     *  47 = `KeyDto` 多了 `combo_only` / `wait_multi_window`（**只参与非首键的按住组合** / **逐次等满多击窗口**）——
      *       两位都默认「关」，老文件缺它们与这一位出现之前完全一致。
      *
      *  48 = `KeyDto` 多了 `multi_wait_ms`（**逐次等满那一档自己的窗口**）——
@@ -197,13 +197,16 @@ object ConfigCodec {
      *       （公共设置里的单击延迟）。三项都是 `null` 缺省，老文件读回来按默认 ——
      *       与这一位出现之前完全一致。
      *
+     *  65 = `GlobalDto` 多了 `global_ui_vibrate`（**界面振动反馈**）——
+     *       `null` 缺省按开读，与这一位出现之前一致（界面那一路一直有触觉）。
+     *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
      *  不抬版本的话，`version == VERSION` 那一支会拿新 DTO 去校旧文件，**每一份已有配置都当场
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 64
+    const val VERSION = 66
 
     /**
      * 「提示走流体云」由「可选增强」变成「默认落点」的那一版 —— 迁移只看「文件是不是比它旧」。

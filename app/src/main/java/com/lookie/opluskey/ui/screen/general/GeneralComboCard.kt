@@ -146,7 +146,7 @@ internal fun SettingsPage.ComboHoldMinRow(
             SliderSpec(
                 title = I18n.get(Strings.COMBO_HOLD_MIN_TITLE, "首键按住时长"),
                 summary = I18n.get(Strings.COMBO_HOLD_MIN_DESC, "先按住的那颗按满这么久、还没抬手，再按另一颗才算组合"),
-                //  「按住不放」那只钟（`clock-record`，与「长按延迟」那颗闪电分开）
+                //  「撑满就定格」那只钟（`clock-stop`，与「长按延迟」那颗闪电分开）
                 icon = PageIcons.ComboHold,
                 min = GlobalConfig.COMBO_HOLD_MIN_MIN_MS,
                 max = GlobalConfig.COMBO_HOLD_MIN_MAX_MS,

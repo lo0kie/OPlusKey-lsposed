@@ -96,8 +96,12 @@ internal fun SettingsPage.CommandFormatTip(body: String) {
     //  （写它不该触发重组，与 `CommandDetailOverlay` 里那个 `LastCommand` 同一条账）。
     val last = remember { LastTip() }
     if (tip != null) last.value = tip
-    val shown = last.value ?: return
-    AnimatedColumn(visible = tip != null) { CommandFootnote(shown) }
+    //  **容器从第一帧就在组合里**：不能写成「没有提示就 return」再画 —— `AnimatedVisibility` 只在
+    //  「组合进来时 visible=false、之后翻成 true」那一次播进场动画；第一帧就是 true 的话它把初始
+    //  状态当成「已经显示」，直接硬切。那正是「这一页第一次出现格式提示时没有滑入」的原因。
+    //  看不见时内容槽位根本不组合（库那一层判「当前或目标可见」），所以传空串不会画出一个空盒子，
+    //  也就不占位（与「认不出前缀时不画」同一条读法）。
+    AnimatedColumn(visible = tip != null) { CommandFootnote(last.value.orEmpty()) }
 }
 
 /** 退场期间要画的那一份（见 [CommandFormatTip]）。 */

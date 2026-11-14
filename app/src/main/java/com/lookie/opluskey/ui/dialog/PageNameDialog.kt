@@ -19,6 +19,7 @@ import com.lookie.opluskey.ui.input.IconInputView
 import com.lookie.opluskey.ui.input.InputSpec
 import com.lookie.opluskey.ui.row.ChipLegend
 import com.lookie.opluskey.ui.row.TitleCounter
+import com.lookie.opluskey.ui.row.codePointLength
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -113,7 +114,7 @@ internal fun SettingsPage.NameDialog(
         //  挂到标题行尾就是两处一样的字（用户口径「现在有两个一样的文案」）。
         titleTrailing = {
             if (range == null) {
-                TitleCounter(text.length, maxLength)
+                TitleCounter(codePointLength(text), maxLength)
             }
         },
         //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）

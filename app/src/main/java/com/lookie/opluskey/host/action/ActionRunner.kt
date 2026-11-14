@@ -149,15 +149,16 @@ internal class ActionRunner(
     /**
      * 失败提示的唯一出口，转成 Toast；只有这里碰 Context 与 UI。
      *
-     *  顺带把「这一次失败了」记到**正在跑的那一趟**上（[openScope]）。没有正在跑的那一趟就是
-     *  异步失败（`shell:` / `su` / 亮度 root 档都在 `run` 返回之后才回话）—— 那时**不记到任何人头上**：
-     *  记到实例级的那一格，会把下一趟的执行判成失败。
+     *  顺带把「这一次失败了」记到**正在跑的那一趟**上（[openScope]），而且只认**这一趟的派发线程**：
+     *  `shell:` / `su` / 亮度 root 档的失败在池线程上晚到，那时 `openScope` 可能已经被下一趟占着 ——
+     *  照着它记，就是把下一趟的成功报成失败（[GestureExec] 据此不置 `lastActionAt`、不补发报活）。
+     *  配对不上就只弹提示、不记成败（与 [RunScope] 那句「不冒充知道」同一口径）。
      */
     private fun notifyFailure(failure: CommandFailure) {
         //  失败回执仍然走这一条既有通道；顺带记下「这一次失败了」——
         //  [GestureExec] 据此决定要不要置 `lastActionAt` / 补发报活：两者都是「真的做成了」的凭证，
         //  失败时置位等于把成功报成故障的反面（假绿灯）。
-        openScope?.failed = true
+        openScope?.takeIf { it.dispatchThread === Thread.currentThread() }?.failed = true
         FailureNotice.show(context, failure)
     }
 
@@ -168,12 +169,16 @@ internal class ActionRunner(
      *  把契约铺到每个执行器里；而失败的**唯一出口**本来就只有 [notifyFailure] 一处，盯住它即可。
      *  但「盯住它」必须带上**归属** —— 实例级一格会被晚到的异步失败改写，下一趟成功却报失败。
      *
-     *  **只看同步段**：`shell:` 那类失败在池线程上晚到，`run` 早就返回了；那时 [openScope] 已经摘掉，
-     *  这一笔由它自己的失败提示负责，本层不冒充知道（异步失败无法与某一趟配对，硬配只会制造假红灯）。
+     *  **只看同步段**：`shell:` 那类失败在池线程上晚到，`run` 早就返回了；`openScope` 那时可能
+     *  已经摘掉、也可能已被下一趟占住。所以归属按 [dispatchThread] 认：只有「在本趟派发线程上
+     *  报出来的失败」才算这一趟的，异步那一笔只弹提示、不记成败（硬配只会制造假红灯）。
      */
     private class RunScope {
         @Volatile
         var failed: Boolean = false
+
+        /** 这一趟是在哪个线程上同步派发的 —— [notifyFailure] 按它判「是不是本趟的失败」。 */
+        val dispatchThread: Thread = Thread.currentThread()
     }
 
     /**
@@ -242,8 +247,9 @@ internal class ActionRunner(
         //  写入与 `dispatch` 分处两段时，交叠的第二次执行会改写这两格 ⇒ 先进的那次拿着别人的
         //  档位去开手电筒 / 切响铃。锁只圈住写入到派发返回这一段（异步回调本来就在其后的线程上）。
         //
-        //  成败同在这一段里：`RunScope` 随这一趟建、随这一趟摘（`finally`）—— 派发一返回，
-        //  之后晚到的异步失败就找不到主人，不会再被记到**下一趟**头上。
+        //  成败同在这一段里：`RunScope` 随这一趟建、随这一趟摘（`finally`）。派发一返回，
+        //  `openScope` 可能已被下一趟占住，所以归属不看「谁占着这一格」而看**派发线程**
+        //  （见 [notifyFailure] 与 [RunScope.dispatchThread]）—— 晚到的异步失败不会被记到下一趟头上。
         synchronized(runState) {
             runColorOsApi = colorOsApi
             runVibrate = vibrate

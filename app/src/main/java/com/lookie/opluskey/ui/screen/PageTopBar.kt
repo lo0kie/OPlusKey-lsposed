@@ -80,8 +80,10 @@ internal fun SettingsPage.PageTopBar(
         when (s) {
             Screen.BINDING, Screen.COMBO_EDIT, Screen.SCENE_BINDING -> bindingTargetOff(s)
 
-            //  「按键设置」也看这颗键：停用时整片灰
-            Screen.KEY_SETTINGS -> !keyEnabled(KeyWatchState.editing(configState.config.value))
+            //  「按键设置」看**这一页在编的那一份独立设置是谁**（`SettingsTargetState`）：
+            //  从组合键页顶栏那颗设置键进来时是组合，而 `KeyWatchState` 记的还是上一次编辑的键 ——
+            //  照那颗键判，会把「这一组停用了？」这种与本页无关的状态压到副标题上。
+            Screen.KEY_SETTINGS -> !SettingsTargetState.current.enabledIn(configState.config.value)
 
             else -> false
         }

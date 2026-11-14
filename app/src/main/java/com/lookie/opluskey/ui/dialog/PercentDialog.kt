@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -178,6 +179,17 @@ private fun SettingsPage.NumberSliderBody(
             textAlign = TextAlign.Center,
         )
         //  「点轨道跳值」挂在外层节点上（挂滑杆自己的 `modifier` 会与它内部的拖动争事件）
+        //
+        //  回调必须是**稳定的**：`tapSliderToSeek` 的 `pointerInput` 键里只有 `min/max/step/enabled`，
+        //  闭包停留在首次组合那一刻 —— 直接捕获上面那几个参数（尤其 `value`）就一直用旧的那份，
+        //  于是「先拖动、再点回初值」会被 `next != value` 判成没变、这一下被丢掉（读数也不跳）。
+        //  与 `PageSlider` 那一处同一条写法：闭包只捕获这个稳定的 State，调用时才读值。
+        val seekLatest by rememberUpdatedState<(Int) -> Unit> { next ->
+            if (next != value) {
+                tick()
+                onValueChange(next)
+            }
+        }
         Box(
             Modifier
                 .fillMaxWidth()
@@ -187,12 +199,7 @@ private fun SettingsPage.NumberSliderBody(
                     step = step,
                     enabled = true,
                     track = DIALOG_TAP_TRACK,
-                ) { next ->
-                    if (next != value) {
-                        tick()
-                        onValueChange(next)
-                    }
-                },
+                ) { next -> seekLatest(next) },
         ) {
             TrackSlider(
                 value = value.coerceIn(min, max).toFloat(),

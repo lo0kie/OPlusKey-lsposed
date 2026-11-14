@@ -158,7 +158,12 @@ enum class ConditionKind(
     val isAppFamily: Boolean get() = this == APP || this == APP_NOT
 
     companion object {
-        fun fromId(id: String): ConditionKind? = entries.firstOrNull { it.id == id.trim() }
+        fun fromId(id: String): ConditionKind? {
+            //  与 [CommandKind.fromId] 同一条归一化（`trim` + `Locale.ROOT` 小写）：
+            //  两处口径不同时，手改成大写 / 带空格的 id 会一边认得出、另一边认不出。
+            val key = id.trim().lowercase(Locale.ROOT)
+            return entries.firstOrNull { it.id == key }
+        }
 
         /**
          * 老配置里的类型名 → 现在这一档 + 它当时那个取值。

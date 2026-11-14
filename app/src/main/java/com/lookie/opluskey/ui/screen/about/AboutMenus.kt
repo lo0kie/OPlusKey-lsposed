@@ -345,12 +345,15 @@ private fun SettingsPage.profileManageRows(
  *
  *  行尾给**箭头**（[profileRows] 的 `enter = true`）：这一层每行点下去是进系统的「保存到」，
  *  与切换那层「就地选一份」不是同一种交互 —— 用箭头把「还会再开一层」说出来。
+ *
+ *  「默认配置」那一行**不补小字**（`explainDefault = false`）：那句「无法改名或删除」解释的是
+ *  切换那层里灰着的两行，而这一层只有「导出哪份」一件事，摆上去答的不是这里的问题。
  */
 @Composable
 internal fun SettingsPage.ProfileExportMenu(ui: AboutUiState) {
     PageMenu(
         entries =
-            profileRows(ui, markCurrent = false, brokenDeletable = false, enter = true) { item ->
+            profileRows(ui, markCurrent = false, brokenDeletable = false, enter = true, explainDefault = false) { item ->
                 ui.showExportMenu = false
                 hooks.onExportConfig?.invoke(item.slot)
             }.takeIf { ui.showExportMenu }
@@ -376,12 +379,15 @@ internal fun SettingsPage.ProfileExportMenu(ui: AboutUiState) {
  * @param enter 行尾要不要给箭头 —— 导出那一层要，切换那一层不要。判据是「点下去之后去了哪」：
  *   导出那一层每行都**进下一层**（系统的「保存到」），切换那一层是就地选一份（[MenuEntry.Row.selected]
  *   打勾）、点完菜单就关，没有下一层可进。
+ * @param explainDefault 「默认配置」那一行要不要补「无法改名或删除」那句小字 —— 那句解释的是
+ *   切换那层里灰着的两行（重命名 / 删除），导出那层没有这两行，所以不给。
  */
 private fun SettingsPage.profileRows(
     ui: AboutUiState,
     markCurrent: Boolean,
     brokenDeletable: Boolean = true,
     enter: Boolean = false,
+    explainDefault: Boolean = true,
     onPick: (ConfigProfiles.Item) -> Unit,
 ): List<MenuEntry> {
     //  只给自定义的那几份编号（默认那份排在首行，跳过后序号从 1 开始）
@@ -405,7 +411,12 @@ private fun SettingsPage.profileRows(
             title = item.displayName,
             //  默认那一行补一句小字：它是升级时落下的退路（改不了名、删不掉），光看名字读不出这回事 ——
             //  「为什么这两行灰着」原来只在点下去之后才说。其余几份是用户自己起的名字，没有要解释的。
-            summary = if (item.isDefault) I18n.get(Strings.PROFILE_DEFAULT_SUMMARY, "无法改名或删除") else null,
+            summary =
+                if (item.isDefault && explainDefault) {
+                    I18n.get(Strings.PROFILE_DEFAULT_SUMMARY, "无法改名或删除")
+                } else {
+                    null
+                },
             icon =
                 if (item.isDefault) {
                     PageIcons.Profiles

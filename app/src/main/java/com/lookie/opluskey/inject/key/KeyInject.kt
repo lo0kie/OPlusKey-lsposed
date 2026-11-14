@@ -76,7 +76,7 @@ internal fun injectKeyFromSystem(
 }
 
 /**
- * 补发**一条**原生事件 —— 只给「只参与组合」那颗键收尾用（见 `ComboOnlyNative`）。
+ * 补发**一条**原生事件 —— 只给「只参与非首键的按住组合」那颗键收尾用（见 `ComboOnlyNative`）。
  *
  * ## 为什么不能复用 [injectKeyFromSystem]
  *
@@ -114,8 +114,9 @@ internal fun injectNativeKey(
     val manager = inputManager(null) ?: return false
     val now = SystemClock.uptimeMillis()
     // 5 参构造是公开 API（见 `injectKeyFromSystem` 里那段）
-    injectOnce(manager, KeyEvent(now, now, action, keyCode, repeat), keyCode, INJECT_MODE_ASYNC)
-    return true
+    //  结果**透传**出去：调用方（`ComboOnlyNative.forward`）要靠它决定「回声账销不销」——
+    //  以前这里恒回 true，那笔账就永远销不掉，2 秒内用户真按这颗键会被当成回声放行。
+    return injectOnce(manager, KeyEvent(now, now, action, keyCode, repeat), keyCode, INJECT_MODE_ASYNC)
 }
 
 /**
@@ -143,26 +144,30 @@ private fun injectOnce(
     event: KeyEvent,
     keyCode: Int,
     mode: Int = INJECT_MODE_WAIT_FOR_FINISH,
-) {
+): Boolean {
     val r = Reflect.call(manager, Framework.Calls.INJECT_INPUT_EVENT, event, mode)
-    when {
+    return when {
         r == null -> {
             XLog.w("注入侧注入：injectInputEvent 没返回（方法没匹配上）：keyevent:$keyCode")
+            false
         }
 
         // 老版 boolean：true = 成功
         r is Boolean -> {
             if (!r) XLog.w("注入侧注入被拒（老版 boolean=false）：keyevent:$keyCode")
+            r
         }
 
         r is Int -> {
             if (r != INPUT_EVENT_INJECTION_SUCCEEDED) {
                 XLog.w("注入侧注入被拒（结果码 $r）：keyevent:$keyCode")
             }
+            r == INPUT_EVENT_INJECTION_SUCCEEDED
         }
 
         else -> {
             XLog.w("注入侧注入：返回值不认识（${r.javaClass.simpleName}）：keyevent:$keyCode")
+            false
         }
     }
 }

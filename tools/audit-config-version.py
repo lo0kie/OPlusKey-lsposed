@@ -162,8 +162,15 @@ def main():
         print('    改法：抬 VERSION，再跑 python3 tools/audit-config-version.py --update')
         return 1
 
-    print(f'配置结构变了，版本已抬（{base_version} → {version}）—— 记得跑一次 --update 刷新基线')
-    return fail
+    #  **这一档必须失败，不能只提示**：CI 从不跑 `--update`，基线留在旧结构上之后，
+    #  下一次比对的就是「两份不同的结构」—— 这道闸从那一刻起永久失效（永远走不到
+    #  「结构变了、版本没抬」那条真错误）。
+    print(
+        f'::error::配置结构变了、版本已抬（{base_version} → {version}），但基线还是旧的 —— '
+        f'这道闸从这一刻起不再生效',
+    )
+    print('    改法：python3 tools/audit-config-version.py --update 刷新基线，并把 baseline 一起提交')
+    return 1
 
 
 if __name__ == '__main__':

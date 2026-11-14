@@ -153,11 +153,10 @@ object ConfigStore {
                     //  **判据级但要防刷屏**：宿主每条按键前都读一遍配置，文件坏一次就是每秒十几行。
                     //  所以第一次用 `w`（排查时要看得到「读不出来」），之后降到 `d`；
                     //  具体哪条路径坏的那一行由 `ModuleFiles` 打（那里有路径与原因）。
-                    if (unreadableWarned) {
+                    if (!unreadableWarned.add(f.path)) {
                         XLog.d("读配置失败（文件在但读不出来）：${f.path}")
                     } else {
-                        unreadableWarned = true
-                        XLog.w("读配置失败（文件在但读不出来）：${f.path}（后续同类只记调试档）")
+                        XLog.w("读配置失败（文件在但读不出来）：${f.path}（同一文件后续只记调试档）")
                     }
                     return Load.Unreadable
                 }
@@ -231,14 +230,16 @@ object ConfigStore {
     private var cached: Cached? = null
 
     /**
-     * 「文件在但读不出来」那条 W 是否已经报过。
+     * 已经用 `w` 报过的**文件路径**（每进程一份）。
      *
-     * 这条判据会被**每条按键**打到（宿主每次判定前都读一遍配置），文件坏一次就是一秒十几行。
-     * 但完全降成 `d` 又会在 release 里消失 —— 「设置页为什么是只读态」就没有任何线索。
-     * 折中：每进程第一条用 `w`，之后同类只记调试档。
+     *  以前是**一个布尔**：进程里第一个坏文件用 `w`，之后所有坏文件（哪怕完全不相干的另一份）
+     *  都降成 `d` —— 第二个坏掉的文件在 release 日志里等于不存在，而它恰好可能就是用户
+     *  抱怨的那一份。按路径记，每个文件第一条都是 `w`（这条判据会被**每条按键**打到，
+     *  所以仍要防刷屏）。
      */
-    @Volatile
-    private var unreadableWarned = false
+    private val unreadableWarned =
+        java.util.concurrent.ConcurrentHashMap
+            .newKeySet<String>()
 
     /**
      * 读配置；**读不到 / 读不懂都退化成 [Config.DEFAULT]**（不抛）。

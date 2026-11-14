@@ -43,6 +43,7 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.text.commandKindLabel
 import com.lookie.opluskey.ui.row.TitleCounter
+import com.lookie.opluskey.ui.row.codePointLength
 import com.lookie.opluskey.ui.state.command.CommandListEditState
 import com.lookie.opluskey.ui.state.command.CommandUiState
 import com.lookie.opluskey.ui.state.page.CommandForm
@@ -402,7 +403,9 @@ private fun SettingsPage.hideCommandIme() {
 @Composable
 internal fun SettingsPage.CommandNameCounter(form: CommandForm) {
     //  上限与「填一个值」那类弹窗同一份（见 `MAX_NAME_LENGTH`），不在这里另写一个数
-    TitleCounter(form.name.length, MAX_NAME_LENGTH)
+    //  **按码点数**（[codePointLength]）：输入框按 `codePointCount` 截，用 `String.length` 数
+    //  emoji 会一个算两格 —— 读数到 24/24 了、字却还能再打一个。
+    TitleCounter(codePointLength(form.name), MAX_NAME_LENGTH)
 }
 
 /**

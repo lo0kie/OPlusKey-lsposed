@@ -125,12 +125,19 @@ def check_apk(apk, checks):
                 checks.bad(f'{disp(apk)} 缺 {full}')
 
         # (2) scope.list 首行必须是 system —— 写成 android 的话模块装了也不注入 system_server
-        scope_lines = entry(XPOSED + 'scope.list').replace('\r', '').split('\n')
-        scope_head = scope_lines[0]
-        if scope_head == 'system':
-            checks.ok('scope.list 首行 = system')
+        #   缺条目时先记一条「缺」再跳过：直接 `entry()` 会在 zip 里找不到这个名字时抛
+        #   KeyError，整条校验**崩掉**（后面的条目一条都没跑，退出码也不是可读的失败原因）。
+        if XPOSED + 'scope.list' not in names:
+            checks.bad(f'{disp(apk)} 缺 {XPOSED}scope.list（跳过首行校验）')
+            scope_lines = ['']
+            scope_head = ''
         else:
-            checks.bad(f"{disp(apk)} 的 scope.list 首行须为 system（实际 '{scope_head}'）")
+            scope_lines = entry(XPOSED + 'scope.list').replace('\r', '').split('\n')
+            scope_head = scope_lines[0]
+            if scope_head == 'system':
+                checks.ok('scope.list 首行 = system')
+            else:
+                checks.bad(f"{disp(apk)} 的 scope.list 首行须为 system（实际 '{scope_head}'）")
 
         # (3) module.prop：两条 API 档位要有值、是整数，且 target ≥ min
         #   **这个文件只带 LSPosed 那几项**（min / target / staticScope）—— `id` / `name` /

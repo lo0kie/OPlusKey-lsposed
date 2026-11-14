@@ -410,6 +410,22 @@ internal fun snapshotModuleFile(f: java.io.File): Boolean {
 }
 
 /**
+ * 丢掉那份历史快照（[snapshotModuleFile] 留的 `.prev`）。
+ *
+ *  只在「这份快照已经确定不属于这个槽」时用：切配置成功后，当前槽的 `.prev` 里是**另一份配置**
+ *  （`writeProfileConfig` 覆盖前留的）。留着它，哪天主文件坏一次就会把别人的配置恢复回来。
+ *
+ *  @return 真的删掉了（本来就没有也算 `true`）
+ */
+internal fun dropModuleFileBackup(f: java.io.File): Boolean {
+    val prev = java.io.File(f.path + PREV_SUFFIX)
+    if (!prev.exists()) return true
+    return runCatching { prev.delete() }
+        .onFailure { XLog.w("模块文件：删历史快照失败（${prev.path}）| ${it.message}") }
+        .getOrDefault(false)
+}
+
+/**
  * 读那份历史快照（[snapshotModuleFile] 留的 `.prev`），读不出给 `null`。
  *
  *  故意**不经 `AtomicFile`**：它的 `openRead()` 会先去动主文件（那个可能已经坏了），

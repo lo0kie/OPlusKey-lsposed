@@ -79,7 +79,11 @@ internal fun SettingsPage.PageTabBand(
         //  读起来就是「跟页面对不上拍」。这条路以前走过一次、当时撤掉了，原因就在这。
         //  这次给库加了浮点入参（`patches/coui/0007-fractional-tab-position.patch`）：
         //  浮点位置非空时库跳过弹簧、直接照它画滑块，才真正做到跟手。
-        selectedPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction,
+        //  浮点位置**同样要夹**：`currentPage` 被夹住之后，它加偏移量仍可能落在
+        //  `0..lastIndex` 之外（页数刚缩小、偏移量还指着旧的那一页）—— 补丁版库拿到什么就照什么画。
+        selectedPosition =
+            (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                .coerceIn(0f, lastIndex.toFloat()),
     ) {
         tick()
         //  点这一下就**摘焦点**：输入框失焦后不再为光标发 `bringIntoView`，

@@ -49,12 +49,28 @@ object VariableRefs {
     fun String.references(name: String): Boolean {
         if (name.isEmpty()) return false
         if (contains("\${$name}")) return true
+        //  带空白的写法（`${ 计数 }`）在执行侧**照样展开**（`Variables.expand` 会把名字 trim 掉），
+        //  所以这里也必须认：漏了它，删变量时弹窗放行，之后命令里就留下一个永远替换不掉的
+        //  字面量 —— 正是这个类要防的「引用了却不知道」。
+        if (contains("\${") && looseBraceRef(name)) return true
         val prefix = Action.SETVAR_PREFIX
         var at = indexOf(prefix)
         while (at >= 0) {
             val parsed = VarOp.split(substring(at + prefix.length))
             if (parsed?.first == name) return true
             at = indexOf(prefix, at + prefix.length)
+        }
+        return false
+    }
+
+    /** 花括号内的名字**按 trim 后比较** —— 与 `Variables.expand` 同一个口径。 */
+    private fun String.looseBraceRef(name: String): Boolean {
+        var at = indexOf("\${")
+        while (at >= 0) {
+            val end = indexOf('}', at + 2)
+            if (end < 0) return false
+            if (substring(at + 2, end).trim() == name) return true
+            at = indexOf("\${", end + 1)
         }
         return false
     }

@@ -59,7 +59,7 @@ import com.lookie.opluskey.ui.write.write
 internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
     val editing = KeysEditState.editing
     val picked = KeysEditState.pickedKeys
-    //  这一行行尾那半句话（停用 / 只参与组合 / 什么都不写）—— 判据在 `keyStateLabel` 里，
+    //  这一行行尾那半句话（停用 / 只参与非首键的按住组合 / 什么都不写）—— 判据在 `keyStateLabel` 里，
     //  与自定义键那几行共用；两处各判一次的话，加第三种状态时必漏一处。
     val sideKeyState =
         keyStateLabel(
@@ -78,7 +78,7 @@ internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
                 CardRow.Item(
                     title = I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键"),
                     //  行尾只有一格（`trailing` 优先于 `arrow`）：编辑态是勾选框，平时那一格
-                    //  写**这一颗键此刻是什么状态**（`keyStateLabel`：停用 / 只参与组合 / 正常启用
+                    //  写**这一颗键此刻是什么状态**（`keyStateLabel`：停用 / 只参与非首键的按住组合 / 正常启用
                     //  三选一，最后一种什么都不写，回到 `arrow` 那条默认路径）。
                     trailing =
                         when {

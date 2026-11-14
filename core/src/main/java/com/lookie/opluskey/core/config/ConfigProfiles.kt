@@ -322,12 +322,17 @@ object ConfigProfiles {
 
         if (currentUnreadable || !firstOk || !writeProfileConfig(CURRENT_SLOT, target)) {
             //  第一步没写（当前配置读不出来）时目标槽还是原样，没什么要还原的
-            val restored = !(staged && firstOk) || writeProfileConfig(slot, target)
+            val needed = staged && firstOk
+            val restored = !needed || writeProfileConfig(slot, target)
             XLog.w(
                 when {
                     currentUnreadable -> "配置切换：当前配置读不懂 ⇒ 拒绝切换（先修好它，别拿 $slot 盖掉）"
 
                     !firstOk -> "配置切换：$slot 没换成（第一步写盘失败），不动"
+
+                    //  「没有要还原的东西」与「还原成功」是两件事：混成一句会让排查的人
+                    //  以为盘上已经回到原样，而实际上第一步压根没发生。
+                    !needed -> "配置切换：$slot 没换成（第一步没写），目标槽没动过"
 
                     restored -> "配置切换：$slot 没换成（第二步写盘失败），目标槽已还原"
 
@@ -351,6 +356,10 @@ object ConfigProfiles {
         //  变量表失败时命令库已经换过去了 —— 得再换回来。
         val commandsSwapped = ProfileCommands.swap(slot)
         if (commandsSwapped && ProfileVars.swap(slot)) {
+            //  **当前槽的 `.prev` 刚被写成「上一份配置」**（覆盖前留的那份属于另一个 profile）。
+            //  留着它，新当前槽哪天坏一次，`ConfigStore.recoverFromBackup` 会把**别人的配置**
+            //  恢复成当前配置 —— 用户看到的是「切了个配置，回来绑定全变了」。切成功即丢掉。
+            dropModuleFileBackup(ConfigStore.files().file(CURRENT_SLOT))
             XLog.w("配置切换：已切到 ${target.profileName.ifBlank { "默认" }}（槽 $slot）")
             return target
         }
@@ -707,6 +716,20 @@ object ConfigProfiles {
     fun isFull(): Boolean = ConfigStore.files().slots().count { it != CURRENT_SLOT && it.startsWith(SLOT_PREFIX) } >= MAX_PROFILES
 
     /**
+     * **主文件自己**读得懂吗（不回落 `.prev`）。
+     *
+     *  只服务 [writeProfileConfig] 那一道「该不该留快照」的判据，所以别拿它当读配置的入口
+     *  （那个用 [readOf]）。为什么不能用 [readOf]：主文件已经坏、唯一可救的是 `.prev` 时，
+     *  `readOf` 会因为 `.prev` 读得懂而返回非 null —— 于是写完一次就把那份备份换成了坏内容，
+     *  退路永久消失。判据与 `ConfigStore.write` 的 `load() is Load.Ok` 同一条。
+     */
+    internal fun mainFileReadable(slot: String): Boolean =
+        when (val r = ConfigStore.files().read(slot)) {
+            is ModuleFiles.Load.Ok -> decodeConfig(r.text) != null
+            ModuleFiles.Load.Absent, ModuleFiles.Load.Unreadable -> false
+        }
+
+    /**
      * 下一份新配置该用的**槽名与位次**（新建与导入都要这两个，所以一起算）。
      *
      *  · 槽号 = 现有最大值 + 1（不回收：回收会让「槽号 = 创建顺序」这条失效）；
@@ -748,11 +771,14 @@ private fun writeProfileConfig(
     slot: String,
     config: Config,
 ): Boolean {
-    //  **该槽现在读得懂才留 `.prev`** —— 与 [ConfigStore.write] 同一口径：读不懂（截断 / 手改坏）
-    //  时那份快照往往正是唯一还能救的副本，把它换成一份坏内容等于当场把退路毁掉。
-    //  「能不能解析」用 [ConfigProfiles.readOf] 判：文件层的 `read` 在外皮坏了时照样给 `Ok`，
-    //  只有走完整解码链才判得出「读不懂」。
-    if (ConfigProfiles.readOf(slot) != null) snapshotModuleFile(ConfigStore.files().file(slot))
+    //  **该槽的主文件现在读得懂才留 `.prev`** —— 与 [ConfigStore.write] 同一口径
+    //  （那边判的是 `load() is Load.Ok`）：读不懂（截断 / 手改坏）时那份快照往往正是唯一
+    //  还能救的副本，把它换成一份坏内容等于当场把退路毁掉。
+    //
+    //  **判据必须是「主文件本身」**，不能拿 [ConfigProfiles.readOf]：那个会在主文件坏掉时
+    //  回落 `.prev` —— 主文件已经坏、唯一可救的是 `.prev`，`readOf` 却因为 `.prev` 读得懂
+    //  而返回非 null，于是把那份备份换成坏内容：切档 / 导入一次，备份就永久没了。
+    if (ConfigProfiles.mainFileReadable(slot)) snapshotModuleFile(ConfigStore.files().file(slot))
     return ConfigStore.files().write(
         slot,
         FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, ConfigCodec.serialize(config)),

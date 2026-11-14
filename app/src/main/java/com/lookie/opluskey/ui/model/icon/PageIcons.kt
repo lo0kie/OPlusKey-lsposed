@@ -17,6 +17,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsDoubleNeSw
+import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsExchange
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandAlipay
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandGithub
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
@@ -37,13 +38,13 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ClockBolt
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPause
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPlay
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockRecord
+import io.github.lyxnx.compose.ui.tablericons.outline.ClockStop
 import io.github.lyxnx.compose.ui.tablericons.outline.CloudSearch
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.ColorSwatch
 import io.github.lyxnx.compose.ui.tablericons.outline.Contrast
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
-import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobilePause
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
@@ -240,6 +241,14 @@ internal object PageIcons {
      *  这一行只改**名字**，压一行字更贴。
      */
     val MenuRename: ImageVector get() = TablerIcons.Outline.Edit
+
+    /**
+     * 常用命令行菜单里「修改」那一行 —— `arrows-exchange`（两条反向箭头）。
+     *
+     *  与 [MenuRename]（`edit`，只改名字）分开：这一行换的是**这一条指向哪个动作**，
+     *  名字与图标都留着 —— 反向箭头读作「换成另一个」，铅笔读作「改这一行字」。
+     */
+    val MenuChange: ImageVector get() = TablerIcons.Outline.ArrowsExchange
 
     /** 浮层菜单「打开默认界面」—— 窗口框，读作「另一个界面」。 */
     val MenuStock: ImageVector get() = TablerIcons.Outline.AppWindow
@@ -582,7 +591,7 @@ internal object PageIcons {
     val Profiles: ImageVector get() = TablerIcons.Outline.Stack2
 
     /**
-     * **只参与组合** —— `arrows-double-ne-sw`（一支朝东北、一支朝西南的双向斜箭头）。
+     * **只参与非首键的按住组合** —— `arrows-double-ne-sw`（一支朝东北、一支朝西南的双向斜箭头）。
      *
      *  双向是这一位的要害：单键手势交还系统、模块只用它凑组合 —— 这颗键**两头都有去处**，
      *  不是「坏了」也不是「只剩一半」。
@@ -742,6 +751,14 @@ internal object PageIcons {
 
     /** 「振动反馈」行的行首 —— `DeviceMobileVibration`（手机 + 两道声波）。 */
     val Vibrate: ImageVector get() = TablerIcons.Outline.DeviceMobileVibration
+
+    /**
+     * 「无操作时振动」行的行首 —— `MoodEmpty`（空脸）。
+     *
+     *  与 [Vibrate] 刻意用两个字形：那一行管「真的执行了动作」，这一行管「什么都没配」——
+     *  空脸正好是「按了、但这一档没内容」，用同一个手机图标会让两行读起来像同一个开关。
+     */
+    val VibrateOnNone: ImageVector get() = TablerIcons.Outline.MoodEmpty
 
     /**
      * 「振动强度」滑杆的行首 —— **档位数字**（`SquareNumber1/2/3`）。
@@ -920,8 +937,14 @@ internal object PageIcons {
      */
     val MenuCheck: ImageVector get() = TablerIcons.Outline.Check
 
-    /** 「单击延迟」—— `device-mobile-pause`（手机屏上一个暂停记号：等「还有没有第二下」）。 */
-    val DelayTap: ImageVector get() = TablerIcons.Outline.DeviceMobilePause
+    /**
+     * 「等待窗口」（单击延迟 / 多击判定窗口）—— `clock-record`（钟 + 录制圆点）。
+     *
+     *  那一行问的是「按下之后等多久才算这一下结束」：钟是那段时长，录制圆点读作「从按下那一刻起
+     *  一直记着」。与 [ComboHold]（`clock-stop`）正好是一对：这颗还在**等**（窗口开着），
+     *  那颗已经**停**（撑满了，不再等）。
+     */
+    val DelayTap: ImageVector get() = TablerIcons.Outline.ClockRecord
 
     /** 「长按延迟」—— `clock-bolt`（钟 + 闪电：按到这一刻就是长按那一下）。 */
     val DelayHold: ImageVector get() = TablerIcons.Outline.ClockBolt
@@ -962,13 +985,13 @@ internal object PageIcons {
     val ComboWait: ImageVector get() = TablerIcons.Outline.ClockPause
 
     /**
-     * 「首键按住时长」—— `clock-record`（钟 + 录制圆点）。
+     * 「首键按住时长」—— `clock-stop`（钟 + 停止方块）。
      *
      *  与 [DelayHold]（`clock-bolt`，长按延迟）分开：两行都在量「按住多久」—— 一颗管**单颗键**
-     *  按到哪一刻算长按，一颗管**组合**里先按住的那颗得撑满多久。录制的圆点读作「从这里开始一直记着」，
-     *  闪电则是「到这一下就触发」，一颗是持续、一颗是那一下。
+     *  按到哪一刻算长按，一颗管**组合**里先按住的那颗得撑满多久。停止方块读作「撑到这一刻就定格、
+     *  从这里起算组合」，与 [DelayTap] 那颗「还在等」的录制圆点相反。
      */
-    val ComboHold: ImageVector get() = TablerIcons.Outline.ClockRecord
+    val ComboHold: ImageVector get() = TablerIcons.Outline.ClockStop
 
     /** 模块重启 —— `Reload`（回转箭头 + 竖线），读作「重新来一遍」。 */
     val ModuleRestart: ImageVector get() = TablerIcons.Outline.Reload

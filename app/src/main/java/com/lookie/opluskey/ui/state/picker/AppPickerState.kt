@@ -271,13 +271,22 @@ internal class AppPickerState {
         private set
 
     /**
-     * 这一趟是给**「常用命令」那张清单**挑一条动作（挑中的应用 / 结束应用落成清单里新的一条）。
+     * 这一趟是给**「常用命令」那张清单**挑一条动作（挑中的应用 / 结束应用落成清单里的一条）。
      *
-     *  与 [forRelease] 同一档性质 —— 都是「把挑中的这一条追加到某个地方」，只是那边的落点是某个键
+     *  与 [forRelease] 同一档性质 —— 都是「把挑中的这一条写到某个地方」，只是那边的落点是某个键
      *  的一个字段，这边是一张清单。挑完**自己退页**，清单由 `PageEntryWrite.writeToken` 写
      *  （见 `PickTarget.CommonCommand`）。
      */
     var forCommonCommand = false
+        private set
+
+    /**
+     * 这一趟挑中的应用**换掉清单里哪一条**（`null` = 追加一条新的）。
+     *
+     *  与 [replaceStep] 同一个读法：同一张抽屉既负责「加一条」也负责「换一条」，两者的差别只有
+     *  落点 —— 留着上一次的值会把「修改」写成「又多一条」。
+     */
+    var replaceCommonToken: String? = null
         private set
 
     /**
@@ -393,6 +402,7 @@ internal class AppPickerState {
         releaseComboId = null
         releaseChain = false
         forCommonCommand = false
+        replaceCommonToken = null
     }
 
     /**
@@ -439,19 +449,24 @@ internal class AppPickerState {
         stopAppState.value = stop
         forRelease = true
         forCommonCommand = false
+        replaceCommonToken = null
     }
 
     /**
-     * 「常用命令」那条入口：给那张清单挑一条动作 —— 挑中的应用 / 结束应用落成清单里**新的一条**。
+     * 「常用命令」那条入口：给那张清单挑一条动作 —— 挑中的应用 / 结束应用落成清单里的一条。
      *
      *  与 [openForRelease] 同一个形状（挑法、清单、二级页、小窗全都一样），差别只有落点：
-     *  那边写某个键的一个字段，这边往 `global.commonCommands` 追加一行（见
-     *  `PageEntryWrite.writeToken`）。清场纪律照抄那一支 —— 这几位的账互斥，留着上一次的值
-     *  会让写回落到别人头上。
+     *  那边写某个键的一个字段，这边写 `global.commonCommands`（见 `PageEntryWrite.writeToken`）。
+     *  清场纪律照抄那一支 —— 这几位的账互斥，留着上一次的值会让写回落到别人头上。
      *
      *  @param stop `true` = 这一趟是「结束应用」（写 `proc:stop:包名`）
+     *  @param replaceToken 非空 = **换掉清单里的这一条**（行菜单的「修改」那一趟）；
+     *    `null` = 追加一条新的（右下角那颗加号）
      */
-    fun openForCommonCommand(stop: Boolean = false) {
+    fun openForCommonCommand(
+        stop: Boolean = false,
+        replaceToken: String? = null,
+    ) {
         gesture = null
         comboId = null
         sceneAt = NOT_FOR_SCENE
@@ -465,6 +480,7 @@ internal class AppPickerState {
         releaseComboId = null
         releaseChain = false
         forCommonCommand = true
+        replaceCommonToken = replaceToken
     }
 
     /**
@@ -487,6 +503,7 @@ internal class AppPickerState {
         stopAppState.value = stop
         forRelease = false
         forCommonCommand = false
+        replaceCommonToken = null
     }
 
     /**
@@ -516,6 +533,7 @@ internal class AppPickerState {
         stopAppState.value = false
         forRelease = false
         forCommonCommand = false
+        replaceCommonToken = null
     }
 
     /** 这趟「为谁挑」整个作废 —— 挑完了、写失败留在原地、或干脆没挑就退出来。 */
@@ -532,6 +550,7 @@ internal class AppPickerState {
         forRelease = false
         releaseComboId = null
         forCommonCommand = false
+        replaceCommonToken = null
         // 本地选中与草稿一并作废：这一趟挑应用的账到此为止
         pending.value = null
         pickedApps.value = emptySet()
@@ -605,7 +624,10 @@ internal class AppPickerState {
 
             forCommonCommand -> {
                 forCommonCommand = false
-                PickTarget.CommonCommand
+                //  「换哪一条」与「加一条」同生共死：这一趟是修改时才带走那个 token
+                val replace = replaceCommonToken
+                replaceCommonToken = null
+                PickTarget.CommonCommand(replace)
             }
 
             else -> {
@@ -900,12 +922,18 @@ internal sealed interface PickTarget {
     ) : PickTarget
 
     /**
-     * 「常用命令」那张清单：挑中的动作**追加成清单里新的一条**（`global.commonCommands`）。
+     * 「常用命令」那张清单：挑中的动作**追加成新的一条**，或**换掉已有的那一条**
+     * （`global.commonCommands`）。
      *
-     *  没有参数 —— 落点只有那一张表，挑的是「打开应用」还是「结束应用」已经写在 token 里了
+     *  落点只有那一张表，挑的是「打开应用」还是「结束应用」已经写在 token 里了
      *  （`app:` / `proc:stop:`）。写成功之后自己退页，与 [Release] 同一条纪律。
+     *
+     *  @param replaceToken 非空 = 换掉清单里的这一条（行菜单「修改」那一趟挑的应用）；
+     *    `null` = 追加一条（与右下角加号那一趟一致）
      */
-    data object CommonCommand : PickTarget
+    data class CommonCommand(
+        val replaceToken: String? = null,
+    ) : PickTarget
 }
 
 /**

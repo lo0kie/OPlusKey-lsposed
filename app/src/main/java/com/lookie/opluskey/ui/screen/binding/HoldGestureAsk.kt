@@ -374,7 +374,7 @@ private class LastAskLabel {
 }
 
 /**
- * 「这颗键只参与组合，当不了按住起点」那一道拦截。
+ * 「这颗键只参与非首键的按住组合，当不了按住起点」那一道拦截。
  *
  *  与 [ComboModeAsk] 分开两个状态：那一条是**可以继续**的问句（确认后改键 + 添加），
  *  这一条是**到此为止**的说明 —— 没有可以替他做的补救（那颗键的「松手时触发」在设置页
@@ -446,12 +446,12 @@ internal fun SettingsPage.ComboStarterBlockedDialog() {
                     if (ComboStarterBlocked.reason == ComboStarterBlocked.Reason.WAIT_MEMBER) {
                         I18n.get(
                             Strings.COMBO_MEMBER_BLOCKED_BODY,
-                            "%s 已设为只参与组合，无法加入等待组合。",
+                            "%s 只能作按住组合的后续成员，无法加入等待组合。",
                         )
                     } else {
                         I18n.get(
                             Strings.COMBO_STARTER_BLOCKED_BODY,
-                            "%s 已设为只参与组合，无法用它作为按住手势的起点。",
+                            "%s 只能作按住组合的后续成员，无法用它作为按住手势的起点。",
                         )
                     },
                 names = listOf(label),
@@ -472,13 +472,13 @@ private class LastBlocked {
 }
 
 /**
- * 「这颗键已经是按住组合的起点，不能设成只参与组合」那一道拦截 —— 与 [ComboStarterBlocked]
+ * 「这颗键已经是按住组合的起点，不能设成只参与非首键的按住组合」那一道拦截 —— 与 [ComboStarterBlocked]
  * **方向相反**：
  *
- *  · [ComboStarterBlocked]：先开了「只参与组合」，再想拿它当按住起点 ⇒ 拦「加组合」那一边；
- *  · 这一条：先拿它当了按住起点，再想开「只参与组合」⇒ 拦「改这颗键」那一边。
+ *  · [ComboStarterBlocked]：先开了「只参与非首键的按住组合」，再想拿它当按住起点 ⇒ 拦「加组合」那一边；
+ *  · 这一条：先拿它当了按住起点，再想开「只参与非首键的按住组合」⇒ 拦「改这颗键」那一边。
  *
- *  两条说的是同一个矛盾的两端（起点键必须「按住到点」，而只参与组合的键不判单键手势），
+ *  两条说的是同一个矛盾的两端（起点键必须「按住到点」，而只参与非首键的按住组合的键不判单键手势），
  *  所以判据是同一句（`Config.holdComboStartedBy` / `ComboKey.starterKey`），只是问的时机不同。
  *
  *  与 [ComboModeAsk] 也分开：那一条是**可以继续**的问句（确认后替他改键 + 添加），这一条是
@@ -521,7 +521,7 @@ internal object ComboOnlyBlocked {
  * 上面那一道拦截的窗口 —— 挂在「独立设置」页（开关就在那一页）。
  *
  *  正文分两段：一句说明**为什么不行**（键名是名字框，与别处同一套记号），一句告诉用户
- *  **怎么解**。第二句不能省 —— 这一条不像「起点键只参与组合」那样无可挽回，用户改掉那一档
+ *  **怎么解**。第二句不能省 —— 这一条不像「起点键只参与非首键的按住组合」那样无可挽回，用户改掉那一档
  *  组合就能回来开这个开关；只说「不行」会让人以为这一项坏了。
  */
 @Composable
@@ -535,7 +535,7 @@ internal fun SettingsPage.ComboOnlyBlockedDialog() {
     val textColor = COUITheme.colorScheme.onBackgroundVariant
     ConfirmDialog(
         show = live != null,
-        title = I18n.get(Strings.COMBO_ONLY_BLOCKED_TITLE, "无法只参与组合"),
+        title = I18n.get(Strings.COMBO_ONLY_BLOCKED_TITLE, "不能只作后续成员"),
         action = I18n.get(Strings.COMBO_ONLY_BLOCKED_ACTION, "知道了"),
         positiveDanger = false,
         //  这一条没有「确认之后做点什么」—— 两颗按钮都只是把窗关掉
@@ -548,12 +548,12 @@ internal fun SettingsPage.ComboOnlyBlockedDialog() {
                     if (waitMember) {
                         I18n.get(
                             Strings.COMBO_ONLY_BLOCKED_WAIT_BODY,
-                            "%s 是某一档等待组合的成员，不能设为只参与组合。",
+                            "%s 是某一档等待组合的成员，不能只作后续成员。",
                         )
                     } else {
                         I18n.get(
                             Strings.COMBO_ONLY_BLOCKED_BODY,
-                            "%s 是某一档按住组合的起点，不能设为只参与组合。",
+                            "%s 是某一档按住组合的起点，不能只作后续成员。",
                         )
                     },
                 names = listOf(label),

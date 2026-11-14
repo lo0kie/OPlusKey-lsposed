@@ -245,7 +245,10 @@ sealed interface Action {
         val icon: String = "",
     ) : Action {
         override val token: String =
-            Action.FLUID_PREFIX + (if (icon.isEmpty()) "" else icon + Action.FLUID_ICON_SEP) + message
+            //  图标 id **一律小写**（解析时已经 lowercase）：不同大小写构造出来的同一条动作
+            //  必须落在同一个 token 上，否则「同一条命令」在两处比较时判不相等、图标也会各存一份。
+            Action.FLUID_PREFIX +
+                (if (icon.isEmpty()) "" else icon.lowercase() + Action.FLUID_ICON_SEP) + message
 
         companion object {
             /**
@@ -894,7 +897,12 @@ sealed interface Action {
             if (text.isEmpty()) return false
             //  `none` 也过闸：它是「这一格有值、但什么都不做」，与「还没写」不是一回事
             //  （能不能存另有一道 `isBound` 的判据，见 `singlePayloadBlockedReason`）。
-            return text == NONE || PREFIXES.any { text.startsWith(it) }
+            if (text == NONE) return true
+            if (PREFIXES.none { text.startsWith(it) }) return false
+            //  **前缀认得、正文还要解析得出来**：`setvar:计数` 少了 `=` 时前缀照样命中，
+            //  但 [parse] 会回 [None] —— 那种命令能存进去、点测试什么都不发生，
+            //  症状与「没写」一模一样。格式闸在这里就拦下，别等执行时才静默。
+            return parse(text).isBound
         }
 
         /**
@@ -1064,7 +1072,13 @@ sealed interface Action {
                 XLog.w("动作 timer: 的秒数认不出（按 none 处理）：${XLog.redactToken(text)}")
                 return None
             }
-            return Timer(seconds.coerceAtMost(TIMER_MAX_SECONDS))
+            //  **超上限按「认不出」处理**（与本函数 KDoc 同一条）：以前静默夹到 24h，
+            //  于是 `timer:999999` 会变成「悄悄起了一个 24 小时计时」—— 猜错的代价比不执行大。
+            if (seconds > TIMER_MAX_SECONDS) {
+                XLog.w("动作 timer: 的秒数超过上限 $TIMER_MAX_SECONDS（按 none 处理）：${XLog.redactToken(text)}")
+                return None
+            }
+            return Timer(seconds)
         }
 
         /**

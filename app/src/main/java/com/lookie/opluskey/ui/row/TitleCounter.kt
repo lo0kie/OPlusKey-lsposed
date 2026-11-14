@@ -39,6 +39,14 @@ internal fun TitleCounter(
 }
 
 /**
+ * 字数按**码点**数 —— 与输入框的截断同一个口径。
+ *
+ *  `String.length` 是 UTF-16 单元数：emoji / 增补平面字符在那里算 2，于是「一个字都打不进去」
+ *  （输入框按 `codePointCount` 截）却读出 `24/24`。三处字数统计都走这一处。
+ */
+internal fun codePointLength(text: String): Int = text.codePointCount(0, text.length)
+
+/**
  * 行尾那格小字的**样式本体** —— 这一格要写的任何一句话都走它。
  *
  *  两处在用：字数统计 / 条数（[TitleCounter]），以及滑杆输入窗里的**取值区间**（`480–2000`

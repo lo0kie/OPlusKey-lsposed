@@ -35,6 +35,7 @@ import com.lookie.opluskey.ui.write.setToastFluid
 import com.lookie.opluskey.ui.write.setToastOnRun
 import com.lookie.opluskey.ui.write.setToastTemplate
 import com.lookie.opluskey.ui.write.setVibrate
+import com.lookie.opluskey.ui.write.setVibrateOnNone
 import com.lookie.opluskey.ui.write.setVibrateStrength
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
@@ -133,6 +134,7 @@ private fun SettingsPage.InterfaceCard(pageEnabled: Boolean) {
 private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
     val cfg = configState.config.value
     val vibrate = cfg.global.vibrate
+    val vibrateOnNone = cfg.global.vibrateOnNone
     // 「提示文案」那一行开着编辑弹窗没有 —— 弹窗与这一行同一张卡，状态就留在这支里。
     var editingToastTemplate by remember { mutableStateOf(false) }
     CardList(
@@ -150,6 +152,20 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                         enabled = pageEnabled,
                     ) {
                         setVibrate(it)
+                    },
+                )
+                //  「无操作时振动」：与上面那颗分开 —— 上面管「执行了动作」，这颗管
+                //  「按下去有反应、但这一档什么都没绑」。不跟着 `vibrate` 显隐：两者互不依赖。
+                add(
+                    CardRow.Switch(
+                        title = I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE, "无操作时振动"),
+                        summaryOn = I18n.get(Strings.HOME_VIBRATE_ON_NONE_DESC_ON, "未配置动作时同样振动"),
+                        summaryOff = I18n.get(Strings.HOME_VIBRATE_ON_NONE_DESC_OFF, "未配置动作时不振动"),
+                        icon = PageIcons.VibrateOnNone,
+                        checked = vibrateOnNone,
+                        enabled = pageEnabled,
+                    ) {
+                        setVibrateOnNone(it)
                     },
                 )
                 // 「振动强度」：只在振动反馈开着时出现 —— 关掉振动还摆一根强度滑杆，

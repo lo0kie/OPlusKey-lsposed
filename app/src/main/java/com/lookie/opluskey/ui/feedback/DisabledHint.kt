@@ -10,6 +10,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -85,7 +86,7 @@ internal fun DisabledHint(
 /**
  * 同上，但带上**要画成标签的名字**（`%s` 在 [HintText.template] 里）。
  *
- *  带键名的那几条（「按键 %s 只参与组合按键」「%s 已停用…」）走这一支：名字画成标签，
+ *  带键名的那几条（「按键 %s 只参与非首键的按住组合」「%s 已停用…」）走这一支：名字画成标签，
  *  与提示条里其它回执是同一种长相。纯文字那十几处继续用上面那条重载，一行都不用改。
  */
 @Composable
@@ -114,16 +115,24 @@ internal fun DisabledHint(
  *  「这一项现在不生效」在两处是同一件事，字号 / 颜色 / 与右侧那颗图标的间距必须一样；
  *  各写一遍的结果是两页的同一句话看起来不是一回事。`RuleStateHint` 里 OFF 那一档也走它。
  *
- *  @param text 那一句话本身 —— 默认「已停用」；按键列表会传「只参与组合」
+ *  @param text 那一句话本身 —— 默认「已停用」；按键列表会传「只参与非首键的按住组合」
  *    （见 [keyStateLabel]：两者占同一格、三态互斥）
  */
 @Composable
-internal fun DisabledStateText(text: String = I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用")) {
+internal fun DisabledStateText(
+    text: String = I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用"),
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+) {
     Text(
         text,
         style = COUITheme.textStyles.footnote1,
         color = COUITheme.colorScheme.onSurfaceVariantActions,
-        modifier = Modifier.padding(end = 6.dp),
+        maxLines = maxLines,
+        //  **单行时省略**：这一格与标题、箭头挤在同一行，状态一长就只能收尾 ——
+        //  不收的话它会把行尾那颗箭头整个顶出可视区（用户口径「角标把行尾箭头挤掉了」）。
+        overflow = if (maxLines == 1) TextOverflow.Ellipsis else TextOverflow.Clip,
+        modifier = modifier.padding(end = 6.dp),
     )
 }
 
@@ -133,10 +142,10 @@ internal fun DisabledStateText(text: String = I18n.get(Strings.COMMAND_BRANCH_DI
  * ## 三态互斥（用户口径「和停用 / 启用三选一，启用不用显示」）
  *
  *  · 停着没 → 「已停用」；
- *  · 「只参与组合按键」→ 「只参与组合」；
+ *  · 「只参与非首键的按住组合」→ 「只参与非首键的按住组合」；
  *  · 正常启用 → `null`，这一格整块不占位（行尾回到箭头那条默认路径）。
  *
- *  这两件事**不是一回事**：停用是「这颗键不接管任何按键」，只参与组合是「单键手势交还系统、
+ *  这两件事**不是一回事**：停用是「这颗键不接管任何按键」，只参与非首键的按住组合是「单键手势交还系统、
  *  模块只用它凑组合」—— 后者照样在干活，只是干的不是单键那一份。所以画在**同一格**里
  *  而不是叠两条：这一格本来就只放一句状态，两条一起写会把标题挤掉一截。
  *
@@ -145,7 +154,7 @@ internal fun DisabledStateText(text: String = I18n.get(Strings.COMMAND_BRANCH_DI
  *  另一行什么都不写。组合键列表也调它（`comboOnly` 恒传 `false`：那一位只属于单键）。
  *
  * @param enabled 这一项自己开着没有
- * @param comboOnly 是不是「只参与组合按键」（见 `KeyConfig.comboOnly`）
+ * @param comboOnly 是不是「只参与非首键的按住组合」（见 `KeyConfig.comboOnly`）
  */
 internal fun keyStateLabel(
     enabled: Boolean,
@@ -153,7 +162,7 @@ internal fun keyStateLabel(
 ): String? =
     when {
         !enabled -> I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用")
-        comboOnly -> I18n.get(Strings.BINDING_COMBO_ONLY_BADGE, "只参与组合")
+        comboOnly -> I18n.get(Strings.BINDING_COMBO_ONLY_BADGE, "非首键按住组合")
         else -> null
     }
 
@@ -165,13 +174,15 @@ internal fun keyStateLabel(
  *  迟早有一处忘了画箭头（真机上就是这样：填了 `trailing`，箭头整列消失）。
  *
  *  @param text 那半句话 —— 默认「已停用」；按键列表会传 [keyStateLabel] 的结论
- *    （「只参与组合」也走这一格：两者是同一件事的两种状态，不该长得像两个控件）
+ *    （「只参与非首键的按住组合」也走这一格：两者是同一件事的两种状态，不该长得像两个控件）
  *  @see DisabledStateText 只画那半句话（编辑态里它旁边跟的是勾选框，不是箭头）
  */
 @Composable
 internal fun DisabledStateWithArrow(text: String = I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用")) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        DisabledStateText(text)
+        //  **文字让位、箭头不让**：`weight(fill = false)` 只吃掉剩余宽度，箭头按自身宽度量在最后，
+        //  状态再长也挤不掉它（这是导航控件，必须永远在）。
+        DisabledStateText(text, modifier = Modifier.weight(1f, fill = false), maxLines = 1)
         RowEndIcon()
     }
 }
@@ -193,7 +204,8 @@ internal fun DisabledStateWithPick(
     state: String?,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        if (state != null) DisabledStateText(state)
+        //  与 [DisabledStateWithArrow] 同一条：勾选框是控件，不能被状态文字挤出去
+        if (state != null) DisabledStateText(state, modifier = Modifier.weight(1f, fill = false), maxLines = 1)
         Checkbox(
             state = if (picked) ToggleableState.On else ToggleableState.Off,
             onClick = null,

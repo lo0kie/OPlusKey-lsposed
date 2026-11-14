@@ -37,6 +37,7 @@ import com.lookie.opluskey.ui.wire.linkChecks
 import com.lookie.opluskey.ui.write.setFollowDisplaySize
 import com.lookie.opluskey.ui.write.setPageScale
 import com.lookie.opluskey.ui.write.setRandomIconTint
+import com.lookie.opluskey.ui.write.setUiVibrate
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -286,7 +287,9 @@ internal fun SettingsPage.currentProfileName(): String {
 }
 
 /**
- * 「外观」那张卡 —— 主题（跟随系统 / 浅色 / 深色）+ 强调色（页面强调色）。
+ * 「外观」那张卡 —— 模块页面**自己的样子与手感**：主题、强调色、随机图标配色、跟随系统显示大小
+ * （+ 关掉时的页面缩放）、界面振动反馈。这一卡里没有一项碰「按键怎么执行」，
+ * 所以它们与总闸无关，主开关关着时照样能改。
  *
  *  行序：**先深浅、后强调色** —— 深浅定的是整页的明暗，强调色是在它上面挑一个点缀；
  *  反过来摆的话，用户会先去挑颜色，再发现整页明暗变了、那一套色在他刚看到的底色上并不好看。
@@ -367,6 +370,19 @@ internal fun SettingsPage.AppearanceCard(
                 CardRow.Custom(visible = !configState.config.value.global.followDisplaySize) { position ->
                     PageScaleRow(position)
                 },
+                // 第 6 行：界面振动反馈 —— 点行 / 拨开关 / 拖滑杆那一下的触觉。
+                //  **它在这一页、不在「按键设置」页**：那一页管的是「按键触发之后振不振」
+                //  （`home.vibrate_title` 那一颗），这一颗管的是**模块页面自己**的手感，
+                //  与上面那几行「页面长什么样、多大」同一类。
+                //  与这一页其它几行一样**不吃总闸**：主开关关着时页面照样能点，照样该有手感。
+                CardRow.Switch(
+                    title = I18n.get(Strings.MORE_UI_VIBRATE_TITLE, "界面振动反馈"),
+                    summaryOn = I18n.get(Strings.MORE_UI_VIBRATE_ON, "点按界面控件时振动一次"),
+                    summaryOff = I18n.get(Strings.MORE_UI_VIBRATE_OFF, "点按界面控件时不振动"),
+                    icon = PageIcons.Vibrate,
+                    checked = configState.config.value.global.uiVibrate,
+                    onCheckedChange = { setUiVibrate(it) },
+                ),
             ),
     )
 }

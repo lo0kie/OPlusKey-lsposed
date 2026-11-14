@@ -249,9 +249,12 @@ internal class GestureDetector(
             //  这一档与双击**互斥**：第 2 击快速抬起 ⇒ 双击（下面那两条分支照常收尾），
             //  按住超过长按阈值 ⇒ 派发 `ClickThenLong`（见 scheduleLongPress 里那一支）。
             //  所以两条路都要保留：既排长按枪，又按原样让抬手能派发双击。
-            //  判据用 `clickThenLongCounts`（开着**且**真有动作）：动作是无操作时这一档等于不存在，
-            //  第 2 击该照常走双击那条路。
-            if (p.clicks == 2 && config.clickThenLongCounts) {
+            //  判据用 **`clickThenLongOn`（开关）**，不是「有动作」：
+            //  动作设成无操作时这一档**仍然要认**、第二击按住照样归它，只是不执行任何命令。
+            //  按「有动作」判的话，第二击会落到下面「数到封顶」那一支 ⇒ 报 `Click(2)` ⇒
+            //  执行侧对没有动作的档逐级回退 ⇒ **退成单击命令**（用户口径：
+            //  「单击后长按为无操作后，执行手势会触发单击命令」，2026-11-15）。
+            if (p.clicks == 2 && config.clickThenLongOn) {
                 if (p.clicks < maxClicks) {
                     //  后面还有第 3 击要等（三击 / 四击）：照原样继续等，只是顺手把长按枪排上。
                     //  到点时若仍停在第 2 击 ⇒ 判单击后长按；已经数到第 3 击 ⇒ 那一枪自己作废
@@ -306,6 +309,29 @@ internal class GestureDetector(
             //   · 触发键自己还按着就注入，本身就容易和这对键的组合语义打架。
             //  代价只是把这一下推迟到抬手（几十毫秒），手感上看不出来。
             return
+        }
+
+        //  上一次那一下的窗口**已经过期、那一枪却还没跑到**（主 looper 忙，或排在长按枪之后）：
+        //  这时不能直接往下重置 —— `doubleWindowAt` 一清，那颗迟到的枪到点就判「属于上一次按压」
+        //  直接作废（见那个 shot 的 `stale` 分支），前一次的单击就此丢掉：连点两下只出一次动作。
+        //  所以先把它**当场补派发**掉、把枪摘了，再按新的一下重置。
+        //  判据三位：首击已抬手（`sawFirstRelease`）、窗口已排（非 0）、且已过期。
+        if (p.sawFirstRelease && p.doubleWindowAt != 0L && now > p.doubleWindowAt) {
+            val pendingClicks = p.clicks.coerceAtLeast(1).coerceAtMost(config.judgeCap)
+            p.doubleWindowRunnable?.let { handler.removeCallbacks(it) }
+            p.doubleWindowRunnable = null
+            p.sawFirstRelease = false
+            p.doubleWindowAt = 0L
+            p.longPressAt = 0L
+            p.pressAt = 0L
+            XLog.w(
+                if (pendingClicks == 1) {
+                    "${id.label}：单击（窗口已过期、那一枪没跑到，当场补）"
+                } else {
+                    "${id.label}：$pendingClicks 击（窗口已过期、那一枪没跑到，当场补）"
+                },
+            )
+            dispatch(id, GestureTrigger.Click(pendingClicks), config, repeat = false)
         }
 
         p.sawFirstRelease = false
@@ -389,9 +415,12 @@ internal class GestureDetector(
 
         //  **后面没有档位要等** ⇒ 抬手当场判单击，不排窗口。
         //
-        //  `judgeCap` 按动作表算：双击 / 三击 / 四击 / 单击后长按**一个都没绑**时它就是 1，
-        //  那个窗口里只可能等来「第二下」，而第二下没有动作可执行 —— 等它纯粹是把单击推迟
-        //  一个窗口（用户报的就是这个：单击延迟设成 1000，按一下真的等了一秒）。
+        //  `judgeCap` 按**档位开关**算（`doubleClickOn` / `extraClicksOn` / `clickThenLongOn`）：
+        //  三样都关着时它就是 1，那个窗口里只可能等来「第二下」，而第二下没有动作可执行 ——
+        //  等它纯粹是把单击推迟一个窗口。
+        //  反过来，**多击开关开着时这一支不成立**：单击就要等满窗口（用户口径「开了就要等，
+        //  不想等就把它关掉」—— 关掉之后第二下按下就是新的一轮）。
+        //
         //  参与组合的那一份等待不在这里：`HeldPresses` 已经按组合窗口等过了（那颗键的按下
         //  是窗口结束后才补发进来的），所以这里不必再压一次。
         //
@@ -582,7 +611,8 @@ internal class GestureDetector(
             synchronized(p) {
                 val stillWaiting = p.longPressAt != 0L && !p.sawFirstRelease && p.clicks <= 2
                 if (stillWaiting) {
-                    chained = config.clickThenLongCounts && p.clicks >= 2
+                    //  与上面那一支同一判据：开关开着就归这一档（动作是无操作时不执行，但不许退化成单击）
+                    chained = config.clickThenLongOn && p.clicks >= 2
                     p.longPressAt = 0L
                     p.longPressFired = true
                     true
@@ -860,7 +890,9 @@ internal class GestureDetector(
         //  「单击后长按」：它的松手**不是**长按那一档的收尾 —— 长按的「松手执行额外动作」/
         //  「松手才触发」都只属于「第 1 击按住」那条路。这一档有**自己那一格**松手动作
         //  （`clickThenLongRelease`），开着且配了才补一枪，然后清状态。
-        if (config.clickThenLongCounts && p.clicks >= 2) {
+        //  判据是**开关**（与第 2 击那两支同一口径）：动作是无操作时这一档也要把抬手收掉，
+        //  否则会落到下面「按长按收尾」那几支去补一条单击。
+        if (config.clickThenLongOn && p.clicks >= 2) {
             //  那一档本身是「无操作」时松手也不补：松手动作是「这一档执行之后」的收尾，
             //  主语没有就不该有谓语（用户口径「设为无操作时禁用松手后额外触发」）
             //  两个来源取或：按键自己那一格，与**场景块**里给这一档配的松手

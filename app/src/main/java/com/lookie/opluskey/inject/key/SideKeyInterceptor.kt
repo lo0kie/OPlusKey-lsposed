@@ -135,7 +135,7 @@ internal class SideKeyInterceptor(
             inAnyCombo = { id -> ConfigChannel.inAnyCombo(id) },
             //  「先按住这颗、再按另一颗」的上界：这颗键的长按判出来之后，它已经执行过自己的
             //  长按动作了，再认组合就是一次按压两个动作。判定层读不到 `KeyConfig`，所以由这里
-            //  按那颗键自己的阈值算。「只参与组合」的键恒为 false —— 它压根不判单键。
+            //  按那颗键自己的阈值算。「只参与非首键的按住组合」的键恒为 false —— 它压根不判单键。
             //
             //  **「松手时触发」的键也不算判过**：那一档到点并不执行（动作押在抬手，见
             //  `KeyConfig.longFireOnRelease`），所以「已经执行过自己的动作」不成立 —— 而按住手势
@@ -203,7 +203,7 @@ internal class SideKeyInterceptor(
     private val swallowedDownAt = java.util.concurrent.ConcurrentHashMap<Int, Long>()
 
     /**
-     * 「只参与组合」那颗键的收尾账本 —— 压住的按下怎么还给系统，全由它一处说了算
+     * 「只参与非首键的按住组合」那颗键的收尾账本 —— 压住的按下怎么还给系统，全由它一处说了算
      * （先吞的理由、长按为什么要补 DOWN 而不是一对，见 `ComboOnlyNative` 的类注释）。
      */
     private val comboOnlyNative =
@@ -235,7 +235,7 @@ internal class SideKeyInterceptor(
             held.drop(null)
             //  组合也一起清：两颗键按住不放时关掉其中一颗，组合的长按枪不能继续响
             combo.reset()
-            //  「只参与组合」那本账：压着的不再补发；已经补发过原生的补一条抬起（否则系统那边
+            //  「只参与非首键的按住组合」那本账：压着的不再补发；已经补发过原生的补一条抬起（否则系统那边
             //  那颗键一直按着，音量会一路涨到底）
             comboOnlyNative.reset()
         } catch (e: Throwable) {
@@ -448,7 +448,7 @@ internal class SideKeyInterceptor(
             //  判成双击时 ROM 只发 769 一个码，等第二次按下永远等不到（见 `RomKeyFamilies`）。
             val gesture = RomKeyFamilies.gestureOf(keyEvent.keyCode)
             return when {
-                //  **「只参与组合」先判**：ROM 判好的那几颗码本身就是单键手势（双击 / 轻按 / 重按），
+                //  **「只参与非首键的按住组合」先判**：ROM 判好的那几颗码本身就是单键手势（双击 / 轻按 / 重按），
                 //  认下来就等于「单键仍归模块」—— 这一位要的正好相反。交给 `ComboOnlyNative`
                 //  压住这一下再按窗口还回去，组合照旧能凑（它只是不判单键）。
                 keyConfig.comboOnly -> Decision.Claimed(keyConfig)
@@ -529,7 +529,7 @@ internal class SideKeyInterceptor(
         keyConfig: KeyConfig,
     ): Boolean =
         try {
-            //  「只参与组合」的键走另一条更短的路：不判单键手势，收发都交给那本账
+            //  「只参与非首键的按住组合」的键走另一条更短的路：不判单键手势，收发都交给那本账
             //  （压住 / 什么时候还回去，见 `ComboOnlyNative`）。
             if (keyConfig.comboOnly) {
                 return comboOnlyNative.onKey(id, point, keyEvent)

@@ -20,7 +20,7 @@ run-name: 钉版 · ${{ github.ref_name }}
 
 on:
   push:
-    tags: ["v*", "[0-9]*-*"]
+    tags: ["[0-9]*-*"]
 
 concurrency:
   # 发布不许被后来的推送取消（`cancel-in-progress: false` 是这里与 `ci.yml` 唯一的差别）：

@@ -35,6 +35,17 @@ internal object PageRelaunch {
     /** 页面起来之后本进程再重来一遍（自杀，由系统重新拉起）。 */
     private const val EXIT_DELAY_MS = 500L
 
+    /**
+     * `startPage` 最多试几次（含第一次）。
+     *
+     *  回执在排这一轮之前就发出去了，设置页此刻**已经**自杀 —— 只试一次的话，那一下
+     *  失败就是「页面没了、也没人再把它叫回来」。3 次覆盖「系统正忙 / 后台起活动被瞬时拦下」。
+     */
+    private const val START_TRIES = 3
+
+    /** 两次尝试之间隔多久（够系统把上一次的拒绝理由处理完，又不至于让人等太久）。 */
+    private const val START_RETRY_MS = 400L
+
     private val handler = Handler(Looper.getMainLooper())
 
     /**
@@ -54,42 +65,69 @@ internal object PageRelaunch {
             return
         }
         scheduled = true
-        //  **先回执再排**：设置页要收到这一条才杀自己（见 `ui/PageControl`）—— 只凭
-        //  「广播发出去了」就杀，宿主这一侧的接收器没装上时页面就再也不会回来。
+        //  **先回执、再排拉起** —— 顺序不能反，这条是硬约束：
+        //  · 设置页收到回执才杀自己（见 `ui/PageControl`），而 `START_DELAY_MS` 存在的意义
+        //    正是「等页面进程死透再叫它」（宿主 Activity 是 `singleInstance`，早于它死就拉起，
+        //    只会把**旧进程**里那一个拿到前台 —— 页面看着回来了，一行新代码都没加载）；
+        //  · 反过来（拉起成功再回执）会出现：此刻页面还活着 ⇒ `startPage` 命中旧实例 ⇒
+        //    页面随后自杀 ⇒ 宿主再看「页面进程没起来」⇒ 不重启 —— 设置页直接没了。
+        //    这个顺序 2026-11-15 试过一次，真机现象就是「重启服务之后页面不见了」。
+        //  · 接收器没装上时这一条根本走不到（`schedule` 不会被调），页面照样按超时报失败。
         ack(ctx)
         XLog.w("页面重启：${START_DELAY_MS}ms 后拉起设置页，再过 ${EXIT_DELAY_MS}ms 本进程重来一遍")
+        handler.postDelayed({ startAttempt(ctx, START_TRIES) }, START_DELAY_MS)
+    }
+
+    /**
+     * 拉起设置页，失败就**有限次重试** —— 回执已经发出去了，页面进程此刻已经退出，
+     * 这里放弃就等于「页面没了、也没人再把它叫回来」。原来的实现只试一次，正是那个空档。
+     *
+     * @param left 还能再试几次（含这一次）
+     */
+    private fun startAttempt(
+        ctx: Context,
+        left: Int,
+    ) {
+        if (startPage(ctx)) {
+            afterStarted(ctx)
+            return
+        }
+        if (left <= 1) {
+            XLog.w(
+                "页面重启：连着 $START_TRIES 次都没拉起设置页 —— 页面进程已经退出，" +
+                    "只能等用户手动重开一次（本进程留着，不再自杀）",
+            )
+            scheduled = false
+            return
+        }
+        XLog.w("页面重启：拉起失败，${START_RETRY_MS}ms 后重试（还剩 ${left - 1} 次）")
+        handler.postDelayed({ startAttempt(ctx, left - 1) }, START_RETRY_MS)
+    }
+
+    /** 页面已经拉起（请求进了系统）—— 再确认一次它真的在跑，然后本进程自杀重来。 */
+    private fun afterStarted(ctx: Context) {
         handler.postDelayed({
-            // 注意：**拉起失败就不自杀**：本进程死了、页面又没被拉起来，
-            //  用户面对的是「设置页没了、也没人再把它叫回来」，只能自己重进 —— 比留着进程糟得多。
-            //  复位 `scheduled` 让下一次请求还能被接住。
-            if (!startPage(ctx)) {
-                XLog.w("页面重启：拉起设置页失败 —— 本进程不自杀（留着服务下一次请求）")
-                scheduled = false
-                return@postDelayed
-            }
-            handler.postDelayed({
-                //  `startActivity` 没抛只说明请求进了系统，**不说明页面真的起来了**。
-                //  本进程一死就没人再把它叫回来，所以自杀之前再确认一次页面进程在跑；
-                //  判不出来（拿不到进程表）就跳过自杀 —— 与「拉起失败」同一档处理。
-                when (pageProcessAlive(ctx)) {
-                    true -> {
-                        val pid = android.os.Process.myPid()
-                        XLog.w("页面重启：宿主主进程自杀重来 pid=$pid")
-                        android.os.Process.killProcess(pid)
-                    }
-
-                    false -> {
-                        XLog.w("页面重启：页面进程没起来 —— 本进程不自杀（留着服务下一次请求）")
-                        scheduled = false
-                    }
-
-                    null -> {
-                        XLog.w("页面重启：拿不到页面进程的判据 —— 跳过自杀（避免页面没了又没人叫回来）")
-                        scheduled = false
-                    }
+            //  `startActivity` 没抛只说明请求进了系统，**不说明页面真的起来了**。
+            //  本进程一死就没人再把它叫回来，所以自杀之前再确认一次页面进程在跑；
+            //  判不出来（拿不到进程表）就跳过自杀 —— 与「拉起失败」同一档处理。
+            when (pageProcessAlive(ctx)) {
+                true -> {
+                    val pid = android.os.Process.myPid()
+                    XLog.w("页面重启：宿主主进程自杀重来 pid=$pid")
+                    android.os.Process.killProcess(pid)
                 }
-            }, EXIT_DELAY_MS)
-        }, START_DELAY_MS)
+
+                false -> {
+                    XLog.w("页面重启：页面进程没起来 —— 本进程不自杀（留着服务下一次请求）")
+                    scheduled = false
+                }
+
+                null -> {
+                    XLog.w("页面重启：拿不到页面进程的判据 —— 跳过自杀（避免页面没了又没人叫回来）")
+                    scheduled = false
+                }
+            }
+        }, EXIT_DELAY_MS)
     }
 
     /**

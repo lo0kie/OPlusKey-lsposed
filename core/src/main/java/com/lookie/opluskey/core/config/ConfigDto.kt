@@ -211,7 +211,7 @@ internal data class KeyDto(
      */
     val doubleClickMs: Int? = null,
     /**
-     * 「这颗键只参与组合」—— 单键手势交还系统，模块只用它凑组合（见 `KeyConfig.comboOnly`）。
+     * 「这颗键只参与非首键的按住组合」—— 单键手势交还系统，模块只用它凑组合（见 `KeyConfig.comboOnly`）。
      *
      *  `null` = 老文件没有这一项 ⇒ 关（与这一位出现之前一致，不需要迁移）。
      */
@@ -243,6 +243,9 @@ internal data class KeyDto(
     /** 这颗键自己的「振动反馈」/「振动强度」。 */
     val vibrate: Boolean? = null,
     val vibrateStrength: Int? = null,
+    /** 这颗键自己的「无操作时振动」。 */
+    @SerialName("vibrate_on_none")
+    val vibrateOnNone: Boolean? = null,
     /** 这颗键自己的「执行时提示」/「提示走流体云」/「提示文案」。 */
     val toastOnRun: Boolean? = null,
     val toastFluid: Boolean? = null,
@@ -386,6 +389,7 @@ internal data class KeyDto(
                 ConfigFields.F_KEY_VIBRATE to (vibrate ?: false),
                 ConfigFields.F_KEY_VIBRATE_STRENGTH to
                     clamp(ConfigFields.F_KEY_VIBRATE_STRENGTH, vibrateStrength ?: GlobalConfig.DEFAULT_VIBRATE_STRENGTH),
+                ConfigFields.F_KEY_VIBRATE_ON_NONE to (vibrateOnNone ?: GlobalConfig.DEFAULT_VIBRATE_ON_NONE),
                 ConfigFields.F_KEY_TOAST_ON_RUN to (toastOnRun ?: GlobalConfig.DEFAULT_TOAST_ON_RUN),
                 ConfigFields.F_KEY_TOAST_FLUID to (toastFluid ?: GlobalConfig.DEFAULT_TOAST_FLUID),
                 ConfigFields.F_KEY_TOAST_TEMPLATE to (toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE),
@@ -464,6 +468,7 @@ internal data class KeyDto(
                 colorOsApi = key.colorOsApi,
                 vibrate = key.vibrate,
                 vibrateStrength = key.vibrateStrength,
+                vibrateOnNone = key.vibrateOnNone,
                 toastOnRun = key.toastOnRun,
                 toastFluid = key.toastFluid,
                 toastTemplate = key.toastTemplate,
@@ -722,6 +727,8 @@ internal data class ComboDto(
     val colorOsApi: Boolean? = null,
     val vibrate: Boolean? = null,
     val vibrateStrength: Int? = null,
+    @SerialName("vibrate_on_none")
+    val vibrateOnNone: Boolean? = null,
     val toastOnRun: Boolean? = null,
     val toastFluid: Boolean? = null,
     val toastTemplate: String? = null,
@@ -819,6 +826,7 @@ internal data class ComboDto(
             colorOsApi = colorOsApi ?: GlobalConfig.DEFAULT_COLOR_OS_API,
             vibrate = vibrate ?: false,
             vibrateStrength = clamp(ConfigFields.F_KEY_VIBRATE_STRENGTH, vibrateStrength ?: GlobalConfig.DEFAULT_VIBRATE_STRENGTH),
+            vibrateOnNone = vibrateOnNone ?: GlobalConfig.DEFAULT_VIBRATE_ON_NONE,
             toastOnRun = toastOnRun ?: GlobalConfig.DEFAULT_TOAST_ON_RUN,
             toastFluid = toastFluid ?: GlobalConfig.DEFAULT_TOAST_FLUID,
             toastTemplate = toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE,
@@ -859,6 +867,7 @@ internal data class ComboDto(
                 colorOsApi = combo.colorOsApi,
                 vibrate = combo.vibrate,
                 vibrateStrength = combo.vibrateStrength,
+                vibrateOnNone = combo.vibrateOnNone,
                 toastOnRun = combo.toastOnRun,
                 toastFluid = combo.toastFluid,
                 toastTemplate = combo.toastTemplate,
@@ -897,6 +906,13 @@ internal data class GlobalDto(
     @SerialName("global_multi_wait_ms")
     val multiWaitMs: Int? = null,
     /**
+     * **界面振动反馈**（`GlobalConfig.uiVibrate`）。
+     *
+     *  `null` = 老文件没有这一项 ⇒ 开（与这一位出现之前一致：界面那一路一直有触觉）。
+     */
+    @SerialName("global_ui_vibrate")
+    val uiVibrate: Boolean? = null,
+    /**
      * **模块总闸**。`null` = 这份文件是拆开之前写的 —— 那时「主开关」就是 `keys.plus.enabled`，
      * 迁移见 [ConfigDto.toConfig]；新写出来的文件一定是具体值。
      */
@@ -905,6 +921,9 @@ internal data class GlobalDto(
     /** 振动强度（三档）—— 老文件没有这一项，取值会退回字段表的默认值（中档）。 */
     @SerialName("vibrate_strength")
     val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
+    /** 无操作时振动 —— 老文件没有这一项，退回默认（关）。 */
+    @SerialName("vibrate_on_none")
+    val vibrateOnNone: Boolean = GlobalConfig.DEFAULT_VIBRATE_ON_NONE,
     val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
     /** 执行时提示走流体云 —— 老文件没有这一项，退回默认（开，见 v63 那次语义迁移）。 */
     @SerialName("toast_fluid")
@@ -956,6 +975,7 @@ internal data class GlobalDto(
                 ConfigFields.F_MODULE_ENABLED to (enabled ?: GlobalConfig.DEFAULT_ENABLED),
                 ConfigFields.F_VIBRATE to vibrate,
                 ConfigFields.F_VIBRATE_STRENGTH to vibrateStrength,
+                ConfigFields.F_VIBRATE_ON_NONE to vibrateOnNone,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_TOAST_FLUID to toastFluid,
                 ConfigFields.F_TOAST_TEMPLATE to toastTemplate,
@@ -975,6 +995,7 @@ internal data class GlobalDto(
                 ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS to (doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS),
                 ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to (waitMultiWindow ?: false),
                 ConfigFields.F_GLOBAL_MULTI_WAIT_MS to (multiWaitMs ?: KeyConfig.FOLLOW_DOUBLE_CLICK_MS),
+                ConfigFields.F_GLOBAL_UI_VIBRATE to (uiVibrate ?: true),
             ),
         )
 
@@ -984,6 +1005,7 @@ internal data class GlobalDto(
                 enabled = g.enabled,
                 vibrate = g.vibrate,
                 vibrateStrength = g.vibrateStrength,
+                vibrateOnNone = g.vibrateOnNone,
                 toastOnRun = g.toastOnRun,
                 toastFluid = g.toastFluid,
                 toastTemplate = g.toastTemplate,
@@ -1003,6 +1025,7 @@ internal data class GlobalDto(
                 doubleClickMs = g.doubleClickMs,
                 waitMultiWindow = g.waitMultiWindow,
                 multiWaitMs = g.multiWaitMs,
+                uiVibrate = g.uiVibrate,
                 //  `null` 原样留着（= 用默认那几条），不要在这里换成空表 —— 见这个字段的说明
                 commonCommands = g.commonCommands.map { CommonCommandDto.of(it) },
             )

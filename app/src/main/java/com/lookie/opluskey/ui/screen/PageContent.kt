@@ -30,6 +30,8 @@ import androidx.navigationevent.NavigationEventDispatcherOwner
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 import com.lookie.opluskey.core.ProcClock
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.wire.ModuleWire
@@ -364,12 +366,19 @@ private fun SettingsPage.LinkCheckBridge() {
                     }
                 }
             }
-        context.registerLocalReceiver(
-            "链路自检（链路会一直显示未就绪）",
-            receiver,
-            ModuleWire.ACTION_HOST_SERVICE_UP,
-            ModuleWire.ACTION_INJECT_READY,
-        )
+        //  **注册失败要说出来**：这一条收的是「模块活没活」的两条回音，收不到就一直显示
+        //  「模块未生效」、整页控件全灰 —— 而用户唯一的自救动作是重开这一页（不再是点某颗键）。
+        //  以前返回值没人看，页面上只多一行日志，读起来像模块坏了。
+        val registered =
+            context.registerLocalReceiver(
+                "链路自检（链路会一直显示未就绪）",
+                receiver,
+                ModuleWire.ACTION_HOST_SERVICE_UP,
+                ModuleWire.ACTION_INJECT_READY,
+            )
+        if (!registered) {
+            hint(I18n.get(Strings.HOME_LINK_CHECK_FAILED, "无法获取链路状态（广播注册失败），请重新打开设置页"))
+        }
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
 }

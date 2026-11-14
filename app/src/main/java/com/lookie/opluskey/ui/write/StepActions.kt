@@ -81,17 +81,22 @@ internal fun SettingsPage.openAppPickerForStep(
 }
 
 /**
- * 「常用命令」页那颗加号那层抽屉里点「打开应用 / 结束应用」—— 进「打开应用」页挑一条，
- * 挑中的**追加成清单里新的一条**（落点见 `PickTarget.CommonCommand`）。
+ * 「常用命令」页那层抽屉里点「打开应用 / 结束应用」—— 进「打开应用」页挑一条，
+ * 挑中的**追加成清单里的一条**，或**换掉行菜单「修改」那一趟指的那一条**
+ * （落点见 `PickTarget.CommonCommand`）。
  *
  *  与另外两条入口同一套进页复位（搜索词清空、小窗开关重算、`beginVisit`）：这一页的挑法本来就
  *  只有一份，差别只在「挑完写到哪儿」。
  *
  *  @param stop `true` = 「结束应用」（写 `proc:stop:包名`，不挑界面、也没有小窗）
+ *  @param replaceToken 非空 = 换掉清单里的这一条（「修改」那一趟）；`null` = 追加一条
  */
-internal fun SettingsPage.openAppPickerForCommonCommand(stop: Boolean = false) {
-    XLog.w("常用命令：进「打开应用」页挑一条（结束=$stop）")
-    picker.openForCommonCommand(stop)
+internal fun SettingsPage.openAppPickerForCommonCommand(
+    stop: Boolean = false,
+    replaceToken: String? = null,
+) {
+    XLog.w("常用命令：进「打开应用」页挑一条（结束=$stop，换=${replaceToken ?: "否"}）")
+    picker.openForCommonCommand(stop, replaceToken)
     picker.filter.value = ""
     resetSmallWindowForPicker()
     appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())

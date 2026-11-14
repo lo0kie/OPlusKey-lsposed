@@ -213,6 +213,12 @@ internal fun SettingsPage.appendCondition(
     menus: BranchMenuState,
 ) {
     menus.menuAt = -1
+    //  整页闸门（主开关 / 链路 / 只读）与行上那颗同一个判据：只盖行、不盖这里的话，
+    //  只读态下还能往块里塞一条空条件（见 `branchWritableHint`）。
+    branchWritableHint()?.let { reason ->
+        hint(reason, slot = HINT_SLOT_DISABLED)
+        return
+    }
     val old = draft.scenes.getOrNull(at) ?: return
     //  **一块到顶了**：九条之后不再加（`SceneRule.MAX_CONDITIONS`）。卡片末尾那一行到这一档
     //  自己就置灰了，这里再拦一道 —— 菜单里那一行与手改配置都不该越过它。

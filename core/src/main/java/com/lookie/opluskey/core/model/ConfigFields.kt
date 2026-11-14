@@ -168,7 +168,7 @@ object ConfigFields {
     const val CTL_SERIAL_EXTRA = "click_then_long_is_serial"
 
     /**
-     * 「这颗键只参与组合」（`KeyConfig.comboOnly`）—— 单键手势整条不接管，只等组合成员。
+     * 「这颗键只参与非首键的按住组合」（`KeyConfig.comboOnly`）—— 单键手势整条不接管，只等组合成员。
      *
      *  走广播：注入侧判定要用（它决定这一下吞不吞）。
      */
@@ -377,7 +377,7 @@ object ConfigFields {
             ),
         )
 
-    /** 「这颗键只参与组合」—— 单键手势交还系统，只等组合成员（默认关）。 */
+    /** 「这颗键只参与非首键的按住组合」—— 单键手势交还系统，只等组合成员（默认关）。 */
     val F_COMBO_ONLY = Field(COMBO_ONLY_EXTRA, Kind.Bool(false))
 
     /** 「双击这一档开着没有」—— 默认开（双击是基础档，与三击 / 四击默认关相反）。 */
@@ -423,6 +423,9 @@ object ConfigFields {
             KEY_VIBRATE_STRENGTH_EXTRA,
             Kind.Number(GlobalConfig.DEFAULT_VIBRATE_STRENGTH, GlobalConfig.VIBRATE_WEAK, GlobalConfig.VIBRATE_STRONG),
         )
+
+    /** 这颗键自己的「无操作时振动」—— 只在 [F_OWN_SETTINGS] 开着时算数；宿主侧读，不进广播。 */
+    val F_KEY_VIBRATE_ON_NONE = Field(null, Kind.Bool(GlobalConfig.DEFAULT_VIBRATE_ON_NONE))
 
     /** 这颗键自己的「执行时提示」—— 只在 [F_OWN_SETTINGS] 开着时算数。 */
     val F_KEY_TOAST_ON_RUN = Field(KEY_TOAST_ON_RUN_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_TOAST_ON_RUN))
@@ -584,6 +587,9 @@ object ConfigFields {
     val F_VIBRATE_STRENGTH =
         Field(null, Kind.Number(GlobalConfig.DEFAULT_VIBRATE_STRENGTH, GlobalConfig.VIBRATE_WEAK, GlobalConfig.VIBRATE_STRONG))
 
+    /** 「无操作时振动」—— **只有落盘那一列**（宿主侧读，注入侧不振）。 */
+    val F_VIBRATE_ON_NONE = Field(null, Kind.Bool(GlobalConfig.DEFAULT_VIBRATE_ON_NONE))
+
     /** 执行时提示 —— **只有落盘那一列**：它由宿主侧弹，注入侧不读它。 */
     val F_TOAST_ON_RUN = Field(null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_ON_RUN))
 
@@ -714,6 +720,14 @@ object ConfigFields {
     /** 公共设置里的等待窗口（0 = 跟随单击延迟）。 */
     val F_GLOBAL_MULTI_WAIT_MS =
         Field(null, Kind.Number(KeyConfig.FOLLOW_DOUBLE_CLICK_MS, KeyConfig.FOLLOW_DOUBLE_CLICK_MS, KeyConfig.MAX_MULTI_WAIT_MS))
+
+    /**
+     * **界面振动反馈**（`GlobalConfig.uiVibrate`）—— 点行 / 拨开关 / 拖滑杆那一下的触觉。
+     *
+     *  只落盘、不进广播：它只影响**界面自己**振不振，注入侧与宿主执行器都不读
+     *  （执行时那一下是 [F_VIBRATE]，另一颗）。
+     */
+    val F_GLOBAL_UI_VIBRATE = Field(null, Kind.Bool(true))
 
     /** `GlobalConfig` 的全部广播字段。 */
     val GLOBAL_FIELDS: List<Field> =

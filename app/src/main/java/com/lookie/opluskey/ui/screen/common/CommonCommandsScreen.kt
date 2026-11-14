@@ -7,10 +7,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,19 +46,23 @@ import com.lookie.opluskey.ui.feedback.tickNow
 import com.lookie.opluskey.ui.model.icon.FluidIconPicker
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.icon.commonCommandIcon
+import com.lookie.opluskey.ui.model.page.APP_KIND_TAG_GAP
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.theme.TAB_PAGE_SWITCH_MS
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.screen.addCommonCommand
+import com.lookie.opluskey.ui.screen.apppicker.AppKindTag
 import com.lookie.opluskey.ui.screen.command.StepPickerPage
 import com.lookie.opluskey.ui.screen.command.StepPickerSheet
 import com.lookie.opluskey.ui.screen.command.StepSheetFilter
 import com.lookie.opluskey.ui.screen.command.StepSheetSpec
 import com.lookie.opluskey.ui.screen.pageWritable
+import com.lookie.opluskey.ui.screen.replaceCommonCommand
 import com.lookie.opluskey.ui.style.VisibleAreaCentered
 import com.lookie.opluskey.ui.style.visibleAreaHeight
 import com.lookie.opluskey.ui.write.openAppPickerForCommonCommand
@@ -69,8 +75,10 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // 「常用命令」页 —— 管那张**自己的清单**：收录哪几条、每条叫什么、每格画哪颗图标、要不要固定。
 //
@@ -87,7 +95,7 @@ import kotlinx.coroutines.launch
  * 这一页（[com.lookie.opluskey.ui.Screen.COMMON_COMMANDS]）。
  *
  *  三种状态都在同一页上，各有各的落点：
- *  · 点一行 → 一层菜单（重命名 / 图标 / 显示在按键绑定页 / 移除）；
+ *  · 点一行 → 一层菜单（修改 / 重命名 / 图标 / 显示在按键绑定页 / 删除）；
  *  · 右下角那颗 → 抽屉（复用命令页那一支，与「额外动作」同一套过滤）；
  *  · 空清单时给居中的空态（见 [CommonCommandsSection]），别让页面看起来像坏了。
  *
@@ -129,6 +137,8 @@ internal fun SettingsPage.CommonCommandsScreen(scrollBehavior: ScrollBehavior) {
             PageFabButton(
                 onClick = {
                     tickNow()
+                    //  加号那一趟永远是「加一条」：上一次「修改」留下的 token 不能带进来
+                    st.editingToken = null
                     st.picking = true
                 },
             ) {
@@ -164,7 +174,7 @@ internal fun SettingsPage.CommonCommandsScreen(scrollBehavior: ScrollBehavior) {
  * @param emptyHeight 空态那一块的高度（可见区减顶栏、减页底留白，由调用点量好）
  */
 @Composable
-private fun CommonCommandsSection(
+private fun SettingsPage.CommonCommandsSection(
     list: List<CommonCommand>,
     emptyHeight: Dp,
     enabled: Boolean,
@@ -261,6 +271,14 @@ private class CommonCommandsUiState {
     var picking by mutableStateOf(false)
 
     /**
+     * 抽屉这一趟是**改哪一条**（`null` = 往清单里加一条）。
+     *
+     *  与 [picking] 分开记：抽屉退场那两百毫秒里 `picking` 已经是 `false`，标题还要照最后一趟画；
+     *  下一次从加号进来时再清成 `null`（见 `CommonCommandsScreen` 的 FAB）。
+     */
+    var editingToken by mutableStateOf<String?>(null)
+
+    /**
      * 正在播退场的那几条 —— `CardList` 按 `visible` 收起它们，播完才从清单里删。
      *
      *  **是集合不是单个**：退场要等 240ms，这期间用户完全可能连删第二条。只留一个 token 的话，
@@ -283,7 +301,7 @@ private class CommonCommandsUiState {
  * 确认窗在退场那两百毫秒里要画的那一条（见 [CommonCommandsRemove]）。
  *
  *  关窗是「先清数据、再播退场」：`removingToken` 一空，正文里那个名字就跟着空了 —— 而库的退场
- *  还要走两百毫秒，那一截会闪成「将「」移除」。所以照**最后画过的那一份**画（与 `ModeMenuPopups`
+ *  还要走两百毫秒，那一截会闪成「将「」删除」。所以照**最后画过的那一份**画（与 `ModeMenuPopups`
  *  的 `LastPick`、`DonateDialog` 的 `Last` 同一个理由）。只留一个格子就够：标题与正文都由它现算。
  */
 private class LastCommand {
@@ -291,7 +309,7 @@ private class LastCommand {
 }
 
 /**
- * 点一行开出来的那层菜单（改名 / 是否在绑定页显示 / 移除）。
+ * 点一行开出来的那层菜单（修改 / 改名 / 是否在绑定页显示 / 删除）。
  *
  *  **关着的时候也照样调用 [rowMenu]**，只是给一条 `null`：菜单的退场动画靠**空行表**触发
  *  （见 `PageMenu`），在这里 `?.let` 一刀切掉的话那一层是「啪」地消失的
@@ -308,6 +326,12 @@ private fun SettingsPage.CommonCommandsMenu(
         cmd = cmd,
         anchor = cmd?.let { anchors[it.token] } ?: st.coldAnchor,
         onDismiss = { st.menuToken = null },
+        onEdit = {
+            //  菜单收掉、拿这一条把抽屉支起来（与加号那一趟同一个抽屉，只是落点是「换掉它」）
+            st.menuToken = null
+            st.editingToken = it.token
+            st.picking = true
+        },
         onRename = {
             st.menuToken = null
             st.renameToken = it.token
@@ -382,7 +406,7 @@ private fun SettingsPage.CommonCommandsIcon(st: CommonCommandsUiState) {
  *  那条共同收尾报。
  *
  *  **确认窗的显隐与内容分两位**：`show` 看这一条在不在，正文照**最后画过的那一条**画（见
- *  `LastCommand`）—— 清数据发生在退场之前，正文跟着变空的话那两百毫秒里会闪成「将「」移除」。
+ *  `LastCommand`）—— 清数据发生在退场之前，正文跟着变空的话那两百毫秒里会闪成「将「」删除」。
  */
 @Composable
 private fun SettingsPage.CommonCommandsRemove(
@@ -407,15 +431,22 @@ private fun SettingsPage.CommonCommandsRemove(
             //  （「条件执行」页删最后一块同一套处理）。直接删，那一行跟着整块一起淡出。
             val wait = if (list.size > 1) VISIBILITY_EXIT_MS + ROW_EXIT_SETTLE_MS else 0L
             scope.launch {
-                if (wait > 0) delay(wait)
-                val cfg = configState.config.value
-                write(
-                    cfg.copy(
-                        global = cfg.global.copy(commonCommands = cfg.global.commonCommands.filterNot { it.token == token }),
-                    ),
-                    "common_commands=remove",
-                )
-                st.leavingTokens = st.leavingTokens - token
+                //  **确认删除之后这笔写盘必须落地**：`scope` 随本页离开组合被取消 ——
+                //  在 `VISIBILITY_EXIT_MS + ROW_EXIT_SETTLE_MS`（240ms）的退场窗口里切页 / 返回 /
+                //  从设置重进，写盘就整个不发生了：行已经从界面收起、配置里那条还在，
+                //  下次进页它又出现（用户以为自己删掉了）。`NonCancellable` 只兜这一段：
+                //  一旦按下「移除」，语义上就已经是「要删」。
+                withContext(NonCancellable) {
+                    if (wait > 0) delay(wait)
+                    val cfg = configState.config.value
+                    write(
+                        cfg.copy(
+                            global = cfg.global.copy(commonCommands = cfg.global.commonCommands.filterNot { it.token == token }),
+                        ),
+                        "common_commands=remove",
+                    )
+                    st.leavingTokens = st.leavingTokens - token
+                }
             }
         },
     )
@@ -438,6 +469,7 @@ private fun SettingsPage.CommonCommandsAdd(
     addSheet(
         list = list,
         show = st.picking,
+        editing = st.editingToken,
         onDismiss = { st.picking = false },
         onAdded = { st.enteringToken = it },
     )
@@ -486,7 +518,7 @@ private fun SettingsPage.renameDialog(
 /**
  * 移除确认窗 —— `show` 是开关，`cmd` 是**画什么**（两者分开：退场期间 `cmd` 仍是最后画过的那条）。
  *
- *  正文只有一句「把这一条从清单里移除」（用户口径）。**不再补一句「绑定保持原样」**：
+ *  正文只有一句「把这一条从清单里删除」（用户口径）。**不再补一句「绑定保持原样」**：
  *  移除是摘一条快捷方式，不是撤销一次绑定 —— 多解释一句反而让人以为这里会动绑定。
  *
  *  **真删不在这一层**：确认之后把 token 交给调用点，由它先播退场、再从清单里删
@@ -503,9 +535,9 @@ private fun SettingsPage.removeDialog(
 ) {
     ConfirmDialog(
         show = show,
-        title = I18n.get(Strings.COMMON_COMMANDS_REMOVE_TITLE, "移除常用命令"),
+        title = I18n.get(Strings.COMMON_COMMANDS_REMOVE_TITLE, "删除常用命令"),
         summary = I18n.format(Strings.COMMON_COMMANDS_REMOVE_BODY, cmd?.let { CommonCommands.displayName(it) }.orEmpty()),
-        action = I18n.get(Strings.COMMON_COMMANDS_REMOVE, "移除"),
+        action = I18n.get(Strings.COMMON_COMMANDS_REMOVE, "删除"),
         onDismiss = onDismiss,
         onConfirm = {
             onDismiss()
@@ -518,11 +550,15 @@ private fun SettingsPage.removeDialog(
 /**
  * 「添加命令」那层抽屉 —— 复用命令页那一支（行高 / 分组 / 二级菜单都是现成的）。
  *
+ *  **同一张抽屉也负责「修改」**（行菜单第一项）：两者只差落点 —— 加号那一趟追加一条，
+ *  「修改」那一趟换掉 [editing] 指的那一条，所以标题也跟着换一句。
+ *
  *  过滤条件与「松手额外动作」那几处**一模一样**（用户口径）：不滤命令库那一组 —— 一条常用命令
  *  当然可以指向自己存的某条命令；只剔掉两个「换一页挑」的格子（选择应用 / 自定义变量），
  *  这一页没有接那两页的去路（点一下只会关掉抽屉）。「无操作」那一格也不列：钉一条什么都不做
  *  没有意义，它只属于「额外动作」那几处（那边要的是「配了但这次不做事」）。
  *
+ * @param editing 非空 = 这一趟是**换掉清单里的这一条**（`null` = 加一条）
  * @param onAdded 收录成功、且清单里已经有别的条目时拿这一条的 token —— 调用点据此播一次进场
  *   （清单本来就是空的时候**不报**：那一行跟着整块从空态淡进来，不再单独展开一遍）
  */
@@ -530,6 +566,7 @@ private fun SettingsPage.removeDialog(
 private fun SettingsPage.addSheet(
     list: List<CommonCommand>,
     show: Boolean,
+    editing: String?,
     onDismiss: () -> Unit,
     onAdded: (String) -> Unit,
 ) {
@@ -537,17 +574,26 @@ private fun SettingsPage.addSheet(
         show = show,
         sheet =
             StepSheetSpec(
-                title = I18n.get(Strings.COMMON_COMMANDS_ADD, "添加命令"),
-                current = null,
+                //  标题跟着落点走：加号那一趟是「添加命令」，行菜单「修改」那一趟是「修改」
+                title =
+                    if (editing == null) {
+                        I18n.get(Strings.COMMON_COMMANDS_ADD, "添加命令")
+                    } else {
+                        I18n.get(Strings.COMMON_COMMANDS_EDIT, "修改")
+                    },
+                //  改的那一条**在抽屉里标成当前**（行首对勾）：不加这一位的话，抽屉看不出
+                //  「现在这一条是什么」，用户得自己回想上一页那一行的名字。
+                current = editing?.let { Action.parse(it) },
                 //  「应用控制」那两档（打开应用 / 结束应用）要挑一个具体应用 —— 与「松手额外动作」
-                //  那几处走同一条挑应用的路，挑完追加成清单里新的一条（落点见 `PickTarget.CommonCommand`）。
+                //  那几处走同一条挑应用的路，挑完落成清单里的一条（落点见 `PickTarget.CommonCommand`）。
                 //  这一格原来的做法是只关抽屉，于是那两行点下去什么都不发生（用户口径「打不开」）。
+                //  **「修改」那一趟要把被改的那条带上**：否则挑完是「又多一条」而不是「换掉它」。
                 onOpenPicker = { page ->
                     onDismiss()
                     when (page) {
-                        StepPickerPage.App -> openAppPickerForCommonCommand()
+                        StepPickerPage.App -> openAppPickerForCommonCommand(replaceToken = editing)
 
-                        StepPickerPage.AppStop -> openAppPickerForCommonCommand(stop = true)
+                        StepPickerPage.AppStop -> openAppPickerForCommonCommand(stop = true, replaceToken = editing)
 
                         //  「自定义变量」那一格这一页没有去路（`excludeTiles` 已经把它剔掉），写出来只为穷尽
                         StepPickerPage.Vars -> Unit
@@ -563,8 +609,15 @@ private fun SettingsPage.addSheet(
                             hint(I18n.get(Strings.COMMON_COMMANDS_NOT_ACTION, "请先选择具体动作"))
                         }
 
-                        //  已经在清单里就不重复收录（同一个动作出现两次只是噪音）
-                        list.any { it.token == token } -> {
+                        //  已经在清单里就不重复收录（同一个动作出现两次只是噪音）。
+                        //  改的那一条自己也在 `list` 里，所以先放它过去。
+                        token != editing && list.any { it.token == token } -> {
+                        }
+
+                        editing != null -> {
+                            //  「修改」：换掉这一条指向的动作（名字 / 图标 / 固定位都留着），
+                            //  条数不变，所以没有进场可播
+                            replaceCommonCommand(editing, Action.parse(token))
                         }
 
                         else -> {
@@ -587,9 +640,9 @@ private fun SettingsPage.addSheet(
 /** 退场动画收尾的余量（毫秒）—— 让「状态落到不在场」与下一次组合错开一帧。 */
 private const val ROW_EXIT_SETTLE_MS = 40L
 
-/** 清单里的一行：点它开菜单（改名 / 显不显示 / 移除），行尾给箭头表示「还有一层」。 */
+/** 清单里的一行：点它开菜单（修改 / 改名 / 显不显示 / 删除），行尾给箭头表示「还有一层」。 */
 @Composable
-private fun commonCommandRow(
+private fun SettingsPage.commonCommandRow(
     cmd: CommonCommand,
     anchor: PreciseClickState,
     enabled: Boolean,
@@ -608,13 +661,33 @@ private fun commonCommandRow(
         //  （每条自己一个开关，见上面菜单里的「显示在按键绑定页」）。
         enabled = enabled,
         titleTint = if (cmd.showInBinding) null else COUITheme.colorScheme.onSurfaceVariantSummary,
-        arrow = true,
+        //  行尾：固定的那几条挂一枚「固定」小标签，**后面仍给箭头** —— 那一行本身还是「点开一层菜单」。
+        //  两者只能挤在同一个槽里（`CardRow` 的行尾要么箭头、要么自有内容），所以这里自己拼一格。
+        //  **只标固定、不标未固定**：未固定的那些标题已经压了一档色，再挂一枚「未固定」是把
+        //  同一件事说两遍，而且那才是少数（默认是固定的）。
+        trailing = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (cmd.showInBinding) {
+                    AppKindTag(
+                        text = I18n.get(Strings.COMMON_COMMANDS_PINNED, "固定"),
+                        //  强调色：它是「这一条会出现在按键绑定页」这个**开着**的状态，
+                        //  与标题压色那一档正好相反（那是关掉的样子）
+                        tint = COUITheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(APP_KIND_TAG_GAP))
+                }
+                RowEndIcon()
+            }
+        },
         modifier = Modifier.preciseClickAnchor(anchor),
         onClick = onOpenMenu,
     )
 
 /**
- * 那一行点开的四项 —— 重命名、图标、在按键绑定页显示、移除。
+ * 那一行点开的五项 —— 修改（换成另一个动作）、重命名、图标、在按键绑定页显示、删除。
+ *
+ *  「修改」排在第一个：它换的是**这一条指向什么**，下面那三项都只是在同一条动作上改呈现。
+ *  它点开的仍是「添加命令」那层抽屉（同一张表、同一套分组），只是挑完落在**这一条**上。
  *
  *  `cmd == null` = 关着，此时给**空行表**而不是整支不画：`PageMenu` 的开关就是「行表空不空」，
  *  而退场那两百毫秒里的内容与锚点由 `MenuPopup` 自己保住 —— 在这里 `if (cmd == null) return`
@@ -625,6 +698,7 @@ private fun SettingsPage.rowMenu(
     cmd: CommonCommand?,
     anchor: PreciseClickState,
     onDismiss: () -> Unit,
+    onEdit: (CommonCommand) -> Unit,
     onRename: (CommonCommand) -> Unit,
     onIcon: (CommonCommand) -> Unit,
     onToggleShow: (CommonCommand) -> Unit,
@@ -636,6 +710,12 @@ private fun SettingsPage.rowMenu(
                 emptyList()
             } else {
                 listOf(
+                    MenuEntry.Row(
+                        title = I18n.get(Strings.COMMON_COMMANDS_EDIT, "修改"),
+                        icon = PageIcons.MenuChange,
+                    ) {
+                        onEdit(cmd)
+                    },
                     MenuEntry.Row(
                         title = I18n.get(Strings.COMMON_COMMANDS_RENAME, "重命名"),
                         //  与「重命名按键」「重命名配置」同一颗（全项目所有改名共用一个记号）
@@ -663,7 +743,7 @@ private fun SettingsPage.rowMenu(
                         onToggleShow(cmd)
                     },
                     MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_COMMANDS_REMOVE, "移除"),
+                        title = I18n.get(Strings.COMMON_COMMANDS_REMOVE, "删除"),
                         icon = PageIcons.CommandDelete,
                         danger = true,
                     ) {
