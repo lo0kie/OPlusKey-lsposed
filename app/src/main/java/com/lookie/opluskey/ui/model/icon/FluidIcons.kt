@@ -19,6 +19,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ArrowDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowUp
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsDoubleNeSw
+import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsExchange
 import io.github.lyxnx.compose.ui.tablericons.outline.Ban
 import io.github.lyxnx.compose.ui.tablericons.outline.BatteryEco
 import io.github.lyxnx.compose.ui.tablericons.outline.Bell
@@ -64,6 +65,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPause
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPlay
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockRecord
+import io.github.lyxnx.compose.ui.tablericons.outline.ClockStop
 import io.github.lyxnx.compose.ui.tablericons.outline.CloudSearch
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.ColorSwatch
@@ -101,6 +103,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandClick
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFinger
+import io.github.lyxnx.compose.ui.tablericons.outline.HandFingerLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
 import io.github.lyxnx.compose.ui.tablericons.outline.HandMove
 import io.github.lyxnx.compose.ui.tablericons.outline.HandRingFinger
@@ -111,6 +114,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.History
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
+import io.github.lyxnx.compose.ui.tablericons.outline.HourglassHigh
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
 import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
 import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
@@ -130,6 +134,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodEmpty
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodHeart
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
+import io.github.lyxnx.compose.ui.tablericons.outline.Music
 import io.github.lyxnx.compose.ui.tablericons.outline.MusicCog
 import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Nfc
@@ -158,6 +163,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer2
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerShare
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Power
 import io.github.lyxnx.compose.ui.tablericons.outline.Refresh
@@ -216,12 +222,18 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ZoomIn
  *
  *  两段，按顺序拼在 [ALL] 里：
  *
- *  1. **Tabler 那批** —— 从 `ActionIcons` / `PageIcons` 的引用里逐个列出来的。id 是属性名的小写；
- *     outline / filled 同名的（`CircleCheck`）给 filled 加 `-filled` 后缀。这一段按 id 排。
+ *  1. **Tabler 那批** —— 全仓 `TablerIcons.Outline` / `Filled` 的引用逐个列出来的（页面的、动作的、
+ *     场景的都算）。id 是属性名的小写；outline / filled 同名的（`CircleCheck`）给 filled 加
+ *     `-filled` 后缀。**这一段按 Tabler 的原始名称排**（`ArrowsDoubleNeSw` → `arrows-double-ne-sw`），
+ *     不是按 id：按 id 排会把 `arrowsdoublenesw` 插到 `arrowleft` 前面，而原名里 `arrow-left`
+ *     确实在 `arrows-…` 之前 —— 选择器里看到的顺序要与 Tabler 官网一致。
  *  2. **手绘那批** —— [DrawnIcons] 里那 21 支（音量 / 铃声 / 亮度 / 媒体 / 录屏 / 小窗 / 电源菜单 /
  *     手电筒 / 酷安 ……）。它们与 Tabler 同一支笔：24 视口、24dp 默认尺寸、描边色占位为黑，
  *     所以导出那条路（[exportPainter] 刷白）照样走得通。这一段按 [DrawnIcons] 里的书写顺序跟在
  *     后面，**不混排** —— 混进去之后「哪几颗是现成字形、哪几颗是自己画的」就看不出边界了。
+ *
+ *  加新字形时两件事一起做：import + 往这一段里按原名插一条；漏了的话选择器里就没有它
+ *  （编译不会报错 —— 引用本身仍然成立）。
  *
  *  别只从 `PageIcons` 里抓：动作字形（音量 / 亮度 / 媒体 …）全在 [DrawnIcons] 与 `ActionIcons`，
  *  只看页面那张表会漏掉一大半。
@@ -238,14 +250,15 @@ internal object FluidIcons {
             "alignboxcentermiddle" to TablerIcons.Outline.AlignBoxCenterMiddle,
             "alignleft" to TablerIcons.Outline.AlignLeft,
             "alphabetchinese" to TablerIcons.Outline.AlphabetChinese,
+            "appwindow" to TablerIcons.Outline.AppWindow,
             "apps" to TablerIcons.Outline.Apps,
             "appsoff" to TablerIcons.Outline.AppsOff,
-            "appwindow" to TablerIcons.Outline.AppWindow,
             "arrowbackup" to TablerIcons.Outline.ArrowBackUp,
             "arrowdown" to TablerIcons.Outline.ArrowDown,
-            "arrowsdoublenesw" to TablerIcons.Outline.ArrowsDoubleNeSw,
             "arrowleft" to TablerIcons.Outline.ArrowLeft,
             "arrowup" to TablerIcons.Outline.ArrowUp,
+            "arrowsdoublenesw" to TablerIcons.Outline.ArrowsDoubleNeSw,
+            "arrowsexchange" to TablerIcons.Outline.ArrowsExchange,
             "ban" to TablerIcons.Outline.Ban,
             "batteryeco" to TablerIcons.Outline.BatteryEco,
             "bell" to TablerIcons.Outline.Bell,
@@ -283,8 +296,8 @@ internal object FluidIcons {
             "chevronright" to TablerIcons.Outline.ChevronRight,
             "chevronup" to TablerIcons.Outline.ChevronUp,
             "circle" to TablerIcons.Outline.Circle,
-            "circlecheck-filled" to TablerIcons.Filled.CircleCheck,
             "circlecheck" to TablerIcons.Outline.CircleCheck,
+            "circlecheck-filled" to TablerIcons.Filled.CircleCheck,
             "click" to TablerIcons.Outline.Click,
             "clock24" to TablerIcons.Outline.Clock24,
             "clockbolt" to TablerIcons.Outline.ClockBolt,
@@ -292,6 +305,7 @@ internal object FluidIcons {
             "clockpause" to TablerIcons.Outline.ClockPause,
             "clockplay" to TablerIcons.Outline.ClockPlay,
             "clockrecord" to TablerIcons.Outline.ClockRecord,
+            "clockstop" to TablerIcons.Outline.ClockStop,
             "cloudsearch" to TablerIcons.Outline.CloudSearch,
             "codeplus" to TablerIcons.Outline.CodePlus,
             "colorswatch" to TablerIcons.Outline.ColorSwatch,
@@ -329,23 +343,25 @@ internal object FluidIcons {
             "griddots" to TablerIcons.Outline.GridDots,
             "handclick" to TablerIcons.Outline.HandClick,
             "handfinger" to TablerIcons.Outline.HandFinger,
+            "handfingerleft" to TablerIcons.Outline.HandFingerLeft,
             "handgrab" to TablerIcons.Outline.HandGrab,
             "handmove" to TablerIcons.Outline.HandMove,
             "handringfinger" to TablerIcons.Outline.HandRingFinger,
             "handthreefingers" to TablerIcons.Outline.HandThreeFingers,
-            "listdetails" to TablerIcons.Outline.ListDetails,
             "handtwofingers" to TablerIcons.Outline.HandTwoFingers,
             "hash" to TablerIcons.Outline.Hash,
             "history" to TablerIcons.Outline.History,
             "home" to TablerIcons.Outline.Home,
             "homecancel" to TablerIcons.Outline.HomeCancel,
             "homecheck" to TablerIcons.Outline.HomeCheck,
+            "hourglasshigh" to TablerIcons.Outline.HourglassHigh,
             "infinity2" to TablerIcons.Outline.Infinity2,
             "keyboard" to TablerIcons.Outline.Keyboard,
             "labelimportant" to TablerIcons.Outline.LabelImportant,
             "language" to TablerIcons.Outline.Language,
             "languageoff" to TablerIcons.Outline.LanguageOff,
             "link" to TablerIcons.Outline.Link,
+            "listdetails" to TablerIcons.Outline.ListDetails,
             "location" to TablerIcons.Outline.Location,
             "lock" to TablerIcons.Outline.Lock,
             "lockcog" to TablerIcons.Outline.LockCog,
@@ -358,6 +374,7 @@ internal object FluidIcons {
             "moodempty" to TablerIcons.Outline.MoodEmpty,
             "moodheart" to TablerIcons.Outline.MoodHeart,
             "moon" to TablerIcons.Outline.Moon,
+            "music" to TablerIcons.Outline.Music,
             "musiccog" to TablerIcons.Outline.MusicCog,
             "navigationcog" to TablerIcons.Outline.NavigationCog,
             "nfc" to TablerIcons.Outline.Nfc,
@@ -386,6 +403,7 @@ internal object FluidIcons {
             "pointer" to TablerIcons.Outline.Pointer,
             "pointer2" to TablerIcons.Outline.Pointer2,
             "pointerpause" to TablerIcons.Outline.PointerPause,
+            "pointershare" to TablerIcons.Outline.PointerShare,
             "pointerup" to TablerIcons.Outline.PointerUp,
             "power" to TablerIcons.Outline.Power,
             "refresh" to TablerIcons.Outline.Refresh,

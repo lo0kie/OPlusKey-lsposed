@@ -52,7 +52,6 @@ import com.lookie.opluskey.ui.feedback.HINT_SLOT_CHECKING
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.retireHint
 import com.lookie.opluskey.ui.model.icon.PageIcons
-import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.text.CHECKING_HINT
 import com.lookie.opluskey.ui.model.theme.FROSTED_SURFACE_ALPHA
 import com.lookie.opluskey.ui.model.theme.HOST_ALIVE_TIMEOUT_MS
@@ -434,8 +433,8 @@ private fun HintCapsule(
                     onScrollMs = onScrollMs,
                 )
             } else {
-                //  带名字框的那一档：键名画成标签（与选择器、列表行同一份 `ChipText`）。
-                //  **不走跑马灯** —— 那一档是把一段文字挪来挪去，框跟着挪会读成「标签也在滚」；
+                //  带名字的那一档：名字与句子同一档字，按 `%s` 各归各位（与选择器同一份 `ChipText`）。
+                //  **不走跑马灯** —— 那一档是把一段文字挪来挪去，名字跟着挪读起来像「名字也在滚」；
                 //  这类回执本来就短（一句结论 + 一两颗键名），换行比滚动好读。
                 ChipText(
                     template = shownText,
@@ -518,8 +517,7 @@ private fun MarqueeLine(
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Clip,
-                    // 胶囊高度是设计值，字在里头竖居中 —— 补一档光学修正（见 `opticalCenter`）
-                    modifier = Modifier.opticalCenter(style),
+                    // 胶囊高度是设计值，字在里头竖居中 —— 行盒贴着墨迹（见 `AppTextStyles`）
                 )
             },
             modifier = Modifier.clipToBounds(),

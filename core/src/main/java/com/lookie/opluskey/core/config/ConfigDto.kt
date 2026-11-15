@@ -716,6 +716,17 @@ internal data class ComboDto(
      */
     val starterKeepLong: Boolean? = null,
     /**
+     * **按顺序触发**（`ComboKey.ordered`）—— 老文件没有这一项 ⇒ `false`（只看集合），
+     *  行为与这一位出现之前完全一致。`keys` 的顺序在这一位为真时就是「按下的先后」。
+     */
+    val ordered: Boolean = false,
+    /**
+     * 等待档的**固定窗口起点**（`ComboKey.fixedWindowStart`）；`null` = 跟随公共设置。
+     *
+     *  老文件没有这一项 ⇒ `null` ⇒ 行为与这一位出现之前完全一致，不需要迁移。
+     */
+    val fixedWindowStart: Boolean? = null,
+    /**
      * **老的「一条规则一个手势」那一列** —— 只读，读到就迁移（见 [mergeScenes]）；与单键那份同型。
      */
     val rules: List<StateRuleDto> = emptyList(),
@@ -746,6 +757,14 @@ internal data class ComboDto(
      *  老文件没有这一项 ⇒ 0 ⇒ 行为与这一位出现之前完全一致，不需要迁移。
      */
     val windowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
+    /**
+     * 这一档在**固定窗口起点**下的整串窗口（毫秒）；`0` = 跟随公共设置。
+     *
+     *  与 [windowMs] 分开存（见 `ComboKey.fixedWindowMs`）。老文件没有这一项 ⇒ 0 ⇒ 跟随公共，
+     *  而公共的出厂值与 [windowMs] 相同，所以升级前后行为一致。
+     */
+    @SerialName("fixed_window_ms")
+    val fixedWindowMs: Int = ComboKey.FIXED_WINDOW_FOLLOW_GLOBAL,
     /**
      * **触发方式**（`ComboKey.mode`）—— `0` 窗口内先后按下 / `1` 按住（首键 = `keys` 第一颗）。
      *
@@ -840,6 +859,13 @@ internal data class ComboDto(
             //  「按键之间的等待」：0 表示跟随公共设置，必须原样留着 —— `clamp` 会把它抬到下限 20，
             //  那就成了「这一组显式设了 20ms」，界面上再也回不到跟随。
             windowMs = if (windowMs <= 0) ComboKey.WINDOW_FOLLOW_GLOBAL else clamp(ConfigFields.F_COMBO_WINDOW_MS, windowMs),
+            //  同上：0 是「跟随公共」，不能被 clamp 抬到下限
+            fixedWindowMs =
+                if (fixedWindowMs <= 0) {
+                    ComboKey.FIXED_WINDOW_FOLLOW_GLOBAL
+                } else {
+                    clamp(ConfigFields.F_COMBO_FIXED_WINDOW_MS, fixedWindowMs)
+                },
             //  「首键要先按住多久」：与上面那个窗口同一条 —— 0 是「跟随公共」，不能被 `clamp`
             //  抬到下限 40（那就成了「这一组显式设了 40ms」）。
             holdMinMs =
@@ -850,6 +876,8 @@ internal data class ComboDto(
                 },
             sceneOnStarter = sceneOnStarter,
             starterKeepLong = starterKeepLong,
+            ordered = this.ordered,
+            fixedWindowStart = fixedWindowStart,
         )
     }
 
@@ -870,6 +898,8 @@ internal data class ComboDto(
                 longRelease = combo.longRelease.token,
                 sceneOnStarter = combo.sceneOnStarter,
                 starterKeepLong = combo.starterKeepLong,
+                ordered = combo.ordered,
+                fixedWindowStart = combo.fixedWindowStart,
                 scenes = combo.scenes.map { SceneRuleDto.of(it) },
                 useOwnSettings = combo.useOwnSettings,
                 colorOsApi = combo.colorOsApi,
@@ -881,6 +911,7 @@ internal data class ComboDto(
                 toastTemplate = combo.toastTemplate,
                 ownSettingsSeeded = combo.ownSettingsSeeded,
                 windowMs = combo.windowMs,
+                fixedWindowMs = combo.fixedWindowMs,
                 mode = combo.mode,
                 holdMinMs = combo.holdMinMs,
             )
@@ -920,6 +951,20 @@ internal data class GlobalDto(
      */
     @SerialName("global_ui_vibrate")
     val uiVibrate: Boolean? = null,
+    /**
+     * **固定窗口起点下整串的窗口**（`GlobalConfig.comboFixedWindowMs`，毫秒）。
+     *
+     *  `null` = 老文件没有这一项 ⇒ 用字段表的出厂值（与「按键之间的等待」同一档 80ms）。
+     */
+    @SerialName("global_combo_fixed_window_ms")
+    val comboFixedWindowMs: Int? = null,
+    /**
+     * **使用预测返回手势**（`GlobalConfig.predictiveBack`）。
+     *
+     *  `null` = 老文件没有这一项 ⇒ 开（这一位出现之前一直走预测返回）。
+     */
+    @SerialName("global_predictive_back")
+    val predictiveBack: Boolean? = null,
     /**
      * **模块总闸**。`null` = 这份文件是拆开之前写的 —— 那时「主开关」就是 `keys.plus.enabled`，
      * 迁移见 [ConfigDto.toConfig]；新写出来的文件一定是具体值。
@@ -1013,6 +1058,8 @@ internal data class GlobalDto(
                 ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to (waitMultiWindow ?: false),
                 ConfigFields.F_GLOBAL_MULTI_WAIT_MS to (multiWaitMs ?: KeyConfig.FOLLOW_DOUBLE_CLICK_MS),
                 ConfigFields.F_GLOBAL_UI_VIBRATE to (uiVibrate ?: true),
+                ConfigFields.F_COMBO_FIXED_WINDOW_MS to (comboFixedWindowMs ?: GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_MS),
+                ConfigFields.F_GLOBAL_PREDICTIVE_BACK to (predictiveBack ?: true),
             ),
         )
 
@@ -1044,6 +1091,8 @@ internal data class GlobalDto(
                 waitMultiWindow = g.waitMultiWindow,
                 multiWaitMs = g.multiWaitMs,
                 uiVibrate = g.uiVibrate,
+                comboFixedWindowMs = g.comboFixedWindowMs,
+                predictiveBack = g.predictiveBack,
                 //  `null` 原样留着（= 用默认那几条），不要在这里换成空表 —— 见这个字段的说明
                 commonCommands = g.commonCommands.map { CommonCommandDto.of(it) },
             )

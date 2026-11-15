@@ -229,6 +229,9 @@ object ConfigFields {
     /** 组合键两颗键之间的等待窗口（毫秒）—— 注入侧判定要用，所以走广播。 */
     const val COMBO_WINDOW_MS_EXTRA = "combo_window_ms"
 
+    /** 固定窗口起点下**整串**的窗口（毫秒）—— 同样判定在注入侧，走广播。 */
+    const val COMBO_FIXED_WINDOW_MS_EXTRA = "combo_fixed_window_ms"
+
     /** 按住那两档里**起点键要先按住多久**（毫秒）—— 同样判定在注入侧，走广播。 */
     const val COMBO_HOLD_MIN_MS_EXTRA = "combo_hold_min_ms"
 
@@ -237,6 +240,9 @@ object ConfigFields {
      * 那一支要读它决定补不补派），所以**必须走广播**：注入侧读不到配置文件，只吃广播。
      */
     const val COMBO_STARTER_KEEP_LONG_EXTRA = "combo_starter_keep_long"
+
+    /** 等待组合的**固定窗口起点** —— 判定在注入侧（`ComboDetector`），走广播。 */
+    const val COMBO_FIXED_WINDOW_START_EXTRA = "combo_fixed_window_start"
 
     /**
      * **模块总闸**（首页「启用按键绑定」那一行）—— 与 [ENABLED_EXTRA] 是两件事，别混：
@@ -657,6 +663,22 @@ object ConfigFields {
         )
 
     /**
+     * **固定窗口起点下那一整串的窗口**（`GlobalConfig.comboFixedWindowMs`，毫秒）。
+     *
+     *  与 [F_COMBO_WINDOW_MS] 同一列、同一个区间：判定也在注入侧（`Config.comboSpanFor` 的第一支）。
+     *  两笔账分开的理由见 `ComboKey.fixedWindowMs` —— 那一份量相邻两颗，这一份量整串。
+     */
+    val F_COMBO_FIXED_WINDOW_MS =
+        Field(
+            COMBO_FIXED_WINDOW_MS_EXTRA,
+            Kind.Number(
+                GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_MS,
+                GlobalConfig.COMBO_WINDOW_MIN_MS,
+                GlobalConfig.COMBO_WINDOW_MAX_MS,
+            ),
+        )
+
+    /**
      * 「跟随系统显示大小」—— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：
      * 它只决定这个页面自己那棵树的密度，注入侧没有界面、不读它。
      */
@@ -699,6 +721,16 @@ object ConfigFields {
      */
     val F_COMBO_STARTER_KEEP_LONG =
         Field(COMBO_STARTER_KEEP_LONG_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_STARTER_KEEP_LONG))
+
+    /**
+     * 等待组合的**固定窗口起点**（`GlobalConfig.comboFixedWindowStart`）。
+     *
+     *  **走广播**（[COMBO_FIXED_WINDOW_START_EXTRA]）：判据在注入侧 —— `ComboDetector` 判
+     *  窗口起点时要读这一位，而注入侧读不到配置文件、只吃广播。与 [F_COMBO_STARTER_KEEP_LONG]
+     *  同一类坑：写成 `Field(null, …)` 就是「界面能配、判定侧永远读默认值」。
+     */
+    val F_COMBO_FIXED_WINDOW_START =
+        Field(COMBO_FIXED_WINDOW_START_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START))
 
     /**
      * 页面缩放（百分比）—— 同样只有落盘那一列。上下限就是滑杆两端（[GlobalConfig.PAGE_SCALE_MIN]
@@ -749,6 +781,16 @@ object ConfigFields {
      */
     val F_GLOBAL_UI_VIBRATE = Field(null, Kind.Bool(true))
 
+    /**
+     * **使用预测返回手势**（`GlobalConfig.predictiveBack`）—— 返回时让页面**跟着手指走**。
+     *
+     *  与 [F_GLOBAL_UI_VIBRATE] 同一档：只落盘、不进广播。读它的是宿主进程里的返回拦截
+     *  （`ui/hook/BackInterception`），那份配置与页面共用同一个 `ConfigState`。
+     *
+     *  默认开：平台给了逐帧进度就用上，那是系统级的手感；关掉退回「松手才弹」的一次性返回。
+     */
+    val F_GLOBAL_PREDICTIVE_BACK = Field(null, Kind.Bool(true))
+
     /** `GlobalConfig` 的全部广播字段。 */
     val GLOBAL_FIELDS: List<Field> =
         listOf(
@@ -762,9 +804,11 @@ object ConfigFields {
             F_COLOR_OS_API,
             F_MINI_WINDOW_ANIM,
             F_COMBO_WINDOW_MS,
+            F_COMBO_FIXED_WINDOW_MS,
             F_COMBO_HOLD_MIN_MS,
             F_COMBO_SCENE_ON_STARTER,
             F_COMBO_STARTER_KEEP_LONG,
+            F_COMBO_FIXED_WINDOW_START,
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
             F_ICON_TINT_SEED,

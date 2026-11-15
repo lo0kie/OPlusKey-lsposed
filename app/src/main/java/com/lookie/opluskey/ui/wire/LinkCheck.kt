@@ -630,7 +630,7 @@ internal fun SettingsPage.disabledClickReason(): HintText {
             targetBlocked
         }
 
-        //  带键名的两句：名字画成标签（模板里只留 `%s`）
+        //  带键名的两句：名字按颗归位（模板里只留 `%s`）
         !cfg.key(key).enabled -> {
             HintText(
                 I18n.get(Strings.KEY_DISABLED_ITEM, "%s 已停用，可在菜单里启用"),

@@ -58,7 +58,7 @@ internal enum class CommandFailure(
      *  提示里只说**宿主**「手势体感」：命令跑在宿主进程里，授权要授给那个包，不是模块自己的包
      *  （真机实测两条授权互不影响，见 `docs/runtime/key-to-gesture.md`）。
      */
-    SHELL_NO_ROOT(Strings.COMMAND_FAILURE_SHELL_NO_ROOT, "[手势体感] 没有 root 权限"),
+    SHELL_NO_ROOT(Strings.COMMAND_FAILURE_SHELL_NO_ROOT, "手势体感 没有 root 权限"),
 
     /**
      * 命令自己**没勾**「以 root 执行」，而它要 root 才跑得起来。

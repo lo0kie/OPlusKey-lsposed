@@ -179,9 +179,9 @@ object Strings {
      * 关掉「松手才触发」之前的那一问（标题 + 正文 + 动作项）—— 这颗键正被某些按住手势
      * 当成「先按住的那一颗」时弹。
      *
-     *  **正文拆成三段**（用户口径「正文的键名用 tag 样式」）：[BINDING_FIRE_OFF_LEAD] 一句引导
-     *  （`%s` = 这颗键的名字，画成名字框）、中间每一档组合各一行键名框、[BINDING_FIRE_OFF_TAIL]
-     *  一句后果。合成一整段字符串的话，键名只能写成 `[侧键]` —— 那是这个界面里另一套记号。
+     *  **正文拆成三段**：[BINDING_FIRE_OFF_LEAD] 一句引导（`%s` = 这颗键的名字）、
+     *  中间每一档组合各占一行、[BINDING_FIRE_OFF_TAIL] 一句后果。
+     *  合成一整段字符串的话，键名只能写成 `[侧键]` —— 那是这个界面里另一套记号。
      *
      *  关掉之后判定侧那条上界会把那些组合整条截止，所以确认时一并把它们改回「等窗口」——
      *  留着它们只是一个永远按不出来的档。
@@ -584,6 +584,41 @@ object Strings {
     const val COMBO_STARTER_KEEP_LONG_DESC_OFF = "combo.starter_keep_long_desc_off"
 
     /**
+     * 等待组合的「固定窗口起点」开关（标题 + 开/关两句说明）。
+     *
+     *  开 = 从首个成员按下起一个固定窗口，中途再按成员也不重置；关（默认）= 每个成员按下都
+     *  清掉计时重新等。公共页与某一组的「独立设置」页共用这一套文案。
+     */
+    const val COMBO_FIXED_WINDOW_START_TITLE = "combo.fixed_window_start_title"
+    const val COMBO_FIXED_WINDOW_START_DESC_ON = "combo.fixed_window_start_desc_on"
+    const val COMBO_FIXED_WINDOW_START_DESC_OFF = "combo.fixed_window_start_desc_off"
+
+    /**
+     * 「固定窗口长度」滑杆（紧接上面那颗开关）—— 开了固定窗口起点之后，整串等多久。
+     *
+     *  与上面那根「按键之间的等待」是两笔账：那一根量相邻两颗、逐次重置时整串会被放大；
+     *  这一根量的是**整串**（从首个成员按下起，只等这一个窗口）。
+     */
+    const val COMBO_FIXED_WINDOW_TITLE = "combo.fixed_window_title"
+    const val COMBO_FIXED_WINDOW_DESC = "combo.fixed_window_desc"
+
+    /**
+     * 「按顺序触发」开关（标题 + 开/关两句说明）—— 等待组合是否要求成员按选键的顺序先后按下。
+     */
+    const val COMBO_ORDERED_TITLE = "combo.ordered_title"
+    const val COMBO_ORDERED_DESC_ON = "combo.ordered_desc_on"
+    const val COMBO_ORDERED_DESC_OFF = "combo.ordered_desc_off"
+
+    /** 顺序选择器里「不分顺序」那一行的文案。 */
+    const val COMBO_ORDER_ANY = "combo.order_any"
+
+    /** 顺序选择器里某一种按法已经加过时的提示。 */
+    const val COMBO_ORDER_TAKEN = "combo.order_taken"
+
+    /** 顺序选择器里「已有不分顺序、所以其它顺序都加不了」时的提示。 */
+    const val COMBO_ORDER_ANY_TAKEN = "combo.order_any_taken"
+
+    /**
      * 「首键要先按住多久」那一行（滑杆标题 + 一句说明）—— **按住手势的下限**。
      *
      *  两颗键几乎同时落下（相差几十毫秒、谁先上报看硬件）不算「按住」，那种「一起按」只归
@@ -601,7 +636,7 @@ object Strings {
      *  长按押到抬手，组合凑成时那颗键的状态机被摘掉，抬手只出组合那一套。
      *
      *  正文拆成两段（与 [BINDING_FIRE_OFF_LEAD] 同一套做法）：[COMBO_MODE_ASK_LEAD] 里那个 `%s`
-     *  是**起点那颗键的名字**（画成名字框），[COMBO_MODE_ASK_TAIL] 是那句代价。
+     *  是**起点那颗键的名字**，[COMBO_MODE_ASK_TAIL] 是那句代价。
      *  动作项是「切换并添加」（同一次落盘改这一位、并把触发方式切过去）。
      */
     const val COMBO_MODE_ASK_TITLE = "combo.mode_ask_title"
@@ -616,7 +651,7 @@ object Strings {
      *  放它继续走「切换为松手时触发」那条问句，用户点完也不会有任何效果，只会落下一份
      *  `combo_only=true` 又 `long_fire_on_release=true` 的自相矛盾配置。
      *
-     *  正文里那个 `%s` 是**起点那颗键的名字**（画成名字框）；动作项只是「知道了」——
+     *  正文里那个 `%s` 是**起点那颗键的名字**；动作项只是「知道了」——
      *  这一条没有能替用户做的补救。
      */
     const val COMBO_STARTER_BLOCKED_TITLE = "combo.starter_blocked_title"
@@ -636,10 +671,11 @@ object Strings {
      * **方向相反**的那一道：那一组是「先开了只参与非首键的按住组合，再想拿它当起点」，这一组是反过来的。
      *
      *  两条说的是同一个矛盾的两端（起点键必须按住到点，而只参与非首键的按住组合的键不判单键手势），
-     *  所以正文里那个 `%s` 同样是**键名**（画成名字框）。
+     *  所以正文里那个 `%s` 同样是**键名**。键名之后是**挡路的那几档组合**（界面按档逐个点名，
+     *  不是字典能写的：条数与成员都随配置变）。
      *
-     *  [COMBO_ONLY_BLOCKED_TAIL] 是第二段「怎么解」：这一条不像反向那道那样无可挽回 ——
-     *  用户把那档组合改成等待组合、或者删掉它，就能回来开这个开关。只说「不行」会让人
+     *  [COMBO_ONLY_BLOCKED_TAIL] 是第三段「怎么解」：这一条不像反向那道那样无可挽回 ——
+     *  用户把那几档组合改成等待组合、或者删掉，就能回来开这个开关。只说「不行」会让人
      *  以为这一项坏了。
      */
     const val COMBO_ONLY_BLOCKED_TITLE = "combo.combo_only_blocked_title"
@@ -1673,6 +1709,15 @@ object Strings {
     const val MORE_UI_VIBRATE_ON = "more.ui_vibrate_on"
     const val MORE_UI_VIBRATE_OFF = "more.ui_vibrate_off"
 
+    /**
+     * 「使用预测返回手势」那一行（外观卡）—— 返回时页面跟不跟手。
+     *
+     *  只在 API 34+ 有逐帧进度；那一版以下拨到哪一档都是「松手才弹」，所以副标题不承诺版本。
+     */
+    const val MORE_PREDICTIVE_BACK_TITLE = "more.predictive_back_title"
+    const val MORE_PREDICTIVE_BACK_ON = "more.predictive_back_on"
+    const val MORE_PREDICTIVE_BACK_OFF = "more.predictive_back_off"
+
     const val MORE_THEME_AUTO = "more.theme_auto"
 
     /** 「跟随系统 (Monet)」—— 跟随系统，且整页用系统那套壁纸取色。 */
@@ -1745,7 +1790,7 @@ object Strings {
     const val KEY_DISABLED_ITEM = "status.key_disabled_item"
 
     /**
-     * 当前编辑的那一档组合被停用了（`%s` = 成员名，**逐颗一枚框**，见 `comboKeyNames`）。
+     * 当前编辑的那一档组合被停用了（`%s` = 成员名，拼成一句话，见 `comboKeyNames`）。
      *
      *  为什么不复用 [KEY_DISABLED_ITEM]：那一句的语序是「按键 X 已停用」—— 单键与组合键的
      *  主语不同，套用会把一档组合说成一颗按键。

@@ -151,7 +151,7 @@ internal val INJECT_NOT_LOADED_HINT: String
     get() =
         I18n.get(
             Strings.STATUS_DISABLED,
-            "没生效：在 LSPosed 里勾上 [系统框架] 和 [手势体感]，重启手机",
+            "没生效：在 LSPosed 里勾上 系统框架 和 手势体感，重启手机",
         )
 
 /**
@@ -177,7 +177,7 @@ internal val PENDING_OR_SCOPE_HINT: String
     get() =
         I18n.get(
             Strings.STATUS_PENDING_OR_SCOPE,
-            "已更新：重启手机生效；仍见本行请前往 LSPosed 确认 [系统框架] 已勾选",
+            "已更新：重启手机生效；仍见本行请前往 LSPosed 确认 系统框架 已勾选",
         )
 
 /**
@@ -201,7 +201,7 @@ internal val SYSTEM_STALE_HINT: String
  *  （`AGENTS.md` 五之一、6）。把它混进「重启手机」那一档，等于让人为一次装包多付一次重启。
  */
 internal val HOST_STALE_HINT: String
-    get() = I18n.get(Strings.STATUS_HOST_STALE, "服务是旧版，点 [重启服务]")
+    get() = I18n.get(Strings.STATUS_HOST_STALE, "服务是旧版，点 重启服务")
 
 /**
  * 「能用，只是这次没落到新代码上」那两档提醒的**身份** —— 去重比的是它，不是文案。

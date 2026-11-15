@@ -64,6 +64,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandClick
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFinger
+import io.github.lyxnx.compose.ui.tablericons.outline.HandFingerLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.HandMove
 import io.github.lyxnx.compose.ui.tablericons.outline.HandRingFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandThreeFingers
@@ -450,6 +451,9 @@ internal object PageIcons {
 
     /** 「外观」卡「跟随系统显示大小」—— `text-size`（大小 A→A）。 */
     val TextSize: ImageVector get() = TablerIcons.Outline.TextSize
+
+    /** 「外观」卡「使用预测返回手势」—— `hand-finger-left`（指尖朝左：那一行是返回手势）。 */
+    val PredictiveBack: ImageVector get() = TablerIcons.Outline.HandFingerLeft
 
     /** 「更多选项」页「界面颜色」—— `sun-moon`（一半日一半月：深浅由这一行定）。 */
     val Theme: ImageVector get() = TablerIcons.Outline.SunMoon

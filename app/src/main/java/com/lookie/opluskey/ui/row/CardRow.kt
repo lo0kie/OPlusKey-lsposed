@@ -37,9 +37,6 @@ import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.page.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.page.ROW_START_ICON_GAP
 import com.lookie.opluskey.ui.model.page.ROW_TITLE_INSET
-import com.lookie.opluskey.ui.model.page.opticalBlockBias
-import com.lookie.opluskey.ui.model.page.opticalBlockCenter
-import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_DARK_ALPHA
@@ -461,15 +458,6 @@ private fun ColumnScope.RowContent(
                     position = position,
                     enabled = row.enabled,
                     vibrate = row.vibrate,
-                    //  与 [CardRow.Item] 同一条尺子（见 [ItemText] 里那段）：开关行的标题 / 副标题
-                    //  是库内部画的、插不进修饰符，所以只能把「整块」下移同样多 —— 但下移走的是
-                    //  行内上下内边距（`contentBias`），**不是整行 offset**：行一挪，可点区域与
-                    //  按住时的波纹跟着挪，顶部就与上一行让出一道缝（真机口径）。
-                    contentBias =
-                        opticalBlockBias(
-                            COUITheme.textStyles.headline1,
-                            COUITheme.textStyles.body2,
-                        ),
                     onCheckedChange = row.onCheckedChange,
                 )
             }
@@ -573,21 +561,11 @@ private fun ItemRow(
 /**
  * 行里的两行字 —— 标题，以及（有的话）副标题。
  *
- * ## 为什么这一块要项目自己画
+ *  这一块项目自己画：库那版 `BasicComponent` 把两行 `Text` 写在内部，`titleContent` 那种
+ *  「一行里摆几列」的布局插不进去。
  *
- *  为了那一句**光学修正**：库那版 `BasicComponent` 的 `Text` 写在内部，修饰符插不进去。
- *
- * ## 修正的是**整块**，不是单独一行
- *
- *  行盒（`ascent + descent`）与汉字墨迹不是一回事：卡片行的上下内边距本来就对称（12dp / 12dp），
- *  但最后一行是副标题（14sp）时它行盒底留着 `descent` 那截汉字不占的空白，肉眼看到的下留白
- *  就比上留白多 9~10px。只有标题的行没有副标题那截，看着反而居中 —— 同一张卡里两种形态
- *  并排就是「上下留白不一致」。
- *
- *  [opticalBlockCenter] 按整块的首行 / 末行量同一把尺子，两种形态于是落到同一个口径上
- *  （上下都等于「内边距 + 首行的行盒顶空白」）。开关行走同一条（见 [RowContent]）。
- *
- *  [CardRow.Item.titleContent] 那种「一行里摆几列」的不参与：里面不是一行字，没有墨迹边界可量。
+ *  上下留白由 `AppTextStyles` 那一档 `LineHeightStyle(Center, Trim.Both)` 负责 ——
+ *  行盒贴住墨迹，`Column` 排出来本身就是视觉居中的，这里不再补任何偏移。
  */
 @Composable
 private fun ItemText(
@@ -595,20 +573,6 @@ private fun ItemText(
     titleColors: BasicComponentColors,
     summaryColors: BasicComponentColors,
 ) {
-    val titleStyle = COUITheme.textStyles.headline1
-    val summaryStyle = COUITheme.textStyles.body2
-    //  按**形态**分流，两条口径不同（真机逐行量过，数值见 changelog 那一节）：
-    //   · 单行：行内容比库的最小行高矮 ⇒ 库已经把它**垂直居中**了，只差「墨迹偏离行盒中心」
-    //     这一档 —— 用 [opticalCenter]（实测 65/64）；
-    //   · 双行：内容比最小行高高 ⇒ 库按**贴顶**摆，整块的墨迹偏上（下留白多 10px）——
-    //     用 [opticalBlockCenter] 按首行 / 末行的墨迹边界把整块挪到视觉居中；
-    //   · `titleContent`（一行里摆几列）不适用：里面不是一行字，没有墨迹边界可量。
-    val blockModifier =
-        when {
-            row.titleContent != null -> Modifier
-            row.summary == null -> Modifier.opticalCenter(titleStyle)
-            else -> Modifier.opticalBlockCenter(titleStyle, summaryStyle)
-        }
     //  标题 / 副标题两档色同样带过渡：整页闸门一拨、或这一行自己从「待补条件」变成「填好了」时，
     //  行首图标与行尾箭头本来就在渐变（见 [rememberRowIconColor] 与 `arrowTint`）——
     //  文字硬切就成了「图标在淡、字在跳」。
@@ -622,11 +586,11 @@ private fun ItemText(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "CardRowSummary",
     )
-    Column(modifier = blockModifier) {
+    Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (row.titleContent != null) {
                 //  **整列占满**：自己画的那一块要能按列分宽度（见 [CardRow.Item.titleContent]），
-                //  这里就不能按内容宽度收缩。整块修正也不做 —— 里面是几列并排，不是一行字。
+                //  这里就不能按内容宽度收缩。
                 Box(Modifier.weight(1f)) { row.titleContent.invoke() }
             } else {
                 //  **标题换了就淡过去**，不硬切：同一行原地换内容的场合不少（条件行从「未选择场景」

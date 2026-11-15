@@ -297,7 +297,7 @@ private fun SettingsPage.boundNotice(
         } else {
             commandTitleOf(action).forSentence(action, { appName ?: appLabelOf(pkg) }, action.token)
         }
-    return I18n.get(Strings.TOAST_BOUND, "已绑定 [%s]").format(shown)
+    return I18n.get(Strings.TOAST_BOUND, "已绑定 %s").format(shown)
 }
 
 /**
@@ -373,7 +373,7 @@ internal fun SettingsPage.setKeyEnabledFromMenu(
         //  整页一个位（[HINT_SLOT_BINDING]）：不按 `what` 的前缀分（那会得到 `key_enabled`，
         //  与这一页别的回执各占一格、又叠起来）。
         slot = HINT_SLOT_BINDING,
-        //  键名画成**名字框**：这一句的主语就是那颗键，与列表行、选择器同一套长相
+        //  键名按颗归位：这一句的主语就是那颗键，与列表行、选择器同一套排法
         chips = { listOf(id.label) },
     ) {
         I18n.get(

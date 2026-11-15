@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.shape.CircleShape
@@ -34,6 +35,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -43,7 +45,6 @@ import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.HEADER_ICON_SIZE
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.page.opticalTightTop
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.FROSTED_SURFACE_ALPHA
 import com.lookie.opluskey.ui.state.signal.BandHeight
@@ -61,6 +62,7 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.theme.LocalContentColor
 import io.github.suqi8.coui.kmp.utils.TiltFeedback
 import io.github.suqi8.coui.kmp.utils.pressable
+import kotlin.math.roundToInt
 
 // 顶栏那一整套：**骨架**（高度通道、折叠几何、那条 `TopAppBar` 本身）、右侧那几颗圆键与
 // 「按一下振一下」、以及副标题按可用宽度截断的两档账本。
@@ -222,14 +224,24 @@ internal fun SettingsPage.PageHeader(
         //  框自己会按名字宽度排，`subtitleBar` 那套「按格数截断」是给纯文字算的，套不到框上。
         subtitle = if (subtitleContent == null) subtitleBar.shown(subtitle) else "",
         subtitleContent = subtitleContent,
-        //  副标题这一行紧挨着主标题，可两个行盒各有一截汉字不占的留白（上面那行的 descent、
-        //  这一行的 ascent），3.5dp 的设计间隙看着像 11.7dp —— 副标题像被推远了一截。
-        //  上提「行盒顶 → 墨迹顶」那一档（量出来的，见 `opticalTightTop`）：真机上量到 5px
-        //  @560dpi ≈ 1.4dp，就是这一档 —— 再往上补 3dp 会贴得太紧（试过，被否掉）。
-        //  `offset` 只挪墨迹、不动测量，所以栏高、折叠几何、上面那本宽度账本都不受影响。
-        subtitleModifier = Modifier.opticalTightTop(COUITheme.textStyles.body2),
+        //  副标题与主标题之间的 3.5dp 就是设计值：两行的行盒都由 `AppTextStyles` 那一档
+        //  `LineHeightStyle(Center, Trim.Both)` 贴着墨迹算，行盒之间的空隙就是眼睛看到的空隙，
+        //  不再需要把副标题单独上提。
         subtitleColor = subtitleColor,
         hideSubtitleOnCollapse = false,
+        //  **折叠到底时把副标题往上提一档**（用户口径）：它折进 52dp 那条栏之后贴着栏底，
+        //  比右侧圆键的视觉重心低一点。
+        //  位移按 `collapsedFraction` **线性**给：展开态是 0、折叠态是满值，中途跟着库的折叠
+        //  进度连续变 —— 收尾那一帧（含 fling 吸附）也在这个函数上，不会折完再瞬移一下。
+        //  走 `subtitleModifier` 而不是改栏高：那个槽位只移动墨迹，栏高、展开 / 折叠两档的
+        //  落点与宽度账本都不受影响（见补丁 `0014`）。
+        subtitleModifier =
+            Modifier.offset {
+                IntOffset(
+                    x = 0,
+                    y = -(SUBTITLE_COLLAPSE_LIFT * scrollBehavior.state.collapsedFraction).toPx().roundToInt(),
+                )
+            },
         //  三个水平边距统一到**卡片那一档**（[PAGE_MARGIN]）：整页所有卡片的外边距、固定带里
         //  的分段控件、选择应用页的搜索框都是这一档，顶栏两侧的圆键与大标题跟着走同一条竖线
         //  （原来用库默认的 `TitlePadding` / `NavigationIconPadding` / `ActionIconPadding`
@@ -424,6 +436,15 @@ private const val SUBTITLE_ELLIPSIS_COLUMNS = 2
  *  往上滑，换文案会看成闪一下。
  */
 private const val SUBTITLE_SWAP_AT_COLLAPSED = 0.9999f
+
+/**
+ * 折叠到底时副标题再往上提的那一档。
+ *
+ *  折进 52dp 那条栏之后，副标题贴着栏底，比右侧那排圆键的视觉重心低一点 —— 提这一档让两者
+ *  在同一条水平线上。位移**只作用在墨迹上**（`subtitleModifier` 不参与栏高、落点与宽度账本），
+ *  量也按 `collapsedFraction` 线性缩放，所以展开态完全不动。
+ */
+private val SUBTITLE_COLLAPSE_LIFT = 3.dp
 
 /**
  * 这段宽度放得下多少**格**字 —— 副标题两档上限共用的那把尺子。

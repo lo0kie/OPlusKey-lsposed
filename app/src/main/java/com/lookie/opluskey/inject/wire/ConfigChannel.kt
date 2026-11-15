@@ -166,6 +166,19 @@ internal object ConfigChannel {
             ?.toLong() ?: GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong()
 
     /**
+     * [combo] 在**固定窗口起点**下的整串窗口（毫秒）—— 按住档成员接收窗口按它判
+     * （`ComboDetector.fixedWindowFor`），没写过就跟随公共（见 `Config.comboFixedWindowFor`）。
+     *
+     *  还没收到过广播时按出厂值（80ms，与「按键之间的等待」同一个数）。
+     */
+    fun fixedWindowFor(combo: ComboKey): Long =
+        arrived
+            ?.config
+            ?.comboFixedWindowFor(combo)
+            ?.takeIf { it > 0 }
+            ?.toLong() ?: GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_MS.toLong()
+
+    /**
      * [combo] 的**首键要先按住多久**（毫秒）—— 按住那条的下限，每组可另设一份
      * （没写过就跟随公共，见 `Config.comboHoldMinFor`）。
      *

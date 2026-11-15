@@ -110,6 +110,10 @@ $ ls -l /data/user/0/com.oplus.gesture/files/opluskey_*
 异或密钥与替身字母表仍以字节形式躺在 dex 里，只是没了可以搜的名字。这不是缺陷、是有意的，
 但它划定了外皮的能力边界：任何「加了混淆就等于保密」的说法都不成立。
 
+**要把盘上的文件解出来看（排障 / 手改）**：`python3 tools/config-plain.py <file.conf>` 解成明文，
+`--wrap` 包回去（`--version N` 顺手改版本号）。参数（密钥 / 替身字母表 / 位置偏移 / 魔数）
+由脚本从 `FileObfuscation.kt` **现读**，那边改了它自动跟上；推回真机记得还原属主与权限。
+
 **R8 默认就会重打包**（所以 `-repackageclasses ''` 是句废话，要关掉得写 `-keeppackagenames`），
 默认包里撞名之所以不怕：LSPosed 的 `LspModuleClassLoader` 委托顺序是 **`findClass` 先于
 `parent.loadClass`**，模块自己的类永远取自己那份；宿主那边看不到模块的类，反向也不会串。

@@ -159,6 +159,10 @@ internal class SideKeyInterceptor(
                     enabled = { c -> ConfigChannel.config.comboStarterKeepLongFor(c) },
                     fire = onStarterLong,
                 )
+            //  按住档成员的「固定窗口起点」—— 判据在 `Config.comboFixedWindowStartFor` 一处
+            fixedWindowStartFor = { c -> ConfigChannel.config.comboFixedWindowStartFor(c) }
+            //  开了固定窗口起点之后，成员接收窗口用这一档的「固定窗口长度」而不是写死的 150ms
+            fixedWindowFor = { c -> ConfigChannel.fixedWindowFor(c) }
         }
 
     /**

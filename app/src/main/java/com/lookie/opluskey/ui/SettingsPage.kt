@@ -296,6 +296,20 @@ internal class SettingsPage(
      */
     internal fun needsBackInterception(): Boolean = hasOpenOverlays() || navStack.size > 1
 
+    /**
+     * 「使用预测返回手势」拨完之后**按新配置重挂返回回调** —— 由 `ui/hook` 在换页时注入。
+     *
+     * ## 为什么是一个回调字段，而不是直接调 [com.lookie.opluskey.ui.hook.BackInterception]
+     *
+     *  `ui` 这一层（页面对象与共用件）**不许反向依赖 `ui.hook`** —— 分层图是单向的，
+     *  反过来就把 `ui.hook → ui.screen → ui` 那条链变成环（见 `docs/architecture/decoupling.md` 五，
+     *  耦合审计按这条判）。而「重挂回调」这件事只有 hook 侧做得到（它持有 Activity 与回调实例）。
+     *  于是照 `HostSession` 那套反向注入：这边留一个空实现，[ui.hook.BackInterception] 在进页时接上。
+     *
+     *  空实现 = 还没换页（那时也没有回调可挂），拨开关什么都不会发生 —— 下次进页按新配置生效。
+     */
+    internal var onPredictiveBackChanged: () -> Unit = {}
+
     /** View 树那三样：根 View 与兜底 owner（见 [PageViewTree]）。 */
     internal val viewTree = PageViewTree()
 

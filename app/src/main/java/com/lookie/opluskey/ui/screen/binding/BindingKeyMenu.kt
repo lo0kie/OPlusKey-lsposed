@@ -1,15 +1,12 @@
 package com.lookie.opluskey.ui.screen.binding
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import com.lookie.opluskey.core.i18n.I18n
@@ -35,11 +32,8 @@ import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.text.BRANCHES_TITLE
-import com.lookie.opluskey.ui.row.ChipFlow
-import com.lookie.opluskey.ui.row.ChipSentence
-import com.lookie.opluskey.ui.row.chipLook
+import com.lookie.opluskey.ui.screen.combo.ComboNameLines
 import com.lookie.opluskey.ui.screen.combo.KeysAskDialog
-import com.lookie.opluskey.ui.screen.combo.holdSentenceTemplate
 import com.lookie.opluskey.ui.screen.combo.keyRowIcon
 import com.lookie.opluskey.ui.screen.command.scenarioMenuSummary
 import com.lookie.opluskey.ui.state.binding.KeyWatchState
@@ -424,7 +418,7 @@ private fun SettingsPage.KeyMenuDialogHost(
         },
     )
     //  「这颗键还在组合里」—— 删不掉的说明窗（动作项只有「知道了」）。
-    //  正文点名那几档组合（键名照旧是名字框，与列表行同一套），用户照着去组合页删。
+    //  正文点名那几档组合（名字与列表行同一套写法），用户照着去组合页删。
     val inCombos = if (dialog == KeyMenuDialog.DELETE_BLOCKED) combosUsing(config, selected) else emptyList()
     ConfirmDialog(
         show = dialog == KeyMenuDialog.DELETE_BLOCKED,
@@ -440,35 +434,15 @@ private fun SettingsPage.KeyMenuDialogHost(
                 textAlign = TextAlign.Start,
                 modifier = Modifier.fillMaxWidth(),
             )
-            //  每一档**水平居中**；两类写法分开（与组合列表同一套）：
-            //  等待组合是一串框（`[A]×[B]`），按住组合是一句话（`按住 [A] 后再按 [B]`）——
-            //  只摆一串框读不出「谁先按住」，那正是那一档的判据。
-            val textStyle = COUITheme.textStyles.body2
-            val textColor = COUITheme.colorScheme.onBackgroundVariant
-            val look = chipLook(color = textColor, enabled = true)
-            inCombos.forEach { combo ->
-                val names = combo.keys.mapNotNull { id -> config.keyIdOf(id)?.let(::keyName) }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (combo.isHold) {
-                        ChipSentence(
-                            template = holdSentenceTemplate(names.size - 1),
-                            names = names,
-                            look = look,
-                            style = textStyle,
-                            color = textColor,
-                            //  这一句自己撑满整行（它是 `BasicText`），外层那个 `Arrangement.Center`
-                            //  只摆得动盒子、摆不动盒子里的字 —— 按住组合那几档得在这里点名居中
-                            textAlign = TextAlign.Center,
-                        )
-                    } else {
-                        ChipFlow(names = names, look = look)
-                    }
-                }
-            }
+            //  每一档各占一行、水平居中 —— 写法与组合列表同一套（见 `ComboNameLines`）：
+            //  等待组合是一串名字（`A × B`），按住组合是一句话（`按住 A 后再按 B`）——
+            //  只摆一串名字读不出「谁先按住」，那正是那一档的判据。
+            ComboNameLines(
+                cfg = config,
+                combos = inCombos,
+                style = COUITheme.textStyles.body2,
+                color = COUITheme.colorScheme.onBackgroundVariant,
+            )
         },
     )
 
@@ -492,7 +466,7 @@ private fun SettingsPage.KeyMenuDialogHost(
                     //  只在**完全成功**时报：广播没发出去时 [write] 已经报过那条，别顶掉它
                     if (deleted == CommandsSave.Ok) {
                         // 名字得在 forget 之后取，否则 `selected` 已经指向不存在的键
-                        //  （键名画成名字框：与列表行、选择器同一套长相）
+                        //  （键名按颗归位：与列表行、选择器同一套排法）
                         hint(
                             I18n.get(Strings.TOAST_KEY_DELETED, "已删除 %s"),
                             slot = HINT_SLOT_BINDING,

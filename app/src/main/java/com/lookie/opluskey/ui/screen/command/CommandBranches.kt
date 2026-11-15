@@ -59,13 +59,11 @@ import com.lookie.opluskey.ui.model.theme.STEP_ROW_EXIT_MS
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
-import com.lookie.opluskey.ui.row.ChipFlow
-import com.lookie.opluskey.ui.row.ChipLook
+import com.lookie.opluskey.ui.row.NameFlow
 import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.row.SECTION_TITLE_TRAILING_GLYPH_INSET
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SectionTitleTrailingMore
-import com.lookie.opluskey.ui.row.chipStyle
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.binding.BranchDraft
 import com.lookie.opluskey.ui.state.binding.NO_FRESH_ROW
@@ -654,7 +652,7 @@ private fun RuleBlock(
                                 //  这一行的进出场状态按**这条条件**认，不按位次 —— 中间插一行时
                                 //  它才不会接手上一行那份「一直在场」的状态（见 `CardRow.Item.rowKey`）。
                                 rowKey = line.rowKey,
-                                //  「前台应用」那几行**按框画**应用名（与组合键成员同一个标签，见
+                                //  「前台应用」那几行**按颗画**应用名（与组合键成员同一个写法，见
                                 //  `ConditionRowTitle`）；其余条件仍是一行字。给这一块时行不再画
                                 //  `title`，但 `title` 仍留着当无障碍与兜底。
                                 titleContent =
@@ -849,8 +847,8 @@ internal fun SettingsPage.ruleConditionLines(rule: SceneRule): List<ConditionLin
                     },
                 icon = conditionLineIcon(condition),
                 empty = !condition.isUsable,
-                //  应用那一族（前台 / 前台以外）都能挑好几个，名字按**框**排（与组合键成员同一种标签，
-                //  见 [ConditionRowTitle]）—— 给 `null` 的那几档仍是一行字。
+                //  应用那一族（前台 / 前台以外）都能挑好几个，名字**按颗分开排**（与组合键成员
+                //  同一个写法，见 [ConditionRowTitle]）—— 给 `null` 的那几档仍是一行字。
                 apps =
                     if (condition.kind?.isAppFamily == true && condition.isUsable) {
                         condition.appPackages.map(::appNameOf)
@@ -887,7 +885,7 @@ internal class ConditionLine(
     /** 这一条还没配完（刚插进来的空条件 / 只选了种类没选取值）⇒ 图标与文字压禁用色。 */
     val empty: Boolean,
     /**
-     * 「前台应用」那一档的应用名 —— 有值时这一行的标题**按框画**（与组合键成员同一种标签），
+     * 「前台应用」那一档的应用名 —— 有值时这一行的标题**按颗分开排**（与组合键成员同一个写法），
      * `null` = 走普通的整行文字（[text]）。
      *
      *  为什么单独给一份而不是让界面去拆 [text]：拆字符串要认「种类 - 取值」那个分隔符，
@@ -1091,16 +1089,15 @@ internal fun SettingsPage.actionTextOf(action: Action): String =
     }
 
 /**
- * 条件那一行的**标题** —— 「前台应用」这几行按框画应用名，其余仍是一行字。
+ * 条件那一行的**标题** —— 「前台应用」这几行带上具体的应用名，其余仍是一行字。
  *
- *  应用名用 `NameChip`（`ui/row/ChipLabel.kt`，与组合键成员框是同一个组件，用户口径：改成一样的
- *  标签样式、复用它），名字之间仍是那个 `×`；种类名留在前面，读起来是
- *  `前台应用 - [微信]×[QQ]`。
+ *  应用名与组合键的成员名同一档写法（`ui/row/ChipLabel.kt`），名字之间仍是那个 `×`；
+ *  种类名留在前面，读起来是 `前台应用 - 微信 × QQ`。
  *
- *  **为什么走 `titleContent` 而不是拼字符串**：框要能各自省略、各自贴边 ——
- *  拼成一整串时省略号只会落在最后，而且框底色根本画不出来。
+ *  **为什么走 `titleContent` 而不是拼字符串**：名字要各自省略、各自贴边 ——
+ *  拼成一整串时省略号只会落在最后。
  *
- *  @param enabled 整页那道闸（关着时框与字一起压灰 —— 与组合标题同一档判据）
+ *  @param enabled 整页那道闸（关着时名字与字一起压灰 —— 与组合标题同一档判据）
  */
 @Composable
 internal fun ConditionRowTitle(
@@ -1121,12 +1118,16 @@ internal fun ConditionRowTitle(
         )
         return
     }
-    val inner = chipStyle()
-    //  种类名作为 [ChipFlow] 的**第一项**参与换行：应用多的时候框排到下一行，
-    //  而「前台应用 - 」留在原处 —— 拆成一个独立的 `Text` + 一个 `Row` 的话，框只能挤在同一行里。
-    ChipFlow(
+    //  种类名作为 [NameFlow] 的**第一项**参与换行：应用多的时候名字排到下一行，
+    //  而「前台应用 - 」留在原处 —— 拆成一个独立的 `Text` + 一个 `Row` 的话，名字只能挤在同一行里。
+    //
+    //  这一项**必须与名字同一档样式、同一道光学修正**：`NameFlow` 里的名字是 Medium + 居中修正，
+    //  种类名与名字**同一档样式**（同字号、同字重、同补偿），才会落在同一条基线上。
+    //  名字就是普通文本：与「前台应用 - 」同一档样式，不再叠字重或光学修正
+    NameFlow(
         names = apps,
-        look = ChipLook(inner, color, enabled),
+        style = COUITheme.textStyles.headline1,
+        color = color,
         modifier = Modifier.fillMaxWidth(),
         leading = {
             Text(
@@ -1135,7 +1136,6 @@ internal fun ConditionRowTitle(
                 //  读起来正好是相反的意思。
                 text = "${conditionKindLabel(line.kind ?: ConditionKind.APP)} - ",
                 style = COUITheme.textStyles.headline1,
-                fontWeight = FontWeight.Medium,
                 color = color,
                 maxLines = 1,
             )

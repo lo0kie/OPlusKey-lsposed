@@ -51,7 +51,7 @@ object ToastNotice {
     /**
      * 界面上要逐个列出来的占位符（顺序即说明顺序）。
      *
-     *  界面把它当**变量清单**用：说明那一句里的 `%s` 按这个顺序换成这几枚名字框
+     *  界面把它当**变量清单**用：说明那一句里的 `%s` 按这个顺序换成这几个变量名
      *  （`ui/row/ChipLabel.ChipLegend`）。所以这里的顺序就是用户读到的那一行。
      */
     val PLACEHOLDERS: List<String> = listOf(KEY, GESTURE, ACTION, PARENT, NAME, STATE)

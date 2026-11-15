@@ -14,8 +14,6 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.row.CHIP_SLOT
-import com.lookie.opluskey.ui.row.chipsOfNames
-import com.lookie.opluskey.ui.row.namesToChipsTemplate
 import com.lookie.opluskey.ui.screen.binding.ComboModeAsk
 import com.lookie.opluskey.ui.screen.binding.ComboStarterBlocked
 import com.lookie.opluskey.ui.state.binding.KeysAsk
@@ -47,7 +45,7 @@ internal fun comboModeTotal(keyCount: Int): Int = 1 + keyCount.coerceAtLeast(0)
 /**
  * 按住那一档那句话的**模板** —— 「按住 [首键] 后再按 [后续…]」。
  *
- *  后续成员**每颗各占一枚名字框**、之间用 [COMBO_PAIR_SEPARATOR] 连起来（与等待组合的
+ *  后续成员各占一个槽、之间用 [COMBO_PAIR_SEPARATOR] 连起来（与等待组合的
  *  `A × B` 同一个分隔符）。成员数不定，所以这是一支函数而不是一条写死的文案：
  *  模板里的槽数必须与调用点传进来的名字数一致，否则多出来的那几颗会被静默丢掉
  *  （`HintText.plain()` 只按顺序填）。
@@ -55,9 +53,14 @@ internal fun comboModeTotal(keyCount: Int): Int = 1 + keyCount.coerceAtLeast(0)
  *  文案本身只写 `%1$s` / `%2$s` 两个段：首键一段、后续那一段再按颗数展开。
  *
  * @param followers 后续成员的个数（按住档 = `keys.size - 1`）
+ * @param separator 后续成员之间的分隔符 —— 默认「×」（一起按下）；按顺序触发那一档传「→」
+ *   （`COMBO_ORDER_SEPARATOR`，见 `ComboTitle` 里那一支）。
  */
-internal fun holdSentenceTemplate(followers: Int): String {
-    val slots = List(followers.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $COMBO_PAIR_SEPARATOR ")
+internal fun holdSentenceTemplate(
+    followers: Int,
+    separator: String = COMBO_PAIR_SEPARATOR,
+): String {
+    val slots = List(followers.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $separator ")
     return I18n
         .get(Strings.COMBO_MODE_HOLD, "按住 %1\$s 后再按 %2\$s")
         .replace("%1\$s", CHIP_SLOT)
@@ -118,10 +121,13 @@ internal fun comboAllModesTaken(
 ): Boolean = !comboRoomLeft(cfg, ids, hold)
 
 /**
- * 这一组键的**等待档**在不在 —— 同一批成员的等待档只可能有一档。
+ * 这一组键的**等待档**在不在 —— 同一批成员的等待档**至少有一档**（不分顺序，或任意一种顺序）。
  *
  *  与 [usedComboStarters] 同源、分两个函数：一类一档、一类按成员各一档，
  *  合成一个「返回集合」的接口反而要在调用点各拆一次。
+ *
+ *  加入「按顺序触发」之后，同一批成员可以有**多档有序**等待组合（AB / BA / ABC / ACB …），
+ *  所以「在不在」只看「有没有一档」，具体哪一档由 [orderedWaitTaken] / [unorderedWaitTaken] 再分。
  */
 internal fun waitTaken(
     cfg: Config,
@@ -129,6 +135,44 @@ internal fun waitTaken(
 ): Boolean {
     val want = ids.toSet()
     return cfg.combos.any { it.isWait && it.keys.toSet() == want }
+}
+
+/**
+ * 这一组键的**不分顺序**等待档在不在 —— 它覆盖所有按法，所以只要它存在，任何同集合的
+ * 其它顺序（含有序）都排不下（用户口径「已添加不分顺序则无法添加其他顺序」）。
+ */
+internal fun unorderedWaitTaken(
+    cfg: Config,
+    ids: List<String>,
+): Boolean {
+    val want = ids.toSet()
+    return cfg.combos.any { it.isWait && !it.ordered && it.keys.toSet() == want }
+}
+
+/**
+ * 这一组键里**顺序 = [orderedIds]** 的有序等待档在不在 —— [orderedIds] 就是「按下的先后」。
+ *
+ *  判等看**键序**（不是集合）：AB 与 BA 是两档不同的有序档，各自可加一次。
+ */
+internal fun orderedWaitTaken(
+    cfg: Config,
+    orderedIds: List<String>,
+): Boolean = cfg.combos.any { it.isWait && it.ordered && it.keys == orderedIds }
+
+/**
+ * 这一组键里**已经当过的有序等待顺序** —— 顺序选择器据此把用不上的那几行置灰。
+ *
+ *  返回的是**键序集合**（每一档有序等待的 `keys` 就是一个顺序），同一顺序只能有一档。
+ *  不分顺序那档不在其中（它由 [unorderedWaitTaken] 单独判 —— 它一出现，其它顺序全禁用）。
+ */
+internal fun usedWaitOrders(
+    cfg: Config,
+    ids: List<String>,
+): Set<List<String>> {
+    val want = ids.toSet()
+    return cfg.combos
+        .filter { it.isWait && it.ordered && it.keys.toSet() == want }
+        .mapTo(HashSet()) { it.keys }
 }
 
 /**
@@ -147,6 +191,53 @@ internal fun usedComboStarters(
         .filter { it.isHold && it.keys.toSet() == want }
         .mapNotNullTo(HashSet()) { it.starterKey }
 }
+
+/**
+ * 首键 = [starterId]、成员集合 = [followerIds] 的按住档里，**不分成员顺序**那档在不在。
+ *
+ *  它覆盖成员键的所有按法，所以只要它存在，同首键 + 同成员集合的其它成员顺序都排不下
+ *  （与等待档 [unorderedWaitTaken] 同一条「不分顺序独占」的口径）。
+ */
+internal fun holdUnorderedMemberTaken(
+    cfg: Config,
+    starterId: String,
+    followerIds: Set<String>,
+): Boolean = cfg.combos.any { it.isHold && !it.ordered && it.starterKey == starterId && it.followers.toSet() == followerIds }
+
+/**
+ * 首键 = [starterId]、成员顺序 = [orderedFollowerIds] 的有序按住档在不在。
+ *
+ *  [orderedFollowerIds] 就是成员的按下先后（不含首键）。判等看**键序**：A→B 与 B→A 是两档。
+ */
+internal fun holdOrderedMemberTaken(
+    cfg: Config,
+    starterId: String,
+    orderedFollowerIds: List<String>,
+): Boolean = cfg.combos.any { it.isHold && it.ordered && it.starterKey == starterId && it.followers == orderedFollowerIds }
+
+/**
+ * 首键 = [starterId]、成员集合 = [followerIds] 的按住档里**已经当过的成员顺序**（有序档）。
+ *
+ *  返回的是成员键序集合（`followers`），供「成员顺序」选择器置灰。不分顺序那档不在其中
+ *  （由 [holdUnorderedMemberTaken] 单独判）。
+ */
+internal fun usedHoldMemberOrders(
+    cfg: Config,
+    starterId: String,
+    followerIds: Set<String>,
+): Set<List<String>> =
+    cfg.combos
+        .filter { it.isHold && it.ordered && it.starterKey == starterId && it.followers.toSet() == followerIds }
+        .mapTo(HashSet()) { it.followers }
+
+/**
+ * 首键 = [starterId]、成员集合 = [followerIds] 的按住档**至少有一档**（不分 或 任意顺序）。
+ */
+internal fun holdMemberTaken(
+    cfg: Config,
+    starterId: String,
+    followerIds: Set<String>,
+): Boolean = cfg.combos.any { it.isHold && it.starterKey == starterId && it.followers.toSet() == followerIds }
 
 /**
  * 这一组键的那一档选完之后，**这一组键一共占了几档**（含正要加的这一档）。
@@ -220,6 +311,7 @@ internal fun Config.waitCombosUsing(key: KeyId): List<ComboKey> = combos.filter 
 internal fun SettingsPage.addCombo(
     keys: List<KeyId>,
     starter: KeyId?,
+    ordered: Boolean = false,
 ): String? {
     val cfg = configState.config.value
     val ids = keys.map { it.id }.distinct()
@@ -252,7 +344,7 @@ internal fun SettingsPage.addCombo(
             return null
         }
     }
-    return writeNewCombo(keys, starter, releaseKeys = emptyList())
+    return writeNewCombo(keys, starter, releaseKeys = emptyList(), ordered = ordered)
 }
 
 /**
@@ -281,6 +373,7 @@ internal fun SettingsPage.writeNewCombo(
     keys: List<KeyId>,
     starter: KeyId?,
     releaseKeys: List<KeyId>,
+    ordered: Boolean = false,
 ): String? {
     val cfg = configState.config.value
     val picked = keys.map { it.id }.distinct()
@@ -303,8 +396,29 @@ internal fun SettingsPage.writeNewCombo(
         return null
     }
     //  同一类里这组键还排不排得下 —— 界面那边同一判据判「添加」按不动，
-    //  这一句是给手改的配置与将来的入口兜底。全占满时换个说法（见 `comboAllModesTaken`）
-    if (comboAllModesTaken(cfg, ids, hold)) {
+    //  这一句是给手改的配置与将来的入口兜底。全占满时换个说法（见 `comboAllModesTaken`）。
+    //
+    //  等待档加入「按顺序」之后，同一批键可以有多个有序档，所以判重按 ordered 细分：
+    //  · 不分顺序：同集合已有**任何**等待档（不分 / 有序）就拦 —— 它覆盖所有按法；
+    //  · 有序：同集合已有「不分顺序」档、或已有**同顺序**的有序档才拦。
+    //  · 按住档：首键相同的前提下，成员顺序与等待档同一条口径 ——
+    //   不分成员顺序 = 首键 + 成员集合的任意档都拦；有序 = 「不分成员顺序」或「同成员顺序」才拦。
+    val duplicated =
+        if (hold) {
+            val starterId = ids.first()
+            val followers = ids.drop(1)
+            if (ordered) {
+                holdUnorderedMemberTaken(cfg, starterId, followers.toSet()) ||
+                    holdOrderedMemberTaken(cfg, starterId, followers)
+            } else {
+                holdMemberTaken(cfg, starterId, followers.toSet())
+            }
+        } else if (ordered) {
+            unorderedWaitTaken(cfg, ids) || orderedWaitTaken(cfg, ids)
+        } else {
+            waitTaken(cfg, ids)
+        }
+    if (duplicated) {
         hint(
             if (hold) {
                 I18n.get(Strings.COMBO_ALL_MODES_TAKEN, "所有触发方式都已添加")
@@ -318,7 +432,7 @@ internal fun SettingsPage.writeNewCombo(
     //  序号只增不减：删掉中间一档之后再加，不会复用那个 id（复用会让「在编哪一档」指到别人身上）
     val seq =
         (cfg.combos.mapNotNull { it.id.removePrefix(ComboKey.ID_PREFIX).toIntOrNull() }.maxOrNull() ?: 0) + 1
-    val combo = ComboKey(id = ComboKey.idOf(seq), keys = ids, enabled = comboEnableByDefault(cfg, ids), mode = resolved)
+    val combo = ComboKey(id = ComboKey.idOf(seq), keys = ids, enabled = comboEnableByDefault(cfg, ids), mode = resolved, ordered = ordered)
     val label = comboLabel(cfg, combo)
     //  `cfg.keys` 是按 `KeyId` 索引的，所以这一份集合也用 `KeyId`（与 `writeComboMode` 同一条）
     val release = releaseKeys.toHashSet()
@@ -342,22 +456,17 @@ internal fun SettingsPage.writeNewCombo(
         //  补到最后一档的人要的是「这组已经齐了」，再报一次「已添加」读起来像什么都没发生。
         //  上限随成员数走（[comboModeTotal]）：等待一档 + 每个成员各当一次首键。
         val count = comboCountAfter(cfg, ids, starter)
-        //  名字串按**逐个名字一枚框**展开（见 `namesToChipsTemplate`）：回执里那几颗键
-        //  与列表行、顶栏副标题是同一种长相，不再是一串套着方括号的纯文字。
         val names = comboKeyNames(cfg, combo)
         val notice =
             if (count >= comboModeTotal(ids.size)) {
-                namesToChipsTemplate(
-                    I18n
-                        .get(Strings.COMBO_ALL_MODES_ADDED, "%1\$d 种触发方式都已添加 %2\$s")
-                        .replace("%1\$d", count.toString()),
-                    "%2\$s",
-                    names,
-                )
+                I18n
+                    .get(Strings.COMBO_ALL_MODES_ADDED, "%1\$d 种触发方式都已添加 %2\$s")
+                    .replace("%1\$d", count.toString())
+                    .format(names.joinToString(COMBO_PAIR_SEPARATOR))
             } else {
-                namesToChipsTemplate(I18n.get(Strings.COMBO_ADDED, "已添加 %s"), "%s", names)
+                I18n.get(Strings.COMBO_ADDED, "已添加 %s").format(names.joinToString(COMBO_PAIR_SEPARATOR))
             }
-        hint(notice, slot = HINT_SLOT_COMBO, chips = chipsOfNames(names))
+        hint(notice, slot = HINT_SLOT_COMBO)
     }
     XLog.w("组合键：加了一档 ${combo.id}=${combo.keys.joinToString("+")}（$label / mode $resolved）")
     return combo.id.takeIf { result == CommandsSave.Ok }
@@ -373,19 +482,13 @@ internal fun SettingsPage.removeCombo(id: String): Boolean {
     val cfg = configState.config.value
     val combo = cfg.combos.firstOrNull { it.id == id } ?: return true
     XLog.w("组合键：删掉 ${combo.id}（${comboLabel(cfg, combo)}）")
-    //  回执与删除确认窗同一个口径：每个键名各套一对括号（见 `addCombo`）
-    val label = comboLabel(cfg, combo)
     //  判「没成」只看 [CommandsSave.Failed]：`BroadcastFailed` 是「盘上删了、只是没通知到注入侧」，
     //  那时这一档确实已经不在了，调用方不能按「什么都没变」处理（`write` 的契约就是这么写的）。
     if (write(cfg.copy(combos = cfg.combos.filterNot { it.id == id }), "combo_del=$id") !=
         CommandsSave.Failed
     ) {
-        val names = comboKeyNames(cfg, combo)
-        hint(
-            namesToChipsTemplate(I18n.get(Strings.COMBO_REMOVED, "已删除 %s"), "%s", names),
-            slot = HINT_SLOT_COMBO,
-            chips = chipsOfNames(names),
-        )
+        val names = comboKeyNames(cfg, combo).joinToString(COMBO_PAIR_SEPARATOR)
+        hint(I18n.get(Strings.COMBO_REMOVED, "已删除 %s").format(names), slot = HINT_SLOT_COMBO)
         return true
     }
     return false
@@ -420,7 +523,7 @@ internal fun SettingsPage.setComboEnabled(
     val cfg = configState.config.value
     val combo = cfg.combos.firstOrNull { it.id == id } ?: return
     if (combo.enabled == on) return
-    //  **回执与「已添加 / 已删除」同一个口径**：成员名各带自己的括号，整串不再套引号
+    //  这一档的用户认得出的名字（`侧键 × 音量 +`）：日志与「要不要把键也开」那一问都用它
     val label = comboLabel(cfg, combo)
     //  **启用之前先看成员键**（与按键列表那颗开关、绑定页 ⋯ 菜单同一套口径）：
     //  直接写 `enabled=true` 会留下一份「配置说启用、列表说停用」的状态 ——
@@ -428,18 +531,14 @@ internal fun SettingsPage.setComboEnabled(
     if (on && !comboEnableAllowed(cfg, combo, label)) return
     XLog.w("组合键：${if (on) "启用" else "停用"} $id（$label）")
     if (updateCombo(id, "enabled=${if (on) 1 else 0}") { it.copy(enabled = on) }) {
-        val names = comboKeyNames(cfg, combo)
+        val names = comboKeyNames(cfg, combo).joinToString(COMBO_PAIR_SEPARATOR)
         val base =
             if (on) {
                 I18n.get(Strings.COMBO_ENABLED, "已启用 %s")
             } else {
                 I18n.get(Strings.COMBO_DISABLED, "已停用 %s")
             }
-        hint(
-            namesToChipsTemplate(base, "%s", names),
-            slot = HINT_SLOT_COMBO,
-            chips = chipsOfNames(names),
-        )
+        hint(base.format(names), slot = HINT_SLOT_COMBO)
     }
 }
 
@@ -478,7 +577,7 @@ private fun SettingsPage.comboEnableAllowed(
         if (starter != null && !cfg.key(starter).longFireOnRelease) {
             XLog.w("组合键：${combo.id} 的起点 ${starter.label} 没开「松手时触发」，不启用（$label）")
             hint(
-                I18n.get(Strings.KEYS_COMBO_NEEDS_FIRE, "起点键没开 [松手时触发]，这组也停用"),
+                I18n.get(Strings.KEYS_COMBO_NEEDS_FIRE, "起点键没开 松手时触发，这组也停用"),
                 slot = HINT_SLOT_COMBO,
             )
             return false
@@ -551,6 +650,39 @@ internal fun SettingsPage.setComboWindow(ms: Int): Boolean {
     if (cfg.global.comboWindowMs == value) return true
     return write(cfg.copy(global = cfg.global.copy(comboWindowMs = value)), "combo_window_ms=$value") != CommandsSave.Failed
 }
+
+/**
+ * 写「固定窗口起点下的整串窗口」（毫秒）—— 公共那一档。
+ *
+ *  与 [setComboWindow] 同一条路（落盘 + 广播 + 重问注入侧）：判定在注入侧
+ *  （`Config.comboSpanFor` 的第一支）。返回「写盘成没成」，滑杆失败要拨回原值。
+ */
+internal fun SettingsPage.setComboFixedWindow(ms: Int): Boolean {
+    val cfg = configState.config.value
+    val value = ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, GlobalConfig.COMBO_WINDOW_MAX_MS)
+    if (cfg.global.comboFixedWindowMs == value) return true
+    return write(cfg.copy(global = cfg.global.copy(comboFixedWindowMs = value)), "combo_fixed_window_ms=$value") !=
+        CommandsSave.Failed
+}
+
+/**
+ * 写**这一组自己**的固定窗口长度（毫秒）—— 与 [setComboOwnWindow] 同一个形状。
+ *
+ *  `0` 同样只服务**老配置**与手改文件（界面滑杆的下限是 [GlobalConfig.COMBO_WINDOW_MIN_MS]）。
+ */
+internal fun SettingsPage.setComboOwnFixedWindow(
+    id: String,
+    ms: Int,
+): Boolean =
+    updateCombo(id, "fixed_window_ms=$ms") { combo ->
+        val value =
+            if (ms <= 0) {
+                ComboKey.FIXED_WINDOW_FOLLOW_GLOBAL
+            } else {
+                ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, GlobalConfig.COMBO_WINDOW_MAX_MS)
+            }
+        combo.copy(fixedWindowMs = value)
+    }
 
 /**
  * 写**这一组自己**的按键间隔（毫秒）。

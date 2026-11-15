@@ -36,6 +36,7 @@ import com.lookie.opluskey.ui.state.page.deviceSupport
 import com.lookie.opluskey.ui.wire.linkChecks
 import com.lookie.opluskey.ui.write.setFollowDisplaySize
 import com.lookie.opluskey.ui.write.setPageScale
+import com.lookie.opluskey.ui.write.setPredictiveBack
 import com.lookie.opluskey.ui.write.setRandomIconTint
 import com.lookie.opluskey.ui.write.setUiVibrate
 import io.github.suqi8.coui.kmp.basic.CardListPosition
@@ -382,6 +383,19 @@ internal fun SettingsPage.AppearanceCard(
                     icon = PageIcons.Vibrate,
                     checked = configState.config.value.global.uiVibrate,
                     onCheckedChange = { setUiVibrate(it) },
+                ),
+                // 第 7 行：使用预测返回手势 —— 返回时整页跟不跟手。
+                //  与上面几行同一类（页面自己的手感），同样不吃总闸；拨完立刻重挂返回回调
+                //  （见 `setPredictiveBack`），不需要退出重进。
+                CardRow.Switch(
+                    title = I18n.get(Strings.MORE_PREDICTIVE_BACK_TITLE, "使用预测返回手势"),
+                    summaryOn =
+                        I18n.get(Strings.MORE_PREDICTIVE_BACK_ON, "返回时页面跟着手指走"),
+                    summaryOff =
+                        I18n.get(Strings.MORE_PREDICTIVE_BACK_OFF, "松手后一次性返回"),
+                    icon = PageIcons.PredictiveBack,
+                    checked = configState.config.value.global.predictiveBack,
+                    onCheckedChange = { setPredictiveBack(it) },
                 ),
             ),
     )

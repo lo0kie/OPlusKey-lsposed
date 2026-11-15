@@ -998,6 +998,16 @@ data class GlobalConfig(
      */
     val uiVibrate: Boolean = true,
     /**
+     * **使用预测返回手势** —— 系统给逐帧返回进度时，模块页面跟着手指走。
+     *
+     *  只在 API 34+ 有效（那一版才有 `OnBackAnimationCallback`）；33 与更早的平台没有逐帧进度，
+     *  无论开关怎么拨都是「松手才弹」那一次。关掉它就退回那条一次性返回 —— 有些用户不喜欢
+     *  整页跟着拖动。
+     *
+     *  默认开：这是系统级的手感，装上模块不该比别的页面更钝。
+     */
+    val predictiveBack: Boolean = true,
+    /**
      * 公共设置里的**单击延迟**（毫秒）—— 没开「使用独立设置」的键都用这一份。
      *
      *  与 `KeyConfig.doubleClickMs` 是同一件事的两层：那一层是「这颗键自己的一份」，
@@ -1141,6 +1151,16 @@ data class GlobalConfig(
      */
     val comboWindowMs: Int = DEFAULT_COMBO_WINDOW_MS,
     /**
+     * 组合键：**固定窗口起点**下那一整串的窗口长度（毫秒）。
+     *
+     *  与 [comboWindowMs] 是两笔账（见 `ComboKey.fixedWindowMs`）：那一份量相邻两颗、逐次重置时
+     *  整串会被放大成它的 (n-1) 倍；开了固定窗口起点之后整串只等一个窗口，这个窗口该多长是
+     *  另一件事。两者混用会让「调宽三颗」与「调宽两颗」互相拖累。
+     *
+     *  只在开了固定窗口起点时生效（`Config.comboSpanFor` 的第一支）。
+     */
+    val comboFixedWindowMs: Int = DEFAULT_COMBO_FIXED_WINDOW_MS,
+    /**
      * 组合键：**按住那两档里，起点键要先按住多久**（毫秒）。
      *
      *  判定在注入侧（`ComboDetector.pairFor` 的 `held`），所以这一位**走广播**
@@ -1176,6 +1196,15 @@ data class GlobalConfig(
      *  取值一律走 `Config.comboStarterKeepLongFor`。只在**按住**那两档上有意义。
      */
     val comboStarterKeepLong: Boolean = DEFAULT_COMBO_STARTER_KEEP_LONG,
+    /**
+     * 等待组合的**固定窗口起点** —— 默认**关**（逐次等满：每个成员按下都清掉计时重新等）。
+     *
+     *  判定在注入侧（`ComboDetector`），所以这一位**走广播**（`ConfigFields.F_COMBO_FIXED_WINDOW_START`）。
+     *
+     *  每档可以另设一份（`ComboKey.fixedWindowStart`，受那一档的「使用独立设置」管），
+     *  取值一律走 `Config.comboFixedWindowStartFor`。只在等待那一档上有意义。
+     */
+    val comboFixedWindowStart: Boolean = DEFAULT_COMBO_FIXED_WINDOW_START,
 ) : OwnSettings {
     /**
      * 公共那份**永远是「用自己的」**：它自己就是那个「公共设置」。
@@ -1209,10 +1238,13 @@ data class GlobalConfig(
                 ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to waitMultiWindow,
                 ConfigFields.F_GLOBAL_MULTI_WAIT_MS to multiWaitMs,
                 ConfigFields.F_GLOBAL_UI_VIBRATE to uiVibrate,
+                ConfigFields.F_GLOBAL_PREDICTIVE_BACK to predictiveBack,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
+                ConfigFields.F_COMBO_FIXED_WINDOW_MS to comboFixedWindowMs,
                 ConfigFields.F_COMBO_HOLD_MIN_MS to comboHoldMinMs,
                 ConfigFields.F_COMBO_SCENE_ON_STARTER to comboSceneOnStarter,
                 ConfigFields.F_COMBO_STARTER_KEEP_LONG to comboStarterKeepLong,
+                ConfigFields.F_COMBO_FIXED_WINDOW_START to comboFixedWindowStart,
             ),
         )
 
@@ -1308,6 +1340,14 @@ data class GlobalConfig(
         const val COMBO_WINDOW_MAX_MS = 1000
 
         /**
+         * [GlobalConfig.comboFixedWindowMs] 的出厂值 —— 与 [DEFAULT_COMBO_WINDOW_MS] 同一个数。
+         *
+         *  这一位出现之前，固定窗口起点直接借的就是「按键之间的等待」（80ms），所以出厂值取
+         *  同一个数：升级前后行为一模一样，用户想给三颗的组合多留时间再自己往上调。
+         */
+        const val DEFAULT_COMBO_FIXED_WINDOW_MS = 80
+
+        /**
          * [GlobalConfig.comboHoldMinMs] 的三档 —— 下限 / 出厂值 / 上限（毫秒）。
          *
          *  出厂 100：实测「一起按」两颗键相差 0~40ms（谁先上报看硬件），而真要按住一颗再补
@@ -1336,6 +1376,12 @@ data class GlobalConfig(
          *  行为，不该默认落到所有人头上。
          */
         const val DEFAULT_COMBO_STARTER_KEEP_LONG = false
+
+        /**
+         * [GlobalConfig.comboFixedWindowStart] 的出厂值 —— **关**（逐次等满）：与这一位出现之前
+         *  完全一致。开 = 从首个成员按下起一个固定窗口，中途再按成员也不重置计时。
+         */
+        const val DEFAULT_COMBO_FIXED_WINDOW_START = false
 
         /**
          * 「常用命令」最多几条 —— 20。
@@ -1380,8 +1426,14 @@ data class GlobalConfig(
                 waitMultiWindow = v.bool(ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW),
                 multiWaitMs = v.number(ConfigFields.F_GLOBAL_MULTI_WAIT_MS),
                 uiVibrate = v.bool(ConfigFields.F_GLOBAL_UI_VIBRATE),
+                //  只落盘、不进广播（与 [uiVibrate] 同一档，`extra` 为 null 不随广播走）：
+                //  这里读不到广播值，靠 [readFields] 对缺项兜成字段默认（开）。它只在宿主进程
+                //  读（`BackInterception`），那份配置与页面共用同一个 `ConfigState`，不经过广播。
+                predictiveBack = v.bool(ConfigFields.F_GLOBAL_PREDICTIVE_BACK),
                 //  与 pageScale 同一档：手改文件写进越界值，在这一层钳回滑杆两端
                 comboWindowMs = v.number(ConfigFields.F_COMBO_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
+                //  与上面那一根同一个区间与同一道钳位（两根滑杆共用 20~1000）
+                comboFixedWindowMs = v.number(ConfigFields.F_COMBO_FIXED_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
                 //  与 comboWindowMs 同一档：越界值在这一层钳回滑杆两端
                 comboHoldMinMs =
                     v
@@ -1389,6 +1441,7 @@ data class GlobalConfig(
                         .coerceIn(COMBO_HOLD_MIN_MIN_MS, COMBO_HOLD_MIN_MAX_MS),
                 comboSceneOnStarter = v.bool(ConfigFields.F_COMBO_SCENE_ON_STARTER),
                 comboStarterKeepLong = v.bool(ConfigFields.F_COMBO_STARTER_KEEP_LONG),
+                comboFixedWindowStart = v.bool(ConfigFields.F_COMBO_FIXED_WINDOW_START),
             )
     }
 }
@@ -1593,6 +1646,16 @@ data class Config(
      */
     fun comboWindowFor(combo: ComboKey): Int = effective(combo.useOwnSettings, global.comboWindowMs, comboStoredWindowFor(combo))
 
+    /** 这一组**存着的**固定窗口长度（没写过就是公共那一份，见 `stored`）。 */
+    fun comboStoredFixedWindowFor(combo: ComboKey): Int = stored(combo.fixedWindowMs.takeIf { it > 0 }, global.comboFixedWindowMs)
+
+    /**
+     * 这一组**实际生效**的固定窗口长度（毫秒）—— 与 [comboWindowFor] 同一条规则：
+     * 独立设置关着就跟随公共，开着就是这一档自己那份。
+     */
+    fun comboFixedWindowFor(combo: ComboKey): Int =
+        effective(combo.useOwnSettings, global.comboFixedWindowMs, comboStoredFixedWindowFor(combo))
+
     /**
      * 按住这一档的**场景在什么时候定下来** —— 首键按下（`true`）还是成员键按下（`false`）。
      *
@@ -1610,6 +1673,16 @@ data class Config(
      *  判定侧（`ComboDetector` 的 `starterKeepLong`）与界面都只走这一处。
      */
     fun comboStarterKeepLongFor(combo: ComboKey): Boolean = comboField(combo, combo.starterKeepLong, global.comboStarterKeepLong)
+
+    /**
+     * 这一组的**固定窗口起点** —— 规则与 [comboSceneOnStarterFor] 同一条：
+     * 独立设置关着就跟随公共，开着就是这一档自己那份；`null` = 这一档还没写过 ⇒ 仍跟随公共。
+     *
+     *  `true` = 从首个成员按下起一个固定窗口；`false` = 每个成员按下都清掉计时重新等。
+     *  等待档作用在整串跨度（[comboSpanFor]）、按住档作用在成员接收窗口（`ComboDetector`），
+     *  两侧与界面都只走这一处。
+     */
+    fun comboFixedWindowStartFor(combo: ComboKey): Boolean = comboField(combo, combo.fixedWindowStart, global.comboFixedWindowStart)
 
     /**
      * 这一组**自己存着**的「首键要先按住多久」（毫秒）—— 与 [comboStoredWindowFor] 同一条：
@@ -1647,6 +1720,9 @@ data class Config(
      *  确实会让那几颗键等上几秒 —— 那是配置写出来的，不是判定算错的。
      */
     fun comboSpanFor(combo: ComboKey): Int {
+        //  固定窗口起点：整串只等**一个窗口**（从首个成员按下起，中途不再重置计时）——
+        //  成员再多、跨度也不放大。
+        if (comboFixedWindowStartFor(combo)) return comboFixedWindowFor(combo)
         val gaps = (combo.keys.size - 1).coerceIn(1, ComboKey.MAX_JUDGE_KEYS - 1)
         return comboWindowFor(combo) * gaps
     }
@@ -1668,6 +1744,7 @@ data class Config(
         get() =
             maxOf(
                 global.comboWindowMs,
+                global.comboFixedWindowMs,
                 liveCombos().maxOfOrNull { comboSpanFor(it) } ?: 0,
             )
 

@@ -164,7 +164,7 @@ internal fun SettingsPage.clickKeyParams(
     val own = key.useOwnSettings
     val hint =
         when {
-            !own -> I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 [使用独立设置]")
+            !own -> I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 使用独立设置")
             pageEnabled && noMulti -> I18n.get(Strings.BINDING_NO_MULTI_GESTURE, "没有启用任何多击手势")
             else -> pageDisabledHint
         }

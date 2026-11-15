@@ -92,6 +92,12 @@ object ComboWire {
          */
         val windowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
         /**
+         * 这一组在**固定窗口起点**下的整串窗口（毫秒）；`0` = 跟随公共设置。
+         *
+         *  与 [windowMs] 分开带：判定侧 `Config.comboSpanFor` 在固定窗口起点那一支读的是这一位。
+         */
+        val fixedWindowMs: Int = ComboKey.FIXED_WINDOW_FOLLOW_GLOBAL,
+        /**
          * **这一组开没开「使用独立设置」** —— 少了它，上面那个 `windowMs` 等于白带。
          *
          *  `Config.comboWindowFor` 的第一句就是「独立设置关着就整份看公共」，
@@ -133,6 +139,18 @@ object ComboWire {
          *  三态必须原样带过去：`null` 是「跟随公共」，不是 `false`。
          */
         val starterKeepLong: Boolean? = null,
+        /**
+         * **按顺序触发**（`ComboKey.ordered`）—— 判定在注入侧（`ComboDetector` 按序比对），
+         *  不带这一位那一档永远按「只看集合」判，而界面上又能勾（一半接线）。
+         */
+        val ordered: Boolean = false,
+        /**
+         * 等待档的**固定窗口起点**（`ComboKey.fixedWindowStart`，`null` = 跟随公共设置）。
+         *
+         *  判定在注入侧（`ComboDetector` 判窗口起点）—— 不带这一项那一档永远读默认，
+         *  而界面上又能给每档各设一份。三态必须原样带过去：`null` 是「跟随公共」，不是 `false`。
+         */
+        val fixedWindowStart: Boolean? = null,
     )
 
     /**
@@ -276,11 +294,14 @@ object ComboWire {
             longReleaseOn = combo.longReleaseOn,
             longRelease = combo.longRelease.token,
             windowMs = combo.windowMs,
+            fixedWindowMs = combo.fixedWindowMs,
             useOwnSettings = combo.useOwnSettings,
             mode = combo.mode,
             holdMinMs = combo.holdMinMs,
             scenes = combo.scenes.map { WireScene.of(it) },
             starterKeepLong = combo.starterKeepLong,
+            ordered = combo.ordered,
+            fixedWindowStart = combo.fixedWindowStart,
         )
 
     /**
@@ -309,6 +330,13 @@ object ComboWire {
             longRelease = Action.parse(longRelease),
             //  0 = 跟随公共设置，原样留着；设过的钳进那一档区间（老版本 / 手改的越界值在这里收口）
             windowMs = if (windowMs <= 0) ComboKey.WINDOW_FOLLOW_GLOBAL else clampWindow(windowMs),
+            //  同上：0 是「跟随公共」
+            fixedWindowMs =
+                if (fixedWindowMs <= 0) {
+                    ComboKey.FIXED_WINDOW_FOLLOW_GLOBAL
+                } else {
+                    clampWindow(fixedWindowMs)
+                },
             //  「这一组开了独立设置」—— 与 `windowMs` 是一组：
             //  少了这一位，上面那个窗口在判定侧永远算不出来（见 `WireCombo` 里那段说明）
             useOwnSettings = useOwnSettings,
@@ -320,6 +348,8 @@ object ComboWire {
             scenes = scenes.mapNotNull { it.toScene() },
             //  三态原样带：`null` = 跟随公共设置（见 `WireCombo` 里那段的说明）
             starterKeepLong = starterKeepLong,
+            ordered = ordered,
+            fixedWindowStart = fixedWindowStart,
         )
     }
 

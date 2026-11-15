@@ -13,13 +13,12 @@ import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.LongPressParams
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.withLongPress
+import com.lookie.opluskey.core.present.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.model.text.BRANCHES_TITLE
-import com.lookie.opluskey.ui.row.chipsOfNames
-import com.lookie.opluskey.ui.row.namesToChipsTemplate
 import com.lookie.opluskey.ui.state.binding.BranchDraft
 import com.lookie.opluskey.ui.state.binding.KeyWatchState
 
@@ -203,18 +202,11 @@ internal sealed interface BindingTarget {
         override fun pageBlockedReason(cfg: Config): HintText? {
             val combo = cfg.combos.firstOrNull { it.id == id } ?: return null
             if (combo.enabled) return null
-            //  这里要的是**用户认得出的名字**（`[侧键]×[电量 +]`），不是 `id` ——
-            //  后者是 `com1` 那种内部标识，画到提示条上等于什么都没说。
-            //  名字按**逐颗一枚框**交给提示条（见 `namesToChipsTemplate`）。
-            val names = comboKeyNames(cfg, combo)
-            return HintText(
-                namesToChipsTemplate(
-                    I18n.get(Strings.COMBO_DISABLED_ITEM, "%s 已停用，可在菜单里启用它"),
-                    "%s",
-                    names,
-                ),
-                chipsOfNames(names),
-            )
+            //  这里要的是**用户认得出的名字**（`侧键 × 电量 +`），不是 `id` ——
+            //  后者是 `com1` 那种内部标识，写到提示条上等于什么都没说。
+            //  组合多颗时压成一串：提示条念得出来就够（它不按颗分开排）。
+            val names = comboKeyNames(cfg, combo).joinToString(COMBO_PAIR_SEPARATOR)
+            return HintText(I18n.get(Strings.COMBO_DISABLED_ITEM, "%s 已停用，可在菜单里启用它").format(names))
         }
     }
 

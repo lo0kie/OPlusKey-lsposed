@@ -303,7 +303,7 @@ private fun SettingsPage.toastTemplateDialog(
         //  一处会过期的说明；要看默认长什么样，清空（或按「重置」）之后行尾副标题就是它。
         label = I18n.get(Strings.HOME_TOAST_TEMPLATE_PLACEHOLDER, "留空将使用默认提示"),
         //  六个占位符各是什么写在下面那行小字里 —— 填着内容时也一直在（这才是「变量提示」）。
-        //  变量名画成**名字框**（与键名那档标签同一份样式）：这一行要读成「几个能填的变量」，
+        //  变量名单独排一档（与键名同一个写法）：这一行要读成「几个能填的变量」，
         //  纯文字读起来是一句话。顺序由 `ToastNotice.PLACEHOLDERS` 定。
         hint = I18n.get(Strings.HOME_TOAST_TEMPLATE_HINT),
         hintChips = ToastNotice.PLACEHOLDERS,

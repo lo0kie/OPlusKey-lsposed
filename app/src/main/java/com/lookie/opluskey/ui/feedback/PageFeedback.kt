@@ -124,7 +124,7 @@ internal fun SettingsPage.hint(
     /** 前置图标（`null` = 界面画默认的 alert-circle）。见 `HintItem.icon`。 */
     icon: ImageVector? = null,
     /**
-     * 文案里那几个 `%s` 位置换成**名字框**（键名一律画成标签，见 `ChipText`）。
+     * 文案里那几个 `%s` 位置换成**名字**（键名 / 应用名按颗归位，见 `ChipText`）。
      * 空表 = 整句纯文字；[text] 里带着 `%s` 却给了空表时原样显示（那是调用点写漏了）。
      */
     chips: List<String> = emptyList(),
@@ -132,7 +132,7 @@ internal fun SettingsPage.hint(
     //  **`d` 而不是 `w`**：提示条本身就是用户看得见的回执，它不在「判据级」那张清单里
     //  （装没装上 / 这次按键是不是侧键 / 判成什么手势 / 配置到没到），而它是全页最高频的一条 ——
     //  挂在 `w` 上会把真正的告警挤掉。调试包照样留着一行。
-    XLog.d("提示：$text${if (chips.isEmpty()) "" else "（标签：${chips.joinToString()}）"}${if (slot != null) "（位：$slot）" else ""}")
+    XLog.d("提示：$text${if (chips.isEmpty()) "" else "（名字：${chips.joinToString()}）"}${if (slot != null) "（位：$slot）" else ""}")
     hints.hint(text, slot, holdMs, icon, chips)
 }
 
@@ -152,7 +152,7 @@ internal fun switchNotice(
     I18n
         .get(
             if (on) Strings.TOAST_SWITCH_ON else Strings.TOAST_SWITCH_OFF,
-            if (on) "已开启 [%s]" else "已关闭 [%s]",
+            if (on) "已开启 %s" else "已关闭 %s",
         ).format(title)
 
 /**
@@ -169,7 +169,7 @@ internal fun switchToNotice(
     value: String,
 ): String =
     I18n
-        .get(Strings.TOAST_SWITCHED_TO, "%s 已切换到 [%s]")
+        .get(Strings.TOAST_SWITCHED_TO, "%s 已切换到 %s")
         .format(subject, value)
 
 /**
@@ -191,7 +191,7 @@ internal fun SettingsPage.writeAndNotice(
     //  极少数「写的是 A、回的却是 B」的场合（首次启用把免责声明与总闸一起写）用 [slot] 覆盖。
     slot: String? = what.substringBefore('='),
     /**
-     * 回执里那几个名字框（键名一律画成标签，见 [hint] 的 `chips`）——
+     * 回执里那几个名字（键名 / 应用名按颗归位，见 [hint] 的 `chips`）——
      * lambda 与 [notice] 同一个理由：写盘之后才取，切语言那一条才不会取到旧名字。
      */
     chips: () -> List<String> = { emptyList() },

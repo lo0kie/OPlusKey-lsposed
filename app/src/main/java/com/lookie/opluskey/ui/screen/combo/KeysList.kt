@@ -1,19 +1,25 @@
 package com.lookie.opluskey.ui.screen.combo
 
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.DialogBody
 import com.lookie.opluskey.ui.dialog.DialogButtonRow
 import com.lookie.opluskey.ui.dialog.DialogPositiveStyle
 import com.lookie.opluskey.ui.dialog.FrostedDialog
-import com.lookie.opluskey.ui.feedback.DisabledStateWithArrow
+import com.lookie.opluskey.ui.dialog.isShortDialogBody
 import com.lookie.opluskey.ui.feedback.DisabledStateWithPick
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.keyStateLabel
@@ -27,7 +33,9 @@ import com.lookie.opluskey.ui.state.binding.KeyWatchState
 import com.lookie.opluskey.ui.state.binding.KeysAsk
 import com.lookie.opluskey.ui.state.binding.KeysEditState
 import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.style.EmphasisText
 import com.lookie.opluskey.ui.write.write
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「按键功能」页上半块 —— 按键列表（侧键 + 收集来的键）那张卡，与它下面单起一张的「添加按键」。
 //
@@ -47,7 +55,7 @@ import com.lookie.opluskey.ui.write.write
  *
  * ## 停用的键怎么画
  *
- *  行首图标换成禁用 + 行尾写「已停用」：停用只靠颜色区分对色弱不友好，
+ *  行首图标换成禁用 + 副标题写「已停用」：停用只靠颜色区分对色弱不友好，
  *  而这一页的灰还可能是整页闸门关着，两件事得能分开看。停用的键照样能点进去（那一页能开回来）。
  *
  * ## 编辑态（见 [KeysEditState]）
@@ -59,7 +67,7 @@ import com.lookie.opluskey.ui.write.write
 internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
     val editing = KeysEditState.editing
     val picked = KeysEditState.pickedKeys
-    //  这一行行尾那半句话（停用 / 只参与非首键的按住组合 / 什么都不写）—— 判据在 `keyStateLabel` 里，
+    //  这一行副标题那半句话（停用 / 只参与非首键的按住组合 / 什么都不写）—— 判据在 `keyStateLabel` 里，
     //  与自定义键那几行共用；两处各判一次的话，加第三种状态时必漏一处。
     val sideKeyState =
         keyStateLabel(
@@ -77,9 +85,13 @@ internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
                 //  那一侧过滤（选它一个时给一句提示），而不是把这一行按死。
                 CardRow.Item(
                     title = I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键"),
-                    //  行尾只有一格（`trailing` 优先于 `arrow`）：编辑态是勾选框，平时那一格
-                    //  写**这一颗键此刻是什么状态**（`keyStateLabel`：停用 / 只参与非首键的按住组合 / 正常启用
-                    //  三选一，最后一种什么都不写，回到 `arrow` 那条默认路径）。
+                    //  状态写成**副标题**（标题下面那行小字）—— 判据在 `keyStateLabel` 里
+                    //  （停用 / 只参与非首键的按住组合 / 正常启用三选一，最后一种什么都不写）。
+                    //  **不再放行尾**：那一格平时是箭头、编辑态是勾选框，状态挤在那里会把箭头
+                    //  顶出可视区（用户口径「角标把行尾箭头挤掉了」）。
+                    summary = sideKeyState,
+                    summaryMaxLines = 1,
+                    //  行尾只剩编辑态的勾选框；平时给 `null`，回到 `arrow` 那条默认路径。
                     trailing =
                         when {
                             editing -> {
@@ -87,17 +99,13 @@ internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
                                     DisabledStateWithPick(
                                         picked = KeyId.PLUS.id in picked,
                                         enabled = pageEnabled,
-                                        state = sideKeyState,
+                                        state = null,
                                     )
                                 }
                             }
 
-                            sideKeyState == null -> {
-                                null
-                            }
-
                             else -> {
-                                { DisabledStateWithArrow(sideKeyState) }
+                                null
                             }
                         },
                     //  停用只把行首换成禁用图标，**不压色**：图标一灰，整行看起来像点不了，
@@ -135,7 +143,7 @@ internal fun SettingsPage.CustomKeysCard(
             buildList {
                 cfg.customKeys.forEachIndexed { i, key ->
                     val k = cfg.key(key)
-                    //  行尾那半句与内置侧键同一份判据（`keyStateLabel`）
+                    //  副标题那半句与内置侧键同一份判据（`keyStateLabel`）
                     add(
                         customKeyRow(
                             key = key,
@@ -153,10 +161,10 @@ internal fun SettingsPage.CustomKeysCard(
 /**
  * 一颗自定义键那一行。
  *
- *  行尾只有一格（`CardRow` 里 `trailing` 优先于 `arrow`）：编辑态是勾选框，平时是那句状态
- *  **加自己画的箭头** —— 填了这一格 `arrow` 那条路就不画了，所以两者共存必须自己画。
+ *  状态写成**副标题**（与内置侧键同一处口径）；行尾那一格平时留给箭头，编辑态换成勾选框
+ *  —— 两者不共存，所以不必自己拼「状态 + 箭头」那一串。
  *
- *  @param state 行尾那半句话（[keyStateLabel] 算好传进来）；`null` = 正常启用，这一格不占位
+ *  @param state 副标题那句话（[keyStateLabel] 算好传进来）；`null` = 正常启用，这一行不带副标题
  */
 private fun SettingsPage.customKeyRow(
     key: KeyId,
@@ -169,11 +177,12 @@ private fun SettingsPage.customKeyRow(
     val picked = KeysEditState.pickedKeys
     return CardRow.Item(
         title = key.label,
+        //  状态走**副标题**（与内置侧键同一处口径）；行尾那一格只留编辑态的勾选框。
+        summary = state,
+        summaryMaxLines = 1,
         // 停用换禁用图标（第几颗就画哪个数字，由调用点算好传进来）
         icon = rowIcon,
         enabled = pageEnabled,
-        //  行尾那一格：编辑态是勾选框（旁边可能还跟着那句状态），平时就是状态 + 箭头 ——
-        //  正常启用时给 `null`，让 `arrow` 那条默认路径画。
         trailing =
             when {
                 editing -> {
@@ -181,17 +190,13 @@ private fun SettingsPage.customKeyRow(
                         DisabledStateWithPick(
                             picked = key.id in picked,
                             enabled = pageEnabled,
-                            state = state,
+                            state = null,
                         )
                     }
                 }
 
-                state == null -> {
-                    null
-                }
-
                 else -> {
-                    { DisabledStateWithArrow(state) }
+                    null
                 }
             },
         arrow = !editing,
@@ -513,6 +518,11 @@ internal fun SettingsPage.KeysAskDialog() {
             disable -> I18n.format(Strings.KEYS_DISABLE_CASCADE_BODY, extraComboCount)
             else -> I18n.format(Strings.KEYS_ENABLE_COMBOS_BODY, extraComboCount)
         }
+    //  **句子里报个数、下面点名那几项**：只说「有 3 个组合也会停用」，用户读完仍不知道
+    //  该去哪一档上把关联拆掉 —— 连带的那几项才是这一问真正要他确认的东西。
+    val cfg = configState.config.value
+    val extraCombos = cfg.combos.filter { it.id in KeysAsk.extraCombos }
+    val extraKeyNames = KeysAsk.extraKeys.mapNotNull { cfg.keyIdOf(it)?.let(::keyName) }
     FrostedDialog(
         show = kind != null,
         title = title,
@@ -543,6 +553,34 @@ internal fun SettingsPage.KeysAskDialog() {
     ) {
         //  正文走全项目那一份（[DialogBody]）：短句居中、长句左对齐，超出可滚 ——
         //  手写一个裸 `Text` 时正文一长就把两颗按钮顶出可见区，且内缩得自己补一遍。
-        DialogBody(body)
+        DialogBody {
+            EmphasisText(
+                text = body,
+                textAlign = if (isShortDialogBody(body)) TextAlign.Center else TextAlign.Start,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            //  连带的那几项：组合在前（连带停 / 一起开的都是组合），一颗键一行那一档才用键名
+            val textStyle = COUITheme.textStyles.body2
+            val textColor = COUITheme.colorScheme.onBackgroundVariant
+            if (extraKeyNames.isNotEmpty()) {
+                KeyNameLines(
+                    names = extraKeyNames,
+                    style = textStyle,
+                    color = textColor,
+                    modifier = Modifier.padding(top = ASK_LIST_GAP),
+                )
+            } else if (extraCombos.isNotEmpty()) {
+                ComboNameLines(
+                    cfg = cfg,
+                    combos = extraCombos,
+                    style = textStyle,
+                    color = textColor,
+                    modifier = Modifier.padding(top = ASK_LIST_GAP),
+                )
+            }
+        }
     }
 }
+
+/** 那一问里「句子」与「连带项清单」之间那一档 —— 与拦截窗正文的分段同一个量。 */
+private val ASK_LIST_GAP = 6.dp

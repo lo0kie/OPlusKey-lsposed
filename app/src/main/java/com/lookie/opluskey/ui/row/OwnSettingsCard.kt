@@ -88,7 +88,7 @@ internal fun SettingsPage.OwnSettingsCard(
     //  整页没事、只是这颗总开关没开 ⇒ 说清该先打开哪一项。两张卡共用这一句。
     val ownHint =
         if (enabled && !owner.useOwnSettings) {
-            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 [使用独立设置]")
+            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 使用独立设置")
         } else {
             null
         }
@@ -327,7 +327,7 @@ private fun SettingsPage.toastRows(
                 if (show.colorOsApi) {
                     ownHint
                 } else {
-                    I18n.get(Strings.HOME_TOAST_FLUID_NEEDS_COLOROS, "需要开启 [使用 ColorOS 接口]")
+                    I18n.get(Strings.HOME_TOAST_FLUID_NEEDS_COLOROS, "需要开启 使用 ColorOS 接口")
                 },
             visible = show.toastOnRun,
         ) {
@@ -380,7 +380,7 @@ private fun SettingsPage.OwnTemplateDialog(
         title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE, "提示文案"),
         label = I18n.get(Strings.HOME_TOAST_TEMPLATE_PLACEHOLDER, "留空将使用默认提示"),
         hint = I18n.get(Strings.HOME_TOAST_TEMPLATE_HINT),
-        //  与公共页那一支同一个清单（变量名画成名字框，顺序由 `ToastNotice.PLACEHOLDERS` 定）
+        //  与公共页那一支同一个清单（变量名单独排一档，顺序由 `ToastNotice.PLACEHOLDERS` 定）
         hintChips = ToastNotice.PLACEHOLDERS,
         icon = PageIcons.ToastTemplate,
         initial = initial,

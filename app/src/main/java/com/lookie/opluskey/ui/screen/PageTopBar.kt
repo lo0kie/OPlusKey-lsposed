@@ -8,10 +8,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.present.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.core.present.comboLabelOf
 import com.lookie.opluskey.core.present.keyName
@@ -30,9 +32,7 @@ import com.lookie.opluskey.ui.model.text.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.text.KEYS_TITLE
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.SUBTITLE_DIM_FACTOR
-import com.lookie.opluskey.ui.row.ChipLook
 import com.lookie.opluskey.ui.row.ChipSentence
-import com.lookie.opluskey.ui.row.NameChipRow
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
@@ -59,6 +59,7 @@ import com.lookie.opluskey.ui.state.page.SettingsTargetState
 import com.lookie.opluskey.ui.wire.appNameOf
 import dev.chrisbanes.haze.HazeState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
@@ -98,14 +99,14 @@ internal fun SettingsPage.PageTopBar(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "HeaderSubtitle",
     )
-    //  装**键名**的那几页把名字画成圆角框（tag）—— 与列表行、场景条件同一套长相；
-    //  拼成一整串纯文字就画不出框（`[侧键]×[电量 +]` 那种方括号写法就此退场）。
-    //  其余页仍是纯文字（[pageSubtitle]）：它们装的是句子或应用名，框对它们没有意义。
+    //  装**键名**的那几页自己排这一行（[keyNames] / [holdComboChips]）：组合要按颗分开念，
+    //  拼成一整串就很难看出中间那个 `×` / `→` 属于哪两颗。
+    //  其余页仍是纯文字（[pageSubtitle]）：它们装的是句子或应用名。
     val cfg = configState.config.value
-    val keyChips: (@Composable () -> Unit)? =
+    val subtitleContentSlot: (@Composable () -> Unit)? =
         when (s) {
             Screen.BINDING -> {
-                keyChipsOf(listOf(editingKeyName()), subtitleTint)
+                keyNames(listOf(editingKeyName()), subtitleTint)
             }
 
             Screen.KEY_SETTINGS -> {
@@ -118,7 +119,7 @@ internal fun SettingsPage.PageTopBar(
                 if (combo != null && combo.isHold) {
                     holdComboChips(cfg, combo, subtitleTint)
                 } else {
-                    keyChipsOf(settingsTargetNames(cfg, target), subtitleTint)
+                    keyNames(settingsTargetNames(cfg, target), subtitleTint)
                 }
             }
 
@@ -131,15 +132,15 @@ internal fun SettingsPage.PageTopBar(
                 if (combo != null && combo.isHold) {
                     holdComboChips(cfg, combo, subtitleTint)
                 } else {
-                    keyChipsOf(branchOwnerNames(cfg, branchDraft.comboId, editingKeyName()), subtitleTint)
+                    keyNames(branchOwnerNames(cfg, branchDraft.comboId, editingKeyName()), subtitleTint)
                 }
             }
 
             //  组合键编辑页：那一组还在时才有名字；刚被删掉（退场那一帧）时退回纯文字那句兜底。
             //
             //  **按住那两档写成一句话**（用户口径「副标题改成和列表一样，按住 A 后再按 B」）：
-            //  那两档的判据就是「谁先按住」，只摆两枚框读不出顺序，而顺序正是这两档的区分所在。
-            //  与组合列表那一行同一份实现（`ChipSentence`），键名仍是框。
+            //  那两档的判据就是「谁先按住」，只摆一串名字读不出顺序，而顺序正是这两档的区分所在。
+            //  与组合列表那一行同一份实现（`ChipSentence`）。
             Screen.COMBO_EDIT -> {
                 val combo =
                     ComboEditState.editingId
@@ -154,7 +155,7 @@ internal fun SettingsPage.PageTopBar(
                     }
 
                     else -> {
-                        keyChipsOf(comboKeyNames(cfg, combo), subtitleTint)
+                        keyNames(comboKeyNames(cfg, combo), subtitleTint)
                     }
                 }
             }
@@ -166,8 +167,8 @@ internal fun SettingsPage.PageTopBar(
     PageHeader(
         title = pageTitle(s),
         // 大标题**下面**那行小标题（库的 `subtitle` 槽位，折叠后保留），内容见 [pageSubtitle]。
-        subtitle = if (keyChips == null) pageSubtitle(s) else "",
-        subtitleContent = keyChips,
+        subtitle = if (subtitleContentSlot == null) pageSubtitle(s) else "",
+        subtitleContent = subtitleContentSlot,
         //  这一颗键 / 这一档组合停用 ⇒ 内容区整片压暗了，这行小标题也跟着**压低一档**：它是这一页上唯一还亮着的字，
         //  满亮度留着会读成「这一区还是活的」。
         //
@@ -357,8 +358,8 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         //  而「改的是哪一颗键」正是这一页最容易搞错的东西。哪一档手势不写在这里：它由顶栏下
         //  那条手势带说，两边各说一半（见 [branchOwnerLabel]）。
         Screen.BRANCHES -> {
-            //  这一页的副标题实际画的是框（见 [PageTopBar] 的 `keyChips`）；这句只在
-            //  「没有框」的极端情形下兜底 —— 与框里的名字同一份来源。
+            //  这一页的副标题自己排这一行（见 [PageTopBar] 的 `subtitleContentSlot`）；这句只在
+            //  「没排」的极端情形下兜底 —— 与那一行里的名字同一份来源。
             branchOwnerLabel()
         }
 
@@ -537,21 +538,30 @@ private fun SettingsPage.PageBottomBand(
     }
 }
 
-// 副标题要**画成框**的那几页都在 [PageTopBar] 的 `keyChips` 那一支里（就地算，见那里的注释）。
+// 副标题装的是**键名**的那几页由 [keyNames] / [holdComboChips] 两支画（就地算，见那里的注释）。
 //
-//  只有「这一行装的是键名」的那几页画框：单键一枚，组合每颗各一枚、中间一个 `×`。
-//  其余页仍是纯文字（[pageSubtitle]）：它们装的是句子或应用名，框对它们没有意义。
+//  只有「这一行装的是键名」的那几页单独拿出来：单键一颗，组合每颗各一颗、中间一个 `×`。
+//  其余页仍是纯文字（[pageSubtitle]）：它们装的是句子或应用名，按颗排对它们没有意义。
 //
-//  框的字号就是副标题那一档（`body2`），颜色跟着 [PageTopBar] 算好的压暗值走 ——
-//  这一页整片变灰时框与里面的字一起暗下去，不会只剩一圈框还亮着。
+//  这一行的字号就是副标题那一档（`body2`），颜色跟着 [PageTopBar] 算好的压暗值走 ——
+//  这一页整片变灰时名字与句子一起暗下去，不会只剩名字还亮着。
 
-/** 一串键名 → 顶栏那一行（单行 `body2` 圆角框，超宽由 [NameChipRow] 裁掉）。 */
-private fun keyChipsOf(
+/** 一串键名 → 顶栏那一行（单行 `body2`，超宽画省略号）。 */
+private fun keyNames(
     names: List<String>,
     color: Color,
 ): @Composable () -> Unit =
     {
-        NameChipRow(names = names, look = ChipLook(COUITheme.textStyles.body2, color, enabled = true))
+        //  分隔符两边留空格：与列表行标题（`comboTitleText`）同一份写法，
+        //  两处摆在一起时不会一处「A×B」、一处「A × B」
+        val namesText = names.joinToString(" $COMBO_PAIR_SEPARATOR ")
+        Text(
+            text = namesText,
+            style = COUITheme.textStyles.body2,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 
 /**
@@ -583,7 +593,7 @@ internal fun SettingsPage.settingsTargetLabel(target: SettingsTarget): String =
 /**
  * 同一个东西的**成员键名**（一档组合有几颗就是几个名字）—— 需要逐个上样式的调用点用它。
  *
- *  顶栏副标题把每颗画成一枚圆角框，所以那里要名单而不是拼好的句子；而「单键叫什么、组合的
+ *  顶栏副标题要的是名单（组合要按颗分开念）而不是拼好的句子；而「单键叫什么、组合的
  *  成员是谁」只有这一份实现，[settingsTargetLabel] 由它压成一串 —— 两处不会长出不同叫法。
  *
  *  `cfg` 由调用点给（而不是收成 `SettingsPage` 的扩展）：这一支是纯取名，不碰页面状态，
@@ -610,11 +620,11 @@ internal fun settingsTargetNames(
     }
 
 /**
- * **按住**那一档的副标题 —— 一句话「按住 A 后再按 B」，键名仍是名字框。
+ * **按住**那一档的副标题 —— 一句话「按住 A 后再按 B」。
  *
- *  那两档的判据就是「谁先按住」：只摆两枚框 `A × B` 读不出顺序，而顺序正是这两档的区分所在。
- *  与组合列表那一行是同一份实现（`ChipSentence`）：语序在模板里、框在 `NameChip` 里，
- *  区别只是这里不套整列那个对齐用的框宽（这一行是一句话）。
+ *  那两档的判据就是「谁先按住」：只摆一串 `A × B` 读不出顺序，而顺序正是这两档的区分所在。
+ *  与组合列表那一行是同一份实现（`ChipSentence`）：语序在模板里、名字在 `Text` 里，
+ *  区别只是这里没有整列对齐那件事（这一行是一句话）。
  *
  *  三处顶栏共用这一支：组合编辑页、「按键设置」里那一档组合的独立设置 —— 它们说的是同一档组合，
  *  不该两种念法。
@@ -632,7 +642,6 @@ private fun holdComboChips(
         ChipSentence(
             template = holdSentenceTemplate(names.size - 1),
             names = names,
-            look = ChipLook(COUITheme.textStyles.body2, color, enabled = true),
             style = COUITheme.textStyles.body2,
             color = color,
         )

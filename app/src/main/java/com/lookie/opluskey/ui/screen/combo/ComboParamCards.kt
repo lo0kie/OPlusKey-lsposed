@@ -14,6 +14,7 @@ import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
+import com.lookie.opluskey.ui.write.setComboFixedWindowStart
 import com.lookie.opluskey.ui.write.setComboHoldMin
 import com.lookie.opluskey.ui.write.setComboSceneOnStarter
 import com.lookie.opluskey.ui.write.setComboStarterKeepLong
@@ -54,16 +55,22 @@ import com.lookie.opluskey.ui.write.setComboStarterKeepLong
 internal class ComboParamSource(
     val windowMs: Int,
     val windowDefault: Int,
+    /** 固定窗口起点下那一整串的窗口（见 `ComboKey.fixedWindowMs`）。 */
+    val fixedWindowMs: Int,
+    val fixedWindowDefault: Int,
     val holdMinMs: Int,
     val holdMinDefault: Int,
     val sceneOnStarter: Boolean,
     val starterKeepLong: Boolean,
+    val fixedWindowStart: Boolean,
     val enabled: Boolean,
     val disabledHint: String? = null,
     val onWindow: (Int) -> Boolean,
+    val onFixedWindow: (Int) -> Boolean,
     val onHoldMin: (Int) -> Boolean,
     val onSceneOnStarter: (Boolean) -> Unit,
     val onStarterKeepLong: (Boolean) -> Unit,
+    val onFixedWindowStart: (Boolean) -> Unit,
 )
 
 /**
@@ -109,6 +116,55 @@ internal fun SettingsPage.WaitComboCard(source: ComboParamSource) {
                         onCommit = source.onWindow,
                     )
                 },
+                CardRow.Switch(
+                    title = I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"),
+                    summaryOn =
+                        I18n.get(
+                            Strings.COMBO_FIXED_WINDOW_START_DESC_ON,
+                            "首个成员按下即开始计时，期间再按成员不重置窗口",
+                        ),
+                    summaryOff =
+                        I18n.get(
+                            Strings.COMBO_FIXED_WINDOW_START_DESC_OFF,
+                            "每次按下成员都重新计时",
+                        ),
+                    //  与单击设置那张卡的「固定窗口起点」同一颗 `window`：两处管的是同一件事
+                    icon = PageIcons.CollectWindow,
+                    checked = source.fixedWindowStart,
+                    enabled = source.enabled,
+                    disabledHint = source.disabledHint,
+                    onCheckedChange = source.onFixedWindowStart,
+                ),
+                //  第 3 行：固定窗口长度 —— **开关关着也照常摆着**：那一档下它不被读取，
+                //  但藏起来会让人以为「这一项不存在」，先看见数、再明白它归哪一档更好懂；
+                //  也免得开关一拨整张卡的行序与高度跳一下。
+                //  样式照抄单击设置那一根：同一个图标、同一个区间、同样 10ms 一档、行尾写数。
+                CardRow.Custom { position ->
+                    SliderRow(
+                        position = position,
+                        spec =
+                            SliderSpec(
+                                title = I18n.get(Strings.COMBO_FIXED_WINDOW_TITLE, "固定窗口长度"),
+                                summary =
+                                    I18n.get(
+                                        Strings.COMBO_FIXED_WINDOW_DESC,
+                                        "从首个成员按下起，整串只等这么久",
+                                    ),
+                                icon = PageIcons.DelayTap,
+                                //  与上面那根同一个区间：两根滑杆问的都是「等多久」，
+                                //  可用范围跟着跳一截的话，切开关时会看着像值被改了
+                                min = GlobalConfig.COMBO_WINDOW_MIN_MS,
+                                max = GlobalConfig.COMBO_WINDOW_MAX_MS,
+                                value = source.fixedWindowMs,
+                                default = source.fixedWindowDefault,
+                                step = 10,
+                                enabled = source.enabled,
+                                disabledHint = source.disabledHint,
+                                valueText = { "$it ms" },
+                            ),
+                        onCommit = source.onFixedWindow,
+                    )
+                },
             ),
     )
 }
@@ -126,6 +182,10 @@ internal fun SettingsPage.WaitComboCard(source: ComboParamSource) {
  *  3. **首键松手后仍执行长按**：组合动作走完之后，首键自己那颗长按还留不留。默认关 =
  *     一次按压只执行一个动作；开着时这一次按压被**两件事共享** —— 所以图标是 `pointer-share`，
  *     而不是「松手执行额外动作」那颗 `pointer-up`。
+ *  4. **固定窗口起点 + 固定窗口长度**（摆在最后两行）：成员键的接收窗口是「从第一个成员
+ *     按下起固定一个」还是「每按一颗重新起算」，以及那个固定窗口有多长。与「等待组合」
+ *     那张卡开头那两行是同一对值 —— 判定侧 `Config.comboSpanFor` 不分档，这里只是同一组
+ *     旋钮在另一档上露一次面；摆到最后是因为它调的是「判定时机」，前面三条才是这一档的主参数。
  *
  *  **不按「有没有按住组合」显隐**：这一整张卡都是参数，没有哪一行跟着列表内容变。
  */
@@ -196,6 +256,52 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                     disabledHint = source.disabledHint,
                     onCheckedChange = source.onStarterKeepLong,
                 ),
+                CardRow.Switch(
+                    //  与上面「等待组合」那张卡同一颗、同一组文案：两档共用同一个判据
+                    //  （`Config.comboFixedWindowStartFor`），说法也该是同一句
+                    title = I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"),
+                    summaryOn =
+                        I18n.get(
+                            Strings.COMBO_FIXED_WINDOW_START_DESC_ON,
+                            "首个成员按下即开始计时，期间再按成员不重置窗口",
+                        ),
+                    summaryOff =
+                        I18n.get(
+                            Strings.COMBO_FIXED_WINDOW_START_DESC_OFF,
+                            "每次按下成员都重新计时",
+                        ),
+                    icon = PageIcons.CollectWindow,
+                    checked = source.fixedWindowStart,
+                    enabled = source.enabled,
+                    disabledHint = source.disabledHint,
+                    onCheckedChange = source.onFixedWindowStart,
+                ),
+                //  固定窗口长度：与等待组合那张卡同一根、同一个值（`ComboKey.fixedWindowMs`），
+                //  开关关着也常显 —— 理由见上面那张卡。
+                CardRow.Custom { position ->
+                    SliderRow(
+                        position = position,
+                        spec =
+                            SliderSpec(
+                                title = I18n.get(Strings.COMBO_FIXED_WINDOW_TITLE, "固定窗口长度"),
+                                summary =
+                                    I18n.get(
+                                        Strings.COMBO_FIXED_WINDOW_DESC,
+                                        "从首个成员按下起，整串只等这么久",
+                                    ),
+                                icon = PageIcons.DelayTap,
+                                min = GlobalConfig.COMBO_WINDOW_MIN_MS,
+                                max = GlobalConfig.COMBO_WINDOW_MAX_MS,
+                                value = source.fixedWindowMs,
+                                default = source.fixedWindowDefault,
+                                step = 10,
+                                enabled = source.enabled,
+                                disabledHint = source.disabledHint,
+                                valueText = { "$it ms" },
+                            ),
+                        onCommit = source.onFixedWindow,
+                    )
+                },
             ),
     )
 }
@@ -211,15 +317,20 @@ internal fun SettingsPage.comboPublicParams(enabled: Boolean): ComboParamSource 
         windowMs = cfg.global.comboWindowMs,
         //  双击滑杆回落的是**出厂默认**（某一组那一份回落的是当前公共值）
         windowDefault = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+        fixedWindowMs = cfg.global.comboFixedWindowMs,
+        fixedWindowDefault = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_MS,
         holdMinMs = cfg.global.comboHoldMinMs,
         holdMinDefault = GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS,
         sceneOnStarter = cfg.global.comboSceneOnStarter,
         starterKeepLong = cfg.global.comboStarterKeepLong,
+        fixedWindowStart = cfg.global.comboFixedWindowStart,
         enabled = enabled,
         onWindow = { setComboWindow(it) },
+        onFixedWindow = { setComboFixedWindow(it) },
         onHoldMin = { setComboHoldMin(it) },
         onSceneOnStarter = { setComboSceneOnStarter(it) },
         onStarterKeepLong = { setComboStarterKeepLong(it) },
+        onFixedWindowStart = { setComboFixedWindowStart(it) },
     )
 }
 
@@ -238,16 +349,21 @@ internal fun SettingsPage.comboOwnParams(
     return ComboParamSource(
         windowMs = cfg.comboStoredWindowFor(combo),
         windowDefault = cfg.global.comboWindowMs,
+        fixedWindowMs = cfg.comboStoredFixedWindowFor(combo),
+        fixedWindowDefault = cfg.global.comboFixedWindowMs,
         holdMinMs = cfg.comboStoredHoldMinFor(combo),
         holdMinDefault = cfg.global.comboHoldMinMs,
         sceneOnStarter = cfg.comboSceneOnStarterFor(combo),
         starterKeepLong = cfg.comboStarterKeepLongFor(combo),
+        fixedWindowStart = cfg.comboFixedWindowStartFor(combo),
         enabled = enabled,
         disabledHint = disabledHint,
         onWindow = { setComboOwnWindow(combo.id, it) },
+        onFixedWindow = { setComboOwnFixedWindow(combo.id, it) },
         onHoldMin = { setComboOwnHoldMin(combo.id, it) },
         onSceneOnStarter = { on -> setOwnSceneOnStarter(combo.id, on) },
         onStarterKeepLong = { on -> setOwnStarterKeepLong(combo.id, on) },
+        onFixedWindowStart = { on -> setOwnFixedWindowStart(combo.id, on) },
     )
 }
 
@@ -284,6 +400,23 @@ private fun SettingsPage.setOwnStarterKeepLong(
     if (ok) {
         hint(
             switchNotice(I18n.get(Strings.COMBO_STARTER_KEEP_LONG_TITLE, "首键松手后仍执行长按"), on),
+            slot = HINT_SLOT_COMBO,
+        )
+    }
+}
+
+/** 写这一组的「固定窗口起点」—— 与 [setOwnStarterKeepLong] 同一个形状。 */
+private fun SettingsPage.setOwnFixedWindowStart(
+    id: String,
+    on: Boolean,
+) {
+    val ok =
+        updateCombo(id, "fixed_window_start=${if (on) 1 else 0}") {
+            it.copy(fixedWindowStart = on)
+        }
+    if (ok) {
+        hint(
+            switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"), on),
             slot = HINT_SLOT_COMBO,
         )
     }

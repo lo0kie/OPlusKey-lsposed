@@ -143,17 +143,17 @@ internal fun SettingsPage.emptyHint(ui: AppPickerUiState): String {
 
         // 被「显示失效应用」挡着：确实有打不开的行，而且它们本来够得着显示
         !includesUnopenable && apps.any { !it.launchable && (includesIconless || it.byDefault) } -> {
-            I18n.get(Strings.APP_PICKER_EMPTY_HINT_BROKEN, "没有能打开的；开 [显示失效应用] 看看")
+            I18n.get(Strings.APP_PICKER_EMPTY_HINT_BROKEN, "没有能打开的；开 显示失效应用 看看")
         }
 
         // 剩下的空只可能是「没有启动图标」那一维挡着（另一维已放行）
         !includesIconless -> {
-            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "一条都没有；开 [显示系统应用] 看看")
+            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "一条都没有；开 显示系统应用 看看")
         }
 
         // 两维都放行了却一条不剩：手里那些行**既没图标又打不开**，少开哪一个都出不来
         else -> {
-            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "一条都没有；开 [显示系统应用] 看看")
+            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "一条都没有；开 显示系统应用 看看")
         }
     }
 }

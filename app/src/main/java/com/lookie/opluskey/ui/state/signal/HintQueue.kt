@@ -24,7 +24,7 @@ internal data class HintItem(
     val id: Long,
     val text: String,
     /**
-     * 文案里那几个 `%s` 位置换成**名字框**（键名一律画成标签）—— 空表 = 整句纯文字。
+     * 文案里那几个 `%s` 位置换成**名字**（键名 / 应用名按颗归位）—— 空表 = 整句纯文字。
      *
      *  与 [text] 是同一条提示的内容，所以同一个位改字时它一起换（见 [HintQueue.push]）。
      */

@@ -163,6 +163,22 @@ data class ComboKey(
      */
     val holdMinMs: Int = HOLD_MIN_FOLLOW_GLOBAL,
     /**
+     * 这一档在**固定窗口起点**下那**一整串**的窗口长度（毫秒）—— 只在 [MODE_WAIT] 且开了
+     * [fixedWindowStart] 时算数。
+     *
+     *  与 [windowMs] 是两笔账：那一份量的是**相邻两颗**之间，逐次重置时整串会被放大成
+     *  `windowMs × (成员数-1)`；而开了固定窗口起点之后，整串从头到尾只等**一个**窗口 ——
+     *  那个窗口该多长是另一件事（三颗的组合往往要得比 80ms 长，两颗的用不着）。
+     *  混用一份的话，调宽三颗那一档会把两颗的手感一起拖钝，反之亦然。
+     *
+     *  受 `useOwnSettings` 管，与 [windowMs] 同一条：关着整份看公共
+     *  （`GlobalConfig.comboFixedWindowMs`）；打开那一刻被播成当时的公共值。
+     *  [FIXED_WINDOW_FOLLOW_GLOBAL]（0）只剩老配置会读到。
+     *
+     *  取值一律走 `Config.comboFixedWindowFor`。
+     */
+    val fixedWindowMs: Int = FIXED_WINDOW_FOLLOW_GLOBAL,
+    /**
      * 这一档的**系统场景在什么时候定下来** —— `true` = 首键按下，`false` = 成员键按下（组合凑成）。
      *
      *  只在**按住**那两档上有意义；等窗口那一档没有「先按住哪一颗」，也不会收到首键那条通知。
@@ -189,6 +205,35 @@ data class ComboKey(
      *  取值一律走 `Config.comboStarterKeepLongFor`。
      */
     val starterKeepLong: Boolean? = null,
+    /**
+     * 这一档是不是**按顺序触发**。
+     *
+     *  `false`（默认）= 只看集合：几颗键先后按下就凑齐，顺序不限。
+     *  `true` = 按 [keys] 的顺序逐位比对：必须按那个先后，反了不成立。
+     *
+     *  · 等待档（[MODE_WAIT]）：比的是**整组**的按下顺序（`[A, B]` 与 `[B, A]` 是两档）。
+     *  · 按住档（[MODE_HOLD]）：首键是 [keys] 第一位、天然最先按住，所以实际比的是**成员键**
+     *    （[followers]）之间的先后 —— 成员在两个以上时，`[首键, A, B]` 与 `[首键, B, A]` 是两档。
+     *
+     *  它是这一档的**身份**（与 [mode] 同一层）：`keys` 的顺序在这一档里就是「按下的先后」，
+     *  所以同一批成员键可以建多档（AB / BA / ABC / ACB …），「不分顺序」那一档（`ordered = false`）
+     *  与它们并存。
+     *
+     *  判据在判定侧（`ComboDetector` 的按序比对），这里只存这一位。
+     */
+    val ordered: Boolean = false,
+    /**
+     * 这一档的**固定窗口起点** —— `true` = 从首个成员按下时起一个固定窗口；
+     * `false` = 每个成员按下都清掉计时、重新等一个窗口（逐次等满）。
+     *
+     *  · 等待档：从首个键按下起，整串只等一个窗口（`Config.comboSpanFor` 不再按成员数放大）。
+     *  · 按住档：从**首个成员键**（[followers] 第一颗）按下起固定窗口，成员在这个窗口内陆续落下；
+     *    关 = 每个成员按下都重置（相邻成员间隔 ≤ 接收窗口）。
+     *
+     *  `null` = 还没写过 ⇒ 跟随公共设置（`GlobalConfig.comboFixedWindowStart`）。
+     *  取值一律走 `Config.comboFixedWindowStartFor`。
+     */
+    val fixedWindowStart: Boolean? = null,
 ) : OwnSettings,
     LongPressParams {
     /** 这一档现在算不算数 —— 关掉了、或成员不足两键（配置文件被手改坏）都不算。 */
@@ -300,6 +345,15 @@ data class ComboKey(
     /** [down] 里包含这一档的全部成员吗（不看顺序、允许同时按着别的键）。 */
     fun matches(down: Set<String>): Boolean = keys.all { it in down }
 
+    /**
+     * [sequence] 是不是按 [keys] 的**先后顺序**按下这一档的全部成员 —— 只给 [ordered] 那一档用。
+     *
+     *  [sequence] 是「真实按下顺序」的键 id 序列（判定侧按按下时刻排好）。这一档要求它的
+     *  **开头几位**与 [keys] 逐位相同 —— 序列里多出来的那几颗（可能归更宽的一档）不碍事，
+     *  只要求「该按的顺序都按到了」。空序列 / 长度不足都算不成立。
+     */
+    fun matchesOrdered(sequence: List<String>): Boolean = sequence.size >= keys.size && keys.indices.all { sequence[it] == keys[it] }
+
     companion object {
         /** 组合键 id 的前缀：`cmb1` / `cmb2` ……（序号由收集侧维护，只增不减）。 */
         const val ID_PREFIX = "cmb"
@@ -312,6 +366,9 @@ data class ComboKey(
 
         /** [holdMinMs] 取这个值表示「跟随公共设置」（同上：不是「按住 0 毫秒」）。 */
         const val HOLD_MIN_FOLLOW_GLOBAL = 0
+
+        /** [fixedWindowMs] 的「跟随公共」档 —— 与上面两条同一个值、同一个含义。 */
+        const val FIXED_WINDOW_FOLLOW_GLOBAL = 0
 
         /**
          * 触发方式（[mode]）。

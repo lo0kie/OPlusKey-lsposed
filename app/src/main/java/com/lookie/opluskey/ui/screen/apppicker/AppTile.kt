@@ -28,7 +28,6 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.APP_KIND_TAG_INSIDE
 import com.lookie.opluskey.ui.model.page.APP_KIND_TAG_RADIUS
 import com.lookie.opluskey.ui.model.page.APP_STATE_ICON_SIZE
-import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.target.LaunchableApp
 import com.lookie.opluskey.ui.model.theme.APP_KIND_MODULE_DARK
 import com.lookie.opluskey.ui.model.theme.APP_KIND_MODULE_LIGHT
@@ -273,10 +272,9 @@ internal fun cloneTagTint(): Color =
  * 的筛选控件，这里要的只是纯展示的小标记。底色由**文字色的低透明度**派生，所以调用点
  * 只需要给颜色。
  *
- * **竖向对齐全交给 [opticalCenter]**（与旁边那行标题同一条通道）：胶囊高度 = 行盒 + 上下对称
- * padding、里面的字再按字形边界修正，于是胶囊中线就是墨迹中线，行里 `CenterVertically` 摆上去
- * 就与标题齐 —— 这里**不再另加偏移量**。再多压一档就是重复补偿：标题按字形修正、胶囊也在按
- * 字形修正，那 3px 的旧账只在「按行盒居中」的年代成立。
+ * **竖向对齐靠行盒本身**：行盒贴着墨迹（见 `AppTextStyles` 的行高样式），胶囊高度 = 行盒 +
+ * 上下对称 padding ⇒ 胶囊中线就是墨迹中线，行里 `CenterVertically` 摆上去就与标题齐 ——
+ * 这里不另加偏移量，也不再有「按字形边界修正」那一层。
  *
  * @param text 标签文字
  * @param tint 标签色（文字与底色都由它派生）—— 三档的配色见 [appKindTagTint]，
@@ -303,7 +301,6 @@ internal fun SettingsPage.AppKindTag(
             //  文字就落在胶囊的几何中心 —— 换字体也不会偏，不用比例补偿。
             style = COUITheme.textStyles.footnote2,
             color = tint,
-            modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote2),
             maxLines = 1,
         )
     }

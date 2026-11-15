@@ -54,7 +54,6 @@ import com.lookie.opluskey.ui.model.page.SUMMARY_REF_GAP
 import com.lookie.opluskey.ui.model.page.SUMMARY_REF_ICON
 import com.lookie.opluskey.ui.model.page.TILE_TITLE_GAP
 import com.lookie.opluskey.ui.model.page.gridColumnCount
-import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.text.StepLine
 import com.lookie.opluskey.ui.model.text.durationText
 import com.lookie.opluskey.ui.model.text.serialSummarySteps
@@ -451,9 +450,8 @@ private fun CommandTileDelay(cmd: Command) {
             color = COUITheme.colorScheme.onSurfaceVariantSummary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            //  与行首那枚小图标竖着对中：行盒居中不等于墨迹居中，补一档光学修正
-            //  （与摘要行、卡片标题同一支笔 —— 见 `opticalCenter`）
-            modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
+            //  与行首那枚小图标竖着对中：行盒贴着墨迹（见 `AppTextStyles` 的行高样式），
+            //  居中即视觉居中。
         )
     }
 }
@@ -475,7 +473,6 @@ private fun CommandTileName(cmd: Command) {
         //  多条卡一行一步、步骤本身还能再裁（见 [summaryLineRows]），名字给两行不会把摘要挤没。
         maxLines = if (cmd.kind == CommandKind.SINGLE) 1 else 2,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.opticalCenter(titleStyle),
     )
 }
 
@@ -530,8 +527,7 @@ internal fun SettingsPage.CommandTileSummary(cmd: Command) {
                 text = cmd.single,
                 style = COUITheme.textStyles.footnote1,
                 color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                // 与行首图标对齐（行盒居中不等于墨迹居中，见 `opticalCenter`）
-                modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
+                // 与行首图标对齐：行盒贴着墨迹（见 `AppTextStyles` 的行高样式）
                 // 卡片高度封顶在正方形（见 `CommandTileRow` 的 `maxHeightRatio`），摘要再长也画不下：
                 //  三行封顶 + 省略号，好过被父级的高度约束**从中间裁断**（那连省略号都没有）。
                 maxLines = 3,
@@ -629,8 +625,7 @@ private fun SettingsPage.SummaryStepRow(line: StepLine) {
             color = COUITheme.colorScheme.onSurfaceVariantSummary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            //  同上：与行首那枚步骤图标竖着对中（行盒 ≠ 墨迹，见 `opticalCenter`）
-            modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
+            //  同上：与行首那枚步骤图标竖着对中（行盒贴着墨迹）
         )
     }
 }
@@ -647,6 +642,5 @@ private fun SummaryEllipsisRow() {
         style = COUITheme.textStyles.footnote1,
         color = COUITheme.colorScheme.onSurfaceVariantSummary,
         maxLines = 1,
-        modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
     )
 }

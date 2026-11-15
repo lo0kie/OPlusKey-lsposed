@@ -30,7 +30,6 @@ import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.ROW_ICON_SIZE
-import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER
@@ -274,7 +273,6 @@ internal fun SettingsPage.ActionTile(
                             color = contentColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.opticalCenter(COUITheme.textStyles.body2),
                         )
                         // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令间隔时长），
                         // 这行就是那个值。格子高 52dp、BasicComponent 最小高 48dp：两行（14sp + 12sp）装得下。
@@ -304,11 +302,9 @@ internal fun SettingsPage.ActionTile(
                                 text = subtitle.orEmpty(),
                                 style = subtitleStyle,
                                 color = tileMutedColor,
-                                modifier = Modifier.opticalCenter(subtitleStyle),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                // 与标题同一套视觉居中：按**各自字号**取同一比例（12sp 与 14sp 差不到 0.2dp，
-                                //  行距基本不变），两行一起落在格的视觉中心
+                                // 与标题同一档行高样式（贴墨迹），两行一起落在格的视觉中心
                             )
                         }
                     }

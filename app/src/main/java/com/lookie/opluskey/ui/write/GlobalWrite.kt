@@ -167,6 +167,23 @@ internal fun SettingsPage.setComboStarterKeepLong(on: Boolean) {
 }
 
 /**
+ * 切「固定窗口起点」**公共那一档** —— 同一参数还有每组的落点
+ * （`ComboKey.fixedWindowStart`，见 `Config.comboFixedWindowStartFor`：独立设置开着时那一组自己说了算）。
+ *
+ *  回执位与其它组合项一致（`HINT_SLOT_COMBO`）。
+ */
+internal fun SettingsPage.setComboFixedWindowStart(on: Boolean) {
+    val cfg = configState.config.value
+    writeAndNotice(
+        cfg.copy(global = cfg.global.copy(comboFixedWindowStart = on)),
+        "combo_fixed_window_start=${if (on) 1 else 0}",
+        slot = HINT_SLOT_COMBO,
+    ) {
+        switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"), on)
+    }
+}
+
+/**
  * 写「首键要先按住多久」（毫秒）**公共那一档** —— 按住手势的下限。
  *
  *  判定在注入侧（`ComboDetector` 的 `holdMinFor`），所以走通用写入通道：落盘 + 广播 + 重问注入侧。
@@ -303,6 +320,24 @@ internal fun SettingsPage.setUiVibrate(on: Boolean) =
     toggleGlobal("ui_vibrate=${if (on) 1 else 0}", I18n.get(Strings.MORE_UI_VIBRATE_TITLE, "界面振动反馈"), on) {
         it.copy(uiVibrate = on)
     }
+
+/**
+ * 写「使用预测返回手势」。
+ *
+ *  拨完**立刻重挂一次返回回调**（走 `onPredictiveBackChanged` 那条注入的通道 —— 这一层不许
+ *  直接认识 `ui.hook`，见 `SettingsPage.onPredictiveBackChanged` 里那笔账），否则这一档要等
+ *  下次进页才换，用户拨了看不见任何变化。重挂本身是幂等的：摘掉旧的、按新配置再挂。
+ */
+internal fun SettingsPage.setPredictiveBack(on: Boolean) {
+    toggleGlobal(
+        "predictive_back=${if (on) 1 else 0}",
+        I18n.get(Strings.MORE_PREDICTIVE_BACK_TITLE, "使用预测返回手势"),
+        on,
+    ) {
+        it.copy(predictiveBack = on)
+    }
+    onPredictiveBackChanged()
+}
 
 /**
  * 写**页面缩放**（百分比）。

@@ -28,7 +28,6 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.icon.icon
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.text.COMMAND_FORMAT_LINES
 import com.lookie.opluskey.ui.model.text.formatTipOf
 import com.lookie.opluskey.ui.model.theme.CommandFormatLine
@@ -218,10 +217,9 @@ private fun FormatRow(
         Spacer(Modifier.width(FORMAT_ICON_GAP))
         Text(
             text = line.label,
-            // 行高固定 32dp、字在里面居中 —— 行盒居中不等于墨迹居中，
-            //  所以再补一档光学修正（见 `opticalCenter`）。两列都要补：
-            //  只补一列等于把另一列从基线上挪开。
-            modifier = Modifier.width(labelColumn).opticalCenter(style),
+            // 行高固定 32dp、字在里面居中 —— 行盒贴着墨迹（见 `AppTextStyles` 的行高样式），
+            //  居中即视觉居中，两列自然落在同一条基线上。
+            modifier = Modifier.width(labelColumn),
             style = style,
             // 左列是「要照抄的东西」，比右边的说明亮一档
             color = COUITheme.colorScheme.onBackground,
@@ -232,8 +230,7 @@ private fun FormatRow(
             modifier =
                 Modifier
                     .weight(1f)
-                    .padding(start = FORMAT_COLUMN_GAP)
-                    .opticalCenter(style),
+                    .padding(start = FORMAT_COLUMN_GAP),
             style = style,
             // 右列靠行尾右对齐：左右两条边界都是直的，从上往下扫不会觉得在飘
             textAlign = TextAlign.End,

@@ -8,11 +8,10 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.OwnSettings
+import com.lookie.opluskey.core.present.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.feedback.HintText
-import com.lookie.opluskey.ui.row.chipsOfNames
-import com.lookie.opluskey.ui.row.namesToChipsTemplate
 
 /**
  * 「独立设置页现在在改谁」—— 一颗键，或一组组合键。**纯界面状态**，不落盘。
@@ -81,15 +80,10 @@ internal sealed interface SettingsTarget {
         override fun disabledReason(config: Config): HintText? {
             val combo = config.combos.firstOrNull { it.id == id } ?: return null
             if (combo.enabled) return null
-            val names = comboKeyNames(config, combo)
-            return HintText(
-                namesToChipsTemplate(
-                    I18n.get(Strings.COMBO_DISABLED_ITEM, "%s 已停用，可在菜单里启用它"),
-                    "%s",
-                    names,
-                ),
-                chipsOfNames(names),
-            )
+            //  用用户认得出的名字（`侧键 × 音量 +`），不是 `cmb1` 那种内部 id ——
+            //  组合多颗时压成一串，提示条里念得出来就够（它不按颗分开排）。
+            val names = comboKeyNames(config, combo).joinToString(COMBO_PAIR_SEPARATOR)
+            return HintText(I18n.get(Strings.COMBO_DISABLED_ITEM, "%s 已停用，可在菜单里启用它").format(names))
         }
     }
 }

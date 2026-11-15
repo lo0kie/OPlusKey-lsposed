@@ -22,7 +22,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.page.MENU_ICON_SIZE
-import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.MENU_ROW_LINE_DARK_ALPHA
 import com.lookie.opluskey.ui.model.theme.MENU_ROW_LINE_LIGHT_ALPHA
@@ -122,9 +121,8 @@ internal fun PopupSectionTitle(
             color = DropdownDefaults.dropdownColors().headerColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            //  这一格是**竖居中**（`CenterStart`）：行盒居中不等于墨迹居中，补一档光学修正
-            //  （与页面里那些单行标题同一支笔 —— 见 `opticalCenter`）
-            modifier = Modifier.opticalCenter(style),
+            //  这一格是**竖居中**（`CenterStart`）：行盒贴着墨迹（见 `AppTextStyles` 的行高样式），
+            //  居中即视觉居中，不再另补偏移
         )
     }
 }
@@ -244,7 +242,7 @@ internal sealed interface MenuEntry {
          *  与「整页为什么改不了」是两回事，不能拿页面那句顶替。
          */
         val disabledHint: String? = null,
-        /** [disabledHint] 里那几个 `%s` 各是什么名字（画成标签，见 `HintText`）。 */
+        /** [disabledHint] 里那几个 `%s` 各是什么名字（见 `HintText`）。 */
         val disabledChips: List<String> = emptyList(),
         /**
          * 这一行前面用**加深带**而不是默认那条细线（组内再分一小段时用）。

@@ -23,6 +23,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.present.COMBO_ORDER_SEPARATOR
 import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
@@ -37,6 +38,7 @@ import com.lookie.opluskey.ui.dialog.SinglePickerDialog
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.row.CHIP_SLOT
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.screen.binding.CollectKeyDialog
@@ -181,6 +183,12 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
     //  按住组合那一类：选完键还要问「先按住第一颗还是第二颗」—— 顺序不同就是两档
     var holdOrder by remember { mutableStateOf<List<KeyId>?>(null) }
 
+    //  等待组合那一类：选完键还要问「按顺序还是不分顺序」—— 顺序不同就是多档
+    var waitOrder by remember { mutableStateOf<List<KeyId>?>(null) }
+
+    //  按住组合成员键（首键之外）≥ 2 时：选完首键还要问「成员按不按顺序、按哪种顺序」
+    var holdMemberOrder by remember { mutableStateOf<Pair<KeyId, List<KeyId>>?>(null) }
+
     ComboKeysDialog(
         show = ComboEditState.pendingKind != null,
         hold = ComboEditState.pendingKind?.let { it != ComboKey.MODE_WAIT } == true,
@@ -190,11 +198,86 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             ComboEditState.pendingKind = null
             when (kind) {
                 null -> Unit
-                ComboKey.MODE_WAIT -> comboWriteGuard("添加等待组合") { addCombo(keys, starter = null) != null }
+                ComboKey.MODE_WAIT -> waitOrder = keys
                 else -> holdOrder = keys
             }
         },
     )
+
+    //  等待组合只差最后一步：**按不按顺序、按哪种顺序**（不分顺序一档 + 每种排列各一档）。
+    val waitKeys = waitOrder
+    val waitLast = remember { LastHoldOrder() }
+    if (waitKeys != null) waitLast.value = waitKeys
+    var waitShown by remember { mutableStateOf(false) }
+    if (waitKeys != null && !waitShown) waitShown = true
+    val shownWait = (waitKeys ?: waitLast.value).takeIf { waitShown }
+    if (shownWait != null && shownWait.isNotEmpty()) {
+        val ids = shownWait.map { it.id }
+        //  已加过「不分顺序」：其它顺序（含不分顺序自己）全禁用 —— 它覆盖所有按法
+        val unorderedTaken = remember(cfg.combos, ids) { unorderedWaitTaken(cfg, ids) }
+        //  已加过的具体有序顺序（id 序列）
+        val usedOrders = remember(cfg.combos, ids) { usedWaitOrders(cfg, ids) }
+        //  所有排列（2 键 2 种、3 键 6 种），每种一个「按 A → B → …」选项
+        val orders = permutationsOf(shownWait)
+        SinglePickerDialog(
+            show = waitOrder != null,
+            title = I18n.get(Strings.COMBO_ORDERED_TITLE, "按顺序触发"),
+            options =
+                buildList {
+                    //  「不分顺序」排第一：默认、最宽的那一档（纯文字，不按颗排）
+                    add(
+                        PickerOption(
+                            label = I18n.get(Strings.COMBO_ORDER_ANY, "不分顺序"),
+                            enabled = !waitTaken(cfg, ids),
+                        ),
+                    )
+                    //  每种排列一行：已加过的顺序置灰（名字 + 箭头表先后）
+                    orders.forEach { order ->
+                        add(
+                            PickerOption(
+                                label = orderTemplate(order.size),
+                                enabled = !unorderedTaken && order.map { it.id } !in usedOrders,
+                                chips = order.map { keyName(it) },
+                            ),
+                        )
+                    }
+                },
+            selectedIndex = -1,
+            onDismiss = { waitOrder = null },
+            onDismissFinished = {
+                waitShown = false
+                waitLast.value = null
+            },
+            onPick = { index ->
+                waitOrder = null
+                if (index == 0) {
+                    //  不分顺序：keys 用选键顺序（顺序无意义），ordered = false
+                    comboWriteGuard("添加等待组合") { addCombo(shownWait, starter = null) != null }
+                } else {
+                    //  有序：keys 按该排列重排，ordered = true
+                    val orderedKeys = orders.getOrNull(index - 1)
+                    if (orderedKeys != null) {
+                        comboWriteGuard("添加等待组合") {
+                            addCombo(orderedKeys, starter = null, ordered = true) != null
+                        }
+                    }
+                }
+            },
+            onDisabledPick = { index ->
+                //  三种禁用原因各说各的（「点不动」必须说清为什么）：
+                //  · 「不分顺序」那行灰了 = 这组已经有一档；
+                //  · 其它顺序灰了、且已有不分顺序 = 被它挡住（不是「这种按法加过」）；
+                //  · 否则 = 这一种顺序本身就加过了。
+                val msg =
+                    when {
+                        index == 0 -> I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了")
+                        unorderedTaken -> I18n.get(Strings.COMBO_ORDER_ANY_TAKEN, "已有不分顺序的档，不能另加顺序")
+                        else -> I18n.get(Strings.COMBO_ORDER_TAKEN, "这种按法已存在")
+                    }
+                hint(msg, slot = HINT_SLOT_COMBO)
+            },
+        )
+    }
 
     //  按住组合只差最后一步：**先按住哪一颗**（两种顺序各是一档）。
     //
@@ -241,13 +324,97 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             onPick = { index ->
                 holdOrder = null
                 val starter = shown.getOrNull(index)
-                comboWriteGuard("添加按住组合") { starter != null && addCombo(shown, starter) != null }
+                if (starter != null) {
+                    //  成员键（首键之外）≥ 2：还要问成员之间的顺序；只有一个成员就没得排
+                    if (shown.size - 1 >= 2) {
+                        holdMemberOrder = starter to shown
+                    } else {
+                        comboWriteGuard("添加按住组合") { addCombo(shown, starter) != null }
+                    }
+                }
             },
             //  置灰那一行点下去**要有话说**（用户口径「禁用的条目点击没有消息提示」）：
             //  一句「这种触发方式已经添加过了」就够 —— 用户点的就是那一行，
             //  再把它的名字念一遍（「先按住第一颗 这种…」）是把同一件事说两次。
             onDisabledPick = {
                 hint(I18n.get(Strings.COMBO_MODE_ALREADY, "这种触发方式已经添加过了"), slot = HINT_SLOT_COMBO)
+            },
+        )
+    }
+
+    //  按住组合成员键 ≥ 2 时只差最后一步：**成员之间按不按顺序、按哪种顺序**。
+    val memberOrder = holdMemberOrder
+    val memberLast = remember { LastHoldOrder() }
+    if (memberOrder != null) memberLast.value = memberOrder.second
+    var memberShown by remember { mutableStateOf(false) }
+    if (memberOrder != null && !memberShown) memberShown = true
+    val shownMember = (memberOrder?.second ?: memberLast.value).takeIf { memberShown }
+    if (shownMember != null && memberOrder != null) {
+        val starter = memberOrder.first
+        val followers = shownMember.filter { it.id != starter.id }
+        val followerIds = followers.map { it.id }
+        //  已加过「不分成员顺序」：其它顺序（含它自己）全禁用
+        val unorderedTaken =
+            remember(cfg.combos, starter.id, followerIds) {
+                holdUnorderedMemberTaken(cfg, starter.id, followerIds.toSet())
+            }
+        //  已加过的具体成员顺序
+        val usedOrders =
+            remember(cfg.combos, starter.id, followerIds) {
+                usedHoldMemberOrders(cfg, starter.id, followerIds.toSet())
+            }
+        val orders = permutationsOf(followers)
+        SinglePickerDialog(
+            show = holdMemberOrder != null,
+            title = I18n.get(Strings.COMBO_ORDERED_TITLE, "按顺序触发"),
+            options =
+                buildList {
+                    add(
+                        PickerOption(
+                            label = I18n.get(Strings.COMBO_ORDER_ANY, "不分顺序"),
+                            enabled = !holdMemberTaken(cfg, starter.id, followerIds.toSet()),
+                        ),
+                    )
+                    orders.forEach { order ->
+                        add(
+                            PickerOption(
+                                label = orderTemplate(order.size),
+                                enabled = !unorderedTaken && order.map { it.id } !in usedOrders,
+                                chips = order.map { keyName(it) },
+                            ),
+                        )
+                    }
+                },
+            selectedIndex = -1,
+            onDismiss = { holdMemberOrder = null },
+            onDismissFinished = {
+                memberShown = false
+                memberLast.value = null
+            },
+            onPick = { index ->
+                holdMemberOrder = null
+                if (index == 0) {
+                    //  不分成员顺序：keys = [首键, ...followers]，ordered = false
+                    comboWriteGuard("添加按住组合") { addCombo(shownMember, starter) != null }
+                } else {
+                    //  有序：keys = [首键, ...按该排列的 followers]，ordered = true
+                    val orderedFollowers = orders.getOrNull(index - 1)
+                    if (orderedFollowers != null) {
+                        comboWriteGuard("添加按住组合") {
+                            addCombo(listOf(starter) + orderedFollowers, starter, ordered = true) != null
+                        }
+                    }
+                }
+            },
+            onDisabledPick = { index ->
+                //  三种禁用原因各说各的（与等待组合那一支同一套口径）：
+                val msg =
+                    when {
+                        index == 0 -> I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了")
+                        unorderedTaken -> I18n.get(Strings.COMBO_ORDER_ANY_TAKEN, "已有不分顺序的档，不能另加顺序")
+                        else -> I18n.get(Strings.COMBO_ORDER_TAKEN, "这种按法已存在")
+                    }
+                hint(msg, slot = HINT_SLOT_COMBO)
             },
         )
     }
@@ -424,13 +591,15 @@ private fun SettingsPage.ComboKeysDialog(
     val keys = cfg.allKeys
     //  每次露出都从空选起：上一次点了取消还留着一半勾选，读起来像「上次已经选好了」
     var picked by remember(show) { mutableStateOf(emptySet<String>()) }
-    //  这一组键在**这一类里**还有没有没占的触发方式：等待组合一档、按住组合两档（两种顺序）。
+    //  这一组键在**这一类里**还有没有没占的触发方式：按住组合每个成员各一档（谁当首键）。
     //  判据与 `addCombo` 的去重同一条（`comboAllModesTaken`）。
+    //  **等待组合不在这里判重复**：选完键还要弹顺序选择器（不分顺序 + 各排列），
+    //  「同集合已有一档」不代表「没得加了」—— 还能加不同顺序的有序档。判重放在顺序选择器里。
     //  两类都能选到 [`ComboKey.MAX_KEYS`] 颗：按住那一档不再是「只两颗」——首键一颗 +
     //  后续成员任意多颗（上限与等待组合同一个数）。
     val maxKeys = ComboKey.MAX_KEYS
     val pickedIds = picked.toList()
-    val allModesTaken = picked.size >= ComboKey.MIN_KEYS && comboAllModesTaken(cfg, pickedIds, hold)
+    val allModesTaken = picked.size >= ComboKey.MIN_KEYS && hold && comboAllModesTaken(cfg, pickedIds, hold)
     //  「为什么还不能添加」只有一处判据：`null` = 可以加。点那颗灰按钮时由
     //  `MultiPickerDialog` 的 `onBlockedClick` 把它送进通用消息条 —— 灰着点了没反应最像「坏了」。
     //  颗数超出那一档**不在这里判**：勾满两颗之后第三颗勾不上（见 `onToggle`），走不到这儿。
@@ -480,4 +649,37 @@ private fun SettingsPage.ComboKeysDialog(
         onDismiss = onDismiss,
         onConfirm = { onConfirm(keys.filter { it.id in picked }) },
     )
+}
+
+/**
+ * 顺序选择器里**一种排列**那一行的模板 —— `%s → %s → …`（每颗键一个槽，箭头表先后）。
+ *
+ *  [PickerOption] 靠 `label` 里的 `%s` 占位符把名字填进去 —— 空串（没有占位符）时名字
+ *  一个都塞不进去，表现就是「这一行看不见」。所以排列行必须有这条带占位符的模板。
+ */
+private fun orderTemplate(count: Int): String = List(count.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $COMBO_ORDER_SEPARATOR ")
+
+/**
+ * [keys] 的**全部排列**（按字典序，按 id 排）—— 顺序选择器里「不分顺序」之外的那几行。
+ *
+ *  2 键 2 种、3 键 6 种。返回的是键对象序列（每一条就是一个「按下的先后」）。
+ */
+private fun permutationsOf(keys: List<KeyId>): List<List<KeyId>> {
+    if (keys.size <= 1) return listOf(keys)
+    val result = ArrayList<List<KeyId>>()
+
+    fun permute(
+        prefix: List<KeyId>,
+        rest: List<KeyId>,
+    ) {
+        if (rest.isEmpty()) {
+            result.add(prefix)
+            return
+        }
+        for (i in rest.indices) {
+            permute(prefix + rest[i], rest.filterIndexed { j, _ -> j != i })
+        }
+    }
+    permute(emptyList(), keys.sortedBy { it.id })
+    return result
 }

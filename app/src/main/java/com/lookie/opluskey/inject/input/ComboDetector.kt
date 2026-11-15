@@ -253,6 +253,30 @@ internal class ComboDetector(
     var starterKeepLong: StarterKeepLong? = null
 
     /**
+     * 这一档**固定窗口起点**（`Config.comboFixedWindowStartFor`）—— 按住档的成员接收窗口
+     * 按它决定「从首个成员起固定窗口」还是「逐次重置」；等待档的整串跨度在 [spanFor] 里已经
+     * 由 `comboSpanFor` 处理，不经过这里。
+     *
+     *  **放类体而不是构造参数**：构造参数清单已贴着 detekt 上限，且这一位是可选的（不接 = 默认
+     *  逐次重置，与之前一致）。装配方在构造之后 `apply { }` 一次。
+     */
+    @Volatile
+    var fixedWindowStartFor: ((ComboKey) -> Boolean)? = null
+
+    /**
+     * 这一档**固定窗口起点下的接收窗口长度**（`Config.comboFixedWindowFor`，毫秒）——
+     * 开了 [fixedWindowStartFor] 时，按住档成员从首个成员按下起只等这一个窗口（不再写死）。
+     *
+     *  逐次重置那一支仍用 [HOLD_FOLLOWER_WINDOW_MS] 常量：那是「紧接着落下」的判据，与
+     *  「从首成员起一个窗口」不是同一件事，不能拿固定窗口长度去替换。
+     *
+     *  **放类体而不是构造参数**：与 [fixedWindowStartFor] 同一个理由，装配方 `apply { }` 一次。
+     *  不接（null）= 这一档没配置固定窗口长度，退回 [HOLD_FOLLOWER_WINDOW_MS]。
+     */
+    @Volatile
+    var fixedWindowFor: ((ComboKey) -> Long)? = null
+
+    /**
      * 一次 DOWN 的处理结果 —— 调用方据此决定「吞掉 / 延迟喂 / 立刻喂」。
      */
     enum class Down {
@@ -290,6 +314,20 @@ internal class ComboDetector(
      *  A 的单击先跑掉了，B 也自判单击，用户看到的就是「两颗键各自的单击都触发、组合也触发」。
      */
     private val recent = ConcurrentHashMap<KeyId, Long>()
+
+    /**
+     * 配对的按下**序号**（key → 第几次按下）—— 单调递增，只给「按顺序触发」那一档（`ComboKey.ordered`）
+     * 比先后。
+     *
+     *  为什么与 [recent]（时刻）分开：两颗键几乎同时按下时，时刻可能相同或相差 1ms，用它排顺序
+     *  会随硬件上报次序摇摆；而序号按**事件到达的先后**单调递增，是「用户手指先后」最稳的近似。
+     *  与 [recent] 同一条线程规则：写在输入线程，读也在输入线程（`pairFor` / `multiFor`），
+     *  但 `reset` 会从配置广播线程清它，所以用并发容器。
+     */
+    private val pressSeq = ConcurrentHashMap<KeyId, Int>()
+
+    /** 序号发生器 —— 每写一次 [pressSeq] 递增，只增不减（`reset` 只清表、不清这个数）。 */
+    private var seqCounter = 0
 
     /**
      * 这一次按压已经被组合吃掉的键 —— 它们的抬手也要吞掉。
@@ -414,13 +452,9 @@ internal class ComboDetector(
     ): Boolean {
         if (!c.longFired) {
             val pool = c.keys + id
-            //  `bindingsFor` 已按「成员多的在前」给好：升级就是在这几张里挑一张**更大且认窗口**的。
-            //
-            //  **升级这条路也吃「等窗口」那一关**：更大的一档（3 颗起）只走窗口那条判据，
-            //  它自己不是等窗口就该凑不齐 —— 不判这一位的话，{A,B} 先把组合立起来、再补第三颗，
-            //  就会绕过 `multiFor` 的那道闸把不认窗口的一档升出来（「不该按出来的却按出来了」）。
+            //  按顺序触发那一档：升级也要按真实按下序比（pool 里是配置序 + 新键，不是按下序）。
             val bigger =
-                bindingsFor(pool).firstOrNull {
+                orderMatch(bindingsFor(pool), pressOrder(pool)).firstOrNull {
                     it.keys.size > c.keys.size && it.isWait && now - c.times.firstDown <= spanFor(it)
                 }
             //  成员按 id 认回 `KeyId` 对象（`matches` 保证了它们都在 pool 里）；
@@ -581,6 +615,7 @@ internal class ComboDetector(
             consumed.remove(id)
         }
         recent[id] = now
+        pressSeq[id] = ++seqCounter
         //  「首键按下」报一声：这一颗若是某按住组合的起点，宿主会在这一刻把场景快照下来。
         //  包在 try 里 —— 这条跑在输入线程上，抛出去会把 system_server 带崩。
         try {
@@ -820,6 +855,7 @@ internal class ComboDetector(
         starterKeepPending = null
         down.clear()
         recent.clear()
+        pressSeq.clear()
         consumed.clear()
     }
 
@@ -1016,8 +1052,11 @@ internal class ComboDetector(
         //  认出来（它带着「按下时刻最近」的挑法），走到这里还认成两颗只会挑错成员。
         //
         //  **两类都认**（等待档 + 按住档）：按住那一档不再是「只两颗」——首键一颗、后续任意多颗。
+        //  按顺序触发那一档：pool 是散列序，按按下序号排出真实顺序再逐位比。
+        //  有序档不匹配的整档排除，不分顺序档照旧留下。
+        val orderSeq = pressOrder(pool)
         val hit =
-            bindingsFor(pool).firstOrNull { c ->
+            orderMatch(bindingsFor(pool), orderSeq).firstOrNull { c ->
                 c.keys.size >= MULTI_MIN_KEYS && (c.isWait || holdReady(c, pool, now))
             } ?: return null
         //  成员按**命中那一档自己的清单**取：候选里夹的别的键不算成员（它们还得自己走单键判定）
@@ -1029,9 +1068,22 @@ internal class ComboDetector(
         val span = now - members.minOf { recent[it] ?: now }
         if (hit.isHold) {
             //  按住档：**首键按多久都行**（下限由 [holdReady] 管），但后续成员每颗都得是
-            //  窗口内刚落下的 —— 那个窗口是常量（见 [HOLD_FOLLOWER_WINDOW_MS]），
+            //  窗口内刚落下的。那个窗口分两档：固定窗口起点下走这一档的 `comboFixedWindowFor`
+            //  （见 [fixedWindowFor]），逐次重置走 [HOLD_FOLLOWER_WINDOW_MS] 常量 ——
             //  不跟这一档的 `windowMs`（那是等待档的数，调宽它只会让首键的单击变钝）。
-            val fresh = members.drop(1).all { (now - (recent[it] ?: now)) <= HOLD_FOLLOWER_WINDOW_MS }
+            val followers = members.drop(1)
+            val fresh =
+                if (fixedWindowStartFor?.invoke(hit) == true) {
+                    //  固定窗口起点：从**首个成员**按下起一个固定窗口，其余成员都在这个窗口内落下
+                    //  （最后一个成员 = 当前这一下，它与首个成员的间隔 ≤ 接收窗口）。
+                    //  那个窗口用这一档的 `comboFixedWindowFor`（固定窗口长度滑杆），不再写死 150ms。
+                    val firstAt = followers.firstOrNull()?.let { recent[it] } ?: now
+                    val window = fixedWindowFor?.invoke(hit) ?: HOLD_FOLLOWER_WINDOW_MS
+                    now - firstAt <= window
+                } else {
+                    //  逐次重置（默认）：每个成员都在「当前这一下」往前一个窗口内落下
+                    followers.all { (now - (recent[it] ?: now)) <= HOLD_FOLLOWER_WINDOW_MS }
+                }
             return Hit(hit, members, span).takeIf { fresh }
         }
         //  这一档自己的**整串跨度**复核：扫的时候按最宽的那一档扫，算不算数由它自己说了算
@@ -1058,6 +1110,30 @@ internal class ComboDetector(
             now - at >= holdMinFor(c) &&
             !longPressPassed(starterId, at, now)
     }
+
+    /**
+     * [pool] 里这几颗键按**按下序号**排出的真实顺序（id 序列）—— 只给「按顺序触发」那档用。
+     *
+     *  序号查不到的那颗（不太可能：池里的键都在 `recent` 里，也就都在 `pressSeq` 里）排在末尾，
+     *  兜住「读不到序号」的边角 —— 那它基本不会命中任何有序档，但不会崩。
+     */
+    private fun pressOrder(pool: List<KeyId>): List<String> = pool.sortedBy { pressSeq[it] ?: Int.MAX_VALUE }.map { it.id }
+
+    /**
+     * 这几档里，[sequence] 这一**真实按下顺序**能命中的有序档（含不分顺序档）—— 见 [pressOrder]。
+     *
+     *  有序档（`ComboKey.ordered`）用 [ComboKey.matchesOrdered] 按序比；不分顺序档本就不看顺序，
+     *  照旧留下。两者合成一张候选，供 `pairFor` / `multiFor` 按触发方式逐档挑。
+     */
+    private fun orderMatch(
+        candidates: List<ComboKey>,
+        sequence: List<String>,
+    ): List<ComboKey> =
+        if (candidates.none { it.ordered }) {
+            candidates
+        } else {
+            candidates.filter { !it.ordered || it.matchesOrdered(sequence) }
+        }
 
     /**
      * 在窗口内挑一颗「配得上、且按下时刻最新」的同伴 —— 配上了就是这一档组合。
@@ -1094,6 +1170,10 @@ internal class ComboDetector(
             if (!stillDown && span > window) continue
             val candidates = bindingsFor(listOf(key, id))
             if (candidates.isEmpty()) continue
+            //  按顺序触发那一档：这一对里 `key` 是先按的、`id` 是当前的，真实顺序就是 `key → id`。
+            //  有序档按它逐位比（不匹配的整档排除），不分顺序档照旧留下。
+            val ordered = orderMatch(candidates, listOf(key.id, id.id))
+            if (ordered.isEmpty()) continue
             //  这一对的判据**按每一档自己的触发方式选**，逐档试 —— 同一组键可以配几档，
             //  各自一种方式（`ComboKey.mode`），只看成员数最大的那一档会把另一种方式整条遮掉。
             //  · 等窗口：两颗的按下相差不超过这一档的窗口（扫按最宽的、判按它自己的）；
@@ -1104,7 +1184,7 @@ internal class ComboDetector(
             //  它的前提更严（要求起点键先按着且过了下限），是更明确的表态；等窗口那档只要有第二颗
             //  在窗口内落下就成立，留给「没按住那么久」的情形。
             var hitKey: ComboKey? = null
-            for (b in candidates) {
+            for (b in ordered) {
                 val ok =
                     if (b.isWait) {
                         span <= window && span <= windowFor(b)

@@ -25,7 +25,6 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.FrostedDialog
 import com.lookie.opluskey.ui.dialog.dialogSideMargin
 import com.lookie.opluskey.ui.model.page.SUMMARY_REF_GAP
-import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.text.durationText
 import com.lookie.opluskey.ui.model.text.serialSummarySteps
 import com.lookie.opluskey.ui.model.text.stepIcon
@@ -164,7 +163,6 @@ private fun SettingsPage.CommandDetailBody(cmd: Command) {
                                 color = COUITheme.colorScheme.onSurfaceVariantSummary,
                                 maxLines = 3,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.opticalCenter(COUITheme.textStyles.body2),
                             )
                         }
                     }

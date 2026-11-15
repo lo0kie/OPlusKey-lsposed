@@ -26,6 +26,13 @@ import java.util.concurrent.ConcurrentHashMap
  *  现在抬手只记一笔，到点那一枪按「先 DOWN 后 UP」把整按补进去（时长仍是真实按下的时长）；
  *  这期间组合要是成立了，`drop` 会把这一枪摘掉 —— 于是只有组合，没有单击。
  *
+ * ## 按住到长按阈值会提前释放（`flushOthers` / 长按枪）
+ *
+ *  压窗口等第二颗的同时，这一键若**按住不放超过它自己的长按阈值**，就不该再傻等窗口到点 ——
+ *  用户已经明确在长按了。长按枪（见 [hold]）到点把它提前补进单键判定器（判长按），并顺手把
+ *  其它还压着的键也补发（补它们的单击）。场景：A 按下松手进入等待，B 按下并按住 ——
+ *  B 走长按，A 的单击跟着补发，而不是都拖到窗口结束。
+ *
  * ## 为什么要把按下时刻一起带过去
  *
  *  补发晚了一个窗口。判定器如果拿**补发这一刻**当按下时刻，`pressAt` / `longPressAt` 就整体
@@ -91,6 +98,33 @@ internal class HeldPresses(
             )
         held[id] = press
         handler.postDelayed(press.shot, windowMs)
+        //  长按检测枪：按住超过长按阈值就提前补发（不再傻等窗口到点，长按才判得出来）。
+        //  只在长按阈值**短于**窗口时排 —— 阈值比窗口长的话，窗口枪先到点、这一按已经补发了，
+        //  长按枪没有意义（它到点时这一按早不在 `held` 里）。
+        val longMs = keyConfig.longPressMs.toLong()
+        if (longMs < windowMs) {
+            lateinit var longShot: Runnable
+            longShot =
+                Runnable {
+                    var fired = false
+                    synchronized(press) {
+                        //  已经被窗口枪补发 / 被收走 / 抬手了 ⇒ 不提前补
+                        if (press.revoked || press.released || press.dispatching || !held.containsKey(id)) {
+                            return@synchronized
+                        }
+                        //  提前补发这一按：让它走单键长按判定（DOWN 先补进去，长按枪在判定器里接着跑）
+                        held.remove(id, press)
+                        press.dispatching = true
+                        deliver(id, press)
+                        fired = true
+                    }
+                    //  补发其它还压着的键放到锁外：`flushOthers` 会拿别的键的锁，锁内再嵌锁没必要
+                    //  （且补发会进单键判定器，那条链不该压在这把锁下）。
+                    if (fired) flushOthers(id)
+                }
+            press.longShot = longShot
+            handler.postDelayed(longShot, longMs)
+        }
         //  d 级：调大窗口之后这一行会多起来，属于「正常但值得看一眼」的那一档
         XLog.d { "${id.label}：参与组合，先等 ${windowMs}ms 再判单键" }
     }
@@ -109,7 +143,31 @@ internal class HeldPresses(
             //  这里若返回 true，那条 UP 就被吞掉，而补发那一侧不会替它补 —— 见那个 Runnable 的注释。
             if (press.dispatching) return false
             press.released = true
+            //  抬手了，长按检测枪作废：这一按不会再到长按阈值（手指已经松了）
+            press.longShot?.let { handler.removeCallbacks(it) }
+            press.longShot = null
             return true
+        }
+    }
+
+    /**
+     * 把**除 [except] 之外**所有还压着的键立即补发（补它们的单击）—— 等窗口被中途打断时用。
+     *
+     *  与 [drop] 相反：drop 是「作废不补」，这里是「补了再清」。场景见 [onEarlyLongPress]：
+     *  某颗成员键长按到点，别的键不该再傻等窗口到点，它们的单击现在就该补出来。
+     */
+    fun flushOthers(except: KeyId) {
+        held.keys.toList().forEach { id ->
+            if (id == except) return@forEach
+            val press = held[id] ?: return@forEach
+            synchronized(press) {
+                if (press.revoked || press.dispatching) return@synchronized
+                press.dispatching = true
+                held.remove(id, press)
+                handler.removeCallbacks(press.shot)
+                press.longShot?.let { handler.removeCallbacks(it) }
+                deliver(id, press)
+            }
         }
     }
 
@@ -130,7 +188,11 @@ internal class HeldPresses(
             //  `dispatching` = 补发已经开跑（DOWN 已经交出去了，见 [hold] 的 Runnable）：
             //  这一下停不掉 —— 半路掐断会留下「只补了 DOWN、没补 UP」的单键状态，代价比多一下单击更大。
             //  按实例移除：`held` 里可能已经换成了后一次按压的那一份。
-            if (!press.dispatching && held.remove(id, press)) handler.removeCallbacks(press.shot)
+            if (!press.dispatching && held.remove(id, press)) {
+                handler.removeCallbacks(press.shot)
+                //  长按检测枪一并摘掉：这一按都不算数了，别让它到点再补一次
+                press.longShot?.let { handler.removeCallbacks(it) }
+            }
         }
     }
 
@@ -171,5 +233,12 @@ internal class HeldPresses(
 
         /** 补发已经开始（锁内读写，见 [hold] 那一枪与 [release]）。 */
         var dispatching: Boolean = false
+
+        /**
+         * 压窗口期间排的**长按检测枪** —— 到点仍按着就提前补发（见 [onEarlyLongPress]）。
+         *
+         *  抬手 / 被组合收走 / 补发开始时摘掉。
+         */
+        var longShot: Runnable? = null
     }
 }

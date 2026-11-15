@@ -139,7 +139,7 @@ private class LongPressGates(
     /** 「松手执行额外动作」灰着被点一下时说的话（`null` = 用整页那句）。 */
     val releaseNeedsActionHint: String? =
         if (spec.enabled && !spec.releaseAvailable) {
-            I18n.get(Strings.BINDING_RELEASE_NEEDS_ACTION, "这一档是 [无操作]，先给它配一个动作")
+            I18n.get(Strings.BINDING_RELEASE_NEEDS_ACTION, "这一档是 无操作，先给它配一个动作")
         } else {
             null
         }
@@ -154,7 +154,7 @@ private class LongPressGates(
     /** 「松手才触发」灰着被点一下时的说法（`null` = 用整页那句）。 */
     val fireHint: String? =
         if (spec.enabled && releaseBound) {
-            I18n.get(Strings.BINDING_RELEASE_UNSUPPORTED_FIRE, "先关掉 [松手执行额外动作]")
+            I18n.get(Strings.BINDING_RELEASE_UNSUPPORTED_FIRE, "先关掉 松手执行额外动作")
         } else {
             null
         }
@@ -191,7 +191,7 @@ private class LongPressGates(
             spec.sections == LongPressSections.ReleaseOnly -> {
                 I18n.get(
                     Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE_KEY,
-                    "这颗键已设为 [松手时触发]，去按键绑定里关掉",
+                    "这颗键已设为 松手时触发，去按键绑定里关掉",
                 )
             }
 

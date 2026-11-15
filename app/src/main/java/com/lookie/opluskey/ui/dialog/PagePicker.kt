@@ -2,21 +2,26 @@ package com.lookie.opluskey.ui.dialog
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -26,9 +31,9 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.ROW_END_ICON_SIZE
-import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.row.ChipText
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -55,11 +60,11 @@ internal class PickerOption(
     /** `false` = 置灰（点了不响应）：这一档在这一趟里不可选（例如取值已经用过了）。 */
     val enabled: Boolean = true,
     /**
-     * 文案里那些**名字框**（`label` 里的 `%s` 占位符按顺序换成它们）—— 空表 = 整行就是一句纯文字。
+     * 文案里那几个**名字**（`label` 里的 `%s` 占位符按顺序换成它们）—— 空表 = 整行就是一句纯文字。
      *
-     *  为什么不是「把名字拼进文案」：键名在这个界面里一直是**一枚圆角框**（`NameChip`，
-     *  列表行、顶栏副标题、场景条件都用它），拼成一串字之后同一颗键在两处长出两种长相。
-     *  占位符由文案自己留着（`按下 %s 或 %s 后等另一颗`）：语序是翻译的事，框是界面的事。
+     *  为什么不是「把名字拼进文案」：名字与句子在同一行里要各自按字宽排（换行时不会把名字
+     *  切一半），拼成一整串之后就只剩一个 `Text` 的换行可算计。
+     *  占位符由文案自己留着（`按下 %s 或 %s 后等另一颗`）：语序是翻译的事，名字是界面的事。
      */
     val chips: List<String> = emptyList(),
 )
@@ -87,6 +92,8 @@ internal class PickerRowTraits(
  * @param enabled 这一行能不能点（`false` = 置灰）。**注意可点性仍挂在 `clickable` 上**：
  *   置灰行照样接得住点击（`enabled = false` 那一档会把这一下转给 [onDisabledClick]），
  *   这样「为什么点不动」才有地方说出来 —— 点了毫无反应最像坏了。
+ *   但**置灰行不给波纹、也不振动**（用户口径）：这两样是「这一下生效了」的反馈，
+ *   落在一个不会生效的点击上只会读成「点到了、只是没反应」。
  * @param onDisabledClick `enabled = false` 时点这一行要做什么（`null` = 什么都不做）。
  * @param traits 行首字形与「这一层窗还在不在」（退场期间不派发但**不置灰**）—— 见 [PickerRowTraits]。
  */
@@ -98,12 +105,15 @@ internal fun PickerRow(
     enabled: Boolean = true,
     onDisabledClick: (() -> Unit)? = null,
     traits: PickerRowTraits = PickerRowTraits(),
-    /** 文案里那几个 `%s` 位置换成名字框（见 [PickerOption.chips]）—— 空表 = 纯文字。 */
+    /** 文案里那几个 `%s` 位置换成名字（见 [PickerOption.chips]）—— 空表 = 纯文字。 */
     chips: List<String> = emptyList(),
 ) {
     val colors = COUITheme.colorScheme
     //  弹窗里这一列也算「能点的行」：默认振一下（见 `LocalTick`）
     val tick = LocalTick.current
+    //  波纹那条通道 —— `clickable` 的重载要求成对给 `indication` / `interactionSource`，
+    //  置灰时 indication 给 `null`（不出波纹），这一条仍然要传。
+    val rowInteraction = remember { MutableInteractionSource() }
     //  选中是**在这一层就地发生**的（多选窗点一行不关窗，勾 / 取消勾都看得见）：
     //  底色、文字色、行尾那枚对勾三样一起渐变 / 淡入，与别处状态色同一条曲线。
     val selectedFill by animateColorAsState(
@@ -139,15 +149,17 @@ internal fun PickerRow(
                     //  置灰行**照样可点**（那一档转给 `onDisabledClick`），只有退场才真的断开 ——
                     //  否则置灰行点了什么都不会发生，用户读到的就是「坏了」。
                     enabled = traits.interactive,
+                    //  **置灰行不给波纹**：波纹与振动都是「这一下生效了」的反馈，而这一下不会生效 ——
+                    //  留着它反而读成「点到了、只是没反应」。仍然可点，是为了把原因说出来。
+                    indication = if (enabled) LocalIndication.current else null,
+                    interactionSource = rowInteraction,
                     onClick = {
                         if (enabled) {
                             tick()
                             onClick()
                         } else {
-                            onDisabledClick?.let {
-                                tick()
-                                it()
-                            }
+                            //  不振动：理由同上（波纹那一行）。
+                            onDisabledClick?.invoke()
                         }
                     },
                 ).padding(
@@ -160,7 +172,6 @@ internal fun PickerRow(
             label = label,
             chips = chips,
             labelColor = labelColor,
-            enabled = enabled,
             checkAlpha = checkAlpha,
             checkTint = colors.primary,
         )
@@ -168,15 +179,15 @@ internal fun PickerRow(
 }
 
 /**
- * [PickerRow] 那一行的内容（文案 + 名字框 + 行尾对勾）—— 行壳与可点性留在 [PickerRow]。
+ * [PickerRow] 那一行的内容（文案 + 名字 + 行尾对勾）—— 行壳与可点性留在 [PickerRow]。
  *
  *  行首**不留图标列**（用户口径）：文案从行内边距直接起，标题左缘就是 [PickerRows] 那条
  *  分隔线的起点（两者同一个数，见那边的注释）。
  *
- *  ## 文案里带名字框的那一档
+ *  ## 文案里带名字的那一档
  *
- *  [chips] 非空时按 `label` 里的 `%s` 把这一行**切成若干段文字 + 若干枚框**，交给 [ChipText]
- *  流式排布（装不下就换行）：名字框与文字同一档字号、同一条基线，框本身走 [NameChip] 那一份长相。
+ *  [chips] 非空时按 `label` 里的 `%s` 把这一行**切成若干段文字 + 若干名字**，交给 [ChipText]
+ *  流式排布（装不下就换行），文字段与名字同一档字号、同一条基线。
  *  切出来的段去掉首尾空格 —— 段与段之间的空隙由 `spacedBy` 给，模板里不必留空格
  *  （留了在窄屏上还会被折成一行只有一个空格）。
  */
@@ -185,7 +196,6 @@ private fun RowScope.PickerRowContent(
     label: String,
     chips: List<String>,
     labelColor: Color,
-    enabled: Boolean,
     checkAlpha: Float,
     checkTint: Color,
 ) {
@@ -196,18 +206,17 @@ private fun RowScope.PickerRowContent(
             text = label,
             style = style,
             color = labelColor,
-            //  行高由 [PICKER_ROW_MIN_HEIGHT] 定住、字在里面竖居中 —— 行盒居中不等于墨迹居中，
-            //  汉字会看着偏高那一点点。与网格格 / 胶囊 / 表格单元格同一档光学修正（见 `opticalCenter`）。
-            modifier = Modifier.weight(1f).opticalCenter(style),
+            //  行高由 [PICKER_ROW_MIN_HEIGHT] 定住、字在里面竖居中 —— 行盒贴着墨迹
+            //  （见 `AppTextStyles` 的行高样式），居中即视觉居中。
+            modifier = Modifier.weight(1f),
         )
     } else {
-        //  文案里带名字框的那一档 —— 切分与框的长相都在 `ChipText` 里（提示条那条用的是同一份）
+        //  文案里带名字的那一档 —— 切分与排布都在 `ChipText` 里（提示条那条用的是同一份）
         ChipText(
             template = label,
             chips = chips,
             textStyle = style,
             textColor = labelColor,
-            enabled = enabled,
             modifier = Modifier.weight(1f),
         )
     }
@@ -268,33 +277,56 @@ internal fun ColumnScope.PickerRows(
     interactive: Boolean = true,
     onDisabledClick: ((Int) -> Unit)? = null,
 ) {
-    Column(
+    //  这一列自己滚（封一档高，理由见上）—— 真滚起来时右边补一条**通用滚动条**：
+    //  内容再长也能看出「下面还有」，按住拇指还能拖着走（`AppScrollBar`：常亮 + 拖动走通用振动）。
+    val scroll = rememberScrollState()
+    Box(
         Modifier
             .weight(1f, fill = false)
             .fillMaxWidth()
             //  封一档高（理由见上面那段）：到顶之后由这一列自己滚，不再把整张窗撑到屏幕高
-            .heightIn(max = PICKER_ROWS_MAX_HEIGHT)
-            //  这里**不再自己补底部留白**：上下外沿那一档由 `FrostedDialog` 的三区统一给
-            //  （自己再补一份，上下就一边多一边少）。
-            .verticalScroll(rememberScrollState()),
+            .heightIn(max = PICKER_ROWS_MAX_HEIGHT),
     ) {
-        options.forEachIndexed { index, option ->
-            //  行之间那条细线：左端从**标题最左处**起、右端与左端同一个数（用户口径）。
-            //  这个数就是行自己的左右内边距（[DialogDefaults.insideMargin]）——行首不再有图标列，
-            //  文案正好从这一条起，于是线与字头对齐、右边也收进来一样多。
-            //  不照抄 `CardList` 那条：卡片里的行首有图标列，它那份左内缩是 56dp，套到这儿会
-            //  让线从半个行宽处才开始。第一行之上不画。
-            if (index > 0) {
-                HorizontalDivider(Modifier.padding(horizontal = DialogDefaults.insideMargin.width))
+        Column(
+            Modifier
+                .fillMaxWidth()
+                //  真能滚时才让出滚动条那条道（`maxValue` 随滚动状态变，滚不动就是 0）：
+                //  不滚的窗不必白缩一行宽。宽度与抽屉那条同一档（`PageSheet` 的 `SHEET_SCROLLBAR_LANE`）。
+                .padding(end = if (scroll.maxValue > 0) PICKER_SCROLLBAR_LANE else 0.dp)
+                //  这里**不再自己补底部留白**：上下外沿那一档由 `FrostedDialog` 的三区统一给
+                //  （自己再补一份，上下就一边多一边少）。
+                .verticalScroll(scroll),
+        ) {
+            options.forEachIndexed { index, option ->
+                //  行之间那条细线：左端从**标题最左处**起、右端与左端同一个数（用户口径）。
+                //  这个数就是行自己的左右内边距（[DialogDefaults.insideMargin]）——行首不再有图标列，
+                //  文案正好从这一条起，于是线与字头对齐、右边也收进来一样多。
+                //  不照抄 `CardList` 那条：卡片里的行首有图标列，它那份左内缩是 56dp，套到这儿会
+                //  让线从半个行宽处才开始。第一行之上不画。
+                if (index > 0) {
+                    HorizontalDivider(Modifier.padding(horizontal = DialogDefaults.insideMargin.width))
+                }
+                PickerRow(
+                    label = option.label,
+                    selected = isSelected(index),
+                    onClick = { onClick(index) },
+                    enabled = option.enabled,
+                    onDisabledClick = onDisabledClick?.let { pick -> { pick(index) } },
+                    traits = PickerRowTraits(interactive = interactive),
+                    chips = option.chips,
+                )
             }
-            PickerRow(
-                label = option.label,
-                selected = isSelected(index),
-                onClick = { onClick(index) },
-                enabled = option.enabled,
-                onDisabledClick = onDisabledClick?.let { pick -> { pick(index) } },
-                traits = PickerRowTraits(interactive = interactive),
-                chips = option.chips,
+        }
+        if (scroll.maxValue > 0) {
+            //  **只有真能滚时才画**：内容短的窗不滚，画一条全长拇指只会让人以为下面还有东西。
+            //  **比贴边再往里挪一档**（用户口径）：贴到最右时拇指紧挨面板边缘、读起来像压着边框；
+            //  抽屉那条是往外挪的（那边再往右会被面板裁掉），选择器这边左右都是内容，往里挪才与文字留出同样的空隙。
+            AppScrollBar(
+                scroll,
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .offset(x = -PICKER_SCROLLBAR_INSET)
+                    .fillMaxHeight(),
             )
         }
     }
@@ -522,6 +554,22 @@ private val PICKER_ROW_VERTICAL_PADDING = 8.dp
  *  面板总高 ≈ 这一档 + 标题 + 按钮栏，手机上仍在屏幕中段。
  */
 private val PICKER_ROWS_MAX_HEIGHT = 320.dp
+
+/**
+ * 真能滚时内容右边要让出的那一档 —— 给滚动条留道，拇指才不压在文字上。
+ *
+ *  与抽屉那条同一档（`PageSheet` 的 `SHEET_SCROLLBAR_LANE`）：两处都是「通用滚动条贴在内容区
+ *  右边缘，内容让出一条」，宽度不一样就会一页比另一页挤。
+ */
+private val PICKER_SCROLLBAR_LANE = 8.dp
+
+/**
+ * 滚动条比贴边再往里挪的那一档 —— **只这一处用**。
+ *
+ *  抽屉那条是往外挪的（面板会把它裁掉，所以只能右移 + 加宽，见 `PageSheet.SHEET_SCROLLBAR_DEFAULT`）；
+ *  选择器这边左右都是内容，往里挪一档才不会看着压在面板边框上。
+ */
+private val PICKER_SCROLLBAR_INSET = 2.dp
 
 /** 选择器里一行的高度下限 —— 与卡片行同一档（56dp），点起来手指不局促。 */
 private val PICKER_ROW_MIN_HEIGHT = 56.dp

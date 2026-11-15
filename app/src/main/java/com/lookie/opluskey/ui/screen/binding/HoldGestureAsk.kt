@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui.screen.binding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -20,9 +19,8 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.writeAndNotice
-import com.lookie.opluskey.ui.row.ChipFlow
-import com.lookie.opluskey.ui.row.ChipLook
 import com.lookie.opluskey.ui.row.ChipSentence
+import com.lookie.opluskey.ui.screen.combo.ComboNameLines
 import com.lookie.opluskey.ui.screen.combo.holdSentenceTemplate
 import com.lookie.opluskey.ui.screen.combo.waitSentenceTemplate
 import com.lookie.opluskey.ui.screen.combo.writeNewCombo
@@ -193,7 +191,7 @@ private fun modeText(
     }
 }
 
-/** [modeText] 模板里那几枚框各是哪个名字 —— 按住档首键在前（`keys` 第一位就是首键）。 */
+/** [modeText] 模板里那几个名字各是哪个 —— 按住档首键在前（`keys` 第一位就是首键）。 */
 private fun modeNames(
     cfg: Config,
     combo: ComboKey?,
@@ -218,7 +216,7 @@ internal fun SettingsPage.ComboModeAskDialog() {
     if (live != null) last.value = live
     val label = live ?: last.value ?: return
     //  正文那两档：与 `DialogBody` 里 `EmphasisText` 同一份（body2 + onBackgroundVariant），
-    //  否则同一张窗里句子与名字框两种字号（与 `FireReleaseOffDialog` 同一处口径）
+    //  否则同一张窗里句子与名字两种字号（与 `FireReleaseOffDialog` 同一处口径）
     val textStyle = COUITheme.textStyles.body2
     val textColor = COUITheme.colorScheme.onBackgroundVariant
     ConfirmDialog(
@@ -245,13 +243,12 @@ internal fun SettingsPage.ComboModeAskDialog() {
                 }
             }
         },
-        //  正文与「关掉松手时触发」那一问同一套画法：句子 + 名字框（键名在这个界面里一直是框）
+        //  正文与「关掉松手时触发」那一问同一套画法：句子 + 名字
         body = {
             Column(verticalArrangement = Arrangement.spacedBy(FIRE_OFF_PARAGRAPH_GAP)) {
                 ChipSentence(
                     template = I18n.get(Strings.COMBO_MODE_ASK_LEAD, "%s 的长按目前会在按住到时就执行，按住手势会被它打断。切换为松手时触发并添加？"),
                     names = listOf(label),
-                    look = ChipLook(textStyle, textColor, enabled = true),
                     style = textStyle,
                     color = textColor,
                 )
@@ -363,7 +360,7 @@ private fun SettingsPage.writeFireOnRelease(
         I18n
             .get(
                 if (on) Strings.TOAST_SWITCH_ON else Strings.TOAST_SWITCH_OFF,
-                if (on) "已开启 [%s]" else "已关闭 [%s]",
+                if (on) "已开启 %s" else "已关闭 %s",
             ).format(I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE, "松手时触发"))
     }
 }
@@ -415,7 +412,7 @@ internal object ComboStarterBlocked {
 /**
  * 上面那一道拦截的窗口 —— 只在这一个页面上绘制一次（与 [ComboModeAskDialog] 并排）。
  *
- *  正文里那颗键名是**名字框**（与别处同一套记号），句式交给模板、框交给界面（[ChipSentence]）。
+ *  正文里那颗键名与别处同一套排法，句式交给模板、名字交给界面（[ChipSentence]）。
  *  退场时照最后画过的那一份画（[LastAskLabel]），否则那两百毫秒里键名会先变空。
  */
 @Composable
@@ -446,16 +443,15 @@ internal fun SettingsPage.ComboStarterBlockedDialog() {
                     if (ComboStarterBlocked.reason == ComboStarterBlocked.Reason.WAIT_MEMBER) {
                         I18n.get(
                             Strings.COMBO_MEMBER_BLOCKED_BODY,
-                            "%s 开着 [只参与非首键的按住组合]，单键手势归系统；而等待组合的成员按下后要先等一个窗口，系统动作也跟着延后。",
+                            "%s 开着 只参与非首键的按住组合，单键手势归系统；而等待组合的成员按下后要先等一个窗口，系统动作也跟着延后。",
                         )
                     } else {
                         I18n.get(
                             Strings.COMBO_STARTER_BLOCKED_BODY,
-                            "%s 开着 [只参与非首键的按住组合]，这颗键的 [松手时触发] 改不了；而按住组合的起点要先按住到点、再松手。",
+                            "%s 开着 只参与非首键的按住组合，这颗键的 松手时触发 改不了；而按住组合的起点要先按住到点、再松手。",
                         )
                     },
                 names = listOf(label),
-                look = ChipLook(textStyle, textColor, enabled = true),
                 style = textStyle,
                 color = textColor,
             )
@@ -495,23 +491,38 @@ internal object ComboOnlyBlocked {
         WAIT_MEMBER,
     }
 
-    private val pending = PendingAsk<KeyId>()
+    /** 一次待确认的载荷：拦下这一下的那颗键 + **挡路的到底是哪几档组合**。 */
+    class Payload(
+        val key: KeyId,
+        val combos: List<ComboKey>,
+    )
+
+    private val pending = PendingAsk<Payload>()
 
     val asking: Boolean get() = pending.asking
 
     /** 拦下这一下的那颗键（`null` = 没有待说明的事）。 */
-    val key: KeyId? get() = pending.pending
+    val key: KeyId? get() = pending.pending?.key
+
+    /** 挡路的那几档组合（正文里逐个点名，用户照着去改或删）。 */
+    val combos: List<ComboKey> get() = pending.pending?.combos.orEmpty()
 
     /** 这一次拦下来的原因；退场期间沿用上一次那一份（见 [LastComboOnlyBlocked]）。 */
     var reason: Reason = Reason.HOLD_STARTER
         private set
 
+    /**
+     * @param combos 挡路的那几档组合 —— 由调用方按同一个 `reason` 反查出来的那一批
+     *   （`Config.holdCombosStartedBy` / `Config.waitCombosUsing`），这里不重算：
+     *   拦人的判据只在调用点那一处，窗只负责念。
+     */
     fun ask(
         key: KeyId,
         why: Reason,
+        combos: List<ComboKey>,
     ) {
         reason = why
-        pending.set(key)
+        pending.set(Payload(key, combos))
     }
 
     fun clear() = pending.clear()
@@ -520,17 +531,27 @@ internal object ComboOnlyBlocked {
 /**
  * 上面那一道拦截的窗口 —— 挂在「独立设置」页（开关就在那一页）。
  *
- *  正文分两段：一句说明**为什么不行**（键名是名字框，与别处同一套记号），一句告诉用户
- *  **怎么解**。第二句不能省 —— 这一条不像「起点键只参与非首键的按住组合」那样无可挽回，用户改掉那一档
+ *  正文分三段：一句说明**为什么不行**（键名与别处同一套写法）、一档一行地**点名挡路的那几档
+ *  组合**、一句告诉用户**怎么解**。中间那一段不能省 —— 同一颗键可以同时是好几个组合的起点
+ *  （`A+B` 先按 A、`A+C` 也先按 A），只说「某一档组合」用户得自己去猜是哪一档。
+ *
+ *  第三段同理：这一条不像「起点键只参与非首键的按住组合」那样无可挽回，用户改掉那几档
  *  组合就能回来开这个开关；只说「不行」会让人以为这一项坏了。
  */
 @Composable
 internal fun SettingsPage.ComboOnlyBlockedDialog() {
     val live = ComboOnlyBlocked.key
     val last = remember { LastComboOnlyBlocked() }
-    if (live != null) last.value = live.label
+    if (live != null) {
+        last.key = live
+        last.combos = ComboOnlyBlocked.combos
+    }
     //  从没开过时整支不画；开着、或正在退场时照那一份画（见 [LastComboOnlyBlocked]）
-    val label = live?.label ?: last.value ?: return
+    val shownKey = live ?: last.key ?: return
+    //  退场那两百毫秒里载荷已经清了，照最后画过的那一份画，否则正文会先塌成半句
+    val shownCombos = if (live != null) ComboOnlyBlocked.combos else last.combos
+    val label = shownKey.label
+    val cfg = configState.config.value
     val textStyle = COUITheme.textStyles.body2
     val textColor = COUITheme.colorScheme.onBackgroundVariant
     ConfirmDialog(
@@ -543,51 +564,58 @@ internal fun SettingsPage.ComboOnlyBlockedDialog() {
         onConfirm = { ComboOnlyBlocked.clear() },
         body = {
             val waitMember = ComboOnlyBlocked.reason == ComboOnlyBlocked.Reason.WAIT_MEMBER
-            ChipSentence(
-                template =
-                    if (waitMember) {
-                        I18n.get(
-                            Strings.COMBO_ONLY_BLOCKED_WAIT_BODY,
-                            "%s 是某一档等待组合的成员，不能只作后续成员。",
-                        )
-                    } else {
-                        I18n.get(
-                            Strings.COMBO_ONLY_BLOCKED_BODY,
-                            "%s 是某一档按住组合的起点，不能只作后续成员。",
-                        )
-                    },
-                names = listOf(label),
-                look = ChipLook(textStyle, textColor, enabled = true),
-                style = textStyle,
-                color = textColor,
-            )
-            //  出路那一句：与上面同一档字号与颜色，只是不夹名字框
-            Text(
-                text =
-                    if (waitMember) {
-                        //  等待组合的成员没有「改一档」这条路：它就是这一档的一颗成员，
-                        //  要么删掉那一档、要么把它换成别的键
-                        I18n.get(
-                            Strings.COMBO_ONLY_BLOCKED_WAIT_TAIL,
-                            "先把那一档组合删掉，或者把它换成别的键。",
-                        )
-                    } else {
-                        I18n.get(
-                            Strings.COMBO_ONLY_BLOCKED_TAIL,
-                            "先把那一档组合改成等待组合，或者删掉它。",
-                        )
-                    },
-                style = textStyle,
-                color = textColor,
-                modifier = Modifier.fillMaxWidth().padding(top = BLOCKED_TAIL_GAP),
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(BLOCKED_TAIL_GAP)) {
+                ChipSentence(
+                    template =
+                        if (waitMember) {
+                            I18n.get(
+                                Strings.COMBO_ONLY_BLOCKED_WAIT_BODY,
+                                "%s 是这些等待组合的成员，不能只作后续成员：",
+                            )
+                        } else {
+                            I18n.get(
+                                Strings.COMBO_ONLY_BLOCKED_BODY,
+                                "%s 是这些按住组合的起点，不能只作后续成员：",
+                            )
+                        },
+                    names = listOf(label),
+                    style = textStyle,
+                    color = textColor,
+                )
+                //  挡路的那几档：一档一行（与「删不掉」那扇窗同一套写法，见 `ComboNameLines`）
+                ComboNameLines(cfg = cfg, combos = shownCombos, style = textStyle, color = textColor)
+                //  出路那一句：与上面同一档字号与颜色，只是不夹名字
+                Text(
+                    text =
+                        if (waitMember) {
+                            //  等待组合的成员没有「改一档」这条路：它就是这一档的一颗成员，
+                            //  要么删掉那一档、要么把它换成别的键
+                            I18n.get(
+                                Strings.COMBO_ONLY_BLOCKED_WAIT_TAIL,
+                                "先删掉它们，或者把成员换成别的键。",
+                            )
+                        } else {
+                            I18n.get(
+                                Strings.COMBO_ONLY_BLOCKED_TAIL,
+                                "先把它们改成等待组合，或者删掉。",
+                            )
+                        },
+                    style = textStyle,
+                    color = textColor,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         },
     )
 }
 
-/** 拦截窗退场时的那一份键名 —— 与 [LastBlocked] 同一条账。 */
+/**
+ * 拦截窗退场时的那一份 —— 与 [LastBlocked] 同一条账：清载荷发生在退场之前，
+ * 键名与那几档组合都得照最后画过的那一份留着，否则那两百毫秒里正文会先变空。
+ */
 private class LastComboOnlyBlocked {
-    var value: String? = null
+    var key: KeyId? = null
+    var combos: List<ComboKey> = emptyList()
 }
 
 /** 拦截窗正文两段之间那一档 —— 与别处「一句引导 + 一句后果」同一个量（见 `FireOff` 那两支）。 */
@@ -598,10 +626,10 @@ private val BLOCKED_TAIL_GAP = 6.dp
  *
  * ## 为什么正文自己画（不交给 `summary`）
  *
- *  键名在这个界面里一直是**一枚圆角框**（`NameChip`）：列表行、顶栏副标题、组合标题都用它，
+ *  键名在这个界面里一直是**按颗分开念**的：列表行、顶栏副标题、组合标题都用它，
  *  正文里写成一对方括号 `[侧键]` 就成了另一套记号（用户口径「正文的键名用 tag 样式」）。
  *  所以正文走可组合正文槽（`ConfirmDialog.body`），句子本体用 [ChipSentence] 画 ——
- *  语序仍在模板里（`%s 是这些组合里先按住的那一颗：`），框仍归界面。
+ *  语序仍在模板里（`%s 是这些组合里先按住的那一颗：`），名字仍归界面。
  *
  * ## 为什么不能 `if (target == null) return`
  *
@@ -631,7 +659,7 @@ internal fun SettingsPage.FireReleaseOffDialog() {
     val textColor = COUITheme.colorScheme.onBackgroundVariant
     ConfirmDialog(
         show = live,
-        title = I18n.get(Strings.BINDING_FIRE_OFF_TITLE, "关掉 [松手时触发] 会让按住手势失效"),
+        title = I18n.get(Strings.BINDING_FIRE_OFF_TITLE, "关掉 松手时触发 会让按住手势失效"),
         //  **动作项报个数**：这一步真正发生的是那几档按住组合被停用（不换触发方式），
         //  数目比「停用」这个动词更直接。
         action = I18n.format(Strings.BINDING_FIRE_OFF_ACTION, shownCombos.size),
@@ -648,19 +676,12 @@ internal fun SettingsPage.FireReleaseOffDialog() {
                 ChipSentence(
                     template = I18n.get(Strings.BINDING_FIRE_OFF_LEAD, "%s 是这些组合里先按住的那一颗："),
                     names = listOf(shownKey.label),
-                    look = ChipLook(textStyle, textColor, enabled = true),
                     style = textStyle,
                     color = textColor,
                 )
-                Column(verticalArrangement = Arrangement.spacedBy(FIRE_OFF_COMBO_GAP)) {
-                    shownCombos.forEach { combo ->
-                        //  组合本身仍按列表那一行的读法：`侧键 × 音量 +`，键名各是一枚框
-                        ChipFlow(
-                            names = comboKeyNames(cfg, combo),
-                            look = ChipLook(textStyle, textColor, enabled = true),
-                        )
-                    }
-                }
+                //  每一档各占一行、写法与组合列表同一套（按住档读作「按住 A 后再按 B」——
+                //  那一档的判据就是「谁先按住」，只念成员名读不出来）
+                ComboNameLines(cfg = cfg, combos = shownCombos, style = textStyle, color = textColor)
                 EmphasisText(
                     text = I18n.get(Strings.BINDING_FIRE_OFF_TAIL, "继续会同时停用这几档按住组合。"),
                     textAlign = TextAlign.Start,
@@ -678,6 +699,3 @@ private class LastFireOff {
 
 /** 正文三段之间的间距 —— 与 `EmphasisText` 分段那一档（`\n\n`）同一个观感。 */
 private val FIRE_OFF_PARAGRAPH_GAP = 12.dp
-
-/** 正文里每一档组合之间的间距 —— 比段间距小一档，读起来是「同一段里的几个例子」。 */
-private val FIRE_OFF_COMBO_GAP = 6.dp

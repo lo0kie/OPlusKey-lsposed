@@ -239,7 +239,7 @@ private fun SettingsPage.comboOnlyRow(
                     "只参与非首键的按住组合：${target.id.label} 是 ${starters.size} 档按住组合的起点" +
                         "（${starters.joinToString { it.keys.joinToString("+") }}），拒绝开启",
                 )
-                ComboOnlyBlocked.ask(target.id, ComboOnlyBlocked.Reason.HOLD_STARTER)
+                ComboOnlyBlocked.ask(target.id, ComboOnlyBlocked.Reason.HOLD_STARTER, starters)
             }
 
             waits.isNotEmpty() -> {
@@ -247,7 +247,7 @@ private fun SettingsPage.comboOnlyRow(
                     "只参与非首键的按住组合：${target.id.label} 是 ${waits.size} 档等待组合的成员" +
                         "（${waits.joinToString { it.keys.joinToString("+") }}），拒绝开启",
                 )
-                ComboOnlyBlocked.ask(target.id, ComboOnlyBlocked.Reason.WAIT_MEMBER)
+                ComboOnlyBlocked.ask(target.id, ComboOnlyBlocked.Reason.WAIT_MEMBER, waits)
             }
 
             else -> {
@@ -420,7 +420,7 @@ private fun SettingsPage.ComboParamCards(
     //  各行共用这一句 —— 同一个原因不该在几个地方各算一遍。
     val needOwnHint =
         if (enabled && !ownOn) {
-            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 [使用独立设置]")
+            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 使用独立设置")
         } else {
             null
         }
@@ -482,6 +482,8 @@ private fun withSeededComboFields(
     if (target !is SettingsTarget.Combo || !values.useOwnSettings || before.ownSettingsSeeded) return base
     //  播的是**这一刻**的公共值：与上面那几项同一个时刻、同一份来源，两边不会错开
     val windowMs = cfg.global.comboWindowMs
+    //  固定窗口起点下的那一档也一起播：它与上面那个窗口是两笔账（见 `ComboKey.fixedWindowMs`）
+    val fixedWindowMs = cfg.global.comboFixedWindowMs
     //  按住手势的下限也一起播：它属于「这一档从此自己说了算」那一族，不播就还在跟随公共
     val holdMinMs = cfg.global.comboHoldMinMs
     //  「场景在什么时候取」同样属于那一族：不播的话这一位仍是 `null`，
@@ -493,6 +495,7 @@ private fun withSeededComboFields(
                 if (c.id == target.id) {
                     c.copy(
                         windowMs = windowMs,
+                        fixedWindowMs = fixedWindowMs,
                         holdMinMs = holdMinMs,
                         sceneOnStarter = sceneOnStarter,
                     )

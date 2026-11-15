@@ -115,7 +115,7 @@ com.lookie.opluskey
     ├── screen/               按功能分目录：home / binding / combo / command / apppicker /
     │                         general / variables / about / donate / update
     ├── 共用件（在 `ui/` 根）  MenuPopup / ConfirmDialog / SliderRow / CardRow / IconInput /
-    │                         Haptics / TextMetrics / Frosted …
+    │                         Haptics / Frosted …
     ├── model/                展示层映射：ActionIcons / PageIcons / DrawnIcons / CommandText / PageCopy
     ├── state/                页面状态持有者：ConfigState / AppPickerState / PageOverlays /
     │                         *DraftState / HostLinkState / HintCenter（**新状态放这里，不挂页面**）

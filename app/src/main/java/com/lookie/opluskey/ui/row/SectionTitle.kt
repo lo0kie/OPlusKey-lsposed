@@ -71,15 +71,6 @@ private val SECTION_TITLE_TAP_END = 4.dp
  */
 private val SECTION_TITLE_TAP_V = 2.dp
 
-/**
- * **文字**的光学修正 —— 下移 1dp。
- *
- *  汉字在行盒里视觉重心偏上（行盒下半留着基线以下那点空，汉字并不占满），几何居中时
- *  整行字看着「浮起来一档」，与下面的卡片之间的关系也显得发虚。这一档补的是**文字本身**，
- *  箭头不动 —— 上一版补错了对象（把箭头往下推，字看着更偏上了）。
- */
-private val SECTION_TITLE_TEXT_OPTICAL_Y = 1.dp
-
 /** 文字与箭头之间那一档 —— 与行尾那颗选择器的间距同一量级，别让箭头飘出去。 */
 private val SECTION_TITLE_ARROW_GAP = 2.dp
 
@@ -413,10 +404,9 @@ private fun ClickableTitleRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             //  文字本身零内边距：缩进已经在外面了，右边紧接箭头。
-            //  外面那层 `offset` 是**光学修正**：整行字往下落一档（见常量的注释）。
-            Box(Modifier.offset(y = SECTION_TITLE_TEXT_OPTICAL_Y)) {
-                SmallTitle(text = text, insideMargin = PaddingValues(0.dp))
-            }
+            //  不再补纵向偏移 —— 行盒贴着墨迹（见 `AppTextStyles` 的行高样式），
+            //  这一行的 `CenterVertically` 就是视觉居中。
+            SmallTitle(text = text, insideMargin = PaddingValues(0.dp))
             TitleArrow(click)
         }
     }

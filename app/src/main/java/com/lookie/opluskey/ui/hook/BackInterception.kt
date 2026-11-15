@@ -50,6 +50,9 @@ internal object BackInterception {
         activity: android.app.Activity,
     ) {
         HostSession.activity = activity
+        //  把「拨完开关重挂」接到页面对象上（那一侧只有一个空实现，理由见
+        //  `SettingsPage.onPredictiveBackChanged`：`ui` 不许认识 `ui.hook`，只能反向注入）
+        HostSession.page?.onPredictiveBackChanged = ::reinstall
 
         // (3) 老路子：hook 平台类 `Activity#onBackPressed`
         if (!legacyBackHooked) {
@@ -171,8 +174,10 @@ internal object BackInterception {
             //  不摘的话旧 Activity 上那份回调还挂着 —— 旧页只要没销毁，它的每一退都会被
             //  两份回调各接一次。注销本身是幂等的（没有则直接返回）。
             unregisterBackCallback()
+            //  「使用预测返回手势」关着时**不挂动画回调**：系统于是不给逐帧进度，
+            //  松手才走一次性返回 —— 与 API 33 那条退化路径同一份实现（见 [PredictiveBackCallback]）。
             val callback: android.window.OnBackInvokedCallback =
-                if (android.os.Build.VERSION.SDK_INT >= 34) {
+                if (android.os.Build.VERSION.SDK_INT >= 34 && predictiveBackEnabled()) {
                     PredictiveBackCallback(activity)
                 } else {
                     android.window.OnBackInvokedCallback { handleDiscreteBack(activity) }
@@ -230,12 +235,48 @@ internal object BackInterception {
      *  · **露着宿主原版页**（[SettingsPageHooks.stockRevealed]，hook 侧自己的状态）⇒ 这一退是切回模块界面；
      *  · **页面说要接**（[SettingsPage.needsBackInterception]：子页 / 浮层）；
      *  · API 34 以下**一律要**：那些版本没有预测返回（见 [registerBackCallback]），
-     *    留空给系统一点好处都没有，只会让返回从「模块自己处理」退化成系统的默认行为。
+     *    留空给系统一点好处都没有，只会让返回从「模块自己处理」退化成系统的默认行为；
+     *  · **外观里关掉「使用预测返回手势」时也一律要**：那档关掉的正是系统那个跟手关页动画，
+     *    而取消它的唯一办法就是自己占住返回（挂着回调 = 系统不做窗口动画）。
      */
     private fun needsBackCallback(): Boolean {
+        //  「使用预测返回手势」关着 ⇒ **一律自己接**。
+        //  首页那一退之所以平时留空给系统，正是为了让它做窗口跟手关页那个动画；关掉这一档
+        //  之后那个动画也是「不想要的」，而**挂着回调本身就是关掉它的办法** —— 系统一旦看到
+        //  我们自己处理返回，就不给这个窗口做预测动画了。于是末尾那一档由 [handleDiscreteBack]
+        //  自己 `finish()`（见那里的 else 分支）。
+        if (!predictiveBackEnabled()) return true
         if (android.os.Build.VERSION.SDK_INT < 34) return true
         if (SettingsPageHooks.stockRevealed) return true
         return HostSession.page?.needsBackInterception() == true
+    }
+
+    /**
+     * 此刻该不该用**预测返回**（逐帧进度）—— 外观卡那一颗开关。
+     *
+     *  页面还没建起来时按「开」算：那一档本来就还没注册回调，等页面起来
+     * （`syncBackCallback`）才按真实配置决定。
+     */
+    private fun predictiveBackEnabled(): Boolean =
+        HostSession.page
+            ?.configState
+            ?.config
+            ?.value
+            ?.global
+            ?.predictiveBack ?: true
+
+    /**
+     * 按**当前配置**重挂一次 —— 外观卡拨完开关立刻调它，否则要等下次进页才换。
+     *
+     *  没有 Activity 就什么都不做（那说明页面已经关了，下次进页自然会按新配置挂）。
+     */
+    internal fun reinstall() {
+        val activity = HostSession.activity ?: return
+        unregisterBackCallback()
+        if (needsBackCallback()) {
+            val ok = registerBackCallback(activity)
+            XLog.w("返回回调：按新配置重挂 ${if (ok) "成功" else "失败（宿主未 opt-in）"}")
+        }
     }
 
     /** 摘掉此刻挂着的返回回调（[syncBackCallback] 与 [handleDiscreteBack] 的「交还宿主」都走它）。 */

@@ -37,7 +37,6 @@ import com.lookie.opluskey.ui.chrome.appVersionLabel
 import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.text.CHECKING_HINT
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
@@ -611,8 +610,8 @@ private fun SettingsPage.ActivationHead(
         //  它原先挂在大标题底下（`PageTopBar` 那个槽位）：那一行只为首页存在，而首页要看
         //  「这个包是什么状态」正是这一块，两处各写一次版本迟早一处忘了改。
         //
-        //  下面两行都补 [opticalCenter]：汉字墨迹在行盒里偏上，几何居中之后整行看着「浮起来」，
-        //  与右上角那颗水印、与下面那几行提示都对不上中线（真机口径「说明的文字是偏上的」）。
+        //  下面两行的行盒贴着墨迹（见 `AppTextStyles` 的行高样式），几何居中即视觉居中 ——
+        //  与右上角那颗水印、与下面那几行提示落在同一条中线上。
         //
         //  彩色底上的说明**不直接用卡片行那两档**：`onSurfaceVariantSummary` /
         //  `onSurfaceContainerVariant` 在 COUI 里是同一个值（40% 黑，实测压在这块彩色底上只剩
@@ -625,8 +624,7 @@ private fun SettingsPage.ActivationHead(
             color = palette.detail,
             modifier =
                 Modifier
-                    .padding(top = ACTIVATION_VERSION_GAP)
-                    .opticalCenter(lineStyle),
+                    .padding(top = ACTIVATION_VERSION_GAP),
         )
         Text(
             text = state.detail(extras.reason),
@@ -634,8 +632,7 @@ private fun SettingsPage.ActivationHead(
             color = palette.detail,
             modifier =
                 Modifier
-                    .padding(top = ACTIVATION_LINE_GAP)
-                    .opticalCenter(lineStyle),
+                    .padding(top = ACTIVATION_LINE_GAP),
         )
         //  关着的那一档再补一句「怎么开回来」—— 这一块**整块就是开关**，可界面上没有任何记号
         //  说明这件事：大字只写「已关闭」，用户看到的是一个「关掉的状态」，不会想到去点它。
@@ -670,8 +667,7 @@ private fun TapToEnableHint(lineStyle: TextStyle) {
         color = COUITheme.colorScheme.primary,
         modifier =
             Modifier
-                .padding(top = ACTIVATION_LINE_GAP)
-                .opticalCenter(lineStyle),
+                .padding(top = ACTIVATION_LINE_GAP),
     )
 }
 
@@ -765,13 +761,12 @@ private fun ActivationTipRow(
             modifier = Modifier.size(ACTIVATION_TIP_ICON),
         )
         Spacer(Modifier.width(ACTIVATION_TIP_ICON_GAP))
-        //  文字补 [opticalCenter]：汉字墨迹在行盒里偏上，与旁边那颗图标「几何居中」之后看着偏高
-        //  （与上面那两句说明是同一件事、同一条修法）。
+        //  文字与旁边那颗图标共用同一条中线：行盒贴着墨迹（见 `AppTextStyles` 的行高样式）。
         Text(
             text = text,
             style = style,
             color = COUITheme.colorScheme.onSurfaceContainer,
-            modifier = Modifier.weight(1f).opticalCenter(style),
+            modifier = Modifier.weight(1f),
         )
         if (action != null && onAction != null) {
             Spacer(Modifier.width(ACTIVATION_TIP_ICON_GAP))
@@ -794,7 +789,6 @@ private fun ActivationTipRow(
                     style = style,
                     fontWeight = FontWeight.Medium,
                     color = COUITheme.colorScheme.primary,
-                    modifier = Modifier.opticalCenter(style),
                 )
             }
         }

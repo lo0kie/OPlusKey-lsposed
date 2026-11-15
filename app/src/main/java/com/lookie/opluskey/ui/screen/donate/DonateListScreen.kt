@@ -36,7 +36,6 @@ import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.target.Donor
 import com.lookie.opluskey.ui.model.target.donors
 import com.lookie.opluskey.ui.row.CardList
@@ -254,8 +253,7 @@ private fun DonorCell(
     ) {
         Text(
             text = text,
-            // 格子高度由行高固定、字在里面竖居中 —— 补一档光学修正（见 `opticalCenter`）
-            modifier = Modifier.opticalCenter(style),
+            // 格子高度由行高固定、字在里面竖居中 —— 行盒贴着墨迹（见 `AppTextStyles` 的行高样式）
             style = style,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
