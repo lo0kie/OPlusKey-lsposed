@@ -1,7 +1,6 @@
 package com.lookie.opluskey.core.present
 
 import com.lookie.opluskey.core.i18n.I18n
-import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
@@ -20,9 +19,21 @@ import com.lookie.opluskey.core.model.CommonCommand
  *  名字用 **id 寻址**、不用落盘时的字面量：命令名会进配置并被 `cmd:` 引用，而界面语言随时可切
  *  —— 存字面量的话，切成英文之后那条 `cmd:微信扫一扫` 就再也点不亮（[labelOf] 按当前语言念）。
  *
- * ## 加一条 = 加一行
+ * ## 那张表在 JSON 里，不在这里
  *
- *  界面那一段按条数列、不写死数量（见 `ui/screen/binding/CommonCommandsGroup`）；
+ *  条目本身（id / 品牌 / 要不要 root / 字典键 / 动作写法）收在 `core/tables/common-commands.json`，
+ *  由 `tools/gen-static-tables.py` 生成 [COMMON_COMMAND_ENTRIES]。加一条 = 那张表里加一项、
+ *  再跑一次生成器；本文件只管「怎么念、怎么执行」，不再夹带数据。
+ *
+ *  **为什么是生成而不是运行时读**：这一层会被注入侧加载，而那边没有零依赖的 asset 读法
+ *  （见 `core/i18n/DictionaryLoader` 的两条路）。生成物把这份开销留在编译期，代价是改表要跑一次脚本。
+ *
+ *  那几条命令**为什么这么写**（微信为什么用组件、支付宝为什么用深链、哪两条离不开 root）见
+ *  `docs/device/actions/launch.md` 二十九 与表里每项的 `note`。
+ *
+ * ## 界面上按条数列
+ *
+ *  界面那一段不写死数量（见 `ui/screen/binding/CommonCommandsGroup`）；
  *  要不要显示整段由 `GlobalConfig.showCommonCommands` 决定（开关在「按键设置」页）。
  */
 object CommonCommands {
@@ -53,7 +64,7 @@ object CommonCommands {
      * @param id 稳定身份 —— `cmd:` 后面就是它（`common.wechat_scan`）。**不要随文案改**
      * @param brand 这条命令属于哪个 App（决定行首那颗字形）
      * @param root 要不要以 root 跑这条 `shell:` —— 只有**目标界面不 `exported`** 那两条非 root 起不来，
-     *   其余一律不升权（见 [WECHAT_SCAN_STEP] 与 [ALIPAY_SCAN_STEP] 的说明）
+     *   其余一律不升权（理由见 [ENTRIES] 的说明）
      * @param nameKey 界面上那个名字的字典键（按当前语言念）
      * @param nameFallback 字典缺这一条时的兜底名字
      * @param summaryKey 行上那行小字的字典键（说清这一条做什么）
@@ -75,7 +86,10 @@ object CommonCommands {
     }
 
     /**
-     * 微信「扫一扫」/「收付款」—— 起 **Activity 组件**，不走 `weixin://` 深链。
+     * 表里那四条**为什么这么写** —— 条目本身在 `core/tables/common-commands.json`，
+     *  生成成 [COMMON_COMMAND_ENTRIES]（顺序即显示顺序）。这段只说「为什么是这几条写法」。
+     *
+     * ## 微信：起 Activity 组件，不走 `weixin://` 深链
      *
      *  真机实测（2026-11-12，WeChat 8.x）：`weixin://dl/scan` 落的是 `MMWebViewUI`（一个网页壳），
      *  不是取景框；`weixin://dl/offline` 更糟，被转到浏览器里开 Custom Tab。换成组件两个都对：
@@ -91,19 +105,12 @@ object CommonCommands {
      *  非 root 的退路都试过、都不成立：`weixin://dl/scan` 落网页壳；微信那个「扫一扫」快捷方式
      *  在真机上 `ShortcutInfo.getIntent()` 返回 `null`，只能走系统代发，而系统代发会被 BAL 拦
      *  （同一份文档二十九）。要「扫一扫」又要不升权，只能等微信自己把那个界面放开。
-     */
-    private const val WECHAT_SCAN_STEP =
-        Action.SHELL_PREFIX + "am start -n com.tencent.mm/.plugin.scanner.ui.BaseScanUI"
-
-    /** 微信「收付款」—— 同上（付款码 / 收钱码在同一页）。 */
-    private const val WECHAT_PAY_STEP =
-        Action.SHELL_PREFIX + "am start -n com.tencent.mm/.plugin.offline.ui.WalletOfflineCoinPurseUI"
-
-    /**
-     * 支付宝两条走 `alipays://` 深链 —— 组件名带版本味，`appId` 反而稳。
      *
-     *  真机实测：`appId=10000007` 直落扫码界面（`com.alipay.mobile.scan.as.main.MainCaptureActivity`）、
-     *  `appId=20000056` 落收付款页（`com.alipay.mobile.onsitepay.merge.OnsitepayActivity`）。
+     * ## 支付宝：走 `alipays://` 深链
+     *
+     *  组件名带版本味，`appId` 反而稳。真机实测：`appId=10000007` 直落扫码界面
+     *  （`com.alipay.mobile.scan.as.main.MainCaptureActivity`）、`appId=20000056` 落收付款页
+     *  （`com.alipay.mobile.onsitepay.merge.OnsitepayActivity`）。
      *
      *  **这两条不升权**（`root = false`）：目标走的是支付宝自己注册的**深链**，`exported` 那道
      *  检查过得去；宿主自己起界面属于 BAL 允许的那一档（见 `docs/device/actions/launch.md` 二十九）。
@@ -112,59 +119,7 @@ object CommonCommands {
      *  **单引号不能省**：`?` 在 shell 里是通配符、`&` 会把命令截断。整条是以**一个实参**交给
      *  `sh -c` 的（见 `ShellRunner.startProcess`），引号按字符串原样进去即可。
      */
-    private const val ALIPAY_SCAN_STEP =
-        Action.SHELL_PREFIX +
-            "am start -a android.intent.action.VIEW -d 'alipays://platformapi/startapp?appId=10000007'"
-
-    /** 支付宝「收付款」—— 与扫一扫同一条深链通道，只换 `appId`。 */
-    private const val ALIPAY_PAY_STEP =
-        Action.SHELL_PREFIX +
-            "am start -a android.intent.action.VIEW -d 'alipays://platformapi/startapp?appId=20000056'"
-
-    /** 界面上按这个顺序列 —— 顺序即显示顺序。 */
-    val ENTRIES: List<Entry> =
-        listOf(
-            Entry(
-                id = "common.wechat_scan",
-                brand = Brand.WECHAT,
-                root = true,
-                nameKey = Strings.COMMON_COMMAND_WECHAT_SCAN,
-                nameFallback = "微信扫一扫",
-                summaryKey = Strings.COMMON_COMMAND_WECHAT_SCAN_DESC,
-                summaryFallback = "打开微信的扫码界面",
-                step = WECHAT_SCAN_STEP,
-            ),
-            Entry(
-                id = "common.wechat_pay",
-                brand = Brand.WECHAT,
-                root = true,
-                nameKey = Strings.COMMON_COMMAND_WECHAT_PAY,
-                nameFallback = "微信收付款",
-                summaryKey = Strings.COMMON_COMMAND_WECHAT_PAY_DESC,
-                summaryFallback = "打开微信的收付款页（付款码 / 收钱码）",
-                step = WECHAT_PAY_STEP,
-            ),
-            Entry(
-                id = "common.alipay_scan",
-                brand = Brand.ALIPAY,
-                root = false,
-                nameKey = Strings.COMMON_COMMAND_ALIPAY_SCAN,
-                nameFallback = "支付宝扫一扫",
-                summaryKey = Strings.COMMON_COMMAND_ALIPAY_SCAN_DESC,
-                summaryFallback = "打开支付宝的扫码界面",
-                step = ALIPAY_SCAN_STEP,
-            ),
-            Entry(
-                id = "common.alipay_pay",
-                brand = Brand.ALIPAY,
-                root = false,
-                nameKey = Strings.COMMON_COMMAND_ALIPAY_PAY,
-                nameFallback = "支付宝收付款",
-                summaryKey = Strings.COMMON_COMMAND_ALIPAY_PAY_DESC,
-                summaryFallback = "打开支付宝的收付款页",
-                step = ALIPAY_PAY_STEP,
-            ),
-        )
+    val ENTRIES: List<Entry> = COMMON_COMMAND_ENTRIES
 
     /**
      * `cmd:` 后面那一段 → 一条内置命令；不是内置的返回 `null`。
@@ -174,7 +129,7 @@ object CommonCommands {
     fun find(raw: String): Entry? = ENTRIES.firstOrNull { it.id == raw }
 
     /** 内置命令的**显示名**（按当前语言）；不是内置的返回 `null`（调用方照旧显示原名）。 */
-    fun labelOf(raw: String): String? = find(raw)?.let { I18n.get(it.nameKey, it.nameFallback) }
+    fun labelOf(raw: String): String? = find(raw)?.let { I18n.getOr(it.nameKey, it.nameFallback) }
 
     /**
      * 一条**动作写法** → 模块自带的那一条（`cmd:common.wechat_scan` → [Entry]）；

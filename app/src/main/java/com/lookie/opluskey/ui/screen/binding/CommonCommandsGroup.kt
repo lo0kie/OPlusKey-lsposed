@@ -86,7 +86,7 @@ internal fun SettingsPage.CommonCommandsGroup(
     //  条数按**这一段画出来的条数**走（`entries`）：标题说 0 就是这一格里没有东西，
     //  与下面那行「去添加」对得上。
     SectionTitle(
-        text = titleWithCount(I18n.get(Strings.BINDING_COMMON_COMMANDS, "常用命令"), entries.size),
+        text = titleWithCount(I18n.get(Strings.BINDING_COMMON_COMMANDS), entries.size),
         //  整页闸关着（主开关 / 链路 / 只读）时不接点击：跳过去也是一页改不动的清单
         click = if (enabled) SectionTitleClick.Jump { navTo(Screen.COMMON_COMMANDS) } else null,
     )
@@ -215,7 +215,7 @@ private fun AddCommonCommandRow(
         rows =
             listOf(
                 CardRow.Item(
-                    title = I18n.get(Strings.COMMON_COMMANDS_ADD, "添加命令"),
+                    title = I18n.get(Strings.COMMON_COMMANDS_ADD),
                     //  行尾箭头：「这一行后面还有一页」（与 `CreateCommandRow` 同一条理由）
                     arrow = true,
                     enabled = enabled,

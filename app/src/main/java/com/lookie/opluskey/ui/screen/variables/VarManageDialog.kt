@@ -134,15 +134,15 @@ private fun SettingsPage.VarValueLayer(
     onDismiss: () -> Unit,
     onLand: (Action.VarSet) -> Unit,
 ) {
-    val title = if (step) I18n.get(Strings.VAR_OP_SET, "设为…") else I18n.get(Strings.COMMON_EDIT, "编辑")
+    val title = if (step) I18n.get(Strings.VAR_OP_SET) else I18n.get(Strings.COMMON_EDIT)
     val boolean = editing?.type == VarType.BOOLEAN
     SinglePickerDialog(
         show = boolean,
         title = title,
         labels =
             listOf(
-                I18n.get(Strings.VAR_VALUE_TRUE, "True"),
-                I18n.get(Strings.VAR_VALUE_FALSE, "False"),
+                I18n.get(Strings.VAR_VALUE_TRUE),
+                I18n.get(Strings.VAR_VALUE_FALSE),
             ),
         //  打勾的是**当前值**：一打开就知道现在是什么，不用去记得
         selectedIndex =
@@ -168,7 +168,7 @@ private fun SettingsPage.VarValueLayer(
         NameDialog(
             show = editing != null,
             title = title,
-            label = I18n.get(Strings.VAR_FIELD_VALUE, "值"),
+            label = I18n.get(Strings.VAR_FIELD_VALUE),
             icon = editing?.let { typeIcon(it.type) } ?: PageIcons.VarInitial,
             initial = editing?.value.orEmpty(),
             onDismiss = onDismiss,
@@ -228,13 +228,13 @@ private fun SettingsPage.VarDeleteDialog(
         if (blocked) {
             I18n.format(Strings.VAR_DELETE_BLOCKED, refs)
         } else {
-            I18n.get(Strings.VAR_DELETE_SUMMARY, "引用它的命令会失效")
+            I18n.get(Strings.VAR_DELETE_SUMMARY)
         }
     ConfirmDialog(
         show = deleting != null,
         title = I18n.format(Strings.VAR_DELETE_TITLE, deleting?.name.orEmpty()),
         summary = summary,
-        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        action = I18n.get(Strings.COMMON_DELETE),
         positiveEnabled = !blocked,
         //  灰着也要说清为什么（见 `ConfirmDialog` 的 `onBlocked`）
         onBlocked = { hint(summary) },
@@ -288,9 +288,9 @@ private fun SettingsPage.applyNow(
         val ok = withContext(Dispatchers.IO) { VariableStore.apply(set) }
         if (ok) {
             VarListSignal.bump()
-            hint(I18n.get(Strings.VAR_SAVED, "已保存"))
+            hint(I18n.get(Strings.VAR_SAVED))
         } else {
-            hint(I18n.get(Strings.VAR_FAILED, "改不了"))
+            hint(I18n.get(Strings.VAR_FAILED))
         }
     }
 }
@@ -333,7 +333,7 @@ private fun SettingsPage.deleteVar(
         val refs = withContext(Dispatchers.IO) { refsOf(gone.name) }
         if (refs > 0) {
             XLog.w("变量删除：${gone.name} 还有 $refs 处引用，拒绝")
-            hint(I18n.get(Strings.VAR_FAILED, "改不了"))
+            hint(I18n.get(Strings.VAR_FAILED))
             return@launch
         }
         val ok = withContext(Dispatchers.IO) { VariableStore.remove(gone.name) }
@@ -341,7 +341,7 @@ private fun SettingsPage.deleteVar(
         if (ok) {
             VarListSignal.bump()
         } else {
-            hint(I18n.get(Strings.VAR_FAILED, "改不了"))
+            hint(I18n.get(Strings.VAR_FAILED))
         }
     }
 }

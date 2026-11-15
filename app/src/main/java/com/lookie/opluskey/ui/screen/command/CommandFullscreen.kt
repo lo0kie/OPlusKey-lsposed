@@ -109,7 +109,7 @@ internal fun SettingsPage.CommandFullscreenDialog(
 
     FrostedDialog(
         show = show,
-        title = I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"),
+        title = I18n.get(Strings.COMMAND_DETAIL_TITLE),
         onDismiss = onDismiss,
         //  带输入框：键盘由输入框那一侧叫，这里不能收（收晚一步就是「聚焦后又失焦」）
         hideImeOnShow = false,
@@ -177,7 +177,7 @@ private fun EditorField(
                 .animateContentSize(tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL))
                 .focusRequester(focus)
                 .onFocusChanged { focused = it.hasFocus },
-        label = I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令"),
+        label = I18n.get(Strings.COMMAND_CMD_HINT),
         //  描边圆角矩形：这一块是「一整片编辑区」，下划线那副样子撑不起这块高度
         backgroundMode = TextFieldMode.Rectangle,
         //  **强制换行**（用户口径）：不写明时走平台的 `Unspecified`，这一版 ROM 按「短语」断

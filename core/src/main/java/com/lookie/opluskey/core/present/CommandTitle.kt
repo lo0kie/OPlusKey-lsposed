@@ -269,7 +269,7 @@ private val timerTitle =
         segmentsOf = { action, _, _ ->
             TitleSegments(
                 parent = null,
-                name = I18n.get(Strings.CATALOG_CLOCK, "计时器"),
+                name = I18n.get(Strings.CATALOG_CLOCK),
                 state = ClockCatalog.durationOf(action),
                 nameIsTheTile = true,
             )
@@ -290,8 +290,8 @@ private fun targetSegments(
 ): (Action, (Action) -> String, String) -> TitleSegments =
     { action, appName, _ ->
         TitleSegments(
-            parent = I18n.get(Strings.TOOL_APP_CONTROL, "应用控制"),
-            name = I18n.get(verbKey, verbFallback),
+            parent = I18n.get(Strings.TOOL_APP_CONTROL),
+            name = I18n.getOr(verbKey, verbFallback),
             state = appName(action).takeIf { it.isNotBlank() },
         )
     }
@@ -305,7 +305,7 @@ private fun targetSegments(
 private val variableSegments: (Action, (Action) -> String, String) -> TitleSegments =
     { action, _, _ ->
         TitleSegments(
-            parent = I18n.get(Strings.TOOL_VARIABLES, "自定义变量"),
+            parent = I18n.get(Strings.TOOL_VARIABLES),
             name = if (action is Action.VarSet) varSetTitle(action) else "",
             state = null,
         )

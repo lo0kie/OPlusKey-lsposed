@@ -88,7 +88,7 @@ internal fun SettingsPage.OwnSettingsCard(
     //  整页没事、只是这颗总开关没开 ⇒ 说清该先打开哪一项。两张卡共用这一句。
     val ownHint =
         if (enabled && !owner.useOwnSettings) {
-            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 使用独立设置")
+            I18n.get(Strings.KEY_SETTINGS_NEED_OWN)
         } else {
             null
         }
@@ -162,11 +162,11 @@ private fun SettingsPage.useOwnRow(
     onEdit: (OwnSettingsValues, OwnField) -> Unit,
 ): CardRow =
     CardRow.Switch(
-        title = I18n.get(Strings.SETTING_USE_OWN, "使用独立设置"),
+        title = I18n.get(Strings.SETTING_USE_OWN),
         //  「等」字是刻意的：组合在这一档上还多几项（按键之间的等待 / 首键按住时长 / 场景时机），
         //  一句只列三项会让「想单独调这一组的窗口」的人以为跟这颗开关无关。
-        summaryOn = I18n.get(Strings.SETTING_USE_OWN_ON, "接口、振动、提示等分别设置"),
-        summaryOff = I18n.get(Strings.SETTING_USE_OWN_OFF, "接口、振动、提示等跟随公共设置"),
+        summaryOn = I18n.get(Strings.SETTING_USE_OWN_ON),
+        summaryOff = I18n.get(Strings.SETTING_USE_OWN_OFF),
         //  与「启用按键绑定」那一行同一颗图标：两者都是「这一个开关决定下面那一组算不算数」
         icon = PageIcons.MasterSwitch,
         checked = owner.useOwnSettings,
@@ -188,7 +188,7 @@ private fun SettingsPage.interfaceRow(
     edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
 ): CardRow =
     CardRow.Switch(
-        title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
+        title = I18n.get(Strings.HOME_COLOROS_TITLE),
         icon = PageIcons.ColorOsLink,
         checked = show.colorOsApi,
         enabled = rowsEnabled,
@@ -206,7 +206,7 @@ private fun SettingsPage.vibrateRow(
     edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
 ): CardRow =
     CardRow.Switch(
-        title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
+        title = I18n.get(Strings.HOME_VIBRATE_TITLE),
         icon = PageIcons.Vibrate,
         checked = show.vibrate,
         enabled = rowsEnabled,
@@ -231,7 +231,7 @@ private fun SettingsPage.vibrateOnNoneRow(
     edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
 ): CardRow =
     CardRow.Switch(
-        title = I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE, "无操作时振动"),
+        title = I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE),
         icon = PageIcons.VibrateOnNone,
         checked = show.vibrateOnNone,
         enabled = rowsEnabled,
@@ -267,7 +267,7 @@ private fun SettingsPage.strengthRow(
             position = position,
             spec =
                 SliderSpec(
-                    title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE, "振动强度"),
+                    title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE),
                     icon = PageIcons.vibrateLevel(value),
                     min = GlobalConfig.VIBRATE_WEAK,
                     max = GlobalConfig.VIBRATE_STRONG,
@@ -302,7 +302,7 @@ private fun SettingsPage.toastRows(
 ): List<CardRow> =
     listOf(
         CardRow.Switch(
-            title = I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"),
+            title = I18n.get(Strings.HOME_TOAST_TITLE),
             icon = PageIcons.CommandToast,
             checked = show.toastOnRun,
             enabled = rowsEnabled,
@@ -311,7 +311,7 @@ private fun SettingsPage.toastRows(
             edit(OwnField.TOAST) { v -> v.copy(toastOnRun = it) }
         },
         CardRow.Switch(
-            title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"),
+            title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE),
             icon = PageIcons.FormatFluid,
             checked = show.toastFluid,
             //  流体云是 ColorOS 的能力：这一档随「使用 ColorOS 接口」走，关掉之后由执行侧回落 Toast
@@ -321,14 +321,14 @@ private fun SettingsPage.toastRows(
                 if (show.colorOsApi) {
                     ownHint
                 } else {
-                    I18n.get(Strings.HOME_TOAST_FLUID_NEEDS_COLOROS, "需要开启 使用 ColorOS 接口")
+                    I18n.get(Strings.HOME_TOAST_FLUID_NEEDS_COLOROS)
                 },
             visible = show.toastOnRun,
         ) {
             edit(OwnField.FLUID) { v -> v.copy(toastFluid = it) }
         },
         CardRow.Item(
-            title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE, "提示文案"),
+            title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE),
             //  这一句**不给兜底**：里面带 `$`，兜底审计是按源码字面量逐字比的。
             summary = show.toastTemplate.ifBlank { I18n.get(Strings.HOME_TOAST_TEMPLATE_DEFAULT) },
             icon = PageIcons.ToastTemplate,
@@ -344,15 +344,15 @@ private fun SettingsPage.toastRows(
 private fun strengthLabel(level: Int): String =
     when (level) {
         GlobalConfig.VIBRATE_WEAK -> {
-            I18n.get(Strings.HOME_VIBRATE_STRENGTH_WEAK, "弱")
+            I18n.get(Strings.HOME_VIBRATE_STRENGTH_WEAK)
         }
 
         GlobalConfig.VIBRATE_STRONG -> {
-            I18n.get(Strings.HOME_VIBRATE_STRENGTH_STRONG, "强")
+            I18n.get(Strings.HOME_VIBRATE_STRENGTH_STRONG)
         }
 
         else -> {
-            I18n.get(Strings.HOME_VIBRATE_STRENGTH_MEDIUM, "中")
+            I18n.get(Strings.HOME_VIBRATE_STRENGTH_MEDIUM)
         }
     }
 
@@ -371,8 +371,8 @@ private fun SettingsPage.OwnTemplateDialog(
 ) {
     NameDialog(
         show = show,
-        title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE, "提示文案"),
-        label = I18n.get(Strings.HOME_TOAST_TEMPLATE_PLACEHOLDER, "留空将使用默认提示"),
+        title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE),
+        label = I18n.get(Strings.HOME_TOAST_TEMPLATE_PLACEHOLDER),
         hint = I18n.get(Strings.HOME_TOAST_TEMPLATE_HINT),
         //  与公共页那一支同一个清单（变量名单独排一档，顺序由 `ToastNotice.PLACEHOLDERS` 定）
         hintChips = ToastNotice.PLACEHOLDERS,

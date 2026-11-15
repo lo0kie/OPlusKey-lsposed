@@ -219,9 +219,9 @@ internal fun SettingsPage.SerialSteps() {
             StepSheetSpec(
                 title =
                     if (sheetAt != null && sheetAt >= 0) {
-                        I18n.get(Strings.COMMAND_STEP_REPLACE_TITLE, "选择命令")
+                        I18n.get(Strings.COMMAND_STEP_REPLACE_TITLE)
                     } else {
-                        I18n.get(Strings.COMMAND_ADD, "添加命令")
+                        I18n.get(Strings.COMMAND_ADD)
                     },
                 current = currentAction,
                 //  两行关卡：都只是「收抽屉 → 压一页」，区别只在去哪一页。
@@ -375,12 +375,12 @@ private fun SettingsPage.stepAddRow(
     //  **文案先算在 remember 外面**：它跟着语言档变，缓存在 `remember` 里会在切语言后留着旧语言那一句。
     val blockedHint =
         if (sorting) {
-            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")
+            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED)
         } else {
             I18n.format(Strings.TOAST_COMMAND_STEP_FULL, Command.MAX_STEPS)
         }
     return CardRow.Item(
-        title = I18n.get(Strings.COMMAND_ADD, "添加命令"),
+        title = I18n.get(Strings.COMMAND_ADD),
         icon = PageIcons.StepAdd,
         trailing = { RowEndIcon(PageIcons.Selector) },
         enabled = !stepsFull && !sorting,
@@ -452,10 +452,10 @@ private fun SettingsPage.StepRowButtons(
         ) {
             //  每一颗被点不动时都说**自己那一句**：外层「添加命令」那层说的是「最多几步」，
             //  套在这里会答错问题 —— 所以各带一句，投递口在 [DisabledHint]。
-            DisabledHint(I18n.get(Strings.TOAST_COMMAND_STEP_FIRST, "已经是第一步")) {
+            DisabledHint(I18n.get(Strings.TOAST_COMMAND_STEP_FIRST)) {
                 StepButton(
                     icon = PageIcons.StepUp,
-                    label = I18n.get(Strings.COMMON_MOVE_UP, "上移"),
+                    label = I18n.get(Strings.COMMON_MOVE_UP),
                     size = size,
                     tone = if (index > 0) StepButtonTone.NORMAL else StepButtonTone.DISABLED,
                 ) {
@@ -463,10 +463,10 @@ private fun SettingsPage.StepRowButtons(
                     moveStep(index, -1)
                 }
             }
-            DisabledHint(I18n.get(Strings.TOAST_COMMAND_STEP_LAST, "已经是最后一步")) {
+            DisabledHint(I18n.get(Strings.TOAST_COMMAND_STEP_LAST)) {
                 StepButton(
                     icon = PageIcons.StepDown,
-                    label = I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
+                    label = I18n.get(Strings.COMMON_MOVE_DOWN),
                     size = size,
                     tone = if (index < lastIndex) StepButtonTone.NORMAL else StepButtonTone.DISABLED,
                 ) {
@@ -479,7 +479,7 @@ private fun SettingsPage.StepRowButtons(
             //  它恒可用，所以不需要 [DisabledHint]（那一支存在的意义是「禁用时说一句」）。
             StepButton(
                 icon = PageIcons.CommandDelete,
-                label = I18n.get(Strings.COMMON_DELETE, "删除"),
+                label = I18n.get(Strings.COMMON_DELETE),
                 size = size,
                 tone = StepButtonTone.DANGER,
             ) {

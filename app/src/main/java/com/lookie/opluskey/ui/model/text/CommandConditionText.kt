@@ -36,11 +36,11 @@ internal fun conditionRowTitle(
     condition: BranchCondition,
     appName: (String) -> String,
 ): String {
-    val kind = condition.kind ?: return I18n.get(Strings.COMMAND_BRANCH_ANY, "未选择")
+    val kind = condition.kind ?: return I18n.get(Strings.COMMAND_BRANCH_ANY)
     val value = conditionValueText(kind, condition, appName)
     // 取值还没选（只选了种类就会存不下来，但草稿里有这一瞬间）：整句退回「未选择」，
     //  写成「屏幕状态 - 」比不写更让人以为配好了。
-    if (value.isBlank()) return I18n.get(Strings.COMMAND_BRANCH_ANY, "未选择")
+    if (value.isBlank()) return I18n.get(Strings.COMMAND_BRANCH_ANY)
     return "${conditionKindLabel(kind)} - $value"
 }
 
@@ -133,38 +133,38 @@ internal fun conditionMenuSummary(
  */
 internal fun conditionKindLabel(kind: ConditionKind): String =
     when (kind) {
-        ConditionKind.APP -> I18n.get(Strings.COMMAND_COND_APP, "前台应用")
+        ConditionKind.APP -> I18n.get(Strings.COMMAND_COND_APP)
 
         //  与上一档同一族的反面：读作「前台应用以外 - 微信」，即「前台不是微信」。
-        ConditionKind.APP_NOT -> I18n.get(Strings.COMMAND_COND_APP_NOT, "前台应用以外")
+        ConditionKind.APP_NOT -> I18n.get(Strings.COMMAND_COND_APP_NOT)
 
-        ConditionKind.RINGER -> I18n.get(Strings.COMMAND_COND_RINGER_NAME, "响铃状态")
+        ConditionKind.RINGER -> I18n.get(Strings.COMMAND_COND_RINGER_NAME)
 
-        ConditionKind.ORIENTATION -> I18n.get(Strings.COMMAND_COND_ORIENTATION_NAME, "屏幕方向")
+        ConditionKind.ORIENTATION -> I18n.get(Strings.COMMAND_COND_ORIENTATION_NAME)
 
         // 这两档的名字与「格子里那句话」不是一回事：格子里要带取值（WIFI 开 / 媒体 播放中），
         //  菜单里只是「种类叫什么」。
-        ConditionKind.WIFI -> I18n.get(Strings.COMMAND_COND_WIFI_NAME, "WIFI")
+        ConditionKind.WIFI -> I18n.get(Strings.COMMAND_COND_WIFI_NAME)
 
-        ConditionKind.MEDIA -> I18n.get(Strings.COMMAND_COND_MEDIA_NAME, "媒体状态")
+        ConditionKind.MEDIA -> I18n.get(Strings.COMMAND_COND_MEDIA_NAME)
 
-        ConditionKind.SCREEN -> I18n.get(Strings.COMMAND_COND_SCREEN_NAME, "屏幕状态")
+        ConditionKind.SCREEN -> I18n.get(Strings.COMMAND_COND_SCREEN_NAME)
 
-        ConditionKind.CHARGING -> I18n.get(Strings.COMMAND_COND_CHARGING_NAME, "充电状态")
+        ConditionKind.CHARGING -> I18n.get(Strings.COMMAND_COND_CHARGING_NAME)
 
         // 耳机这一档在格子里要带取值（「已连接耳机」），菜单里只写「耳机」。
-        ConditionKind.HEADSET -> I18n.get(Strings.COMMAND_COND_HEADSET_NAME, "耳机状态")
+        ConditionKind.HEADSET -> I18n.get(Strings.COMMAND_COND_HEADSET_NAME)
 
         // 时间区间是唯一「自由取值」又没有下一级菜单的那一档：菜单里点它弹时间选择器。
-        ConditionKind.TIME -> I18n.get(Strings.COMMAND_COND_TIME_NAME, "时间区间")
+        ConditionKind.TIME -> I18n.get(Strings.COMMAND_COND_TIME_NAME)
 
-        ConditionKind.BLUETOOTH -> I18n.get(Strings.COMMAND_COND_BLUETOOTH_NAME, "蓝牙")
+        ConditionKind.BLUETOOTH -> I18n.get(Strings.COMMAND_COND_BLUETOOTH_NAME)
 
-        ConditionKind.CELLULAR -> I18n.get(Strings.COMMAND_COND_CELLULAR_NAME, "移动数据")
+        ConditionKind.CELLULAR -> I18n.get(Strings.COMMAND_COND_CELLULAR_NAME)
 
-        ConditionKind.AIRPLANE -> I18n.get(Strings.COMMAND_COND_AIRPLANE_NAME, "飞行模式")
+        ConditionKind.AIRPLANE -> I18n.get(Strings.COMMAND_COND_AIRPLANE_NAME)
 
-        ConditionKind.FLASHLIGHT -> I18n.get(Strings.COMMAND_COND_FLASHLIGHT_NAME, "手电筒")
+        ConditionKind.FLASHLIGHT -> I18n.get(Strings.COMMAND_COND_FLASHLIGHT_NAME)
     }
 
 /** 有取值的条件，那一档取值在菜单里叫什么。 */

@@ -134,7 +134,7 @@ internal fun SettingsPage.CollectKeyDialog(
             is CollectCheck.Duplicate -> {
                 //  键名按颗归位（`chips`），模板里只留一个 `%s` 占位
                 hint(
-                    I18n.get(Strings.KEY_WATCH_DUPLICATE, "%s 已经在清单里了"),
+                    I18n.get(Strings.KEY_WATCH_DUPLICATE),
                     slot = HINT_SLOT_BINDING,
                     chips = listOf(check.name),
                 )
@@ -150,7 +150,7 @@ internal fun SettingsPage.CollectKeyDialog(
     //  这两个是不透明的（用户口径「收集 dialog 换成通用 dialog」）。
     FrostedDialog(
         show = show && waiting,
-        title = I18n.get(Strings.KEY_WATCH_TITLE, "自定义按键"),
+        title = I18n.get(Strings.KEY_WATCH_TITLE),
         onDismiss = onDismiss,
         // 退场动画播完才算「让位」—— 库在这一刻会收一次键盘，命名的聚焦必须排在这之后。
         //  只在**该关**那一档置位：用户自己关掉弹窗时「上一个窗收场了」这件事对命名窗毫无意义。
@@ -169,8 +169,8 @@ internal fun SettingsPage.CollectKeyDialog(
         //  「键盘拉起又消失」。以前是「早开窗、晚抢焦点」（`focusReady`），窗口仍是叠着的；
         //  现在连窗都不叠 —— 收场回调（或它的兜底）一到，这一格才置位。
         show = show && pendingCode != null && collectClosed,
-        title = I18n.get(Strings.BINDING_ADD_KEY, "添加按键"),
-        label = I18n.get(Strings.BINDING_KEY_NAME, "按键名称"),
+        title = I18n.get(Strings.BINDING_ADD_KEY),
+        label = I18n.get(Strings.BINDING_KEY_NAME),
         //  行首取**触发这一格的那一行**（按键列表最后的「添加按键」）
         icon = PageIcons.MenuKeyAdd,
         initial = draftName,
@@ -225,7 +225,7 @@ private fun SettingsPage.newKeyName(): String {
     // 序号从 id 里取（`ck3` → 3）：删过键之后「第几颗」与「名字里的数」会分叉，
     //  而名字一旦定下就是配置里的字面量，不该因为删了别的键而改。
     val seq = id.removePrefix(KeyId.CUSTOM_ID_PREFIX).toIntOrNull() ?: (cfg.customKeys.size + 1)
-    return I18n.get(Strings.BINDING_CUSTOM_KEY_NAME, "按键 %d").format(seq)
+    return I18n.get(Strings.BINDING_CUSTOM_KEY_NAME).format(seq)
 }
 
 /** [checkKey] 的结论 —— 能不能收、还是本来就有。 */
@@ -269,12 +269,12 @@ private fun SettingsPage.checkKey(code: Int): CollectCheck {
         //  与「这颗键不能收」长得一样，用户只会以为功能坏了。留一行账，界面上也说一句。
         code <= 0 -> {
             XLog.w("收集按键：收到 keyCode=$code（广播没带按键码？），拒绝")
-            CollectCheck.Rejected(I18n.get(Strings.KEY_WATCH_NO_CODE, "未收到按键码，请再按一次"))
+            CollectCheck.Rejected(I18n.get(Strings.KEY_WATCH_NO_CODE))
         }
 
         notCollectable -> {
             XLog.w("收集按键：keyCode=$code 不是可自定义的键（保留码 / 内置键），拒绝")
-            CollectCheck.Rejected(I18n.get(Strings.KEY_WATCH_RESERVED, "这颗键模块自己在用，不能添加"))
+            CollectCheck.Rejected(I18n.get(Strings.KEY_WATCH_RESERVED))
         }
 
         existing != null -> {
@@ -326,7 +326,7 @@ private fun SettingsPage.addKey(
     // 回执照发即可：提示条现在挂在**浮层槽、弹窗宿主之后**（见 `PageContent`），
     //  自己就压在弹窗之上；`onDismiss()` 紧跟其后把弹窗收走，两句谁先谁后都看得见
     hint(
-        I18n.get(Strings.KEY_WATCH_ADDED, "已添加 %s"),
+        I18n.get(Strings.KEY_WATCH_ADDED),
         slot = HINT_SLOT_BINDING,
         chips = listOf(name),
     )
@@ -371,7 +371,7 @@ private fun SettingsPage.claimableNow(code: Int): Boolean =
 private fun CollectKeyBody(secondsLeft: Int) {
     Column(Modifier.fillMaxWidth()) {
         Text(
-            text = I18n.get(Strings.KEY_WATCH_HINT, "按下想添加的按键"),
+            text = I18n.get(Strings.KEY_WATCH_HINT),
             style = COUITheme.textStyles.body2,
             color = COUITheme.colorScheme.onSurfaceSecondary,
             textAlign = TextAlign.Center,
@@ -382,7 +382,7 @@ private fun CollectKeyBody(secondsLeft: Int) {
                     .padding(bottom = 4.dp),
         )
         Text(
-            text = I18n.get(Strings.KEY_WATCH_WAITING, "正在等待按键…"),
+            text = I18n.get(Strings.KEY_WATCH_WAITING),
             style = COUITheme.textStyles.body2,
             color = COUITheme.colorScheme.primary,
             textAlign = TextAlign.Center,

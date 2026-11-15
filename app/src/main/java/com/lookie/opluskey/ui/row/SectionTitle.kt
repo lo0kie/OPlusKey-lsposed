@@ -237,7 +237,7 @@ internal fun MoreButton(
         ) {
             Icon(
                 TablerIcons.Outline.Dots,
-                contentDescription = I18n.get(Strings.COMMON_MORE, "更多"),
+                contentDescription = I18n.get(Strings.COMMON_MORE),
                 //  置灰取库那一档（与行首图标、菜单行同一个禁用色），不做第三种灰
                 tint = dotsTint,
                 modifier = Modifier.size(MORE_BUTTON_HEIGHT),

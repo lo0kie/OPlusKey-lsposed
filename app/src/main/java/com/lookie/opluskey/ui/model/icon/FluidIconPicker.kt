@@ -97,7 +97,7 @@ internal fun SettingsPage.FluidIconPicker(
     val scope = rememberCoroutineScope()
     FrostedDialog(
         show = show,
-        title = I18n.get(Strings.COMMAND_FLUID_ICON_TITLE, "图标"),
+        title = I18n.get(Strings.COMMAND_FLUID_ICON_TITLE),
         onDismiss = onDismiss,
         //  标题行尾那一格：一共几颗可选。与入口行副标题是同一个数，但两处的用法不一样 ——
         //  那一行是「后面有多少东西」的预告，这一格是「现在看见的就是全部」的确认

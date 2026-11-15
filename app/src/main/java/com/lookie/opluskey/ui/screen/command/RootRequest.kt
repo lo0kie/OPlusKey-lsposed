@@ -32,7 +32,7 @@ internal fun SettingsPage.requestRootGrant() {
                 hint(
                     // 失败那一侧直接用 `CommandFailure` 表里那句：与按侧键执行失败时一字不差，
                     // 不另写一份「没授权」的说法（同一件事只有一处文案）。
-                    failure?.hint ?: I18n.get(Strings.COMMAND_ROOT_GRANTED, "已获取root权限"),
+                    failure?.hint ?: I18n.get(Strings.COMMAND_ROOT_GRANTED),
                     slot = HINT_SLOT_COMMAND,
                 )
             }

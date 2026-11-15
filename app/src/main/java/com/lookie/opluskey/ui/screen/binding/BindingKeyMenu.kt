@@ -180,7 +180,7 @@ internal fun SettingsPage.HeaderSettingsButton(target: SettingsTarget) {
             onClick = { openKeySettings(target) },
             enabled = blocked == null,
         ) {
-            Icon(PageIcons.SettingsCog, contentDescription = I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置"))
+            Icon(PageIcons.SettingsCog, contentDescription = I18n.get(Strings.KEY_SETTINGS_TITLE))
         }
     }
 }
@@ -194,7 +194,7 @@ internal fun SettingsPage.HeaderSettingsButton(target: SettingsTarget) {
  */
 internal fun SettingsPage.openKeySettings(target: SettingsTarget) {
     SettingsTargetState.current = target
-    XLog.w("进「${I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置")}」页：$target")
+    XLog.w("进「${I18n.get(Strings.KEY_SETTINGS_TITLE)}」页：$target")
     navTo(Screen.KEY_SETTINGS)
 }
 
@@ -280,7 +280,7 @@ private fun keyMenuEntries(
             blocked
                 ?: if (cfg.key(selected).comboOnly) {
                     HintText(
-                        I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED, "按键 %s 只能作按住组合的后续成员"),
+                        I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED),
                         listOf(keyName(selected)),
                     )
                 } else {
@@ -315,7 +315,7 @@ private fun keyMenuEntries(
         //  上一行「系统场景」不跟：停用期间先把场景表配好、再回去启用，是常见顺序。
         add(
             MenuEntry.Row(
-                title = I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置"),
+                title = I18n.get(Strings.KEY_SETTINGS_TITLE),
                 icon = PageIcons.SettingsCog,
                 submenu = true,
                 enabled = blocked == null,
@@ -351,9 +351,9 @@ private fun keyActionEntries(
             MenuEntry.Row(
                 title =
                     if (enabled) {
-                        I18n.get(Strings.BINDING_DISABLE_KEY, "停用按键")
+                        I18n.get(Strings.BINDING_DISABLE_KEY)
                     } else {
-                        I18n.get(Strings.BINDING_ENABLE_KEY, "启用按键")
+                        I18n.get(Strings.BINDING_ENABLE_KEY)
                     },
                 //  停用 / 启用各一颗（锁 / 开锁）：这一行本来就是随状态换文案的，图标跟着换才一致
                 icon = if (enabled) PageIcons.KeyLocked else PageIcons.KeyUnlocked,
@@ -364,21 +364,21 @@ private fun keyActionEntries(
         )
         add(
             MenuEntry.Row(
-                title = I18n.get(Strings.BINDING_RENAME_KEY, "重命名"),
+                title = I18n.get(Strings.BINDING_RENAME_KEY),
                 icon = PageIcons.MenuRename,
                 // 侧键的名字不归用户改
                 enabled = selected.isCustom,
-                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_RENAME, "快捷键不能改名"),
+                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_RENAME),
                 onPick = actions.onRename,
             ),
         )
         add(
             MenuEntry.Row(
-                title = I18n.get(Strings.BINDING_DELETE_KEY, "删除按键"),
+                title = I18n.get(Strings.BINDING_DELETE_KEY),
                 icon = PageIcons.CommandDelete,
                 // 侧键不给删（它不是用户收集来的东西）
                 enabled = selected.isCustom,
-                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_DELETE, "快捷键不能删除"),
+                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_DELETE),
                 danger = true,
                 onPick = actions.onDelete,
             ),
@@ -405,8 +405,8 @@ private fun SettingsPage.KeyMenuDialogHost(
     //  所以这一格是用户自己的命名，不是一条字典文案。
     NameDialog(
         show = dialog == KeyMenuDialog.RENAME,
-        title = I18n.get(Strings.BINDING_RENAME_KEY, "重命名"),
-        label = I18n.get(Strings.BINDING_KEY_NAME, "按键名称"),
+        title = I18n.get(Strings.BINDING_RENAME_KEY),
+        label = I18n.get(Strings.BINDING_KEY_NAME),
         //  行首取**触发这一行的键**在列表里那颗（见 `keyRowIcon`）：弹窗与它来处的那一行同一个记号
         icon = keyRowIcon(selected),
         initial = selected.label,
@@ -422,8 +422,8 @@ private fun SettingsPage.KeyMenuDialogHost(
     val inCombos = if (dialog == KeyMenuDialog.DELETE_BLOCKED) combosUsing(config, selected) else emptyList()
     ConfirmDialog(
         show = dialog == KeyMenuDialog.DELETE_BLOCKED,
-        title = I18n.get(Strings.BINDING_DELETE_KEY_BLOCKED_TITLE, "无法删除"),
-        action = I18n.get(Strings.COMMON_GOT_IT, "知道了"),
+        title = I18n.get(Strings.BINDING_DELETE_KEY_BLOCKED_TITLE),
+        action = I18n.get(Strings.COMMON_GOT_IT),
         positiveDanger = false,
         //  这一条没有「确认之后做点什么」—— 两颗按钮都只是把窗关掉
         onDismiss = onDismiss,
@@ -451,8 +451,8 @@ private fun SettingsPage.KeyMenuDialogHost(
     KeysAskDialog()
     ConfirmDialog(
         show = dialog == KeyMenuDialog.DELETE,
-        title = I18n.get(Strings.BINDING_DELETE_KEY, "删除按键"),
-        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        title = I18n.get(Strings.BINDING_DELETE_KEY),
+        action = I18n.get(Strings.COMMON_DELETE),
         onDismiss = onDismiss,
         onConfirm = {
             // 清单与绑定两处一起摘（见 `Config.withoutKey`）；选中态收回侧键。
@@ -468,7 +468,7 @@ private fun SettingsPage.KeyMenuDialogHost(
                         // 名字得在 forget 之后取，否则 `selected` 已经指向不存在的键
                         //  （键名按颗归位：与列表行、选择器同一套排法）
                         hint(
-                            I18n.get(Strings.TOAST_KEY_DELETED, "已删除 %s"),
+                            I18n.get(Strings.TOAST_KEY_DELETED),
                             slot = HINT_SLOT_BINDING,
                             chips = listOf(selected.label),
                         )
@@ -507,7 +507,7 @@ private fun SettingsPage.confirmRenameKey(
     // 只在完全成功时报（见下一条同一笔账）
     if (write(now.withKeyName(selected.id, name), "custom_key_rename=${selected.id}") != CommandsSave.Ok) return
     hint(
-        I18n.get(Strings.TOAST_KEY_RENAMED, "已重命名为 %s"),
+        I18n.get(Strings.TOAST_KEY_RENAMED),
         slot = HINT_SLOT_BINDING,
         chips = listOf(name),
     )

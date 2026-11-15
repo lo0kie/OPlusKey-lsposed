@@ -117,7 +117,7 @@ private fun SettingsPage.CommandDetailBody(cmd: Command) {
         //  （执行侧一律提权，见 `CustomCommandRunner` 的 `execShell` 第二参）。
         if (cmd.kind == CommandKind.SINGLE && cmd.root) {
             Text(
-                text = I18n.get(Strings.COMMAND_ROOT_TITLE, "以 root 执行"),
+                text = I18n.get(Strings.COMMAND_ROOT_TITLE),
                 style = COUITheme.textStyles.body2,
                 color = COUITheme.colorScheme.onSurfaceVariantSummary,
             )

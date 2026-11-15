@@ -90,7 +90,7 @@ internal fun SettingsPage.LinkStatusCard() {
         when {
             broken != null -> I18n.format(Strings.LINK_CHECK_BROKEN_FORMAT, broken.name)
             offNote != null -> offNote.detail
-            else -> I18n.get(Strings.LINK_CHECK_ALL_NORMAL, "全部正常")
+            else -> I18n.get(Strings.LINK_CHECK_ALL_NORMAL)
         }
     CardList(
         rows =
@@ -117,7 +117,7 @@ internal fun SettingsPage.LinkStatusCard() {
                 add(
                     statusRow(
                         icon = if (overallOk) PageIcons.LinkOk else PageIcons.LinkBroken,
-                        title = I18n.get(Strings.LINK_CHECK_OVERALL_STATUS, "整体状态"),
+                        title = I18n.get(Strings.LINK_CHECK_OVERALL_STATUS),
                         ok = overallOk,
                         detail = detail,
                     ),
@@ -151,15 +151,15 @@ private fun localDeviceTitle(): String = DeviceSupport.adaptedNameOf(deviceModel
 private fun adaptVerdict(support: DeviceSupport.Support): String =
     when (support) {
         DeviceSupport.Support.ADAPTED -> {
-            I18n.get(Strings.ADAPTATION_ADAPTED, "已适配")
+            I18n.get(Strings.ADAPTATION_ADAPTED)
         }
 
         DeviceSupport.Support.PENDING -> {
-            I18n.get(Strings.ADAPTATION_PENDING, "此版本未实测，可自行尝试")
+            I18n.get(Strings.ADAPTATION_PENDING)
         }
 
         DeviceSupport.Support.UNSUPPORTED -> {
-            I18n.get(Strings.ADAPTATION_UNSUPPORTED, "此型号未实测，可自行尝试")
+            I18n.get(Strings.ADAPTATION_UNSUPPORTED)
         }
     }
 
@@ -227,14 +227,14 @@ internal fun SettingsPage.ConfigCard(
                 //  **这一位还没有读取方**（先把配置键跑通）：拨完只有回执，按键页暂时不变。
                 //  与「外观」那几行同一类（页面怎么画），所以不吃总闸。
                 CardRow.Switch(
-                    title = I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_TITLE, "显示更详细的按键设置"),
+                    title = I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_TITLE),
                     icon = PageIcons.DetailedKeySettings,
                     checked = configState.config.value.global.detailedKeySettings,
                     onCheckedChange = { setDetailedKeySettings(it) },
                 ),
                 // 「语言」：点开的是一层菜单，行尾给选择器字形（不是右箭头）
                 CardRow.Item(
-                    title = I18n.get(Strings.MORE_LANGUAGE, "语言"),
+                    title = I18n.get(Strings.MORE_LANGUAGE),
                     summary = languageLabel(currentLang),
                     icon = PageIcons.Language,
                     trailing = { RowEndIcon(PageIcons.Selector) },
@@ -244,7 +244,7 @@ internal fun SettingsPage.ConfigCard(
                     },
                 ),
                 CardRow.Item(
-                    title = I18n.get(Strings.PROFILE_SWITCH_TITLE, "切换配置"),
+                    title = I18n.get(Strings.PROFILE_SWITCH_TITLE),
                     // 副标题写**当前配置**的名字 —— 与「语言」那一行写当前语言同一档
                     summary = currentDisplay ?: currentProfileName(),
                     icon = PageIcons.Profiles,
@@ -256,7 +256,7 @@ internal fun SettingsPage.ConfigCard(
                     },
                 ),
                 CardRow.Item(
-                    title = I18n.get(Strings.MORE_EXPORT_CONFIG, "导出配置"),
+                    title = I18n.get(Strings.MORE_EXPORT_CONFIG),
                     icon = PageIcons.ConfigExport,
                     // 行尾选择器：点开的是一层「导出哪份」的菜单
                     trailing = { RowEndIcon(PageIcons.Selector) },
@@ -267,7 +267,7 @@ internal fun SettingsPage.ConfigCard(
                     },
                 ),
                 CardRow.Item(
-                    title = I18n.get(Strings.MORE_IMPORT_CONFIG, "导入配置"),
+                    title = I18n.get(Strings.MORE_IMPORT_CONFIG),
                     icon = PageIcons.ConfigImport,
                     arrow = true,
                     onClick = {
@@ -287,8 +287,8 @@ internal fun SettingsPage.ConfigCard(
 internal fun SettingsPage.currentProfileName(): String {
     val current = configState.config.value
     return when {
-        current.isDefaultProfile -> I18n.get(Strings.PROFILE_DEFAULT, "默认配置")
-        current.profileName.isBlank() -> I18n.get(Strings.PROFILE_UNNAMED, "未命名")
+        current.isDefaultProfile -> I18n.get(Strings.PROFILE_DEFAULT)
+        current.profileName.isBlank() -> I18n.get(Strings.PROFILE_UNNAMED)
         else -> current.profileName
     }
 }
@@ -318,7 +318,7 @@ internal fun SettingsPage.AppearanceCard(
             listOf(
                 // 第 1 行：主题
                 CardRow.Item(
-                    title = I18n.get(Strings.MORE_THEME, "主题"),
+                    title = I18n.get(Strings.MORE_THEME),
                     summary = themeLabel(currentTheme),
                     icon = PageIcons.Theme,
                     trailing = { RowEndIcon(PageIcons.Selector) },
@@ -332,7 +332,7 @@ internal fun SettingsPage.AppearanceCard(
                 //  行首直接摆**当前那一套的色块**（与菜单里那五行同一颗字形、同一个种子色）：
                 //  这一行回答的就是「现在是什么色」，画一颗调色板图标等于把答案藏起来。
                 CardRow.Item(
-                    title = I18n.get(Strings.MORE_PALETTE, "强调色"),
+                    title = I18n.get(Strings.MORE_PALETTE),
                     summary = paletteLabel(currentPalette),
                     //  色块按主题选：Monet 那档是四格色阶，其余档是**一个整块**（见 `accentSwatch`）
                     icon = PageIcons.accentSwatch(currentTheme),
@@ -347,14 +347,14 @@ internal fun SettingsPage.AppearanceCard(
                 //  （关掉再打开才换一批，见 `setRandomIconTint`）。颜色本身是手挑的色相，
                 //  不是随机 RGB（见 `IconTint`）。
                 CardRow.Switch(
-                    title = I18n.get(Strings.MORE_RANDOM_ICON_TINT, "随机图标配色"),
+                    title = I18n.get(Strings.MORE_RANDOM_ICON_TINT),
                     icon = PageIcons.RandomIconTint,
                     checked = configState.config.value.global.iconTintSeed != 0,
                     onCheckedChange = { setRandomIconTint(it) },
                 ),
                 // 第 4 行：跟随系统显示大小 —— 关掉后模块页面按出厂标准大小渲染（见 GlobalConfig）
                 CardRow.Switch(
-                    title = I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE, "跟随系统显示大小"),
+                    title = I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE),
                     icon = PageIcons.TextSize,
                     checked = configState.config.value.global.followDisplaySize,
                     onCheckedChange = {
@@ -373,7 +373,7 @@ internal fun SettingsPage.AppearanceCard(
                 //  与上面那几行「页面长什么样、多大」同一类。
                 //  与这一页其它几行一样**不吃总闸**：主开关关着时页面照样能点，照样该有手感。
                 CardRow.Switch(
-                    title = I18n.get(Strings.MORE_UI_VIBRATE_TITLE, "界面振动反馈"),
+                    title = I18n.get(Strings.MORE_UI_VIBRATE_TITLE),
                     icon = PageIcons.Vibrate,
                     checked = configState.config.value.global.uiVibrate,
                     onCheckedChange = { setUiVibrate(it) },
@@ -382,7 +382,7 @@ internal fun SettingsPage.AppearanceCard(
                 //  与上面几行同一类（页面自己的手感），同样不吃总闸；拨完立刻重挂返回回调
                 //  （见 `setPredictiveBack`），不需要退出重进。
                 CardRow.Switch(
-                    title = I18n.get(Strings.MORE_PREDICTIVE_BACK_TITLE, "使用预测性返回手势"),
+                    title = I18n.get(Strings.MORE_PREDICTIVE_BACK_TITLE),
                     icon = PageIcons.PredictiveBack,
                     checked = configState.config.value.global.predictiveBack,
                     onCheckedChange = { setPredictiveBack(it) },
@@ -398,7 +398,7 @@ private fun SettingsPage.PageScaleRow(position: CardListPosition) {
         position = position,
         spec =
             SliderSpec(
-                title = I18n.get(Strings.MORE_PAGE_SCALE, "页面缩放"),
+                title = I18n.get(Strings.MORE_PAGE_SCALE),
                 icon = PageIcons.ZoomIn,
                 min = GlobalConfig.PAGE_SCALE_MIN,
                 max = GlobalConfig.PAGE_SCALE_MAX,
@@ -424,7 +424,7 @@ internal fun SettingsPage.setTheme(code: String) {
     if (cfg.global.theme == code) return
     writeAndNotice(cfg.copy(global = cfg.global.copy(theme = code)), "theme=$code") {
         switchToNotice(
-            I18n.get(Strings.MORE_THEME, "主题"),
+            I18n.get(Strings.MORE_THEME),
             themeLabel(AppTheme.ofCode(code)),
         )
     }
@@ -436,7 +436,7 @@ internal fun SettingsPage.setPalette(id: String) {
     if (cfg.global.palette == id) return
     writeAndNotice(cfg.copy(global = cfg.global.copy(palette = id)), "palette=$id") {
         switchToNotice(
-            I18n.get(Strings.MORE_PALETTE, "强调色"),
+            I18n.get(Strings.MORE_PALETTE),
             paletteLabel(PagePalette.ofId(id)),
         )
     }

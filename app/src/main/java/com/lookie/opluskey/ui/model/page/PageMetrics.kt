@@ -115,6 +115,29 @@ internal val SLIDER_TRACK_HEIGHT = 18.dp
 internal val SLIDER_TOP_TUCK = 2.dp
 
 /**
+ * 库在 `BasicComponent` 的 `bottomAction` 之前固定摆的那截间隔（`Component.kt` 的 `Spacer(8.dp)`）。
+ *
+ *  没有参数可调：[SLIDER_TOP_TUCK] 从它里面吃掉 2dp，[SLIDER_ICON_SINK] 按它折半。
+ */
+private val SLIDER_BOTTOM_ACTION_GAP = 8.dp
+
+/**
+ * 滑杆行首图标往下坐的距离 —— 把底下那根滑杆也算进行高。
+ *
+ *  库摆行首图标的那层 `Layout` 只量「起始 / 中间 / 行尾」三格，`bottomAction` 在它**外面**
+ *  （见 `Component.kt`）：图标按 `(rowHeight - startHeight) / 2` 居中于标题与摘要那一块，
+ *  而滑杆在下面。于是文本块越矮，图标看着越偏上。
+ *
+ *  这一档把它往下推半个「文本块以下」的高度：库的 8dp 间隔 + 轨道报给父级的高度
+ *  （[SLIDER_TRACK_HEIGHT] 减掉上收的 [SLIDER_TOP_TUCK]）= 8 + 16，一半即 12dp。
+ *  与有没有摘要无关 —— 折半的那个量里不含文本高度，所以图标中心始终落在整行内容的中心。
+ *
+ *  只挪**摆放**（`Modifier.offset`）、不改量出来的尺寸：换成 `padding` 的话节点会变高，
+ *  父级按新高度重新居中，实际只挪到一半。
+ */
+internal val SLIDER_ICON_SINK = (SLIDER_BOTTOM_ACTION_GAP + SLIDER_TRACK_HEIGHT - SLIDER_TOP_TUCK) / 2
+
+/**
  * 轨道两端各要往外补的距离 —— 让**可见轨道**的两端落在标题 / 摘要的左右边界上。
  *
  *  库画水平轨道时两端各让出 `height × 0.7`（私有的 `TrackCapInsetRatio` = 放大倍数 1.4 / 2），

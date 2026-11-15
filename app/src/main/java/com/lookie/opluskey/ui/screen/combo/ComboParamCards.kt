@@ -117,17 +117,11 @@ internal fun SettingsPage.WaitComboCard(source: ComboParamSource) {
         rows =
             listOf(
                 CardRow.Switch(
-                    title = I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"),
+                    title = I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE),
                     summaryOn =
-                        I18n.get(
-                            Strings.COMBO_FIXED_WINDOW_START_DESC_ON,
-                            "首个成员按下即开始计时，整串共用一个窗口",
-                        ),
+                        I18n.get(Strings.COMBO_FIXED_WINDOW_START_DESC_ON),
                     summaryOff =
-                        I18n.get(
-                            Strings.COMBO_FIXED_WINDOW_START_DESC_OFF,
-                            "每次按下成员都重新计时（相邻两颗各一个窗口）",
-                        ),
+                        I18n.get(Strings.COMBO_FIXED_WINDOW_START_DESC_OFF),
                     //  与单击设置那张卡的「固定窗口起点」同一颗 `window`：两处管的是同一件事
                     icon = PageIcons.CollectWindow,
                     checked = source.waitFixedWindowStart,
@@ -140,19 +134,9 @@ internal fun SettingsPage.WaitComboCard(source: ComboParamSource) {
                         position = position,
                         spec =
                             SliderSpec(
-                                title = I18n.get(Strings.COMBO_WINDOW_TITLE, "等待窗口"),
-                                summary =
-                                    if (wholeString) {
-                                        I18n.get(
-                                            Strings.COMBO_WINDOW_DESC_FIXED,
-                                            "从首个成员按下起，整串要在这个窗口内落完",
-                                        )
-                                    } else {
-                                        I18n.get(
-                                            Strings.COMBO_WINDOW_DESC,
-                                            "相邻两颗之间最多隔这么久",
-                                        )
-                                    },
+                                title = I18n.get(Strings.COMBO_WINDOW_TITLE),
+                                //  **不画副标题**：这一格管「整串」还是「相邻两颗」由上面那颗开关说清，
+                                //  这一根只回答「等多久」
                                 //  「等一段时间再继续」那一颗钟 + 暂停（与「命令间隔时长」的播放记号分开）
                                 icon = PageIcons.ComboWait,
                                 min = GlobalConfig.COMBO_WINDOW_MIN_MS,
@@ -211,17 +195,11 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                     //  与「等待组合」那张卡**同名、同文案，但是另一颗开关、另一个变量**
                     //  （`Config.comboHoldFixedWindowStartFor`）：一种按法改成整串共用一个，
                     //  另一种不该跟着变，所以两颗各存各的
-                    title = I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"),
+                    title = I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE),
                     summaryOn =
-                        I18n.get(
-                            Strings.COMBO_FIXED_WINDOW_START_DESC_ON,
-                            "首个成员按下即开始计时，整串共用一个窗口",
-                        ),
+                        I18n.get(Strings.COMBO_FIXED_WINDOW_START_DESC_ON),
                     summaryOff =
-                        I18n.get(
-                            Strings.COMBO_FIXED_WINDOW_START_DESC_OFF,
-                            "每次按下成员都重新计时（相邻两颗各一个窗口）",
-                        ),
+                        I18n.get(Strings.COMBO_FIXED_WINDOW_START_DESC_OFF),
                     icon = PageIcons.CollectWindow,
                     checked = source.holdFixedWindowStart,
                     enabled = source.enabled,
@@ -233,19 +211,9 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                         position = position,
                         spec =
                             SliderSpec(
-                                title = I18n.get(Strings.COMBO_FIXED_WINDOW_TITLE, "等待窗口"),
-                                summary =
-                                    if (wholeString) {
-                                        I18n.get(
-                                            Strings.COMBO_FIXED_WINDOW_DESC,
-                                            "从首个成员按下起，后续成员要在这个窗口内落完",
-                                        )
-                                    } else {
-                                        I18n.get(
-                                            Strings.COMBO_FIXED_WINDOW_DESC_OFF,
-                                            "后续成员要接连落下，彼此相差不超过这个窗口",
-                                        )
-                                    },
+                                title = I18n.get(Strings.COMBO_FIXED_WINDOW_TITLE),
+                                //  **不画副标题**：与「等待组合」那一根同一套 —— 这一格管「整串」还是
+                                //  「每颗各自等」由上面那颗开关说清
                                 icon = PageIcons.ComboWait,
                                 min = GlobalConfig.COMBO_WINDOW_MIN_MS,
                                 max = GlobalConfig.COMBO_WINDOW_MAX_MS,
@@ -269,12 +237,9 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                         position = position,
                         spec =
                             SliderSpec(
-                                title = I18n.get(Strings.COMBO_HOLD_MIN_TITLE, "首键按住时长"),
+                                title = I18n.get(Strings.COMBO_HOLD_MIN_TITLE),
                                 summary =
-                                    I18n.get(
-                                        Strings.COMBO_HOLD_MIN_DESC,
-                                        "先按住的那颗按满这么久、还没抬手，再按另一颗才算组合",
-                                    ),
+                                    I18n.get(Strings.COMBO_HOLD_MIN_DESC),
                                 //  「撑满就定格」那只钟（`clock-stop`，与「长按延迟」那颗闪电分开）
                                 icon = PageIcons.ComboHold,
                                 min = GlobalConfig.COMBO_HOLD_MIN_MIN_MS,
@@ -291,17 +256,11 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                     )
                 },
                 CardRow.Switch(
-                    title = I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE, "系统场景在首键按下时固定"),
+                    title = I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE),
                     summaryOn =
-                        I18n.get(
-                            Strings.COMBO_SCENE_ON_STARTER_DESC_ON,
-                            "首键按下那一刻就定下用哪块场景，按住期间换应用不改变动作",
-                        ),
+                        I18n.get(Strings.COMBO_SCENE_ON_STARTER_DESC_ON),
                     summaryOff =
-                        I18n.get(
-                            Strings.COMBO_SCENE_ON_STARTER_DESC_OFF,
-                            "组合凑成那一刻再取场景",
-                        ),
+                        I18n.get(Strings.COMBO_SCENE_ON_STARTER_DESC_OFF),
                     icon = PageIcons.ScenePin,
                     checked = source.sceneOnStarter,
                     enabled = source.enabled,
@@ -309,17 +268,11 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                     onCheckedChange = source.onSceneOnStarter,
                 ),
                 CardRow.Switch(
-                    title = I18n.get(Strings.COMBO_STARTER_KEEP_LONG_TITLE, "首键松手后仍执行长按"),
+                    title = I18n.get(Strings.COMBO_STARTER_KEEP_LONG_TITLE),
                     summaryOn =
-                        I18n.get(
-                            Strings.COMBO_STARTER_KEEP_LONG_DESC_ON,
-                            "组合动作执行后，首键松手时再执行它自己的长按动作",
-                        ),
+                        I18n.get(Strings.COMBO_STARTER_KEEP_LONG_DESC_ON),
                     summaryOff =
-                        I18n.get(
-                            Strings.COMBO_STARTER_KEEP_LONG_DESC_OFF,
-                            "组合触发后，首键自己的长按被丢弃（一次按压只执行一个动作）",
-                        ),
+                        I18n.get(Strings.COMBO_STARTER_KEEP_LONG_DESC_OFF),
                     icon = PageIcons.ComboKeepLong,
                     checked = source.starterKeepLong,
                     enabled = source.enabled,
@@ -434,7 +387,7 @@ private fun SettingsPage.setOwnSceneOnStarter(
         }
     if (ok) {
         hint(
-            switchNotice(I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE, "系统场景在首键按下时固定"), on),
+            switchNotice(I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE), on),
             slot = HINT_SLOT_COMBO,
         )
     }
@@ -451,7 +404,7 @@ private fun SettingsPage.setOwnStarterKeepLong(
         }
     if (ok) {
         hint(
-            switchNotice(I18n.get(Strings.COMBO_STARTER_KEEP_LONG_TITLE, "首键松手后仍执行长按"), on),
+            switchNotice(I18n.get(Strings.COMBO_STARTER_KEEP_LONG_TITLE), on),
             slot = HINT_SLOT_COMBO,
         )
     }
@@ -473,7 +426,7 @@ private fun SettingsPage.setOwnFixedWindowStart(
         }
     if (ok) {
         hint(
-            switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"), on),
+            switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE), on),
             slot = HINT_SLOT_COMBO,
         )
     }
@@ -495,7 +448,7 @@ private fun SettingsPage.setOwnHoldFixedWindowStart(
         }
     if (ok) {
         hint(
-            switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"), on),
+            switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE), on),
             slot = HINT_SLOT_COMBO,
         )
     }

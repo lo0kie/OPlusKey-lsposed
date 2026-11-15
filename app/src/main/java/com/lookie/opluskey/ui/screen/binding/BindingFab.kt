@@ -30,7 +30,7 @@ internal fun BoxScope.BindingFab(
         PageFabButton(onClick = onClick) {
             PageFabIcon(
                 PageIcons.CommandAdd,
-                contentDescription = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"),
+                contentDescription = I18n.get(Strings.COMMAND_SAVED_COMMANDS),
             )
         }
     }
@@ -56,7 +56,7 @@ internal fun BoxScope.BoundConfirmFab(
         PageFabButton(onClick = onClick) {
             PageFabIcon(
                 PageIcons.Confirm,
-                contentDescription = I18n.get(Strings.COMMON_CONFIRM, "确定"),
+                contentDescription = I18n.get(Strings.COMMON_CONFIRM),
             )
         }
     }

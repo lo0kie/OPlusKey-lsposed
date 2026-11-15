@@ -68,7 +68,7 @@ internal fun SettingsPage.switchToProfile(item: ConfigProfiles.Item) {
     val next =
         ConfigProfiles.switchTo(item.slot)
             ?: run {
-                hint(I18n.get(Strings.PROFILE_SWITCH_FAILED, "切换失败：这一份读不出来"))
+                hint(I18n.get(Strings.PROFILE_SWITCH_FAILED))
                 return
             }
     //  落盘那一步失败时 `write` 已经说过一句（「保存失败」/「只读态」），这里不再盖掉它。
@@ -101,9 +101,9 @@ internal fun SettingsPage.createProfile(name: String) {
                 //  三种拒绝理由分开报：满了 / 重名 / 真失败 —— 报错要能指导下一步动作
                 val reason =
                     when {
-                        ConfigProfiles.isFull() -> I18n.get(Strings.PROFILE_FULL, "最多三份配置")
-                        ConfigProfiles.nameTaken(name) -> I18n.get(Strings.PROFILE_NAME_TAKEN, "这个名字已经有了")
-                        else -> I18n.get(Strings.PROFILE_NEW_FAILED, "新建失败")
+                        ConfigProfiles.isFull() -> I18n.get(Strings.PROFILE_FULL)
+                        ConfigProfiles.nameTaken(name) -> I18n.get(Strings.PROFILE_NAME_TAKEN)
+                        else -> I18n.get(Strings.PROFILE_NEW_FAILED)
                     }
                 hint(reason)
                 return
@@ -135,7 +135,7 @@ internal fun SettingsPage.renameProfile(name: String) {
             ?: run {
                 //  两种拒绝：默认配置（`renamed` 已记日志）与**重名**
                 if (ConfigProfiles.nameTaken(name, excludeId = current.profileId.ifBlank { null })) {
-                    hint(I18n.get(Strings.PROFILE_NAME_TAKEN, "这个名字已经有了"))
+                    hint(I18n.get(Strings.PROFILE_NAME_TAKEN))
                 }
                 return
             }
@@ -155,10 +155,10 @@ internal fun SettingsPage.renameProfile(name: String) {
 internal fun SettingsPage.deleteBrokenProfile(item: ConfigProfiles.Item) {
     if (!item.broken) return
     if (!ConfigProfiles.delete(item.slot)) {
-        hint(I18n.get(Strings.PROFILE_DELETE_FAILED, "删除失败"))
+        hint(I18n.get(Strings.PROFILE_DELETE_FAILED))
         return
     }
-    hint(I18n.get(Strings.PROFILE_DELETED, "已删除"))
+    hint(I18n.get(Strings.PROFILE_DELETED))
 }
 
 /**
@@ -189,7 +189,7 @@ internal fun SettingsPage.deleteCurrentProfile() {
     val fallback = others.firstOrNull { it.isDefault } ?: others.firstOrNull()
     if (fallback == null) {
         XLog.w("配置删除：没有可以退回去的配置（只剩当前这一份带名字的），不动")
-        hint(I18n.get(Strings.PROFILE_DELETE_FAILED, "删除失败"))
+        hint(I18n.get(Strings.PROFILE_DELETE_FAILED))
         return
     }
     //  **切换之前先记下被删那份的名字**：`switchTo` 一落盘，`currentProfileName()` 读到的
@@ -198,7 +198,7 @@ internal fun SettingsPage.deleteCurrentProfile() {
     val next =
         ConfigProfiles.switchTo(fallback.slot)
             ?: run {
-                hint(I18n.get(Strings.PROFILE_SWITCH_FAILED, "切换失败：这一份读不出来"))
+                hint(I18n.get(Strings.PROFILE_SWITCH_FAILED))
                 return
             }
     val switched = applySwitchedConfig(next, "删除当前配置 → 先切到 ${fallback.displayName}")
@@ -208,7 +208,7 @@ internal fun SettingsPage.deleteCurrentProfile() {
     //  切换本身没成时 `write` 已经说过一句（保存失败 / 只读态），这里不再盖掉它；
     //  广播没通知到注入侧时那条提示也占着底部那一行，同样不补「已删除」。
     if (switched != CommandsSave.Failed && !deleted) {
-        hint(I18n.get(Strings.PROFILE_DELETE_FAILED, "删除失败"))
+        hint(I18n.get(Strings.PROFILE_DELETE_FAILED))
     } else if (deleted && switched == CommandsSave.Ok) {
         //  名字可能空着（名字被抹过的那一份）—— 走同一个取名口径，别留一对空书名号
         hint(I18n.format(Strings.PROFILE_DELETED_SWITCHED, deletedName, fallback.displayName))
@@ -225,7 +225,7 @@ internal fun SettingsPage.deleteCurrentProfile() {
 internal fun SettingsPage.ProfileDeleteConfirmDialog(ui: AboutUiState) {
     ConfirmDialog(
         show = ui.showDeleteConfirm,
-        title = I18n.get(Strings.DIALOG_DELETE_PROFILE_TITLE, "删除配置"),
+        title = I18n.get(Strings.DIALOG_DELETE_PROFILE_TITLE),
         summary =
             I18n.format(
                 Strings.DIALOG_DELETE_PROFILE_MESSAGE,
@@ -234,7 +234,7 @@ internal fun SettingsPage.ProfileDeleteConfirmDialog(ui: AboutUiState) {
                 //  按身份取名（默认 / 未命名 / 真名），不按「名字空不空」判 —— 见 `currentProfileName`
                 escapeEmphasis(currentProfileName()),
             ),
-        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        action = I18n.get(Strings.COMMON_DELETE),
         onDismiss = { ui.showDeleteConfirm = false },
         onConfirm = {
             ui.showDeleteConfirm = false
@@ -259,7 +259,7 @@ internal fun SettingsPage.ProfileResetConfirmDialog() {
     val scope = rememberCoroutineScope()
     ConfirmDialog(
         show = overlays.confirmReset,
-        title = I18n.get(Strings.DIALOG_CLEAR_CONFIG_TITLE, "重置配置"),
+        title = I18n.get(Strings.DIALOG_CLEAR_CONFIG_TITLE),
         summary =
             I18n.format(
                 Strings.DIALOG_CLEAR_CONFIG_MESSAGE,
@@ -267,7 +267,7 @@ internal fun SettingsPage.ProfileResetConfirmDialog() {
                 //  按身份取名（默认 / 未命名 / 真名），不按「名字空不空」判 —— 见 `currentProfileName`
                 escapeEmphasis(currentProfileName()),
             ),
-        action = I18n.get(Strings.DIALOG_CLEAR_CONFIG_CONFIRM, "重置"),
+        action = I18n.get(Strings.DIALOG_CLEAR_CONFIG_CONFIRM),
         onDismiss = { overlays.confirmReset = false },
         onConfirm = {
             overlays.confirmReset = false
@@ -285,9 +285,9 @@ internal fun SettingsPage.ProfileBrokenDeleteDialog(ui: AboutUiState) {
     val item = ui.brokenToDelete
     ConfirmDialog(
         show = item != null,
-        title = I18n.get(Strings.DIALOG_DELETE_PROFILE_TITLE, "删除配置"),
-        summary = I18n.get(Strings.PROFILE_BROKEN_DELETE, "这一份无法读取，删除后才能新增"),
-        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        title = I18n.get(Strings.DIALOG_DELETE_PROFILE_TITLE),
+        summary = I18n.get(Strings.PROFILE_BROKEN_DELETE),
+        action = I18n.get(Strings.COMMON_DELETE),
         onDismiss = { ui.brokenToDelete = null },
         onConfirm = {
             ui.brokenToDelete = null
@@ -311,10 +311,10 @@ internal fun SettingsPage.ProfileNamingDialog(ui: AboutUiState) {
         show = naming != null,
         title =
             when (naming?.kind) {
-                ProfileNaming.Kind.NEW -> I18n.get(Strings.PROFILE_NEW, "新建配置")
-                else -> I18n.get(Strings.PROFILE_RENAME, "重命名")
+                ProfileNaming.Kind.NEW -> I18n.get(Strings.PROFILE_NEW)
+                else -> I18n.get(Strings.PROFILE_RENAME)
             },
-        label = I18n.get(Strings.PROFILE_NAME, "配置名称"),
+        label = I18n.get(Strings.PROFILE_NAME),
         //  行首取**配置那一块**的图标（与「更多选项」里那一行同一个记号）：
         //  改名 / 新建都是这一块的事，不用一颗「名字」的标签替它说话
         icon = PageIcons.Profiles,

@@ -73,7 +73,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
 
         // 「按键操作」那一节 —— 组合按键与「添加按键」两行（用户口径：与清单分开一张卡）。
         //  这两行不是清单里的东西，是**对这颗键 / 这组键做的事**。
-        SectionTitle(I18n.get(Strings.HOME_KEY_OPS_SECTION, "按键操作"))
+        SectionTitle(I18n.get(Strings.HOME_KEY_OPS_SECTION))
         HomeKeyOpsCard(pageEnabled)
 
         // 「按键行为」那一整块搬进了「公共设置」页（入口在上一张「按键操作」卡的第二行）——
@@ -81,7 +81,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
 
         // 版本 / 仓库地址那两行搬去**独立的「更多选项」页**（`AboutScreen`，从顶栏 ⋮ 菜单进）——
         //  它们是「想知道时才看一眼」的信息，摆在首页会把常用的那几张卡挤下去。
-        SectionTitle(I18n.get(Strings.HOME_OTHER_SECTION, "其他"))
+        SectionTitle(I18n.get(Strings.HOME_OTHER_SECTION))
         HomeOtherCard(pageEnabled, ui)
 
         //  下面两个是**浮层宿主**（本身不占布局）：摆在块容器外面，

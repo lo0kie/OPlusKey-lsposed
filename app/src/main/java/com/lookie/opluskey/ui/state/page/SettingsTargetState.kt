@@ -60,7 +60,7 @@ internal sealed interface SettingsTarget {
                 null
             } else {
                 HintText(
-                    I18n.get(Strings.KEY_DISABLED_ITEM, "%s 已停用，可在菜单里启用"),
+                    I18n.get(Strings.KEY_DISABLED_ITEM),
                     listOf(keyName(id)),
                 )
             }
@@ -83,7 +83,7 @@ internal sealed interface SettingsTarget {
             //  用用户认得出的名字（`侧键 × 音量 +`），不是 `cmb1` 那种内部 id ——
             //  组合多颗时压成一串，提示条里念得出来就够（它不按颗分开排）。
             val names = comboKeyNames(config, combo).joinToString(COMBO_PAIR_SEPARATOR)
-            return HintText(I18n.get(Strings.COMBO_DISABLED_ITEM, "%s 已停用，可在菜单里启用它").format(names))
+            return HintText(I18n.get(Strings.COMBO_DISABLED_ITEM).format(names))
         }
     }
 }

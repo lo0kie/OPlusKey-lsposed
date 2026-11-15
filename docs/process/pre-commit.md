@@ -37,7 +37,24 @@
   「还在用」。`tools/find_shadowed_imports.py` 只把「import 短名与文件内声明同名」的文件列出来
   （十来行，人工扫一眼即可）；它**不做判定**，因为文本层分不清 `Modifier.padding()`（扩展调用，import
   有用）与 `cfg.key()`（成员调用，import 无用）。
+- **兜底文案不再写在调用点**：`I18n.get(key)` 的第二个参数默认就是 key 本身，而 `Strings` 常量与
+  两份字典的键集合由 `tools/check-i18n-keys.py` 逐键对齐（`verify-apk.py` 还核一遍占位符）——
+  发布包里不可能缺键。所以调用点只写 `I18n.get(Strings.X)`，**字典是唯一文本来源**；
+  第二参只留给**动态键**（`I18n.get(it.summaryKey, it.summaryFallback)` 那种，键在枚举 / 配置里，
+  编译器看不见它有没有进字典）。
+  存量那 867 处兜底已经全删，`tools/check-i18n-fallbacks.py` 随之撤掉（它存在的唯一理由是维护
+  那份重复文本）；改一句文案现在只改字典。
 - 「注入侧不得引用界面层依赖」的复核命令见 `../architecture/structure.md` §六。
+
+## 静态表（`Strings.kt` / `CommonCommandsTable.kt`）
+
+- 这两份是**生成物**：源分别是 `app/src/main/assets/locales/zh-CN.json`（键集合）与
+  `core/tables/common-commands.json`（「常用命令」那张表）。改文案 / 加命令改**源**，
+  再跑 `python3 tools/gen-static-tables.py`；手改生成物会被下一次生成覆盖。
+- **只有注释能手工补**：生成器按「上一条常量之后、这一条之前」整段搬运，给某条常量补一句说明是安全的；
+  改名字 / 改取值 / 调顺序都会被覆盖。
+- CI 有一道「静态表与生成物一致」—— 重跑一遍生成器再看 `git diff`（与「校验依赖锁定」同形）。
+  过期**不会**编译失败：表现只是某句文案退回键名、或少一条常用命令，所以这道闸不能靠人记得跑。
 
 ## 依赖锁定（`app/gradle.lockfile` + `core/gradle.lockfile`）
 

@@ -48,7 +48,7 @@ private fun scenarioNotice(rules: List<SceneRule>): String? {
 internal fun scenarioMenuSummary(rules: List<SceneRule>): String {
     val count = rules.count { it.enabled }
     return if (count == 0) {
-        I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE_MENU, "没有添加系统场景")
+        I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE_MENU)
     } else {
         I18n.format(Strings.COMMAND_BRANCH_SCENARIO_COUNT_MENU, count)
     }

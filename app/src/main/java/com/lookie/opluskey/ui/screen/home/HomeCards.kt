@@ -49,7 +49,7 @@ internal fun SettingsPage.HomeOtherCard(
                 //  与进去之后看到的标题是同一句话）。
                 //  这一行会写配置（存命令），所以吃整页总闸。
                 CardRow.Item(
-                    title = I18n.get(Strings.ACTION_CUSTOM_COMMAND, "自定义命令"),
+                    title = I18n.get(Strings.ACTION_CUSTOM_COMMAND),
                     icon = PageIcons.CommandCode,
                     enabled = pageEnabled,
                     arrow = true,
@@ -62,8 +62,8 @@ internal fun SettingsPage.HomeOtherCard(
                 //  **入口临时收起来**（[ActionCatalog.SHOW_VARIABLES]，用户口径「UI 入口先藏、功能不动」）：
                 //  走行的 `visible`，连它下面那条细线一起藏，不留孤零零一条线。
                 CardRow.Item(
-                    title = I18n.get(Strings.TOOL_VARIABLES, "自定义变量"),
-                    summary = I18n.get(Strings.HOME_VARIABLES_DESC, "命令里能读、也能改的值"),
+                    title = I18n.get(Strings.TOOL_VARIABLES),
+                    summary = I18n.get(Strings.HOME_VARIABLES_DESC),
                     icon = TablerIcons.Outline.Variable,
                     enabled = pageEnabled,
                     arrow = true,
@@ -72,9 +72,9 @@ internal fun SettingsPage.HomeOtherCard(
                     onClick = { openVariablesForManage() },
                 ),
                 CardRow.Item(
-                    title = I18n.get(Strings.MORE_OPTIONS_TITLE, "更多选项"),
+                    title = I18n.get(Strings.MORE_OPTIONS_TITLE),
                     // 副标题只报这一页有什么，不交代机制（「一起改短」）
-                    summary = I18n.get(Strings.HOME_MORE_OPTIONS_SUMMARY, "运行状态与配置备份"),
+                    summary = I18n.get(Strings.HOME_MORE_OPTIONS_SUMMARY),
                     icon = PageIcons.MoreOptions,
                     //  行尾**不挂红点**：有新版这件事由首页顶上那块「模块状态」说（见 `HomeActivationCard`），
                     //  同一条信息在一页里出现两处，读起来像两件事
@@ -87,8 +87,8 @@ internal fun SettingsPage.HomeOtherCard(
                 //  与「更多选项」并排在这一张卡里 —— 两行都是「偶尔才点一次」的去处。
                 //  行尾给选择器字形（读作「点了要选点什么」），不是进下一页的箭头，与「语言」那一行同一套。
                 CardRow.Item(
-                    title = I18n.get(Strings.HOME_DONATE, "捐赠打赏"),
-                    summary = I18n.get(Strings.HOME_DONATE_SUMMARY, "您的慷慨将帮助此项目持续发展"),
+                    title = I18n.get(Strings.HOME_DONATE),
+                    summary = I18n.get(Strings.HOME_DONATE_SUMMARY),
                     icon = PageIcons.Donate,
                     // 菜单的落点由这一行记下的触点给（`MenuPopup` 的 `preciseClick`）。
                     //  少了它，锚点永远是空的 ⇒ 菜单退回库的默认位置，读起来就是「没有跟随手指」。

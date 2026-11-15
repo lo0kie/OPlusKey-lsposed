@@ -62,7 +62,7 @@ internal fun holdSentenceTemplate(
 ): String {
     val slots = List(followers.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $separator ")
     return I18n
-        .get(Strings.COMBO_MODE_HOLD, "按住 %1\$s 后再按 %2\$s")
+        .get(Strings.COMBO_MODE_HOLD)
         .replace("%1\$s", CHIP_SLOT)
         .replace("%2\$s", slots)
 }
@@ -76,7 +76,7 @@ internal fun holdSentenceTemplate(
  */
 internal fun waitSentenceTemplate(count: Int): String {
     val slots = List(count.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $COMBO_PAIR_SEPARATOR ")
-    return I18n.get(Strings.COMBO_MODE_WAIT, "按下 %s 后等另一颗").replace(CHIP_SLOT, slots)
+    return I18n.get(Strings.COMBO_MODE_WAIT).replace(CHIP_SLOT, slots)
 }
 
 //  `COMBO_PAIR_SEPARATOR` / `comboLabel` / `keyName` 已挪到 `core/model/KeyNames.kt`：
@@ -421,9 +421,9 @@ internal fun SettingsPage.writeNewCombo(
     if (duplicated) {
         hint(
             if (hold) {
-                I18n.get(Strings.COMBO_ALL_MODES_TAKEN, "所有触发方式都已添加")
+                I18n.get(Strings.COMBO_ALL_MODES_TAKEN)
             } else {
-                I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了")
+                I18n.get(Strings.COMBO_DUPLICATE)
             },
             slot = HINT_SLOT_COMBO,
         )
@@ -460,11 +460,11 @@ internal fun SettingsPage.writeNewCombo(
         val notice =
             if (count >= comboModeTotal(ids.size)) {
                 I18n
-                    .get(Strings.COMBO_ALL_MODES_ADDED, "%1\$d 种触发方式都已添加 %2\$s")
+                    .get(Strings.COMBO_ALL_MODES_ADDED)
                     .replace("%1\$d", count.toString())
                     .format(names.joinToString(COMBO_PAIR_SEPARATOR))
             } else {
-                I18n.get(Strings.COMBO_ADDED, "已添加 %s").format(names.joinToString(COMBO_PAIR_SEPARATOR))
+                I18n.get(Strings.COMBO_ADDED).format(names.joinToString(COMBO_PAIR_SEPARATOR))
             }
         hint(notice, slot = HINT_SLOT_COMBO)
     }
@@ -488,7 +488,7 @@ internal fun SettingsPage.removeCombo(id: String): Boolean {
         CommandsSave.Failed
     ) {
         val names = comboKeyNames(cfg, combo).joinToString(COMBO_PAIR_SEPARATOR)
-        hint(I18n.get(Strings.COMBO_REMOVED, "已删除 %s").format(names), slot = HINT_SLOT_COMBO)
+        hint(I18n.get(Strings.COMBO_REMOVED).format(names), slot = HINT_SLOT_COMBO)
         return true
     }
     return false
@@ -534,9 +534,9 @@ internal fun SettingsPage.setComboEnabled(
         val names = comboKeyNames(cfg, combo).joinToString(COMBO_PAIR_SEPARATOR)
         val base =
             if (on) {
-                I18n.get(Strings.COMBO_ENABLED, "已启用 %s")
+                I18n.get(Strings.COMBO_ENABLED)
             } else {
-                I18n.get(Strings.COMBO_DISABLED, "已停用 %s")
+                I18n.get(Strings.COMBO_DISABLED)
             }
         hint(base.format(names), slot = HINT_SLOT_COMBO)
     }
@@ -559,7 +559,7 @@ private fun SettingsPage.comboEnableAllowed(
     if (combo.keys.any { cfg.keyIdOf(it) == null }) {
         XLog.w("组合键：${combo.id} 的成员键已不在配置里，不启用（$label）")
         hint(
-            I18n.get(Strings.KEYS_COMBO_NEEDS_KEYS, "成员键没启用，这组也停用"),
+            I18n.get(Strings.KEYS_COMBO_NEEDS_KEYS),
             slot = HINT_SLOT_COMBO,
         )
         return false
@@ -577,7 +577,7 @@ private fun SettingsPage.comboEnableAllowed(
         if (starter != null && !cfg.key(starter).longFireOnRelease) {
             XLog.w("组合键：${combo.id} 的起点 ${starter.label} 没开「松手时触发」，不启用（$label）")
             hint(
-                I18n.get(Strings.KEYS_COMBO_NEEDS_FIRE, "起点键没开 松手时触发，这组也停用"),
+                I18n.get(Strings.KEYS_COMBO_NEEDS_FIRE),
                 slot = HINT_SLOT_COMBO,
             )
             return false
@@ -602,7 +602,7 @@ internal fun SettingsPage.comboHasMissingKey(
 
 /** 写盘结果的回执位 —— 这两页一次只改一件事，共用一个位就够（见 [HINT_SLOT_COMBO]）。 */
 internal fun SettingsPage.comboWriteFailed() {
-    hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"), slot = HINT_SLOT_COMBO)
+    hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED), slot = HINT_SLOT_COMBO)
 }
 
 /** 写盘发生异常时也报一句 —— 与 `pick` 同一道兜底（点了必须有说法）。 */

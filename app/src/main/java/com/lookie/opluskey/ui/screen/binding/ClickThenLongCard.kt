@@ -74,7 +74,7 @@ internal fun SettingsPage.ClickThenLongCard(
             repeatBlockedReason = repeatBlockedReason(key.clickThenLong),
             blockedReason =
                 disabledReason
-                    ?: if (!pageEnabled) I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，按系统原生行为") else null,
+                    ?: if (!pageEnabled) I18n.get(Strings.STATUS_KEY_DISABLED) else null,
             onRepeat = { on -> commit(id) { it.copy(clickThenLongRepeat = on) } },
             onVibrate = { on -> commit(id) { it.copy(clickThenLongRepeatVibrate = on) } },
             onInterval = { v -> commit(id) { it.copy(clickThenLongRepeatIntervalMs = v) } },
@@ -90,7 +90,7 @@ internal fun SettingsPage.ClickThenLongCard(
         show = picking,
         sheet =
             StepSheetSpec(
-                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE, "松手执行额外动作"),
+                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE),
                 current = release,
                 onOpenPicker = { page ->
                     picking = false

@@ -62,9 +62,9 @@ private fun SettingsPage.DeletePickedDialog() {
     val picked = CommandListEditState.picked
     ConfirmDialog(
         show = CommandListEditState.confirmDeletePicked,
-        title = I18n.get(Strings.COMMAND_DELETE_PICKED_TITLE, "删除选中的命令"),
+        title = I18n.get(Strings.COMMAND_DELETE_PICKED_TITLE),
         summary = I18n.format(Strings.COMMAND_DELETE_PICKED_BODY, picked.size),
-        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        action = I18n.get(Strings.COMMON_DELETE),
         onDismiss = { CommandListEditState.confirmDeletePicked = false },
         onConfirm = {
             CommandListEditState.confirmDeletePicked = false
@@ -86,9 +86,9 @@ private fun SettingsPage.DeletePickedDialog() {
 private fun SettingsPage.LeaveListEditDialog() {
     ConfirmDialog(
         show = CommandListEditState.confirmLeaveEdit,
-        title = I18n.get(Strings.COMMAND_LEAVE_EDIT_TITLE, "退出编辑"),
+        title = I18n.get(Strings.COMMAND_LEAVE_EDIT_TITLE),
         summary = I18n.format(Strings.COMMAND_LEAVE_EDIT_BODY, CommandListEditState.count),
-        action = I18n.get(Strings.COMMON_CONFIRM, "确定"),
+        action = I18n.get(Strings.COMMON_CONFIRM),
         positiveDanger = false,
         onDismiss = { CommandListEditState.confirmLeaveEdit = false },
         onConfirm = {
@@ -110,7 +110,7 @@ private fun SettingsPage.DisclaimerDialog(ui: CommandUiState) {
         show = ui.disclaimerPending,
         title = COMMAND_DISCLAIMER_TITLE,
         summary = COMMAND_DISCLAIMER_TEXT,
-        action = I18n.get(Strings.DIALOG_DISCLAIMER_ACKNOWLEDGE, "我已了解"),
+        action = I18n.get(Strings.DIALOG_DISCLAIMER_ACKNOWLEDGE),
         positiveDanger = true,
         onDismiss = {
             XLog.w("自定义命令：没确认风险提示 ⇒ 退出这一页")
@@ -146,13 +146,13 @@ private fun SettingsPage.acceptCommandDisclaimer() {
 @Composable
 internal fun SettingsPage.LeaveDiscardDialog(
     /** 标题由调用页给：这一页的草稿里是命令还是条件，只有调用点知道。 */
-    title: String = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE, "放弃未保存的命令"),
+    title: String = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE),
     onDiscard: (() -> Unit)? = null,
 ) {
     ConfirmDialog(
         show = overlays.confirmLeaveCommands,
         title = title,
-        action = I18n.get(Strings.COMMON_DISCARD, "放弃"),
+        action = I18n.get(Strings.COMMON_DISCARD),
         onDismiss = { overlays.confirmLeaveCommands = false },
         onConfirm = {
             overlays.confirmLeaveCommands = false
@@ -177,13 +177,13 @@ internal fun SettingsPage.LeaveDiscardDialog(
 private fun SettingsPage.SwitchDraftDiscardDialog(onLoaded: (Command) -> Unit) {
     ConfirmDialog(
         show = overlays.pendingDraftLoad != null,
-        title = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE, "放弃未保存的命令"),
+        title = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE),
         summary =
             I18n.format(
                 Strings.DIALOG_DISCARD_COMMAND_EDIT_MESSAGE,
                 escapeEmphasis(overlays.pendingDraftLoad?.name ?: ""),
             ),
-        action = I18n.get(Strings.COMMON_DISCARD, "放弃"),
+        action = I18n.get(Strings.COMMON_DISCARD),
         onDismiss = { overlays.pendingDraftLoad = null },
         onConfirm = {
             val next = overlays.pendingDraftLoad
@@ -202,7 +202,7 @@ private fun SettingsPage.DeleteCommandDialog(ui: CommandUiState) {
     val target = ui.deleting
     ConfirmDialog(
         show = target != null,
-        title = I18n.get(Strings.DIALOG_DELETE_COMMAND_TITLE, "删除命令"),
+        title = I18n.get(Strings.DIALOG_DELETE_COMMAND_TITLE),
         // 文案分两种：多条命令不会被别的命令引用（浮层里只能挑单条），只提按键绑定那一条路。
         summary =
             when {
@@ -224,7 +224,7 @@ private fun SettingsPage.DeleteCommandDialog(ui: CommandUiState) {
                     )
                 }
             },
-        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        action = I18n.get(Strings.COMMON_DELETE),
         onDismiss = { ui.deleting = null },
         onConfirm = {
             ui.deleting?.let { removeCommand(it) }
@@ -266,13 +266,13 @@ private fun SettingsPage.FillPrefixDialog(ui: CommandUiState) {
     }
     ConfirmDialog(
         show = prefix != null,
-        title = I18n.get(Strings.DIALOG_FILL_PREFIX_TITLE, "替换已输入的命令"),
+        title = I18n.get(Strings.DIALOG_FILL_PREFIX_TITLE),
         summary =
             I18n.format(
                 Strings.DIALOG_FILL_PREFIX_MESSAGE,
                 escapeEmphasis(prefix ?: ""),
             ),
-        action = I18n.get(Strings.COMMON_REPLACE, "替换"),
+        action = I18n.get(Strings.COMMON_REPLACE),
         onDismiss = { ui.pendingFormatPrefix = null },
         onConfirm = {
             ui.pendingFormatPrefix = null

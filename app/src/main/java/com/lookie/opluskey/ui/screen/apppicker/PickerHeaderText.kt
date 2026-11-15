@@ -61,14 +61,14 @@ internal fun SettingsPage.pickerSubtitle(): String {
     if (picker.forBranch) {
         val count = picker.pickedApps.value.count { it.isNotBlank() }
         return if (count == 0) {
-            I18n.get(Strings.APP_PICKER_NONE_SELECTED, "没有选择应用")
+            I18n.get(Strings.APP_PICKER_NONE_SELECTED)
         } else {
             I18n.format(Strings.APP_PICKER_BRANCH_PICK_COUNT, count, BranchCondition.MAX_APP_PACKAGES)
         }
     }
     val target =
         appPickerChosenTarget()
-            ?: return I18n.get(Strings.APP_PICKER_NONE_SELECTED, "没有选择应用")
+            ?: return I18n.get(Strings.APP_PICKER_NONE_SELECTED)
     //  **只写目标**（`微信 - 小窗 - 扫一扫`）：大标题已经是「打开应用 / 结束应用」，
     //  动词在这里再说一遍就是重复；「小窗」要标 —— 那一档与普通打开在列表里长得一样。
     return targetLabel(target, pickerKind())

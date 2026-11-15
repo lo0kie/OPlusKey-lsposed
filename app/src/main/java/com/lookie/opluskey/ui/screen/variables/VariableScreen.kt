@@ -86,7 +86,7 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
         val fresh = Variable.create(name, type, initial)
         if (fresh == null) {
             XLog.w("变量：新建被拒（名字或初始值不合法）—— $name / $type")
-            hint(I18n.get(Strings.VAR_FAILED, "改不了"))
+            hint(I18n.get(Strings.VAR_FAILED))
             return
         }
         //  上限在**界面上先说一句**：`VariableStore.add` 那边被拒时只能回一个 `false`，
@@ -100,9 +100,9 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
             val ok = withContext(Dispatchers.IO) { VariableStore.add(fresh) }
             if (ok) {
                 VarListSignal.bump()
-                hint(I18n.get(Strings.VAR_SAVED, "已保存"))
+                hint(I18n.get(Strings.VAR_SAVED))
             } else {
-                hint(I18n.get(Strings.VAR_FAILED, "改不了"))
+                hint(I18n.get(Strings.VAR_FAILED))
             }
         }
     }
@@ -159,9 +159,9 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
                         },
                         text =
                             if (unreadable) {
-                                I18n.get(Strings.VARIABLES_UNREADABLE, "变量表读不出来，先别新建（会盖掉盘上那份）")
+                                I18n.get(Strings.VARIABLES_UNREADABLE)
                             } else {
-                                I18n.get(Strings.VARIABLES_EMPTY, "暂无变量，请点右上角 + 新建")
+                                I18n.get(Strings.VARIABLES_EMPTY)
                             },
                     )
                 }
@@ -169,7 +169,7 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
                 //  条数走**行尾的 `n/50`**（`TitleCounter`）：变量有上限，光写「有几个」
                 //  看不出还剩几格 —— 与命令列表、常用命令那两处同一个画法。
                 SectionTitle(
-                    text = I18n.get(Strings.VARIABLES_TITLE, "自定义变量列表"),
+                    text = I18n.get(Strings.VARIABLES_TITLE),
                     trailing = { TitleCounter(vars.size, Variable.MAX_COUNT) },
                 )
                 CardList(rows = vars.map { rowOf(it) })
@@ -223,9 +223,9 @@ private fun SettingsPage.rowOf(v: Variable): CardRow {
 /** 类型名（三档）—— 列表副标题与新建表单共用这一处。 */
 internal fun typeLabel(type: VarType): String =
     when (type) {
-        VarType.STRING -> I18n.get(Strings.VAR_TYPE_STRING, "文本")
-        VarType.NUMBER -> I18n.get(Strings.VAR_TYPE_NUMBER, "数字")
-        VarType.BOOLEAN -> I18n.get(Strings.VAR_TYPE_BOOLEAN, "布尔")
+        VarType.STRING -> I18n.get(Strings.VAR_TYPE_STRING)
+        VarType.NUMBER -> I18n.get(Strings.VAR_TYPE_NUMBER)
+        VarType.BOOLEAN -> I18n.get(Strings.VAR_TYPE_BOOLEAN)
     }
 
 /**

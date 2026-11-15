@@ -166,13 +166,13 @@ object ConfigProfiles {
         val displayName: String
             get() =
                 when {
-                    broken -> I18n.get(Strings.PROFILE_BROKEN, "（读不出来）")
+                    broken -> I18n.get(Strings.PROFILE_BROKEN)
 
-                    isDefault -> I18n.get(Strings.PROFILE_DEFAULT, "默认配置")
+                    isDefault -> I18n.get(Strings.PROFILE_DEFAULT)
 
                     //  名字空的**普通**配置（位次 ≥ 1）：不是默认，但也没有名字可显示 ——
                     //  必须给一句话，否则菜单里出现一个空格子（名字被抹过之后就是这一档）
-                    name.isBlank() -> I18n.get(Strings.PROFILE_UNNAMED, "未命名")
+                    name.isBlank() -> I18n.get(Strings.PROFILE_UNNAMED)
 
                     else -> name
                 }

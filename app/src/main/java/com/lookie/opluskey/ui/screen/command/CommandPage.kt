@@ -110,7 +110,7 @@ internal fun SettingsPage.CommandPage(
             //  哪个是命令本体。原先这一条写的是「修改命令 / 新增命令」—— 那说的是**这一页在干什么**，
             //  而顶栏已经写着「自定义命令」、工具栏那颗键写着「保存 / 修改」，这里该说的是**这一栏是什么**。
             SectionTitle(
-                text = I18n.get(Strings.COMMAND_NAME_TITLE, "命令名称"),
+                text = I18n.get(Strings.COMMAND_NAME_TITLE),
                 //  行尾是**字数统计**：输入框本身不画计数（`InputSpec.maxLength` 只截断），
                 //  上限写在这一行才读得到 —— 与弹窗标题行那一格同一套画法（`TitleCounter`）。
                 trailing = { CommandNameCounter(form) },
@@ -157,7 +157,7 @@ internal fun SettingsPage.CommandPage(
             // 「支持的命令格式」卡 —— 说的是「命令输入框里能写什么」，多条命令没有那个
             // 输入框，所以只在单条那一栏出现。
             if (kind == CommandKind.SINGLE) {
-                SectionTitle(I18n.get(Strings.COMMAND_FORMATS_TITLE, "支持的命令格式"))
+                SectionTitle(I18n.get(Strings.COMMAND_FORMATS_TITLE))
                 CommandFormatsCard(tick, ui)
             }
 
@@ -190,7 +190,7 @@ private fun SettingsPage.CommandDetailTitle(
     onMenu: () -> Unit,
 ) {
     SectionTitle(
-        text = I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"),
+        text = I18n.get(Strings.COMMAND_DETAIL_TITLE),
         //  「点标题」这件事走 [SectionTitleClick] 那一套（与「已保存的命令」同一条）：
         //  标题自己可点，行尾那颗指示按这一档画成**全屏**（`Expand`）——
         //  它是在原地弹一层，不是跳页，所以不用跳页那颗右箭头。
@@ -224,7 +224,7 @@ private fun SettingsPage.CommandStepListSection(
     onMenu: () -> Unit,
 ) {
     SectionTitle(
-        text = I18n.get(Strings.COMMAND_LIST_TITLE, "命令步骤"),
+        text = I18n.get(Strings.COMMAND_LIST_TITLE),
         //  计数是「几步 / 最多几步」—— 上限是 `Command.MAX_STEPS`，加到最后一步时「添加命令」
         //  那行会自己置灰；计数摆在这里，不用点进去数一遍。
         trailing = {
@@ -328,22 +328,22 @@ internal fun SettingsPage.StepListMenu(
             if (open) {
                 listOf(
                     MenuEntry.Section(
-                        title = I18n.get(Strings.COMMAND_LIST_TITLE, "命令步骤"),
+                        title = I18n.get(Strings.COMMAND_LIST_TITLE),
                         rows =
                             listOf(
                                 //  文案固定「编辑列表」，排序态里这一行**禁用** ——
                                 //  那种状态下要退出编辑，走右下角那颗改成了「完成」的 FAB。
                                 MenuEntry.Row(
-                                    title = I18n.get(Strings.COMMAND_STEP_SORT, "编辑列表"),
+                                    title = I18n.get(Strings.COMMAND_STEP_SORT),
                                     icon = PageIcons.CommandEditCog,
                                     //  列表空着 / 编辑中 ⇒ 禁用；`disabledHint` 是**这一行自己**的限制，
                                     //  不填就会掉到整页那句「系统侧还是旧版」上
                                     enabled = !sorting && commandDraft.draft.steps.isNotEmpty(),
                                     disabledHint =
                                         if (sorting) {
-                                            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")
+                                            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED)
                                         } else {
-                                            I18n.get(Strings.COMMAND_NEED_STEP, "尚未添加步骤")
+                                            I18n.get(Strings.COMMAND_NEED_STEP)
                                         },
                                 ) {
                                     onClose()
@@ -352,7 +352,7 @@ internal fun SettingsPage.StepListMenu(
                                     XLog.w(if (sorting) "多条命令：退出排序态" else "多条命令：进入排序态")
                                 },
                                 MenuEntry.Row(
-                                    title = I18n.get(Strings.COMMAND_TEST_BUTTON, "测试命令"),
+                                    title = I18n.get(Strings.COMMAND_TEST_BUTTON),
                                     icon = PageIcons.TestCommand,
                                     enabled = commandTestable,
                                     disabledHint = commandTestHint,
@@ -393,11 +393,11 @@ private val SettingsPage.commandTestable: Boolean
 private val SettingsPage.commandTestHint: String
     get() =
         if (commandDraft.stepEditing) {
-            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")
+            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED)
         } else if (commandDraft.draft.kind == CommandKind.SERIAL) {
-            I18n.get(Strings.COMMAND_NEED_STEP, "尚未添加步骤")
+            I18n.get(Strings.COMMAND_NEED_STEP)
         } else {
-            I18n.get(Strings.COMMAND_PAYLOAD_INCOMPLETE, "命令内容还不完整")
+            I18n.get(Strings.COMMAND_PAYLOAD_INCOMPLETE)
         }
 
 /**
@@ -419,22 +419,22 @@ internal fun SettingsPage.DetailMenu(
             if (open) {
                 listOf(
                     MenuEntry.Section(
-                        title = I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"),
+                        title = I18n.get(Strings.COMMAND_DETAIL_TITLE),
                         rows =
                             listOf(
                                 MenuEntry.Row(
-                                    title = I18n.get(Strings.COMMAND_FULLSCREEN_EDIT, "全屏编辑"),
+                                    title = I18n.get(Strings.COMMAND_FULLSCREEN_EDIT),
                                     icon = PageIcons.CommandEdit,
                                     enabled = !commandDraft.stepEditing,
                                     disabledHint =
-                                        I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成"),
+                                        I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED),
                                 ) {
                                     onClose()
                                     tick()
                                     onFullscreen()
                                 },
                                 MenuEntry.Row(
-                                    title = I18n.get(Strings.COMMAND_TEST_BUTTON, "测试命令"),
+                                    title = I18n.get(Strings.COMMAND_TEST_BUTTON),
                                     icon = PageIcons.TestCommand,
                                     enabled = commandTestable,
                                     disabledHint = commandTestHint,
@@ -467,10 +467,10 @@ private fun SettingsPage.CommandSettingsSection(
     sorting: Boolean,
     tick: () -> Unit,
 ) {
-    SectionTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE, "命令设置"))
+    SectionTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE))
     if (sorting) {
         //  整块共用一句「编辑中…」—— 投递与槽位都在 `DisabledHint` 里
-        DisabledHint(I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")) {
+        DisabledHint(I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED)) {
             StepDelayCard(tick, enabled = false)
         }
     } else {
@@ -506,14 +506,14 @@ private fun SettingsPage.RootSwitchCard(
     val show = remember(text) { Action.parse(text).usesRoot }
     //  小标题与卡片一起进退（`AnimatedColumn` 里面自带 `Column`，两行不会叠在一处）
     AnimatedColumn(visible = show) {
-        SectionTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE, "命令设置"))
+        SectionTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE))
         CardList(
             rows =
                 listOf(
                     CardRow.Switch(
-                        title = I18n.get(Strings.COMMAND_ROOT_TITLE, "以 root 执行"),
-                        summaryOn = I18n.get(Strings.COMMAND_ROOT_DESC_ON, "只用 su，不再退回 sh"),
-                        summaryOff = I18n.get(Strings.COMMAND_ROOT_DESC_OFF, "只用 sh，不申请 root"),
+                        title = I18n.get(Strings.COMMAND_ROOT_TITLE),
+                        summaryOn = I18n.get(Strings.COMMAND_ROOT_DESC_ON),
+                        summaryOff = I18n.get(Strings.COMMAND_ROOT_DESC_OFF),
                         icon = PageIcons.CommandRoot,
                         checked = form.root,
                         // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
@@ -574,7 +574,7 @@ private fun SettingsPage.SingleCommandField(
     //  用户得知道**为什么**存不进去。空白不算错（还没开始写）。
     val formatError =
         if (raw.isNotBlank() && !Action.hasSupportedFormat(raw)) {
-            I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "必须以支持的格式开头")
+            I18n.get(Strings.COMMAND_FORMAT_REQUIRED)
         } else {
             ""
         }
@@ -583,7 +583,7 @@ private fun SettingsPage.SingleCommandField(
             spec =
                 InputSpec(
                     PageIcons.CommandSingle,
-                    I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令"),
+                    I18n.get(Strings.COMMAND_CMD_HINT),
                     MAX_SINGLE_LENGTH,
                 ),
             value = raw,
@@ -628,7 +628,7 @@ private fun SettingsPage.StepDelayCard(
                         position = position,
                         spec =
                             SliderSpec(
-                                title = I18n.get(Strings.COMMAND_DELAY_LABEL, "命令间隔时长"),
+                                title = I18n.get(Strings.COMMAND_DELAY_LABEL),
                                 icon = PageIcons.DelayStep,
                                 min = Command.MIN_STEP_DELAY_MS,
                                 max = Command.MAX_STEP_DELAY_MS,

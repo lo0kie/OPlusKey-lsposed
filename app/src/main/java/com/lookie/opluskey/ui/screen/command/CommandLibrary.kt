@@ -36,7 +36,7 @@ internal fun SettingsPage.testCommand(cmd: Command) {
     //  先派发再报错，读起来像「试过了，没反应」。
     if (!cmd.hasContent) {
         XLog.w("测试命令：这条命令是空的，不派发")
-        hint(I18n.get(Strings.COMMAND_FAILURE_EMPTY, "这条命令是空的，补上内容再试"), slot = HINT_SLOT_COMMAND)
+        hint(I18n.get(Strings.COMMAND_FAILURE_EMPTY), slot = HINT_SLOT_COMMAND)
         return
     }
     //  **格式不支持的同样拦在派发之前**（用户口径：不支持的命令也不允许测试）：那种正文解析出来
@@ -46,14 +46,14 @@ internal fun SettingsPage.testCommand(cmd: Command) {
     if (cmd.kind == CommandKind.SINGLE && !Action.hasSupportedFormat(cmd.single)) {
         //  正文可能内嵌令牌 / 密码（`shell:` 那一类）：走与执行侧同一套脱敏，不再截前 32 字符
         XLog.w("测试命令：正文格式不支持，不派发（${XLog.redactCommand(cmd.single)}）")
-        hint(I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "必须以支持的格式开头"), slot = HINT_SLOT_COMMAND)
+        hint(I18n.get(Strings.COMMAND_FORMAT_REQUIRED), slot = HINT_SLOT_COMMAND)
         return
     }
     //  **只写了前缀也不算有内容**（`shell:` 后面空着、或只有空格）：它过了格式闸，
     //  派下去却是一条空命令 —— 与「空命令」同一个症状（点了测试、什么都没发生）。
     if (cmd.kind == CommandKind.SINGLE && !Action.hasBody(cmd.single)) {
         XLog.w("测试命令：只有前缀、没有正文，不派发（${XLog.redactCommand(cmd.single)}）")
-        hint(I18n.get(Strings.COMMAND_FAILURE_EMPTY, "这条命令是空的，补上内容再试"), slot = HINT_SLOT_COMMAND)
+        hint(I18n.get(Strings.COMMAND_FAILURE_EMPTY), slot = HINT_SLOT_COMMAND)
         return
     }
     // 页面动作失败绝不外抛（本文件里其它入口都是这条纪律）：测试命令直接跑在点击回调上，
@@ -62,7 +62,7 @@ internal fun SettingsPage.testCommand(cmd: Command) {
         testRunner(context).runTest(cmd)
     } catch (e: Throwable) {
         XLog.w("测试命令失败（已忽略）：${cmd.name}", e)
-        hint(I18n.get(Strings.TOAST_COMMAND_TEST_FAILED, "测试没触发"), slot = HINT_SLOT_COMMAND)
+        hint(I18n.get(Strings.TOAST_COMMAND_TEST_FAILED), slot = HINT_SLOT_COMMAND)
         return
     }
     //  注意：这里只能保证「**已派发**」，不是「已完成」：单条 `keyevent:` 是
@@ -70,7 +70,7 @@ internal fun SettingsPage.testCommand(cmd: Command) {
     //  （`postDelayed` 续步）的**完成**晚于这一行 —— 说「已执行」是把派发说成了完成。
     //  命令可能一点可见动静都没有，没有这句分不清「发了」和「没反应」，所以保留提示、改口径
     //  （失败仍会由 `CommandFailure` 那条另弹一句）。
-    hint(I18n.get(Strings.TOAST_COMMAND_TRIGGERED, "已触发"), slot = HINT_SLOT_COMMAND)
+    hint(I18n.get(Strings.TOAST_COMMAND_TRIGGERED), slot = HINT_SLOT_COMMAND)
 }
 
 /**
@@ -215,7 +215,7 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
     when (saveCommands(next, "删除命令：${cmd.name}")) {
         CommandsSave.Ok -> {
             clearDeletedCommandFromDrafts(cmd)
-            hint(I18n.get(Strings.TOAST_COMMAND_DELETED, "已删除 %s").format(cmd.name), slot = HINT_SLOT_COMMAND)
+            hint(I18n.get(Strings.TOAST_COMMAND_DELETED).format(cmd.name), slot = HINT_SLOT_COMMAND)
         }
 
         // 库已经删掉了（只是没通知到注入侧，提示由 saveCommands 给）——草稿该清还是清，

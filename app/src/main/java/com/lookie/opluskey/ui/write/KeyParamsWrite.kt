@@ -61,7 +61,7 @@ internal fun SettingsPage.setWaitMultiWindow(
     toggleKeyParam(
         keyId,
         "wait_multi_window=${if (waitMultiWindow) 1 else 0}",
-        I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW, "固定窗口起点"),
+        I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW),
         !waitMultiWindow,
     ) { it.copy(waitMultiWindow = waitMultiWindow) }
 }

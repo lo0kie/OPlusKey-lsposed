@@ -31,5 +31,5 @@ internal enum class DonateTarget(
             }
 
     /** 界面上的名字（字典缺项时显示 [id]，与全项目同一条兜底口径）。 */
-    val label: String get() = I18n.get(labelKey, id)
+    val label: String get() = I18n.getOr(labelKey, id)
 }

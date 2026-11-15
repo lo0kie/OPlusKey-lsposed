@@ -202,8 +202,8 @@ private fun SettingsPage.CommonCommandsSection(
                     glyph = { tint ->
                         Icon(PageIcons.NoMatch, contentDescription = null, modifier = Modifier.fillMaxSize(), tint = tint)
                     },
-                    title = I18n.get(Strings.COMMON_COMMANDS_EMPTY, "尚未添加命令"),
-                    text = I18n.get(Strings.COMMON_COMMANDS_EMPTY_DESC, "使用右下角的添加按钮"),
+                    title = I18n.get(Strings.COMMON_COMMANDS_EMPTY),
+                    text = I18n.get(Strings.COMMON_COMMANDS_EMPTY_DESC),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -214,7 +214,7 @@ private fun SettingsPage.CommonCommandsSection(
                 //  条数走**行尾的 `n/20`**（`TitleCounter`）：这张表有上限，光写「有几个」
                 //  看不出还剩几格 —— 与命令列表那两段同一个画法。空态那一支不画它。
                 SectionTitle(
-                    text = I18n.get(Strings.BINDING_COMMON_COMMANDS, "常用命令"),
+                    text = I18n.get(Strings.BINDING_COMMON_COMMANDS),
                     trailing = { TitleCounter(shown.size, GlobalConfig.MAX_COMMON_COMMANDS) },
                 )
                 CardList(
@@ -495,14 +495,14 @@ private fun SettingsPage.renameDialog(
     val list = configState.config.value.global.commonCommands
     NameDialog(
         show = cmd != null,
-        title = I18n.get(Strings.COMMON_COMMANDS_RENAME, "重命名"),
-        label = I18n.get(Strings.COMMON_COMMANDS_RENAME_LABEL, "名称"),
+        title = I18n.get(Strings.COMMON_COMMANDS_RENAME),
+        label = I18n.get(Strings.COMMON_COMMANDS_RENAME_LABEL),
         //  与「重命名按键」「重命名配置」同一颗（全项目所有改名共用一个记号）
         icon = PageIcons.MenuRename,
         initial = cmd?.name.orEmpty(),
         //  空 = 回到动作自带的名字（`CommonCommands.displayName` 那一套），所以允许空
         allowEmpty = true,
-        hint = I18n.get(Strings.COMMON_COMMANDS_RENAME_HINT, "留空则使用动作名称"),
+        hint = I18n.get(Strings.COMMON_COMMANDS_RENAME_HINT),
         onDismiss = onDismiss,
         onConfirm = { text ->
             onDismiss()
@@ -535,9 +535,9 @@ private fun SettingsPage.removeDialog(
 ) {
     ConfirmDialog(
         show = show,
-        title = I18n.get(Strings.COMMON_COMMANDS_REMOVE_TITLE, "删除常用命令"),
+        title = I18n.get(Strings.COMMON_COMMANDS_REMOVE_TITLE),
         summary = I18n.format(Strings.COMMON_COMMANDS_REMOVE_BODY, cmd?.let { CommonCommands.displayName(it) }.orEmpty()),
-        action = I18n.get(Strings.COMMON_COMMANDS_REMOVE, "删除"),
+        action = I18n.get(Strings.COMMON_COMMANDS_REMOVE),
         onDismiss = onDismiss,
         onConfirm = {
             onDismiss()
@@ -577,9 +577,9 @@ private fun SettingsPage.addSheet(
                 //  标题跟着落点走：加号那一趟是「添加命令」，行菜单「修改」那一趟是「修改」
                 title =
                     if (editing == null) {
-                        I18n.get(Strings.COMMON_COMMANDS_ADD, "添加命令")
+                        I18n.get(Strings.COMMON_COMMANDS_ADD)
                     } else {
-                        I18n.get(Strings.COMMON_COMMANDS_EDIT, "修改")
+                        I18n.get(Strings.COMMON_COMMANDS_EDIT)
                     },
                 //  改的那一条**在抽屉里标成当前**（行首对勾）：不加这一位的话，抽屉看不出
                 //  「现在这一条是什么」，用户得自己回想上一页那一行的名字。
@@ -606,7 +606,7 @@ private fun SettingsPage.addSheet(
                         //  而且读盘那一道会把它丢掉（见 `CommonCommandDto.toCommonCommand`）——
                         //  当场说一句，别让它在保存之后无声消失。
                         Action.parse(token) is Action.None -> {
-                            hint(I18n.get(Strings.COMMON_COMMANDS_NOT_ACTION, "请先选择具体动作"))
+                            hint(I18n.get(Strings.COMMON_COMMANDS_NOT_ACTION))
                         }
 
                         //  已经在清单里就不重复收录（同一个动作出现两次只是噪音）。
@@ -654,7 +654,7 @@ private fun SettingsPage.commonCommandRow(
         visible = visible,
         title = CommonCommands.displayName(cmd),
         //  自带那几条有自己的小字；用户自己收录的动作没有（小字里塞 token 只是噪音）
-        summary = CommonCommands.entryOf(cmd.token)?.let { I18n.get(it.summaryKey, it.summaryFallback) },
+        summary = CommonCommands.entryOf(cmd.token)?.let { I18n.getOr(it.summaryKey, it.summaryFallback) },
         //  换过图标就画换的那颗（`commonCommandIcon(cmd)` 里判），没换过才按动作取
         icon = commonCommandIcon(cmd),
         //  在按键绑定页不显示的那几条压一档色：一眼能看出哪些不会出现在那一段
@@ -669,7 +669,7 @@ private fun SettingsPage.commonCommandRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (cmd.showInBinding) {
                     AppKindTag(
-                        text = I18n.get(Strings.COMMON_COMMANDS_PINNED, "固定"),
+                        text = I18n.get(Strings.COMMON_COMMANDS_PINNED),
                         //  强调色：它是「这一条会出现在按键绑定页」这个**开着**的状态，
                         //  与标题压色那一档正好相反（那是关掉的样子）
                         tint = COUITheme.colorScheme.primary,
@@ -711,13 +711,13 @@ private fun SettingsPage.rowMenu(
             } else {
                 listOf(
                     MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_COMMANDS_EDIT, "修改"),
+                        title = I18n.get(Strings.COMMON_COMMANDS_EDIT),
                         icon = PageIcons.MenuChange,
                     ) {
                         onEdit(cmd)
                     },
                     MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_COMMANDS_RENAME, "重命名"),
+                        title = I18n.get(Strings.COMMON_COMMANDS_RENAME),
                         //  与「重命名按键」「重命名配置」同一颗（全项目所有改名共用一个记号）
                         icon = PageIcons.MenuRename,
                     ) {
@@ -727,7 +727,7 @@ private fun SettingsPage.rowMenu(
                     //  两边点开的是同一个网格选择器（`FluidIconPicker`），只是写回去的落点不同 ——
                     //  那边改命令正文，这边改清单里这一条的 `icon`。
                     MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_COMMANDS_ICON, "图标"),
+                        title = I18n.get(Strings.COMMON_COMMANDS_ICON),
                         icon = PageIcons.FluidIcon,
                     ) {
                         onIcon(cmd)
@@ -736,14 +736,14 @@ private fun SettingsPage.rowMenu(
                     //  当前状态，行首那颗在选中时会换成对勾 —— 与「系统开关」那一族同一个读法。
                     //  关掉只影响按键绑定页那一段，这一条仍留在这一页的清单里。
                     MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_COMMANDS_PINNED, "固定"),
+                        title = I18n.get(Strings.COMMON_COMMANDS_PINNED),
                         icon = PageIcons.PinnedInBinding,
                         selected = cmd.showInBinding,
                     ) {
                         onToggleShow(cmd)
                     },
                     MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_COMMANDS_REMOVE, "删除"),
+                        title = I18n.get(Strings.COMMON_COMMANDS_REMOVE),
                         icon = PageIcons.CommandDelete,
                         danger = true,
                     ) {

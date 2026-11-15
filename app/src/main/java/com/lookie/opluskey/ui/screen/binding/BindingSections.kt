@@ -34,7 +34,7 @@ internal fun SettingsPage.SavedCommandsTitle(clickable: Boolean = true) {
     SectionTitle(
         //  条数拼进标题（`自定义命令 (3)`）—— 与上面那几组同一个写法；0 条时也写出来，
         //  那一格里摆的是「去创建自定义命令」，标题上写 0 正好对得上。
-        text = titleWithCount(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"), commands.size),
+        text = titleWithCount(I18n.get(Strings.COMMAND_SAVED_COMMANDS), commands.size),
         click =
             if (hasCommands && clickable) {
                 SectionTitleClick.Jump {
@@ -102,7 +102,7 @@ internal fun SettingsPage.BindingGroups(
         val settingsEnabled = enabled && !followsDefault
         val followHint =
             if (followsDefault) {
-                I18n.get(Strings.BINDING_FOLLOW_NO_SETTINGS, "跟随默认 没有可设的项，先换成一个动作")
+                I18n.get(Strings.BINDING_FOLLOW_NO_SETTINGS)
             } else {
                 null
             }
@@ -123,12 +123,12 @@ internal fun SettingsPage.BindingGroups(
         //  与长按那一页同一张卡的行、不同的字段（见 `ClickThenLongCard`）。
         //  只有单键有这一档：组合的两段建立在单键连击上。
         if (keyScoped && g == GestureTrigger.ClickThenLong) {
-            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
+            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION))
             ClickThenLongCard(settingsEnabled, followHint)
         }
 
         if (g == GestureTrigger.LongPress && target.longPress(configState.config.value) != null) {
-            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
+            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION))
             LongPressCard(target, enabled, followHint)
         }
 
@@ -140,7 +140,7 @@ internal fun SettingsPage.BindingGroups(
         //  组合的场景页没有这一档（`sceneGesturePages` 只给单击 / 长按），于是那一侧也不该出现。
         //  单键 / 组合那一页的松手格在 `ClickThenLongCard` 里，不在这里。
         if (target is BindingTarget.Scene && g == GestureTrigger.ClickThenLong) {
-            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
+            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION))
             SceneChainReleaseCard(target, settingsEnabled, followHint)
         }
 

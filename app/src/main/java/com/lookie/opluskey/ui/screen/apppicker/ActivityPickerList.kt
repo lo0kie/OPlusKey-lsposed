@@ -231,7 +231,7 @@ private fun SettingsPage.ActivityPlaceholders(
         PickListLoadingState(
             visible = loading,
             topInset = topInset,
-            text = I18n.get(Strings.APP_PICKER_LOADING_ACTIVITIES, "正在加载应用组件…"),
+            text = I18n.get(Strings.APP_PICKER_LOADING_ACTIVITIES),
         )
         if (empty != null) {
             PickListEmptyState(
@@ -278,7 +278,7 @@ private fun SettingsPage.ActivityConfirmFab(
     ) {
         PageFabIcon(
             PageIcons.Confirm,
-            contentDescription = I18n.get(Strings.APP_PICKER_CONFIRM_SELECTION, "确定选择"),
+            contentDescription = I18n.get(Strings.APP_PICKER_CONFIRM_SELECTION),
         )
     }
 }
@@ -413,8 +413,8 @@ private fun LazyListScope.activityRows(
                 add(
                     ActivityEntry(
                         key = "auto",
-                        title = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO, "自动"),
-                        summary = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO_HINT, "直接打开应用"),
+                        title = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO),
+                        summary = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO_HINT),
                         // 「自动」= 这个应用本身：绑定里存的是 `包名|名字`，比的是身份不是字符串
                         picked = current?.let { AppTarget.same(it.target, data.target) } == true,
                         onClick = { onSelect(PickedDetail(data.target, null)) },
@@ -452,7 +452,7 @@ private fun LazyListScope.activityRows(
     //  一个都没查到就整节不画（不是画一个空标题）：应用没注册快捷方式很常见。
     if (data.shortcuts.isNotEmpty()) {
         item(key = "section-shortcut") {
-            SectionTitle(I18n.get(Strings.APP_PICKER_SECTION_SHORTCUTS, "快捷方式"))
+            SectionTitle(I18n.get(Strings.APP_PICKER_SECTION_SHORTCUTS))
         }
         //  **带节前缀取键**：快捷方式与界面可能写出同一个 target（快捷方式 id 恰好等于类名时），
         //  两节共用 `it.target` 会让 Compose 当场抛「Key was already used」。
@@ -479,7 +479,7 @@ private fun LazyListScope.activityRows(
     //  本来就不显示，这一条就是列表第一项 —— 默认档正好，不需要为它算一档。
     if (data.showsActivitySection) {
         item(key = "section-interface") {
-            SectionTitle(I18n.get(Strings.APP_PICKER_SECTION_ACTIVITIES, "Activity"))
+            SectionTitle(I18n.get(Strings.APP_PICKER_SECTION_ACTIVITIES))
         }
     }
 
@@ -787,7 +787,7 @@ internal fun emptyText(
     all: List<LaunchableActivity>?,
 ): String =
     when {
-        failed -> I18n.get(Strings.APP_PICKER_ACTIVITY_LOAD_FAILED, "列表没读出来，退回再进一次")
-        all.isNullOrEmpty() -> I18n.get(Strings.APP_PICKER_ACTIVITY_EMPTY, "这个应用没有可从外部打开的 Activity")
-        else -> I18n.get(Strings.APP_PICKER_NO_SEARCH_RESULT_ACTIVITY, "没有匹配的 Activity")
+        failed -> I18n.get(Strings.APP_PICKER_ACTIVITY_LOAD_FAILED)
+        all.isNullOrEmpty() -> I18n.get(Strings.APP_PICKER_ACTIVITY_EMPTY)
+        else -> I18n.get(Strings.APP_PICKER_NO_SEARCH_RESULT_ACTIVITY)
     }

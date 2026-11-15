@@ -80,7 +80,7 @@ internal fun SettingsPage.CreateSheet(
     }
     PageSheet(
         show = show,
-        title = I18n.get(Strings.VARIABLES_ADD, "新建变量"),
+        title = I18n.get(Strings.VARIABLES_ADD),
         onDismiss = onDismiss,
         endAction = {
             //  **先错哪条说哪条**：名字空着 → 提醒填；名字不合规 → 说规则；初始值不合类型 → 说类型。
@@ -88,15 +88,15 @@ internal fun SettingsPage.CreateSheet(
             val blocked =
                 when {
                     draft.name.isBlank() -> {
-                        I18n.get(Strings.VAR_NAME_HINT, "请输入名称")
+                        I18n.get(Strings.VAR_NAME_HINT)
                     }
 
                     !VariableName.isValid(draft.name) -> {
-                        I18n.get(Strings.VAR_NAME_INVALID, "不能含空格与 = + - ! $ : { }，最多 32 字")
+                        I18n.get(Strings.VAR_NAME_INVALID)
                     }
 
                     draft.type.coerce(draft.initial) == null -> {
-                        I18n.get(Strings.VAR_VALUE_INVALID, "这个值不符合所选类型")
+                        I18n.get(Strings.VAR_VALUE_INVALID)
                     }
 
                     else -> {
@@ -108,7 +108,7 @@ internal fun SettingsPage.CreateSheet(
             //  这里只把「为什么不能点」交出去。
             SheetAction(
                 icon = PageIcons.Confirm,
-                description = I18n.get(Strings.VARIABLES_CREATE, "新建"),
+                description = I18n.get(Strings.VARIABLES_CREATE),
                 onClick = { onCreate(draft.name.trim(), draft.type, draft.initial) },
                 hint = blocked,
             )
@@ -136,36 +136,36 @@ private fun SettingsPage.CreateSheetBody(draft: VarDraft) {
     val initialOk = draft.type.coerce(draft.initial) != null
 
     Column(Modifier.fillMaxWidth()) {
-        SectionTitle(I18n.get(Strings.VAR_FIELD_NAME, "名称"), insideMargin = SHEET_TITLE_MARGIN)
+        SectionTitle(I18n.get(Strings.VAR_FIELD_NAME), insideMargin = SHEET_TITLE_MARGIN)
         //  与「自定义命令」页那个「名称」同一颗字形（`label-important`）。这一格**不加左右内边距**：
         //  抽屉的 `insideMargin` 已经给过一档，再加一档真机上就是「输入框比卡片宽出一截」。
         IconInputView(
-            spec = InputSpec(PageIcons.LabelImportant, I18n.get(Strings.VAR_NAME_HINT, "请输入名称"), VariableName.MAX_LENGTH),
+            spec = InputSpec(PageIcons.LabelImportant, I18n.get(Strings.VAR_NAME_HINT), VariableName.MAX_LENGTH),
             value = draft.name,
             onValueChange = { draft.name = it },
             errorMessage =
                 if (draft.name.isNotEmpty() &&
                     !nameOk
                 ) {
-                    I18n.get(Strings.VAR_NAME_INVALID, "不能含空格与 = + - ! $ : { }，最多 32 字")
+                    I18n.get(Strings.VAR_NAME_INVALID)
                 } else {
                     ""
                 },
         )
-        SectionTitle(I18n.get(Strings.VAR_FIELD_INITIAL, "初始值"), insideMargin = SHEET_TITLE_MARGIN)
+        SectionTitle(I18n.get(Strings.VAR_FIELD_INITIAL), insideMargin = SHEET_TITLE_MARGIN)
         //  布尔只有真假两个取值：给输入框是让人手打 `true` / `false`，打错了才提示一句
         //  「这个值不符合所选类型」；摆成菜单之后没有可打错的地方
         if (draft.type == VarType.BOOLEAN) {
             BoolPicker(draft.initial) { draft.initial = it }
         } else {
             IconInputView(
-                spec = InputSpec(PageIcons.VarInitial, I18n.get(Strings.VAR_INITIAL_HINT, "请输入初始值"), VAR_VALUE_MAX),
+                spec = InputSpec(PageIcons.VarInitial, I18n.get(Strings.VAR_INITIAL_HINT), VAR_VALUE_MAX),
                 value = draft.initial,
                 onValueChange = { draft.initial = it },
-                errorMessage = if (draft.initial.isNotEmpty() && !initialOk) I18n.get(Strings.VAR_VALUE_INVALID, "这个值不符合所选类型") else "",
+                errorMessage = if (draft.initial.isNotEmpty() && !initialOk) I18n.get(Strings.VAR_VALUE_INVALID) else "",
             )
         }
-        SectionTitle(I18n.get(Strings.VAR_FIELD_TYPE, "类型"), insideMargin = SHEET_TITLE_MARGIN)
+        SectionTitle(I18n.get(Strings.VAR_FIELD_TYPE), insideMargin = SHEET_TITLE_MARGIN)
         TypePicker(draft.type) { picked ->
             draft.type = picked
             //  换档时把已经写了一半的初值按新档归一；归一不了就落到新档的空值 ——
@@ -222,9 +222,9 @@ private fun SettingsPage.BoolPicker(
 /** 布尔的显示名：存的是 `true` / `false`，界面上是 `True` / `False`。 */
 private fun boolLabel(value: String): String =
     if (value == VarType.TEXT_TRUE) {
-        I18n.get(Strings.VAR_VALUE_TRUE, "True")
+        I18n.get(Strings.VAR_VALUE_TRUE)
     } else {
-        I18n.get(Strings.VAR_VALUE_FALSE, "False")
+        I18n.get(Strings.VAR_VALUE_FALSE)
     }
 
 /** 布尔的图标：开 / 关各一颗，与类型那一格的 `toggle-left` 同一族。 */

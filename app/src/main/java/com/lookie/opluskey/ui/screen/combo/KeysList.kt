@@ -84,7 +84,7 @@ internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
                 //  所以编辑态不再置灰 —— 它和别的行一样可选；「删不掉」这件事在 `removePicked`
                 //  那一侧过滤（选它一个时给一句提示），而不是把这一行按死。
                 CardRow.Item(
-                    title = I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键"),
+                    title = I18n.get(Strings.BINDING_SECTION_KEYS),
                     //  状态写成**副标题**（标题下面那行小字）—— 判据在 `keyStateLabel` 里
                     //  （停用 / 只参与非首键的按住组合 / 正常启用三选一，最后一种什么都不写）。
                     //  **不再放行尾**：那一格平时是箭头、编辑态是勾选框，状态挤在那里会把箭头
@@ -223,14 +223,14 @@ private fun SettingsPage.addKeyRow(
 ): CardRow.Item {
     val atLimit = cfg.customKeys.size >= KeyId.MAX_CUSTOM_KEYS
     return CardRow.Item(
-        title = I18n.get(Strings.BINDING_ADD_KEY, "添加按键"),
+        title = I18n.get(Strings.BINDING_ADD_KEY),
         icon = PageIcons.MenuKeyAdd,
         enabled = pageEnabled && !atLimit && !editing,
         //  这一行自己的原因：满员 > 编辑态（编辑态里满员也是先报满员，更贴近眼前的事实）
         disabledHint =
             when {
                 atLimit -> I18n.format(Strings.KEY_WATCH_LIMIT, KeyId.MAX_CUSTOM_KEYS)
-                editing -> I18n.get(Strings.KEYS_EDIT_NO_ADD, "编辑中不能添加，请先完成")
+                editing -> I18n.get(Strings.KEYS_EDIT_NO_ADD)
                 else -> null
             },
         onClick = onAddKey,
@@ -303,7 +303,7 @@ internal fun SettingsPage.removePicked(): Boolean {
     if (keyIds.isEmpty() && pickedCombos.isEmpty()) {
         //  勾的只有内置侧键（或者什么都没勾）：说清为什么删不掉，别让「点了没反应」看起来像坏了
         if (KeysEditState.pickedKeys == setOf(KeyId.PLUS.id) && pickedCombos.isEmpty()) {
-            hint(I18n.get(Strings.KEYS_BUILTIN_KEEP, "内置快捷键不能删除"), slot = "keys_del")
+            hint(I18n.get(Strings.KEYS_BUILTIN_KEEP), slot = "keys_del")
         }
         return false
     }
@@ -474,7 +474,7 @@ internal fun SettingsPage.resolveAsk(accept: Boolean): Boolean {
         return false
     }
     if (memberKeysAsk && !accept) {
-        hint(I18n.get(Strings.KEYS_COMBO_NEEDS_KEYS, "成员键没启用，这组也停用"), slot = slot)
+        hint(I18n.get(Strings.KEYS_COMBO_NEEDS_KEYS), slot = slot)
         return false
     }
     return applyToggle(
@@ -507,9 +507,9 @@ internal fun SettingsPage.KeysAskDialog() {
     val title =
         when {
             kind == null -> ""
-            extraKeyCount > 0 -> I18n.get(Strings.KEYS_ENABLE_KEYS_TITLE, "同时启用这些按键？")
-            disable -> I18n.get(Strings.KEYS_DISABLE_CASCADE_TITLE, "同时停用组合按键？")
-            else -> I18n.get(Strings.KEYS_ENABLE_COMBOS_TITLE, "同时启用组合按键？")
+            extraKeyCount > 0 -> I18n.get(Strings.KEYS_ENABLE_KEYS_TITLE)
+            disable -> I18n.get(Strings.KEYS_DISABLE_CASCADE_TITLE)
+            else -> I18n.get(Strings.KEYS_ENABLE_COMBOS_TITLE)
         }
     val body =
         when {
@@ -533,17 +533,17 @@ internal fun SettingsPage.KeysAskDialog() {
             DialogButtonRow(
                 negative =
                     if (disable) {
-                        I18n.get(Strings.DIALOG_CANCEL, "取消")
+                        I18n.get(Strings.DIALOG_CANCEL)
                     } else {
-                        I18n.get(Strings.KEYS_NOT_ENABLE, "不启用")
+                        I18n.get(Strings.KEYS_NOT_ENABLE)
                     },
                 positiveStyle =
                     DialogPositiveStyle(
                         label =
                             if (disable) {
-                                I18n.get(Strings.KEYS_DISABLE, "停用")
+                                I18n.get(Strings.KEYS_DISABLE)
                             } else {
-                                I18n.get(Strings.KEYS_ENABLE, "启用")
+                                I18n.get(Strings.KEYS_ENABLE)
                             },
                     ),
                 onNegative = { resolveAsk(accept = false) },

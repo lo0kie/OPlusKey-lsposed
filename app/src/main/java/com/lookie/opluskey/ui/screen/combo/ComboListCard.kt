@@ -239,14 +239,14 @@ private fun SettingsPage.addComboRow(
     //  **已经配过的那几组要放行**：收着的自定义键删光之后它们成了废配置，删除入口在列表里，
     //  这里也禁掉的话用户就再也删不掉了。
     val canCombo = cfg.customKeys.isNotEmpty() || cfg.combos.isNotEmpty()
-    val needKey = I18n.get(Strings.COMBO_NEED_KEY, "先添加一颗按键")
+    val needKey = I18n.get(Strings.COMBO_NEED_KEY)
     return CardRow.Item(
         //  两列各一颗：这一行加出来的那一档，类别在点下去那一刻就定了（见 `ComboEditState.pendingKind`）
         title =
             if (hold) {
-                I18n.get(Strings.COMBO_ADD_HOLD, "添加按住组合")
+                I18n.get(Strings.COMBO_ADD_HOLD)
             } else {
-                I18n.get(Strings.COMBO_ADD_WAIT, "添加等待组合")
+                I18n.get(Strings.COMBO_ADD_WAIT)
             },
         icon = PageIcons.MenuKeyAdd,
         enabled = writable && !atLimit && canCombo && !editing,
@@ -256,7 +256,7 @@ private fun SettingsPage.addComboRow(
             when {
                 !canCombo -> needKey
                 atLimit -> I18n.format(Strings.COMBO_LIMIT, MAX_COMBOS)
-                editing -> I18n.get(Strings.KEYS_EDIT_NO_ADD, "编辑中不能添加，请先完成")
+                editing -> I18n.get(Strings.KEYS_EDIT_NO_ADD)
                 else -> null
             },
         onClick = {
@@ -287,9 +287,9 @@ internal fun SettingsPage.comboListTitle(
 ): String {
     val base =
         if (hold) {
-            I18n.get(Strings.COMBO_SECTION_HOLD, "按住组合")
+            I18n.get(Strings.COMBO_SECTION_HOLD)
         } else {
-            I18n.get(Strings.COMBO_SECTION_WAIT, "等待组合")
+            I18n.get(Strings.COMBO_SECTION_WAIT)
         }
     val key = filter?.let { cfg.keyIdOf(it) } ?: return base
     return "$base - ${keyName(key)}"
@@ -319,14 +319,14 @@ internal fun SettingsPage.comboFilterEntries(
         //  真机上就成了「侧键 / 1 / 3 / 2」这种看不懂的序 —— 那不是任何一处列表的顺序。
         add(
             MenuEntry.Section(
-                title = I18n.get(Strings.COMBO_FILTER_SECTION, "筛选按键"),
+                title = I18n.get(Strings.COMBO_FILTER_SECTION),
                 rows =
                     buildList {
                         //  「不筛」那一行也在这一组里（它同样是「按按键筛」的一个档位）；
                         //  与下面真正的键之间用一条**加深带**断开 —— 见下一行那个 `dividerBefore`。
                         add(
                             MenuEntry.Row(
-                                title = I18n.get(Strings.COMBO_FILTER_ALL, "全部"),
+                                title = I18n.get(Strings.COMBO_FILTER_ALL),
                                 //  这一行的意思是「不筛」（与「已保存的命令」那张菜单同一颗 `select-all`）
                                 icon = TablerIcons.Outline.SelectAll,
                                 selected = filter == null,

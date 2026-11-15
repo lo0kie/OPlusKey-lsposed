@@ -139,7 +139,7 @@ private class LongPressGates(
     /** 「松手执行额外动作」灰着被点一下时说的话（`null` = 用整页那句）。 */
     val releaseNeedsActionHint: String? =
         if (spec.enabled && !spec.releaseAvailable) {
-            I18n.get(Strings.BINDING_RELEASE_NEEDS_ACTION, "这一档是 无操作，先给它配一个动作")
+            I18n.get(Strings.BINDING_RELEASE_NEEDS_ACTION)
         } else {
             null
         }
@@ -154,7 +154,7 @@ private class LongPressGates(
     /** 「松手才触发」灰着被点一下时的说法（`null` = 用整页那句）。 */
     val fireHint: String? =
         if (spec.enabled && releaseBound) {
-            I18n.get(Strings.BINDING_RELEASE_UNSUPPORTED_FIRE, "先关掉 松手执行额外动作")
+            I18n.get(Strings.BINDING_RELEASE_UNSUPPORTED_FIRE)
         } else {
             null
         }
@@ -189,14 +189,11 @@ private class LongPressGates(
             //  这一页不摆「松手时触发」那一行（见 `LongPressSections`），所以得指路；
             //  摆了的（按键 / 组合那一页）只说结论 —— 那一行就在上面，抬头就看得见。
             spec.sections == LongPressSections.ReleaseOnly -> {
-                I18n.get(
-                    Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE_KEY,
-                    "这颗键已设为 松手时触发，去按键绑定里关掉",
-                )
+                I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE_KEY)
             }
 
             else -> {
-                I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE, "长按已改为松手时触发")
+                I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE)
             }
         }
 
@@ -209,7 +206,7 @@ private class LongPressGates(
         spec.blockedReason
             ?: when {
                 spec.fireOnRelease -> {
-                    I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_REPEAT, "松手时触发，连续触发不生效")
+                    I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_REPEAT)
                 }
 
                 else -> {
@@ -291,9 +288,9 @@ private fun timingRows(
     } else {
         listOf(
             CardRow.Switch(
-                title = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE, "松手时触发"),
-                summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_ON, "按满时长先不执行，抬手时执行"),
-                summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_OFF, "达到长按时长即立刻执行"),
+                title = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE),
+                summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_ON),
+                summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_OFF),
                 icon = PageIcons.LongFireOnRelease,
                 checked = spec.fireOnRelease,
                 enabled = gates.fireEnabled,
@@ -318,9 +315,9 @@ private fun releaseRows(
     } else {
         listOf(
             CardRow.Switch(
-                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE, "松手执行额外动作"),
-                summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_ON, "松手时再执行一个动作"),
-                summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_OFF, "松手不再执行别的"),
+                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE),
+                summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_ON),
+                summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_OFF),
                 icon = PageIcons.LongRelease,
                 checked = spec.releaseOn,
                 enabled = gates.releaseEnabled,
@@ -328,7 +325,7 @@ private fun releaseRows(
                 onCheckedChange = spec.onReleaseToggle,
             ),
             CardRow.Item(
-                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_ACTION, "额外动作"),
+                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_ACTION),
                 //  这一行**永远写动作名**，包括「无操作」—— 后者是这一档的默认值，不是「还没配」。
                 //  原来未配时写「未设置（松手不做事）」，与「无操作」是同一个意思却两种说法，
                 //  还得为「未设置」单独准备一颗图标（那颗原先借了网格里「系统按键」的，撞了）。
@@ -359,9 +356,9 @@ private fun SettingsPage.repeatRows(
     listOf(
         //  副标题那三个来源收在 [LongPressGates.repeatBlocked] 一处。
         CardRow.Switch(
-            title = I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_TITLE, "长按连续触发"),
-            summaryOn = gates.repeatBlocked ?: I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_DESC_ON, "按住不放，按间隔重复执行"),
-            summaryOff = gates.repeatBlocked ?: I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_DESC_OFF, "按住不放只执行一次"),
+            title = I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_TITLE),
+            summaryOn = gates.repeatBlocked ?: I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_DESC_ON),
+            summaryOff = gates.repeatBlocked ?: I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_DESC_OFF),
             icon = PageIcons.LongRepeat,
             checked = spec.repeat,
             enabled = gates.repeatEnabled,
@@ -370,9 +367,9 @@ private fun SettingsPage.repeatRows(
             onCheckedChange = spec.onRepeat,
         ),
         CardRow.Switch(
-            title = I18n.get(Strings.BINDING_REPEAT_VIBRATE_TITLE, "连续触发时振动"),
-            summaryOn = I18n.get(Strings.BINDING_REPEAT_VIBRATE_DESC_ON, "每次重复都振动"),
-            summaryOff = I18n.get(Strings.BINDING_REPEAT_VIBRATE_DESC_OFF, "只在长按触发时振动一次"),
+            title = I18n.get(Strings.BINDING_REPEAT_VIBRATE_TITLE),
+            summaryOn = I18n.get(Strings.BINDING_REPEAT_VIBRATE_DESC_ON),
+            summaryOff = I18n.get(Strings.BINDING_REPEAT_VIBRATE_DESC_OFF),
             icon = PageIcons.Vibrate,
             checked = spec.vibrate,
             enabled = gates.repeatEnabled,
@@ -403,13 +400,17 @@ private fun SettingsPage.RepeatIntervalRow(
         position = position,
         spec =
             SliderSpec(
-                title = I18n.get(Strings.BINDING_REPEAT_INTERVAL_TITLE, "触发间隔"),
+                title = I18n.get(Strings.BINDING_REPEAT_INTERVAL_TITLE),
                 icon = PageIcons.DelayRepeat,
-                summary = I18n.get(Strings.BINDING_REPEAT_INTERVAL_DESC, "长按连续触发的重复间隔"),
+                summary = I18n.get(Strings.BINDING_REPEAT_INTERVAL_DESC),
                 min = KeyConfig.MIN_REPEAT_INTERVAL_MS,
                 max = KeyConfig.MAX_REPEAT_INTERVAL_MS,
                 value = value,
                 default = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+                //  取值 10ms 一档（50~1000 之间 95 档）；**拖动落点吸到 50 的整数倍** ——
+                //  95 档铺在一根轨道上拖不准，粗拖 + 手输才是这一行的用法（见 `SliderSpec.snapDrag`）
+                step = 10,
+                dragStep = 50,
                 enabled = enabled,
                 disabledHint = disabledReason,
             ),
@@ -442,13 +443,17 @@ private fun SettingsPage.LongPressDelayRow(
         position = position,
         spec =
             SliderSpec(
-                title = I18n.get(Strings.BINDING_LONG_PRESS_DELAY_TITLE, "长按延迟"),
-                summary = I18n.get(Strings.BINDING_LONG_PRESS_DELAY_DESC, "多久算长按，比它短算单击"),
+                title = I18n.get(Strings.BINDING_LONG_PRESS_DELAY_TITLE),
+                summary = I18n.get(Strings.BINDING_LONG_PRESS_DELAY_DESC),
                 icon = PageIcons.DelayHold,
                 min = KeyConfig.MIN_LONG_PRESS_MS,
                 max = KeyConfig.MAX_LONG_PRESS_MS,
                 value = value,
                 default = KeyConfig.DEFAULT_LONG_PRESS_MS,
+                //  取值 10ms 一档（200~1000 之间 80 档）；**拖动落点吸到 50 的整数倍** ——
+                //  80 档铺在一根轨道上拖不准，粗拖 + 手输才是这一行的用法（见 `SliderSpec.snapDrag`）
+                step = 10,
+                dragStep = 50,
                 enabled = enabled,
                 disabledHint = disabledReason,
             ),

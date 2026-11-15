@@ -119,7 +119,7 @@ internal enum class CommandFailure(
     ;
 
     open val hint: String
-        get() = I18n.get(key, fallback)
+        get() = I18n.getOr(key, fallback)
 
     companion object {
         /**

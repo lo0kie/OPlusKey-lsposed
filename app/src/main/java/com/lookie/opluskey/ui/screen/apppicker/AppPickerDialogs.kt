@@ -56,9 +56,9 @@ private fun SettingsPage.turnOff(toggle: PickerToggle) {
 private fun SettingsPage.UnopenableDialog(ui: AppPickerUiState) {
     ConfirmDialog(
         show = ui.blockedUnopenable != null,
-        title = I18n.get(Strings.DIALOG_APP_UNOPENABLE_TITLE, "此应用无法打开"),
+        title = I18n.get(Strings.DIALOG_APP_UNOPENABLE_TITLE),
         summary = null,
-        action = I18n.get(Strings.COMMON_CONFIRM, "确定"),
+        action = I18n.get(Strings.COMMON_CONFIRM),
         positiveDanger = false,
         onDismiss = { ui.blockedUnopenable = null },
         onConfirm = { ui.blockedUnopenable = null },
@@ -89,8 +89,8 @@ private fun SettingsPage.BlockedToggleDialog(
         show = blocked != null,
         title =
             when (kind) {
-                PickerToggle.StockAnim -> I18n.get(Strings.DIALOG_STOCK_ANIM_DROPPED_TITLE, "无法使用原版动画")
-                else -> I18n.get(Strings.DIALOG_APP_UNSUPPORTED_MINI_WINDOW_TITLE, "不支持以小窗口打开")
+                PickerToggle.StockAnim -> I18n.get(Strings.DIALOG_STOCK_ANIM_DROPPED_TITLE)
+                else -> I18n.get(Strings.DIALOG_APP_UNSUPPORTED_MINI_WINDOW_TITLE)
             },
         summary =
             blocked?.let {
@@ -102,7 +102,7 @@ private fun SettingsPage.BlockedToggleDialog(
                     escapeEmphasis(it.label),
                 )
             },
-        action = I18n.get(Strings.COMMON_CONFIRM, "确定"),
+        action = I18n.get(Strings.COMMON_CONFIRM),
         positiveDanger = false,
         onDismiss = { ui.blockedToggle = null },
         onConfirm = {
@@ -153,7 +153,7 @@ private fun SettingsPage.DiscardPickDialog() {
     val picked = picker.draft
     ConfirmDialog(
         show = overlays.confirmLeavePick,
-        title = I18n.get(Strings.DIALOG_DISCARD_PICK_TITLE, "放弃选择"),
+        title = I18n.get(Strings.DIALOG_DISCARD_PICK_TITLE),
         summary =
             picked?.let {
                 I18n.format(
@@ -169,7 +169,7 @@ private fun SettingsPage.DiscardPickDialog() {
                     ),
                 )
             },
-        action = I18n.get(Strings.COMMON_DISCARD, "放弃"),
+        action = I18n.get(Strings.COMMON_DISCARD),
         onDismiss = { overlays.confirmLeavePick = false },
         onConfirm = {
             overlays.confirmLeavePick = false

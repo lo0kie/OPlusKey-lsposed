@@ -307,7 +307,7 @@ private fun SettingsPage.CommandTileBody(
                 ) {
                     TileActionButton(
                         icon = PageIcons.CommandEdit,
-                        label = I18n.get(Strings.COMMON_EDIT, "编辑"),
+                        label = I18n.get(Strings.COMMON_EDIT),
                         onClick = onEdit,
                     )
                     //  这颗就是原来右上角那颗「更多」（测试 / 编辑 / 删除都收进它的菜单）——
@@ -315,7 +315,7 @@ private fun SettingsPage.CommandTileBody(
                     //  之间必然空出 20dp 以上。菜单的落点仍然记在这颗字上（`menuAnchor`）。
                     TileActionButton(
                         icon = TablerIcons.Outline.Dots,
-                        label = I18n.get(Strings.COMMON_MORE, "更多"),
+                        label = I18n.get(Strings.COMMON_MORE),
                         onClick = onMenu,
                         anchor = menuAnchor,
                     )
@@ -502,9 +502,9 @@ internal fun SavedCommandEmptyState(unreadable: Boolean = false) {
         },
         text =
             if (unreadable) {
-                I18n.get(Strings.COMMAND_UNREADABLE, "命令库无法读取（文件损坏或权限不足），已切换为只读")
+                I18n.get(Strings.COMMAND_UNREADABLE)
             } else {
-                I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令")
+                I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS)
             },
         modifier = Modifier.fillMaxWidth().padding(vertical = EMPTY_STATE_VERTICAL_PADDING),
     )

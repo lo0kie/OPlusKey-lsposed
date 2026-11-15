@@ -47,7 +47,7 @@ internal fun SettingsPage.replaceStep(
     if (index !in commandDraft.draft.steps.indices) {
         // 越界不能静默 return：调用方已经 tick / 关了菜单，用户看不到任何反应也无从判断。
         XLog.w("多条命令：第 ${index + 1} 步不存在（当前 ${commandDraft.draft.steps.size} 步），换步已忽略")
-        hint(I18n.get(Strings.TOAST_COMMAND_STEP_MISSING, "这一步已经不在列表里了"), slot = HINT_SLOT_COMMAND)
+        hint(I18n.get(Strings.TOAST_COMMAND_STEP_MISSING), slot = HINT_SLOT_COMMAND)
         navTo(Screen.COMMANDS)
         return false
     }

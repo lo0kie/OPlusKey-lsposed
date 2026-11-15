@@ -65,7 +65,7 @@ internal fun SettingsPage.BranchTimeRangeDialog(
 
     FrostedDialog(
         show = show,
-        title = I18n.get(Strings.COMMAND_COND_TIME_NAME, "时间区间"),
+        title = I18n.get(Strings.COMMAND_COND_TIME_NAME),
         onDismiss = onDismiss,
         // 没有输入框，弹窗照常把键盘收掉
         hideImeOnShow = true,
@@ -95,7 +95,7 @@ internal fun SettingsPage.BranchTimeRangeDialog(
             TimeWheel(
                 spec =
                     TimeWheelSpec(
-                        label = I18n.get(Strings.COMMAND_COND_TIME_START, "开始"),
+                        label = I18n.get(Strings.COMMAND_COND_TIME_START),
                         hour = startHour,
                         minute = startMinute,
                         onHourChange = { startHour = it },
@@ -106,7 +106,7 @@ internal fun SettingsPage.BranchTimeRangeDialog(
             TimeWheel(
                 spec =
                     TimeWheelSpec(
-                        label = I18n.get(Strings.COMMAND_COND_TIME_END, "结束"),
+                        label = I18n.get(Strings.COMMAND_COND_TIME_END),
                         hour = endHour,
                         minute = endMinute,
                         onHourChange = { endHour = it },

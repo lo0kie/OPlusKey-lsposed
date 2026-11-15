@@ -90,10 +90,10 @@ private enum class ActivationState {
 /** 状态那一句大字 —— 四档各一句。 */
 private fun ActivationState.label(): String =
     when (this) {
-        ActivationState.Active -> I18n.get(Strings.HOME_ACTIVATION_ACTIVE, "已激活")
-        ActivationState.Disabled -> I18n.get(Strings.HOME_ACTIVATION_DISABLED, "已关闭")
-        ActivationState.Inactive -> I18n.get(Strings.HOME_ACTIVATION_INACTIVE, "未激活")
-        ActivationState.Checking -> I18n.get(Strings.HOME_ACTIVATION_CHECKING, "检查中")
+        ActivationState.Active -> I18n.get(Strings.HOME_ACTIVATION_ACTIVE)
+        ActivationState.Disabled -> I18n.get(Strings.HOME_ACTIVATION_DISABLED)
+        ActivationState.Inactive -> I18n.get(Strings.HOME_ACTIVATION_INACTIVE)
+        ActivationState.Checking -> I18n.get(Strings.HOME_ACTIVATION_CHECKING)
     }
 
 /**
@@ -111,14 +111,14 @@ private fun ActivationState.label(): String =
  */
 private fun ActivationState.detail(reason: String?): String =
     when (this) {
-        ActivationState.Active -> I18n.get(Strings.HOME_SWITCH_DESC_ON, "按键由模块接管，执行绑定动作")
+        ActivationState.Active -> I18n.get(Strings.HOME_SWITCH_DESC_ON)
 
-        ActivationState.Disabled -> I18n.get(Strings.HOME_SWITCH_DESC_OFF, "按键交还系统，不执行任何绑定")
+        ActivationState.Disabled -> I18n.get(Strings.HOME_SWITCH_DESC_OFF)
 
         // 未激活 = 整页总闸（`linkReady`）里的某一段不 ok，**不再只说「系统侧未接管」**：
         //  那是其中一种，而「设置没送到 / 执行侧读不懂配置 / 系统侧跑着旧包」都让它为假，
         //  拿那一句去答，用户会照着去勾作用域 —— 白翻一遍。
-        ActivationState.Inactive -> reason ?: I18n.get(Strings.HOME_ACTIVATION_INACTIVE_DESC, "系统侧未接管按键")
+        ActivationState.Inactive -> reason ?: I18n.get(Strings.HOME_ACTIVATION_INACTIVE_DESC)
 
         ActivationState.Checking -> CHECKING_HINT
     }
@@ -661,7 +661,7 @@ private fun SettingsPage.ActivationHead(
 @Composable
 private fun TapToEnableHint(lineStyle: TextStyle) {
     Text(
-        text = I18n.get(Strings.HOME_ACTIVATION_TAP_TO_ENABLE, "点击启用此处模块"),
+        text = I18n.get(Strings.HOME_ACTIVATION_TAP_TO_ENABLE),
         style = lineStyle,
         fontWeight = FontWeight.Medium,
         color = COUITheme.colorScheme.primary,
@@ -718,7 +718,7 @@ private fun SettingsPage.ActivationTips(
                         icon = PageIcons.Download,
                         text = I18n.format(Strings.UPDATE_TIP, release.displayVersion),
                         palette = palette,
-                        action = I18n.get(Strings.UPDATE_VIEW, "查看"),
+                        action = I18n.get(Strings.UPDATE_VIEW),
                         // 与「发现新版本」那个弹窗走同一个入口（`UpdateState.reopen`）：点了不把这一行收掉，
                         //  收不收由 `UpdateState.pending` 管（窗里点「去下载」或勾「不再提示」才清）。
                         onAction = UpdateState::reopen,

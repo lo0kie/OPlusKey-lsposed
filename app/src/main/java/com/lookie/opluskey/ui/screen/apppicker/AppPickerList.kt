@@ -699,7 +699,7 @@ private fun SettingsPage.AppRowTags(
         //  第几个不看标签：名字里已经写着（`微信 1`），标签再用五种颜色区分只会让整屏更花。
         if (app.clone) {
             AppKindTag(
-                text = I18n.get(Strings.APP_PICKER_CLONE_TAG, "分身"),
+                text = I18n.get(Strings.APP_PICKER_CLONE_TAG),
                 tint = cloneTagTint(),
             )
         }
@@ -715,11 +715,11 @@ private fun SettingsPage.AppRowTags(
         val kindTag =
             when {
                 app.xposed -> {
-                    I18n.get(Strings.APP_PICKER_TAB_XPOSED, "模块") to appKindTagTint(true, app.system)
+                    I18n.get(Strings.APP_PICKER_TAB_XPOSED) to appKindTagTint(true, app.system)
                 }
 
                 app.system && (withSystem || picker.stopApp) -> {
-                    I18n.get(Strings.APP_PICKER_TAB_SYSTEM, "系统") to appKindTagTint(false, true)
+                    I18n.get(Strings.APP_PICKER_TAB_SYSTEM) to appKindTagTint(false, true)
                 }
 
                 else -> {
@@ -738,7 +738,7 @@ private fun SettingsPage.AppRowTags(
             //  前面画过任意一枚（分身 / 模块·系统）才补间隙
             if (app.clone || kindTag != null) Spacer(Modifier.width(APP_KIND_TAG_GAP))
             AppKindTag(
-                text = I18n.get(Strings.APP_PICKER_TAG_UNOPENABLE, "不可打开"),
+                text = I18n.get(Strings.APP_PICKER_TAG_UNOPENABLE),
                 tint = COUITheme.colorScheme.error,
             )
         }

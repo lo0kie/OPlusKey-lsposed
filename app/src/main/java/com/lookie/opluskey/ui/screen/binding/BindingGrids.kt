@@ -248,8 +248,8 @@ private fun SettingsPage.CreateCommandRow(
         rows =
             listOf(
                 CardRow.Item(
-                    title = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND, "自定义命令"),
-                    summary = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND_DESC, "一条命令或多个动作"),
+                    title = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND),
+                    summary = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND_DESC),
                     icon = PageIcons.CommandCode,
                     // 行尾箭头：「这一行后面还有一页」（它不是弹浮层的入口格，所以不画那颗选择器字形）
                     arrow = true,

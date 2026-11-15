@@ -864,20 +864,28 @@ data class KeyConfig(
         const val MIN_LONG_PRESS_MS = 200
 
         /**
-         * 长按阈值上限 —— **2000ms**（用户口径）。
+         * 长按阈值上限 —— **1000ms**（用户口径）。
          *
-         *  上一档是 1000ms：想「按住两秒才算长按」的人调到滑杆尽头也调不出来，只能手改配置，
-         *  而手改的值还会被 `ConfigFields` 的钳制压回 1000 —— 上限与滑杆必须同一个数。
-         *  上限本身不参与判定正确性：判定只拿它排长按那一枪，越长只是越不容易误判成长按，
-         *  代价是长按动作要等更久（`GestureDetector.scheduleLongPress`）。
+         *  上限不参与判定正确性：判定只拿它排长按那一枪，越长只是越不容易误判成长按，
+         *  代价是长按动作要等更久（`GestureDetector.scheduleLongPress`）。一秒是「按住一下」与
+         *  「一直按着」的分界，再长就不像一次长按了。
+         *
+         *  滑杆与 `ConfigFields` 的钳制都取这一个数 —— 各写一份时，滑杆尽头的值与落盘被压回的
+         *  值会不一样。
          */
-        const val MAX_LONG_PRESS_MS = 2000
+        const val MAX_LONG_PRESS_MS = 1000
         const val DEFAULT_REPEAT_INTERVAL_MS = 300
 
         /** 连发间隔下限 —— 50ms（用户口径）：再快就与「按住不放」的体感脱节，且按键注入本身也要时间。 */
         const val MIN_REPEAT_INTERVAL_MS = 50
 
-        const val MAX_REPEAT_INTERVAL_MS = 3000
+        /**
+         * 连发间隔上限 —— **1000ms**（用户口径），与长按阈值上限同一个数。
+         *
+         *  再长，一次按住在一秒里只重复一次，「连续触发」就不成其为连续了 —— 那种节奏该由
+         *  动作自己去排（计时器 / 多步命令）。滑杆与 `ConfigFields` 的钳制都取这一个数。
+         */
+        const val MAX_REPEAT_INTERVAL_MS = 1000
 
         /**
          * 某个键的默认值：**内置键默认接管、自定义键默认不接管**。

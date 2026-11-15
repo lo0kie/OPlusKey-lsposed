@@ -29,21 +29,21 @@ internal fun varRows(
         add(
             VarAction(
                 if (step) {
-                    I18n.get(Strings.VAR_OP_SET, "设为…")
+                    I18n.get(Strings.VAR_OP_SET)
                 } else {
-                    I18n.get(Strings.COMMON_EDIT, "编辑")
+                    I18n.get(Strings.COMMON_EDIT)
                 },
             ) { onValue(variable) },
         )
         addAll(typeRows(variable, step, onLand))
         if (step) {
             add(
-                VarAction(I18n.get(Strings.VAR_OP_RESET, "恢复初始值")) {
+                VarAction(I18n.get(Strings.VAR_OP_RESET)) {
                     onLand(Action.VarSet(variable.name, VarOp.SET, variable.initial))
                 },
             )
         } else {
-            add(VarAction(I18n.get(Strings.COMMON_DELETE, "删除")) { onDelete(variable) })
+            add(VarAction(I18n.get(Strings.COMMON_DELETE)) { onDelete(variable) })
         }
     }
 
@@ -61,7 +61,7 @@ private fun typeRows(
         VarType.BOOLEAN -> {
             if (step) {
                 listOf(
-                    VarAction(I18n.get(Strings.VAR_OP_TOGGLE, "取反")) {
+                    VarAction(I18n.get(Strings.VAR_OP_TOGGLE)) {
                         onLand(Action.VarSet(variable.name, VarOp.NOT, ""))
                     },
                 )
@@ -72,10 +72,10 @@ private fun typeRows(
 
         VarType.NUMBER -> {
             listOf(
-                VarAction(I18n.get(Strings.VAR_OP_INC, "加一")) {
+                VarAction(I18n.get(Strings.VAR_OP_INC)) {
                     onLand(Action.VarSet(variable.name, VarOp.ADD, "1"))
                 },
-                VarAction(I18n.get(Strings.VAR_OP_DEC, "减一")) {
+                VarAction(I18n.get(Strings.VAR_OP_DEC)) {
                     onLand(Action.VarSet(variable.name, VarOp.SUB, "1"))
                 },
             )

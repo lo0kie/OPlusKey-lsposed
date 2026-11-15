@@ -235,7 +235,7 @@ internal fun SettingsPage.addScene() {
     //  **同一个语义位**：连点几下是这一句在改字，不是叠出一串
     if (rules.any { it.conditions.isEmpty() }) {
         hint(
-            I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有场景没选完"),
+            I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION),
             slot = HINT_SLOT_DISABLED,
         )
         return
@@ -380,7 +380,7 @@ private fun SettingsPage.BranchRow(
                         //  （不是一整块场景，整块那个入口在顶栏），所以每块各有一份才对。
                         addRow =
                             CardRow.Item(
-                                title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景"),
+                                title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION),
                                 icon = PageIcons.StepAdd,
                                 //  **到顶了（九条）就点不动**：与 `appendCondition` 里那道闸同一句原因
                                 //  （`CardRow` 只在置灰时才画 `disabledHint`，所以这里照给就行）。
@@ -806,7 +806,7 @@ internal fun SettingsPage.ruleConditionLines(rule: SceneRule): List<ConditionLin
         //  一条都没配时也给一行「未选择条件」，让用户知道这一格要配什么
         listOf(
             ConditionLine(
-                I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION, "未选择场景"),
+                I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION),
                 PageIcons.Scene,
                 empty = true,
                 //  占位行与「配好之后的那一条」**共用同一个身份**（见下面 `single` 那一支）：
@@ -832,7 +832,7 @@ internal fun SettingsPage.ruleConditionLines(rule: SceneRule): List<ConditionLin
                     if (condition.isUsable) {
                         conditionRowTitle(condition, ::appNameOf)
                     } else {
-                        I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION, "未选择场景")
+                        I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION)
                     },
                 icon = conditionLineIcon(condition),
                 empty = !condition.isUsable,
@@ -934,7 +934,7 @@ internal fun RuleStateHint(state: RuleState) {
             //  红色：这不是「暂时不生效」，是**配错了** —— 后一块一个字都不会执行，
             //  点「确认」时也会被拦下来（见 `branchRulesBlockedReason`）
             Text(
-                I18n.get(Strings.COMMAND_BRANCH_SAME_SCENE, "与上面重复"),
+                I18n.get(Strings.COMMAND_BRANCH_SAME_SCENE),
                 style = COUITheme.textStyles.footnote1,
                 color = COUITheme.colorScheme.error,
                 modifier = Modifier.padding(end = 6.dp),
@@ -1029,9 +1029,9 @@ internal fun SettingsPage.branchToggleRow(
     return MenuEntry.Row(
         title =
             if (off) {
-                I18n.get(Strings.COMMAND_BRANCH_ENABLE, "启用场景")
+                I18n.get(Strings.COMMAND_BRANCH_ENABLE)
             } else {
-                I18n.get(Strings.COMMAND_BRANCH_DISABLE, "停用场景")
+                I18n.get(Strings.COMMAND_BRANCH_DISABLE)
             },
         icon = if (off) PageIcons.KeyUnlocked else PageIcons.KeyLocked,
     ) {
@@ -1048,7 +1048,7 @@ internal fun SettingsPage.branchToggleRow(
 /** 表尾那句注脚 —— 走全项目那一份注脚（[CommandFootnote]：不占卡片、居中、`footnote1`）。 */
 @Composable
 internal fun SettingsPage.BranchDefaultTip() {
-    CommandFootnote(I18n.get(Strings.COMMAND_BRANCH_DEFAULT, "以上都不成立时用按键绑定"))
+    CommandFootnote(I18n.get(Strings.COMMAND_BRANCH_DEFAULT))
 }
 
 /**
@@ -1070,8 +1070,8 @@ internal fun SettingsPage.blockGestures(): List<GestureTrigger> = sceneGesturePa
  */
 internal fun SettingsPage.actionTextOf(action: Action): String =
     when {
-        action is Action.Follow -> I18n.get(Strings.COMMAND_BRANCH_ACTION_FOLLOW, "跟随默认")
-        !action.isBound -> I18n.get(Strings.ACTION_NONE, "无操作")
+        action is Action.Follow -> I18n.get(Strings.COMMAND_BRANCH_ACTION_FOLLOW)
+        !action.isBound -> I18n.get(Strings.ACTION_NONE)
         else -> stepTitleWithTarget(action.token) { target -> appTargetLabelOf(target) }
     }
 

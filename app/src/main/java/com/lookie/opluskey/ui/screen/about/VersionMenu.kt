@@ -27,9 +27,9 @@ internal fun SettingsPage.VersionMenu(ui: AboutUiState) {
                 MenuEntry.Row(
                     title =
                         if (found) {
-                            I18n.get(Strings.UPDATE_FOUND_ROW, "发现新版本")
+                            I18n.get(Strings.UPDATE_FOUND_ROW)
                         } else {
-                            I18n.get(Strings.UPDATE_CHECK_ROW, "检查更新")
+                            I18n.get(Strings.UPDATE_CHECK_ROW)
                         },
                     icon = if (found) PageIcons.Download else PageIcons.CheckUpdate,
                     //  行尾不挂红点：有新版这件事首页顶上那块「模块状态」已经说了（见 `HomeActivationCard`），
@@ -40,7 +40,7 @@ internal fun SettingsPage.VersionMenu(ui: AboutUiState) {
                 },
                 // 项目仓库：跳浏览器前先问一句（与「作者 / 反馈」同一条账）
                 MenuEntry.Row(
-                    title = I18n.get(Strings.MORE_ABOUT_REPO, "项目仓库"),
+                    title = I18n.get(Strings.MORE_ABOUT_REPO),
                     icon = PageIcons.BrandGithub,
                     submenu = true,
                     trailingIcon = PageIcons.Link,

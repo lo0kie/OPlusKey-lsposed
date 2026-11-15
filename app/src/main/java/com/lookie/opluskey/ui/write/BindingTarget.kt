@@ -206,7 +206,7 @@ internal sealed interface BindingTarget {
             //  后者是 `com1` 那种内部标识，写到提示条上等于什么都没说。
             //  组合多颗时压成一串：提示条念得出来就够（它不按颗分开排）。
             val names = comboKeyNames(cfg, combo).joinToString(COMBO_PAIR_SEPARATOR)
-            return HintText(I18n.get(Strings.COMBO_DISABLED_ITEM, "%s 已停用，可在菜单里启用它").format(names))
+            return HintText(I18n.get(Strings.COMBO_DISABLED_ITEM).format(names))
         }
     }
 

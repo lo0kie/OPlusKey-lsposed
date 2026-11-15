@@ -1,0 +1,46 @@
+[
+  {
+    "id": "common.wechat_scan",
+    "brand": "WECHAT",
+    "root": true,
+    "name": "common_command.wechat_scan",
+    "nameFallback": "微信扫一扫",
+    "summary": "common_command.wechat_scan_desc",
+    "summaryFallback": "打开微信的扫码界面",
+    "note": "起组件、不走 weixin:// 深链（那条落的是网页壳 MMWebViewUI）；目标界面不 exported，只有 uid 0 过得去",
+    "step": "shell:am start -n com.tencent.mm/.plugin.scanner.ui.BaseScanUI"
+  },
+  {
+    "id": "common.wechat_pay",
+    "brand": "WECHAT",
+    "root": true,
+    "name": "common_command.wechat_pay",
+    "nameFallback": "微信收付款",
+    "summary": "common_command.wechat_pay_desc",
+    "summaryFallback": "打开微信的收付款页（付款码 / 收钱码）",
+    "note": "与扫一扫同一条通道；那页带 FLAG_SECURE，截图全黑 —— 正好当判据",
+    "step": "shell:am start -n com.tencent.mm/.plugin.offline.ui.WalletOfflineCoinPurseUI"
+  },
+  {
+    "id": "common.alipay_scan",
+    "brand": "ALIPAY",
+    "root": false,
+    "name": "common_command.alipay_scan",
+    "nameFallback": "支付宝扫一扫",
+    "summary": "common_command.alipay_scan_desc",
+    "summaryFallback": "打开支付宝的扫码界面",
+    "note": "支付宝走 alipays:// 深链（组件名带版本味，appId 反而稳），不升权即可；单引号不能省",
+    "step": "shell:am start -a android.intent.action.VIEW -d 'alipays://platformapi/startapp?appId=10000007'"
+  },
+  {
+    "id": "common.alipay_pay",
+    "brand": "ALIPAY",
+    "root": false,
+    "name": "common_command.alipay_pay",
+    "nameFallback": "支付宝收付款",
+    "summary": "common_command.alipay_pay_desc",
+    "summaryFallback": "打开支付宝的收付款页",
+    "note": "与扫一扫同一条深链通道，只换 appId",
+    "step": "shell:am start -a android.intent.action.VIEW -d 'alipays://platformapi/startapp?appId=20000056'"
+  }
+]

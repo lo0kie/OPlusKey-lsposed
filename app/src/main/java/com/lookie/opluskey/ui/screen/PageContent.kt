@@ -377,7 +377,7 @@ private fun SettingsPage.LinkCheckBridge() {
                 ModuleWire.ACTION_INJECT_READY,
             )
         if (!registered) {
-            hint(I18n.get(Strings.HOME_LINK_CHECK_FAILED, "无法获取链路状态（广播注册失败），请重新打开设置页"))
+            hint(I18n.get(Strings.HOME_LINK_CHECK_FAILED))
         }
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }

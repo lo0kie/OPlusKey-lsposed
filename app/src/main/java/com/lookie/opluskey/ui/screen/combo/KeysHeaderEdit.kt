@@ -64,9 +64,9 @@ internal fun SettingsPage.KeysHeaderEdit() {
                     if (on) PageIcons.Confirm else PageIcons.CommandEdit,
                     contentDescription =
                         if (on) {
-                            I18n.get(Strings.COMMON_DONE, "完成")
+                            I18n.get(Strings.COMMON_DONE)
                         } else {
-                            I18n.get(Strings.COMMON_EDIT, "编辑")
+                            I18n.get(Strings.COMMON_EDIT)
                         },
                     // 顶栏按钮不给图标上色 ⇒ 禁用态得自己给（与行首图标同一个禁用色）
                     tint = iconTint,
@@ -100,9 +100,9 @@ private fun SettingsPage.KeysHeaderSelectAll(canEdit: Boolean) {
                 PageIcons.SelectAll,
                 contentDescription =
                     if (all) {
-                        I18n.get(Strings.KEYS_DESELECT_ALL, "取消全选")
+                        I18n.get(Strings.KEYS_DESELECT_ALL)
                     } else {
-                        I18n.get(Strings.KEYS_SELECT_ALL, "全选")
+                        I18n.get(Strings.KEYS_SELECT_ALL)
                     },
                 tint = iconTint,
             )

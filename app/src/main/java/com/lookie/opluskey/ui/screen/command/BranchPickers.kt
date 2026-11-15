@@ -57,9 +57,9 @@ internal fun SettingsPage.openAppPickerForBranch(
     //  两档那半句的结论相反（「任一在前台即通过」/「都不在前台才通过」），所以各有各的一句。
     hint(
         if (kind == ConditionKind.APP_NOT) {
-            I18n.get(Strings.APP_PICKER_BRANCH_MULTI_HINT_NOT, "可以多选：选中的应用都不在前台才通过")
+            I18n.get(Strings.APP_PICKER_BRANCH_MULTI_HINT_NOT)
         } else {
-            I18n.get(Strings.APP_PICKER_BRANCH_MULTI_HINT, "可以多选：任一应用在前台即通过")
+            I18n.get(Strings.APP_PICKER_BRANCH_MULTI_HINT)
         },
     )
     navTo(Screen.APP_PICKER)

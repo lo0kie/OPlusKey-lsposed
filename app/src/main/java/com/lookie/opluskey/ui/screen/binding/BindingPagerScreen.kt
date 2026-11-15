@@ -87,7 +87,7 @@ private fun SettingsPage.saveSceneBinding(): Boolean {
     //  时，这一位就是唯一判据。
     sceneBinding = sceneBinding.withBaseline(branchDraftNow().scenes.getOrNull(at))
     if (result == SceneBlockSave.Saved) {
-        hint(I18n.get(Strings.COMMAND_BRANCH_ACTION_SAVED, "已保存这一档动作"), slot = HINT_SLOT_PAGE)
+        hint(I18n.get(Strings.COMMAND_BRANCH_ACTION_SAVED), slot = HINT_SLOT_PAGE)
     }
     return true
 }
@@ -226,7 +226,7 @@ internal fun SettingsPage.BindingPagerScreen(
     //  另外两页不挂：它们点一格就当场落盘，没有「未确认」这一说。
     if (s == Screen.SCENE_BINDING) {
         LeaveDiscardDialog(
-            title = I18n.get(Strings.DIALOG_DISCARD_CONDITION_TITLE, "放弃未保存的场景"),
+            title = I18n.get(Strings.DIALOG_DISCARD_CONDITION_TITLE),
             //  放弃 = **把这一块还原成进来时那份**。这一页改的是共享草稿的其中一块，
             //  草稿不会随离栈整份清（它属于还留在栈里的「系统场景」页）—— 只弹栈的话，
             //  改动仍躺在草稿里，退回上一页后那颗「确认」照样能把它写下去。
@@ -406,7 +406,7 @@ internal fun SettingsPage.bindingTargetStopped(target: BindingTarget): String? {
                 SettingsTarget.Key(target.id).disabledReason(cfg)
                     ?: if (cfg.key(target.id).comboOnly) {
                         HintText(
-                            I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED, "按键 %s 只能作按住组合的后续成员"),
+                            I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED),
                             listOf(keyName(target.id)),
                         )
                     } else {
@@ -457,9 +457,9 @@ internal fun bindingBandLabels(targets: List<BindingTarget>): List<String> =
         //  页签，它是 ⋮ 菜单里那一行（见 `ComboEditMenu`）。
         targets.map { target ->
             if (target.gesture == GestureTrigger.LongPress) {
-                I18n.get(Strings.COMBO_LONG, "长按")
+                I18n.get(Strings.COMBO_LONG)
             } else {
-                I18n.get(Strings.COMBO_SHORT, "短按")
+                I18n.get(Strings.COMBO_SHORT)
             }
         }
     } else {

@@ -118,7 +118,7 @@ internal fun ColumnScope.DialogBody(content: @Composable ColumnScope.() -> Unit)
  * @param positiveStyle 动作项那一格怎么画：是否按破坏性上色（红）、能不能点、写什么字。
  *   这几件都是「动作项自己的状态」。
  * @param negative 左半边那颗的字。默认就是「取消」—— 全项目只有更新窗不这么叫（「稍后」），
- *   其余七八处逐字一样，没必要每处各抄一遍 `I18n.get(Strings.DIALOG_CANCEL, "取消")`。
+ *   其余七八处逐字一样，没必要每处各抄一遍 `I18n.get(Strings.DIALOG_CANCEL)`。
  * @param onReset 最左那颗「重置」—— 不给就没有（那两颗仍是平分）。给「这一格有默认值、
  *   用户可以一键回到默认」的格子用（此刻只有提示文案模板）。它不关窗：调用方自己决定
  *   是写回去再关上，还是把输入框清空留在原地。
@@ -128,11 +128,11 @@ internal fun DialogButtonRow(
     onNegative: () -> Unit,
     onPositive: () -> Unit,
     positiveStyle: DialogPositiveStyle = DialogPositiveStyle(),
-    negative: String = I18n.get(Strings.DIALOG_CANCEL, "取消"),
+    negative: String = I18n.get(Strings.DIALOG_CANCEL),
     onReset: (() -> Unit)? = null,
 ) {
     //  动作项那颗的字：默认「确定」，调用方要换时走 `positiveStyle.label`
-    val positive = positiveStyle.label ?: I18n.get(Strings.DIALOG_CONFIRM, "确定")
+    val positive = positiveStyle.label ?: I18n.get(Strings.DIALOG_CONFIRM)
     //  **竖向留白与左右内缩都不在这里**：竖向归 `DialogPanel`（相邻两区之间各一档
     //  [DIALOG_REGION_GAP]），左右由底部那一槽自己给（`insideMargin`）。
     //  自己再补一份，两个窗叠起来就对不齐 —— 那正是「上下留白总量不一致」的来源。
@@ -219,7 +219,7 @@ private fun RowScope.ResetButton(
 ) {
     val tick = LocalTick.current
     TextButton(
-        text = I18n.get(Strings.DIALOG_RESET, "重置"),
+        text = I18n.get(Strings.DIALOG_RESET),
         onClick = {
             tick()
             onReset()

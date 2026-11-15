@@ -96,7 +96,7 @@ internal fun BoxScope.PickListFailedState(
     PageStatePlaceholder(
         visible = visible,
         topInset = topInset,
-        text = I18n.get(Strings.APP_PICKER_LOAD_FAILED, "列表没读出来，退回再进一次"),
+        text = I18n.get(Strings.APP_PICKER_LOAD_FAILED),
         glyph = { tint ->
             Icon(
                 PageIcons.EmptyApps,
@@ -126,34 +126,34 @@ internal fun SettingsPage.emptyHint(ui: AppPickerUiState): String {
     return when {
         // 真因优先：这次是**没查出来**，不是「一个都没有」（后者是有效结论）
         ui.failed && apps.isEmpty() -> {
-            I18n.get(Strings.APP_PICKER_LOAD_FAILED, "列表没读出来，退回再进一次")
+            I18n.get(Strings.APP_PICKER_LOAD_FAILED)
         }
 
         apps.isEmpty() -> {
             // 不再说「系统限制了本页可见的应用列表」：那个前提不成立，
             // 这一页的包可见性跟着宿主走，真列不出来只会是别的原因。
-            I18n.get(Strings.APP_PICKER_EMPTY_OPENABLE, "没有找到应用")
+            I18n.get(Strings.APP_PICKER_EMPTY_OPENABLE)
         }
 
         // 搜不到就只说「没匹配上」—— **不复述搜索词**：那一串字就写在上面的搜索框里，
         //  空态再念一遍只是把同一件事说两次，长词还会在窄屏上折成两行。
         picker.filter.value.isNotBlank() -> {
-            I18n.get(Strings.APP_PICKER_NO_SEARCH_RESULT, "没有匹配的应用")
+            I18n.get(Strings.APP_PICKER_NO_SEARCH_RESULT)
         }
 
         // 被「显示失效应用」挡着：确实有打不开的行，而且它们本来够得着显示
         !includesUnopenable && apps.any { !it.launchable && (includesIconless || it.byDefault) } -> {
-            I18n.get(Strings.APP_PICKER_EMPTY_HINT_BROKEN, "没有能打开的；开 显示失效应用 看看")
+            I18n.get(Strings.APP_PICKER_EMPTY_HINT_BROKEN)
         }
 
         // 剩下的空只可能是「没有启动图标」那一维挡着（另一维已放行）
         !includesIconless -> {
-            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "一条都没有；开 显示系统应用 看看")
+            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS)
         }
 
         // 两维都放行了却一条不剩：手里那些行**既没图标又打不开**，少开哪一个都出不来
         else -> {
-            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "一条都没有；开 显示系统应用 看看")
+            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS)
         }
     }
 }
@@ -186,7 +186,7 @@ internal fun SettingsPage.AppConfirmFab(
             //  `PageCornerFab`），但一条都没勾时不能确认 —— 一条条件至少要有一个应用，
             //  写下去就是个永远不成立的条件。说一句、什么都不写。
             if (picker.forBranch && picker.pickedApps.value.none { it.isNotBlank() }) {
-                hint(I18n.get(Strings.APP_PICKER_BRANCH_AT_LEAST_ONE, "至少选择一个应用"))
+                hint(I18n.get(Strings.APP_PICKER_BRANCH_AT_LEAST_ONE))
                 return@PageFabButton
             }
             // 交出去的是**整个 pending**，不是一个 target 字符串：快捷方式的身份是
@@ -198,7 +198,7 @@ internal fun SettingsPage.AppConfirmFab(
             //  按下它也该说一句「先从列表里选一个应用」，而不是默默什么都不做。
             val picked =
                 ui.pending ?: run {
-                    hint(I18n.get(Strings.APP_PICKER_PICK_APP_FIRST, "先从列表里选一个应用"))
+                    hint(I18n.get(Strings.APP_PICKER_PICK_APP_FIRST))
                     return@PageFabButton
                 }
             val target = picked.target
@@ -233,7 +233,7 @@ internal fun SettingsPage.AppConfirmFab(
     ) {
         PageFabIcon(
             PageIcons.Confirm,
-            contentDescription = I18n.get(Strings.APP_PICKER_CONFIRM_SELECTION, "确定选择"),
+            contentDescription = I18n.get(Strings.APP_PICKER_CONFIRM_SELECTION),
         )
     }
 }

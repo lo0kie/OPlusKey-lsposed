@@ -66,7 +66,7 @@ internal val LocalDisabledHint = staticCompositionLocalOf<(HintText) -> Unit> { 
  *  投递口（`LocalDisabledClick`）、语义位（`HINT_SLOT_DISABLED`）与 lambda 的 `remember`
  *  都在这里，调用点只给**一句话**：
  *  ```
- *  DisabledHint(I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")) { 整块控件 }
+ *  DisabledHint(I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED)) { 整块控件 }
  *  ```
  *  以前每个调用点自己拼 `CompositionLocalProvider(LocalDisabledClick provides remember { … })`
  *  —— 三行、还要自己记住「槽位别漏、lambda 得 `remember`」，漏一处就是连点叠一串提示条
@@ -121,7 +121,7 @@ internal fun DisabledHint(
  */
 @Composable
 internal fun DisabledStateText(
-    text: String = I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用"),
+    text: String = I18n.get(Strings.COMMAND_BRANCH_DISABLED),
     modifier: Modifier = Modifier,
     maxLines: Int = Int.MAX_VALUE,
 ) {
@@ -163,8 +163,8 @@ internal fun keyStateLabel(
     comboOnly: Boolean,
 ): String? =
     when {
-        !enabled -> I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用")
-        comboOnly -> I18n.get(Strings.BINDING_COMBO_ONLY_BADGE, "只参与非首键的按住组合")
+        !enabled -> I18n.get(Strings.COMMAND_BRANCH_DISABLED)
+        comboOnly -> I18n.get(Strings.BINDING_COMBO_ONLY_BADGE)
         else -> null
     }
 

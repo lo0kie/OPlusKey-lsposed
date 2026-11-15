@@ -30,7 +30,7 @@ internal fun SettingsPage.scenarioEntry(
     CardRow.Item(
         title =
             scenarioCountNotice(target.rulesIn(configState.config.value))
-                ?: I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE, "没有添加系统场景"),
+                ?: I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE),
         icon = PageIcons.CommandBranch,
         arrow = true,
         enabled = enabled,

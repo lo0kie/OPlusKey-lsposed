@@ -51,9 +51,9 @@ internal fun SettingsPage.SceneChainReleaseCard(
         rows =
             listOf(
                 CardRow.Switch(
-                    title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE, "松手执行额外动作"),
-                    summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_ON, "松手时再执行一个动作"),
-                    summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_OFF, "松手不再执行别的"),
+                    title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE),
+                    summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_ON),
+                    summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_OFF),
                     icon = PageIcons.LongRelease,
                     checked = block.chainReleaseOn,
                     enabled = enabled,
@@ -62,7 +62,7 @@ internal fun SettingsPage.SceneChainReleaseCard(
                     target.bindChainRelease(on = on)
                 },
                 CardRow.Item(
-                    title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_ACTION, "额外动作"),
+                    title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_ACTION),
                     summary = releaseActionTitle(action.token) { appNameOf(it) },
                     icon = actionIcon(action.token),
                     arrow = true,
@@ -78,7 +78,7 @@ internal fun SettingsPage.SceneChainReleaseCard(
         show = picking,
         sheet =
             StepSheetSpec(
-                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE, "松手执行额外动作"),
+                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE),
                 current = action,
                 onOpenPicker = { page ->
                     picking = false

@@ -43,7 +43,7 @@ internal fun SettingsPage.toggleGlobal(
 
 /** 切「振动反馈」—— 行点击与开关共用这一个入口。 */
 internal fun SettingsPage.setVibrate(on: Boolean) =
-    toggleGlobal("vibrate=${if (on) 1 else 0}", I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"), on) {
+    toggleGlobal("vibrate=${if (on) 1 else 0}", I18n.get(Strings.HOME_VIBRATE_TITLE), on) {
         it.copy(vibrate = on)
     }
 
@@ -54,7 +54,7 @@ internal fun SettingsPage.setVibrate(on: Boolean) =
 internal fun SettingsPage.setVibrateOnNone(on: Boolean) =
     toggleGlobal(
         "vibrate_on_none=${if (on) 1 else 0}",
-        I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE, "无操作时振动"),
+        I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE),
         on,
     ) { it.copy(vibrateOnNone = on) }
 
@@ -67,7 +67,7 @@ internal fun SettingsPage.setVibrateOnNone(on: Boolean) =
 internal fun SettingsPage.setGlobalWaitMultiWindow(on: Boolean) =
     toggleGlobal(
         "global_wait_multi_window=${if (on) 1 else 0}",
-        I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW, "固定窗口起点"),
+        I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW),
         //  回执说的是**界面上那颗**的状态（「固定窗口起点」开着没有），而 `on` 是存储位
         //  `waitMultiWindow` —— 两者相反。与逐键那颗同一个坑（见 `setWaitMultiWindow`
         //  那句「别照抄」）：照抄的话，拨开会说「已关闭」。
@@ -125,7 +125,7 @@ internal fun SettingsPage.setLanguage(code: String) {
         "language=$code",
     ) {
         switchToNotice(
-            I18n.get(Strings.MORE_LANGUAGE, "语言"),
+            I18n.get(Strings.MORE_LANGUAGE),
             languageLabel(AppLanguage.fromCode(code)),
         )
     }
@@ -145,7 +145,7 @@ internal fun SettingsPage.setComboSceneOnStarter(on: Boolean) {
         "combo_scene_on_starter=${if (on) 1 else 0}",
         slot = HINT_SLOT_COMBO,
     ) {
-        switchNotice(I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE, "系统场景在首键按下时固定"), on)
+        switchNotice(I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE), on)
     }
 }
 
@@ -162,7 +162,7 @@ internal fun SettingsPage.setComboStarterKeepLong(on: Boolean) {
         "combo_starter_keep_long=${if (on) 1 else 0}",
         slot = HINT_SLOT_COMBO,
     ) {
-        switchNotice(I18n.get(Strings.COMBO_STARTER_KEEP_LONG_TITLE, "首键松手后仍执行长按"), on)
+        switchNotice(I18n.get(Strings.COMBO_STARTER_KEEP_LONG_TITLE), on)
     }
 }
 
@@ -185,7 +185,7 @@ internal fun SettingsPage.setComboFixedWindowStart(on: Boolean) {
         "combo_fixed_window_start=${if (on) 1 else 0}",
         slot = HINT_SLOT_COMBO,
     ) {
-        switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"), on)
+        switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE), on)
     }
 }
 
@@ -203,7 +203,7 @@ internal fun SettingsPage.setComboHoldFixedWindowStart(on: Boolean) {
         "combo_hold_fixed_window_start=${if (on) 1 else 0}",
         slot = HINT_SLOT_COMBO,
     ) {
-        switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"), on)
+        switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE), on)
     }
 }
 
@@ -229,13 +229,13 @@ internal fun SettingsPage.setComboHoldMin(ms: Int): Boolean {
 internal fun SettingsPage.setMiniWindowAnim(on: Boolean) =
     toggleGlobal(
         "mini_window_anim=${if (on) 1 else 0}",
-        I18n.get(Strings.HOME_MINI_ANIM_TITLE, "前台应用转小窗时使用动画"),
+        I18n.get(Strings.HOME_MINI_ANIM_TITLE),
         on,
     ) { it.copy(miniWindowAnim = on) }
 
 /** 切「使用 ColorOS 接口」—— 行点击与开关共用这一个入口。 */
 internal fun SettingsPage.setColorOsApi(on: Boolean) =
-    toggleGlobal("color_os_api=${if (on) 1 else 0}", I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"), on) {
+    toggleGlobal("color_os_api=${if (on) 1 else 0}", I18n.get(Strings.HOME_COLOROS_TITLE), on) {
         it.copy(colorOsApi = on)
     }
 
@@ -262,7 +262,7 @@ internal fun SettingsPage.setModuleEnabled(on: Boolean) {
 }
 
 /** 总闸那一句 —— 开 / 关两档同一个句式，与其它开关的回执同一族（[switchNotice]）。 */
-private fun moduleEnabledNotice(on: Boolean): String = switchNotice(I18n.get(Strings.SETTING_KEY_BINDING, "按键绑定"), on)
+private fun moduleEnabledNotice(on: Boolean): String = switchNotice(I18n.get(Strings.SETTING_KEY_BINDING), on)
 
 /**
  * 用户在「风险提示与免责声明」上点了确认 —— 「记下这一笔」与「打开总闸」**同一次写盘**。
@@ -296,7 +296,7 @@ private const val MODULE_ENABLED_SLOT = "module_enabled"
  * 判定侧在 `host/GestureExec`，宿主进程每次执行现读配置，拨完立刻生效。
  */
 internal fun SettingsPage.setToastOnRun(on: Boolean) =
-    toggleGlobal("toast_on_run=${if (on) 1 else 0}", I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"), on) {
+    toggleGlobal("toast_on_run=${if (on) 1 else 0}", I18n.get(Strings.HOME_TOAST_TITLE), on) {
         it.copy(toastOnRun = on)
     }
 
@@ -308,7 +308,7 @@ internal fun SettingsPage.setToastOnRun(on: Boolean) =
  * 图标来自**被执行的那个动作**，由界面层预热（`ui/model/icon/ActionCardArt`）。
  */
 internal fun SettingsPage.setToastFluid(on: Boolean) =
-    toggleGlobal("toast_fluid=${if (on) 1 else 0}", I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"), on) {
+    toggleGlobal("toast_fluid=${if (on) 1 else 0}", I18n.get(Strings.HOME_TOAST_FLUID_TITLE), on) {
         it.copy(toastFluid = on)
     }
 
@@ -341,7 +341,7 @@ internal fun SettingsPage.setToastTemplate(template: String) {
  *  判据在 `PageHaptics.allowed`（它每次现查这一位，拨完立刻生效）。
  */
 internal fun SettingsPage.setUiVibrate(on: Boolean) =
-    toggleGlobal("ui_vibrate=${if (on) 1 else 0}", I18n.get(Strings.MORE_UI_VIBRATE_TITLE, "界面振动反馈"), on) {
+    toggleGlobal("ui_vibrate=${if (on) 1 else 0}", I18n.get(Strings.MORE_UI_VIBRATE_TITLE), on) {
         it.copy(uiVibrate = on)
     }
 
@@ -354,7 +354,7 @@ internal fun SettingsPage.setUiVibrate(on: Boolean) =
 internal fun SettingsPage.setDetailedKeySettings(on: Boolean) =
     toggleGlobal(
         "detailed_key_settings=${if (on) 1 else 0}",
-        I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_TITLE, "显示更详细的按键设置"),
+        I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_TITLE),
         on,
     ) {
         it.copy(detailedKeySettings = on)
@@ -370,7 +370,7 @@ internal fun SettingsPage.setDetailedKeySettings(on: Boolean) =
 internal fun SettingsPage.setPredictiveBack(on: Boolean) {
     toggleGlobal(
         "predictive_back=${if (on) 1 else 0}",
-        I18n.get(Strings.MORE_PREDICTIVE_BACK_TITLE, "使用预测性返回手势"),
+        I18n.get(Strings.MORE_PREDICTIVE_BACK_TITLE),
         on,
     ) {
         it.copy(predictiveBack = on)
@@ -402,7 +402,7 @@ internal fun SettingsPage.setRandomIconTint(on: Boolean) {
     val seed = if (on) Random.nextInt(1, Int.MAX_VALUE) else GlobalConfig.DEFAULT_ICON_TINT_SEED
     if (cfg.global.iconTintSeed == seed) return
     writeAndNotice(cfg.copy(global = cfg.global.copy(iconTintSeed = seed)), "icon_tint_seed=$seed") {
-        switchNotice(I18n.get(Strings.MORE_RANDOM_ICON_TINT, "随机图标配色"), on)
+        switchNotice(I18n.get(Strings.MORE_RANDOM_ICON_TINT), on)
     }
 }
 
@@ -418,7 +418,7 @@ internal fun SettingsPage.setFollowDisplaySize(on: Boolean) {
     writeAndNotice(
         cfg.copy(global = cfg.global.copy(followDisplaySize = on)),
         "follow_display_size=${if (on) 1 else 0}",
-    ) { switchNotice(I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE, "跟随系统显示大小"), on) }
+    ) { switchNotice(I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE), on) }
 }
 
 /**
@@ -433,7 +433,7 @@ internal fun SettingsPage.setShowCommonCommands(on: Boolean) {
     writeAndNotice(
         cfg.copy(global = cfg.global.copy(showCommonCommands = on)),
         "show_common_commands=${if (on) 1 else 0}",
-    ) { switchNotice(I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS, "显示常用命令"), on) }
+    ) { switchNotice(I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS), on) }
 }
 
 /**
@@ -451,5 +451,5 @@ internal fun SettingsPage.setCommonCommands(list: List<CommonCommand>) {
     writeAndNotice(
         cfg.copy(global = cfg.global.copy(commonCommands = list)),
         "common_commands=${list.size}",
-    ) { I18n.get(Strings.COMMON_COMMANDS_SAVED, "常用命令已保存") }
+    ) { I18n.get(Strings.COMMON_COMMANDS_SAVED) }
 }

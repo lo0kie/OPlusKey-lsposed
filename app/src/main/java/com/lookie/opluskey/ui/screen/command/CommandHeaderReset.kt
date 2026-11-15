@@ -47,12 +47,12 @@ internal fun SettingsPage.CommandHeaderReset(
     //  文案跟着编辑态走：编一条已有命令时它是「取消」（这一下等于放弃这次修改），
     //  新建时是「重置」（清空重来）—— 与它原先在底栏时的口径一致。
     val label =
-        if (draft.editingName != null) I18n.get(Strings.COMMON_CANCEL, "取消") else I18n.get(Strings.COMMON_RESET, "重置")
+        if (draft.editingName != null) I18n.get(Strings.COMMON_CANCEL) else I18n.get(Strings.COMMON_RESET)
     //  灰着被点一下时说清为什么（顶栏按钮不吃点击，不给这一句就成了「点了没反应」）
     val blocked =
         when {
-            sorting -> I18n.get(Strings.COMMAND_RESET_SORTING, "排序中不能重置")
-            else -> I18n.get(Strings.COMMAND_RESET_EMPTY, "表单是空的，没有可重置的内容")
+            sorting -> I18n.get(Strings.COMMAND_RESET_SORTING)
+            else -> I18n.get(Strings.COMMAND_RESET_EMPTY)
         }
     DisabledHint(if (canReset) null else blocked) {
         HeaderIconButton(
@@ -109,9 +109,9 @@ private fun SettingsPage.CommandHeaderEdit() {
                 //  空着的两种原因分开说：读不出来时「没有保存的命令」是错的（用户没删过任何东西）。
                 HintText(
                     if (configState.commandsReadOnly) {
-                        I18n.get(Strings.COMMAND_UNREADABLE, "命令库无法读取（文件损坏或权限不足），已切换为只读")
+                        I18n.get(Strings.COMMAND_UNREADABLE)
                     } else {
-                        I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令")
+                        I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS)
                     },
                 )
             }
@@ -134,9 +134,9 @@ private fun SettingsPage.CommandHeaderEdit() {
                     if (on) PageIcons.Confirm else PageIcons.CommandEdit,
                     contentDescription =
                         if (on) {
-                            I18n.get(Strings.COMMON_DONE, "完成")
+                            I18n.get(Strings.COMMON_DONE)
                         } else {
-                            I18n.get(Strings.COMMON_EDIT, "编辑")
+                            I18n.get(Strings.COMMON_EDIT)
                         },
                     tint = iconTint,
                 )

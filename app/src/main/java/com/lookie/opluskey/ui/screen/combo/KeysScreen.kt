@@ -111,12 +111,12 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             //  第一块：内置侧键那一颗（从首页搬来）—— 点一行进那颗键的绑定页。
             //  **与下面那块拆成两张卡**（用户口径）：内置侧键和收集来的键来路不同，
             //  额度也只限后者 —— 计数跟着「自定义按键」那块的小标题走，不再挂在「按键列表」上。
-            SectionTitle(text = I18n.get(Strings.KEYS_SECTION_DEFAULT, "默认按键"))
+            SectionTitle(text = I18n.get(Strings.KEYS_SECTION_DEFAULT))
             KeysListCard(writable)
             //  第二块：收集来的键 + 「添加按键」那一行。行尾是**已用 / 上限**（与「命令名称」那行
             //  同一个 `TitleCounter`）：上限只管收集来的这几颗，侧键是内置的、不占额度。
             SectionTitle(
-                text = I18n.get(Strings.KEY_WATCH_TITLE, "自定义按键"),
+                text = I18n.get(Strings.KEY_WATCH_TITLE),
                 trailing = { TitleCounter(cfg.customKeys.size, KeyId.MAX_CUSTOM_KEYS) },
             )
             CustomKeysCard(writable) { collectPending = true }
@@ -142,7 +142,7 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
                 if (deletablePicked) {
                     confirmDelete = true
                 } else {
-                    hint(I18n.get(Strings.KEYS_BUILTIN_KEEP, "内置快捷键不能删除"), slot = "keys_del")
+                    hint(I18n.get(Strings.KEYS_BUILTIN_KEEP), slot = "keys_del")
                 }
             },
         )
@@ -220,13 +220,13 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
         val orders = permutationsOf(shownWait)
         SinglePickerDialog(
             show = waitOrder != null,
-            title = I18n.get(Strings.COMBO_ORDERED_TITLE, "按顺序触发"),
+            title = I18n.get(Strings.COMBO_ORDERED_TITLE),
             options =
                 buildList {
                     //  「不分顺序」排第一：默认、最宽的那一档（纯文字，不按颗排）
                     add(
                         PickerOption(
-                            label = I18n.get(Strings.COMBO_ORDER_ANY, "不分顺序"),
+                            label = I18n.get(Strings.COMBO_ORDER_ANY),
                             enabled = usedOrders.isEmpty(),
                         ),
                     )
@@ -254,9 +254,9 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
                 //  · 某个排列灰了 = 这一种顺序本身就加过了。
                 hint(
                     if (index == 0) {
-                        I18n.get(Strings.COMBO_ORDER_ANY_BLOCKED, "已有按顺序的组合，无法再添加不分顺序")
+                        I18n.get(Strings.COMBO_ORDER_ANY_BLOCKED)
                     } else {
-                        I18n.get(Strings.COMBO_ORDER_TAKEN, "这种按法已添加")
+                        I18n.get(Strings.COMBO_ORDER_TAKEN)
                     },
                     slot = HINT_SLOT_COMBO,
                 )
@@ -307,7 +307,7 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
         val used = remember(cfg.combos, ids) { usedComboStarters(cfg, ids) }
         SinglePickerDialog(
             show = order != null,
-            title = I18n.get(Strings.COMBO_MODE_TITLE, "触发方式"),
+            title = I18n.get(Strings.COMBO_MODE_TITLE),
             options =
                 shown.mapIndexed { at, key ->
                     //  这一行：第 `at` 颗当首键，其余按原顺序跟成后续成员
@@ -337,7 +337,7 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             //  一句「这种触发方式已经添加过了」就够 —— 用户点的就是那一行，
             //  再把它的名字念一遍（「先按住第一颗 这种…」）是把同一件事说两次。
             onDisabledPick = {
-                hint(I18n.get(Strings.COMBO_MODE_ALREADY, "这种触发方式已经添加过了"), slot = HINT_SLOT_COMBO)
+                hint(I18n.get(Strings.COMBO_MODE_ALREADY), slot = HINT_SLOT_COMBO)
             },
         )
     }
@@ -366,12 +366,12 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
         val orders = permutationsOf(followers)
         SinglePickerDialog(
             show = holdMemberOrder != null,
-            title = I18n.get(Strings.COMBO_ORDERED_TITLE, "按顺序触发"),
+            title = I18n.get(Strings.COMBO_ORDERED_TITLE),
             options =
                 buildList {
                     add(
                         PickerOption(
-                            label = I18n.get(Strings.COMBO_ORDER_ANY, "不分顺序"),
+                            label = I18n.get(Strings.COMBO_ORDER_ANY),
                             enabled = !holdMemberTaken(cfg, starter.id, followerIds.toSet()),
                         ),
                     )
@@ -415,11 +415,11 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
                 val ordersFull = usedOrders.size >= orderSpaceSize(followerIds.size)
                 val msg =
                     when {
-                        index != 0 && unorderedTaken -> I18n.get(Strings.COMBO_ORDER_ANY_TAKEN, "已有不分顺序的组合，无法再添加顺序")
-                        index != 0 -> I18n.get(Strings.COMBO_ORDER_TAKEN, "这种按法已添加")
-                        unorderedTaken -> I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了")
-                        ordersFull -> I18n.get(Strings.COMBO_ORDER_ALL_BLOCKED, "顺序已满，无法添加不分顺序")
-                        else -> I18n.get(Strings.COMBO_ORDER_ANY_BLOCKED, "已有按顺序的组合，无法再添加不分顺序")
+                        index != 0 && unorderedTaken -> I18n.get(Strings.COMBO_ORDER_ANY_TAKEN)
+                        index != 0 -> I18n.get(Strings.COMBO_ORDER_TAKEN)
+                        unorderedTaken -> I18n.get(Strings.COMBO_DUPLICATE)
+                        ordersFull -> I18n.get(Strings.COMBO_ORDER_ALL_BLOCKED)
+                        else -> I18n.get(Strings.COMBO_ORDER_ANY_BLOCKED)
                     }
                 hint(msg, slot = HINT_SLOT_COMBO)
             },
@@ -484,9 +484,9 @@ private fun BoxScope.KeysEditFabs(
                     if (turningOn) PageIcons.MasterSwitch else PageIcons.Cancel,
                     contentDescription =
                         if (turningOn) {
-                            I18n.get(Strings.KEYS_ENABLE, "启用")
+                            I18n.get(Strings.KEYS_ENABLE)
                         } else {
-                            I18n.get(Strings.KEYS_DISABLE, "停用")
+                            I18n.get(Strings.KEYS_DISABLE)
                         },
                 )
             }
@@ -498,7 +498,7 @@ private fun BoxScope.KeysEditFabs(
             ) {
                 PageFabIcon(
                     PageIcons.CommandDelete,
-                    contentDescription = I18n.get(Strings.COMMON_DELETE, "删除"),
+                    contentDescription = I18n.get(Strings.COMMON_DELETE),
                     //  `onError` 而不是写死白色：Monet 深色档的 `error` 是一档浅红，配白字会糊
                     //  （与确认窗那颗红色按钮同一对取色）。
                     tint = COUITheme.colorScheme.onError,
@@ -537,13 +537,13 @@ private fun SettingsPage.KeysDeleteConfirm(
     val notes =
         buildList {
             if (cascadeCombos > 0) add(I18n.format(Strings.KEYS_DELETE_COMBOS, cascadeCombos))
-            if (builtinPicked) add(I18n.get(Strings.KEYS_DELETE_BUILTIN, "内置快捷键不能删，已从这一批剔除"))
+            if (builtinPicked) add(I18n.get(Strings.KEYS_DELETE_BUILTIN))
         }
     ConfirmDialog(
         show = show,
-        title = I18n.get(Strings.KEYS_DELETE_TITLE, "删除选中的项目"),
+        title = I18n.get(Strings.KEYS_DELETE_TITLE),
         summary = (listOf(body) + notes).joinToString("\n\n"),
-        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        action = I18n.get(Strings.COMMON_DELETE),
         onDismiss = onDismiss,
         onConfirm = onConfirm,
     )
@@ -562,10 +562,10 @@ private fun SettingsPage.KeysDeleteConfirm(
 private fun SettingsPage.KeysLeaveEditConfirm() {
     ConfirmDialog(
         show = overlays.confirmLeaveEdit,
-        title = I18n.get(Strings.KEYS_LEAVE_EDIT_TITLE, "退出编辑？"),
+        title = I18n.get(Strings.KEYS_LEAVE_EDIT_TITLE),
         //  正文报个数（`%1$d`）：这一问只在勾了东西时出现，写清丢的是哪几项，比一句「会被清空」有用
         summary = I18n.format(Strings.KEYS_LEAVE_EDIT_DESC, KeysEditState.count),
-        action = I18n.get(Strings.KEYS_LEAVE_EDIT_OK, "退出编辑"),
+        action = I18n.get(Strings.KEYS_LEAVE_EDIT_OK),
         positiveDanger = false,
         onDismiss = { overlays.confirmLeaveEdit = false },
         onConfirm = {
@@ -619,14 +619,14 @@ private fun SettingsPage.ComboKeysDialog(
         when {
             //  按住那几种首键都当过时换一种说法（用户口径「要改成所有触发都已添加」）：
             //  从这一列的「添加」进来，用户面对的就是「按住组合」这一类，全占满就是这一类没得加了。
-            holdFull -> I18n.get(Strings.COMBO_ALL_MODES_TAKEN, "所有触发方式都已添加")
+            holdFull -> I18n.get(Strings.COMBO_ALL_MODES_TAKEN)
 
             //  两种「顺序空间已经满了」各说各的：已有一档不分顺序（它覆盖所有按法），
             //  或者每一种排列都加过了 —— 后者说的是「顺序已满、所以不分顺序也加不了」，
             //  这正是用户此刻想加又加不进的那一项（顺序选择器已经进不去了，话得在这里说）。
-            anyOrderTaken -> I18n.get(Strings.COMBO_ORDER_ANY_TAKEN, "已有不分顺序的组合，无法再添加顺序")
+            anyOrderTaken -> I18n.get(Strings.COMBO_ORDER_ANY_TAKEN)
 
-            ordersFull -> I18n.get(Strings.COMBO_ORDER_ALL_BLOCKED, "顺序已满，无法添加不分顺序")
+            ordersFull -> I18n.get(Strings.COMBO_ORDER_ALL_BLOCKED)
 
             !enough -> I18n.format(Strings.COMBO_MIN_KEYS, ComboKey.MIN_KEYS)
 
@@ -637,7 +637,7 @@ private fun SettingsPage.ComboKeysDialog(
     //  选中底色与对勾 —— 两处是同一类东西（弹窗里挑一列取值），不该各自一套。
     MultiPickerDialog(
         show = show,
-        title = I18n.get(Strings.COMBO_PICK_KEYS, "选择按键"),
+        title = I18n.get(Strings.COMBO_PICK_KEYS),
         //  标题下面那句「选 2 颗」去掉（用户口径）：标题「选择按键」已经够，颗数靠勾选时的提示说；
         //  真要选错颗数，勾满上限之后下一颗勾不上时会有话说（见 `onToggle`）。
         hint = null,
@@ -656,7 +656,7 @@ private fun SettingsPage.ComboKeysDialog(
                 picked = if (on) picked - key.id else picked + key.id
             }
         },
-        confirmText = I18n.get(Strings.COMBO_ADD_CONFIRM, "添加"),
+        confirmText = I18n.get(Strings.COMBO_ADD_CONFIRM),
         confirmEnabled = blockedReason == null,
         //  点那颗灰按钮 → 弹**通用消息条**（不在弹窗里另画一行）：被拦住的说法全应用只有一种形态。
         //  没原因就是真按不动（不该有这种情况，兜住而已）。

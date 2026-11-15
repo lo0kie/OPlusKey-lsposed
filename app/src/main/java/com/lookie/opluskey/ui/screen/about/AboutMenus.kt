@@ -115,9 +115,9 @@ internal fun SettingsPage.ExternalLinkDialog(ui: AboutUiState) {
     }
     ConfirmDialog(
         show = url != null,
-        title = I18n.get(Strings.MORE_LINK_OPEN_TITLE, "打开网页？"),
+        title = I18n.get(Strings.MORE_LINK_OPEN_TITLE),
         summary = url ?: lastUrl,
-        action = I18n.get(Strings.MORE_LINK_OPEN_ACTION, "打开"),
+        action = I18n.get(Strings.MORE_LINK_OPEN_ACTION),
         //  跳个网页不是破坏性动作 —— 动作项用中性色，不用那档红
         positiveDanger = false,
         onDismiss = { ui.pendingUrl = null },
@@ -273,12 +273,12 @@ private fun SettingsPage.profileManageRows(
     val isDefault = ui.profiles.firstOrNull { it.isCurrent }?.isDefault == true
     return listOf(
         MenuEntry.Row(
-            title = I18n.get(Strings.PROFILE_NEW, "新建配置"),
+            title = I18n.get(Strings.PROFILE_NEW),
             icon = PageIcons.ProfileAdd,
             dividerBefore = true,
             //  除「默认」之外最多三份：到顶之后这一行灰掉并说明
             enabled = !full,
-            disabledHint = if (full) I18n.get(Strings.PROFILE_FULL, "最多三份配置") else null,
+            disabledHint = if (full) I18n.get(Strings.PROFILE_FULL) else null,
         ) {
             ui.showProfileMenu = false
             //  名字的起点要在点这一刻算好：只数**自定义**的份数（「默认」不占号，第一份就是「配置 1」）。
@@ -293,7 +293,7 @@ private fun SettingsPage.profileManageRows(
             }
         },
         MenuEntry.Row(
-            title = I18n.get(Strings.PROFILE_RENAME, "重命名"),
+            title = I18n.get(Strings.PROFILE_RENAME),
             //  与「重命名按键」「常用命令改名」同一颗（全项目所有改名共用一个记号）
             icon = PageIcons.MenuRename,
             //  默认配置的名字空着就是它的身份（见 `Config.isDefaultProfile`）：改了名之后
@@ -301,7 +301,7 @@ private fun SettingsPage.profileManageRows(
             //  置灰行必须带自己的说法：不给的话点了会弹**整页那条**（「这一页现在为什么改不了」），
             //  那是答非所问。
             enabled = !isDefault,
-            disabledHint = if (isDefault) I18n.get(Strings.PROFILE_DEFAULT_RENAME_LOCKED, "默认配置不能改名") else null,
+            disabledHint = if (isDefault) I18n.get(Strings.PROFILE_DEFAULT_RENAME_LOCKED) else null,
         ) {
             ui.showProfileMenu = false
             val now = configState.config.value.profileName
@@ -311,24 +311,24 @@ private fun SettingsPage.profileManageRows(
         //  （改名 → 清空内容 → 删掉整份）。它清的是主配置 + 命令库两份文件（见 `resetCurrentProfile`），
         //  所以 `danger` 照给 —— 名字叫「重置」，代价由确认窗那句话交代（`ProfileClearConfirmDialog`）。
         MenuEntry.Row(
-            title = I18n.get(Strings.MENU_RESET_CONFIG, "重置配置"),
+            title = I18n.get(Strings.MENU_RESET_CONFIG),
             icon = PageIcons.ProfileReset,
             danger = true,
             enabled = canReset,
-            disabledHint = if (canReset) null else I18n.get(Strings.MENU_RESET_CONFIG_OFF, "模块未就绪"),
+            disabledHint = if (canReset) null else I18n.get(Strings.MENU_RESET_CONFIG_OFF),
         ) {
             ui.showProfileMenu = false
             overlays.confirmReset = true
         },
         MenuEntry.Row(
-            title = I18n.get(Strings.PROFILE_DELETE, "删除配置"),
+            title = I18n.get(Strings.PROFILE_DELETE),
             icon = PageIcons.ProfileDelete,
             danger = true,
             //  删的是**当前配置**：先换一份上来，再把原来配置删掉（见 `deleteCurrentProfile`）。
             //  闸两道：还有别的配置能退回去；以及当前这份**不是默认配置**（退路不许删）。
             //  原因是「默认配置」时才给这一行自己的说法（同上一行）；「只剩一份」不另写文案。
             enabled = ui.profiles.size > 1 && !isDefault,
-            disabledHint = if (isDefault) I18n.get(Strings.PROFILE_DEFAULT_DELETE_LOCKED, "默认配置不能删除") else null,
+            disabledHint = if (isDefault) I18n.get(Strings.PROFILE_DEFAULT_DELETE_LOCKED) else null,
         ) {
             ui.showProfileMenu = false
             ui.showDeleteConfirm = true
@@ -414,7 +414,7 @@ private fun SettingsPage.profileRows(
             //  「为什么这两行灰着」原来只在点下去之后才说。其余几份是用户自己起的名字，没有要解释的。
             summary =
                 if (item.isDefault && explainDefault) {
-                    I18n.get(Strings.PROFILE_DEFAULT_SUMMARY, "无法改名或删除")
+                    I18n.get(Strings.PROFILE_DEFAULT_SUMMARY)
                 } else {
                     null
                 },

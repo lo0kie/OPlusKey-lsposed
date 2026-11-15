@@ -168,17 +168,28 @@ jobs:
       - name: i18n 缓存审计
         run: python3 tools/check-i18n-cache.py
 
-      # i18n 兜底一致性：每处 `I18n.get(Strings.X, "兜底")` 的兜底串**必须**与字典里的值逐字相同
-      #   —— 字典没载入时显示的就是兜底那句，两边分叉等于同一件事有两套说法（真机上就出现过
-      #   「需重启 / 需要重启」「确定 / 确认」这种两种口径都活着的情况）。377 处兜底，靠人看不住。
-      - name: i18n 兜底一致性
-        run: python3 tools/check-i18n-fallbacks.py
-
-      # i18n 键集合：常量 / zh-CN / en 三份列表一一对应。上面那道只管「兜底串 = 中文正文」，
-      #   管不到集合 —— 常量写了个字典里没有的键，编译过、界面显示兜底、切语言才露馅；
-      #   两份字典少一条同样静默（那一句在英文界面里掉回中文）。
+      # i18n 键集合：常量 / zh-CN / en 三份列表一一对应。常量写了个字典里没有的键，编译过、
+      #   界面显示键名、切语言才露馅；两份字典少一条同样静默（那一句在英文界面里掉回中文）。
+      #   **这一道是 i18n 的唯一一道键闸**：调用点不再抄兜底文案（字典就是唯一文本来源），
+      #   于是「兜底与字典不一致」那类问题连同 `check-i18n-fallbacks.py` 一起消失了。
       - name: i18n 键集合（三份一一对应）
         run: python3 tools/check-i18n-keys.py
+
+      # 静态表（`Strings.kt` / `CommonCommandsTable.kt`）是**生成物**：源分别是
+      #   `assets/locales/zh-CN.json` 的键集合与 `core/tables/common-commands.json`。
+      #   判据是「重跑一遍生成器，看工作区有没有变」—— 与依赖锁定那一步同一个形状。
+      #   过期不会编译失败（常量少一条就是少一条），表现只是某句文案退回键名 / 少一条常用命令，
+      #   所以这道闸必须在 CI 上，而不是靠人记得跑。
+      - name: 静态表与生成物一致
+        run: |
+          python3 tools/gen-static-tables.py
+          if ! git diff --quiet -- \
+              core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt \
+              core/src/main/java/com/lookie/opluskey/core/present/CommonCommandsTable.kt; then
+            echo "::error::静态表生成物过期：跑 python3 tools/gen-static-tables.py 再把 diff 一起提交"
+            git --no-pager diff --stat
+            exit 1
+          fi
 
       # 图标选择器：`FluidIcons.ALL` 是胶囊图标选择器的唯一清单，用户能点到的就是它列出的那些。
       #   加一颗字形要**两件事** —— 引用它（编译期成立）+ 往 `ALL` 插一条（运行期才可见）；

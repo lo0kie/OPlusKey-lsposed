@@ -101,7 +101,7 @@ private fun SettingsPage.SmallWindowToggle() {
     HeaderIconButton(onClick = { setSmallWindow(!on) }) {
         Icon(
             PageIcons.SmallWindow,
-            contentDescription = I18n.get(Strings.MENU_OPEN_IN_MINI_WINDOW, "以小窗口打开"),
+            contentDescription = I18n.get(Strings.MENU_OPEN_IN_MINI_WINDOW),
             tint = tint,
         )
     }
@@ -158,7 +158,7 @@ private fun SettingsPage.pickerMenuEntries(close: () -> Unit): List<MenuEntry> =
             //  互斥、日志、不落盘都在 [setSmallWindow] 里，两处不各写一遍。
             add(
                 MenuEntry.Row(
-                    title = I18n.get(Strings.MENU_OPEN_IN_MINI_WINDOW, "以小窗口打开"),
+                    title = I18n.get(Strings.MENU_OPEN_IN_MINI_WINDOW),
                     icon = PageIcons.SmallWindow,
                     selected = picker.smallWindow.value,
                     dividerBefore = true,
@@ -170,7 +170,7 @@ private fun SettingsPage.pickerMenuEntries(close: () -> Unit): List<MenuEntry> =
             )
             add(
                 MenuEntry.Row(
-                    title = I18n.get(Strings.MENU_APP_STOCK_ANIM, "使用原版动画"),
+                    title = I18n.get(Strings.MENU_APP_STOCK_ANIM),
                     icon = PageIcons.StockAnim,
                     selected = picker.stockAnim.value,
                     onPick = {
@@ -200,7 +200,7 @@ private fun SettingsPage.pickerMenuEntries(close: () -> Unit): List<MenuEntry> =
 private fun SettingsPage.pickerDisplayEntries(close: () -> Unit): List<MenuEntry> =
     listOf(
         MenuEntry.Row(
-            title = I18n.get(Strings.MENU_SHOW_SYSTEM_APPS, "显示系统应用"),
+            title = I18n.get(Strings.MENU_SHOW_SYSTEM_APPS),
             // 行首图标恒为「系统应用」网格，选中态由 `selected` 负责（行尾对勾 + 文字主题色）
             icon = PageIcons.SystemApps,
             selected = picker.showSystemApps.value,
@@ -218,7 +218,7 @@ private fun SettingsPage.pickerDisplayEntries(close: () -> Unit): List<MenuEntry
         ),
         //  默认关；落盘（本地持久），写失败就拨回去。
         MenuEntry.Row(
-            title = I18n.get(Strings.MENU_SHOW_INVALID_APPS, "显示失效应用"),
+            title = I18n.get(Strings.MENU_SHOW_INVALID_APPS),
             icon = PageIcons.ShowUnopenable,
             selected = picker.showUnopenable.value,
             onPick = {

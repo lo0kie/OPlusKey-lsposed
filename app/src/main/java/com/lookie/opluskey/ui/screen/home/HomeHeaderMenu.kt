@@ -115,7 +115,7 @@ internal fun SettingsPage.HomeHeaderMenu() {
                     // 「默认界面」：打开未替换的宿主原版页面 —— **永远可用**（逃生口，见上面那段）。
                     //  写显式 `enabled = true`：多年后被「统一置灰」顺手改掉时，这一行会提醒改动者它不能吃那个闸。
                     MenuEntry.Row(
-                        title = I18n.get(Strings.MENU_DEFAULT_PAGE, "默认界面"),
+                        title = I18n.get(Strings.MENU_DEFAULT_PAGE),
                         icon = PageIcons.MenuStock,
                         enabled = true,
                     ) {
@@ -129,7 +129,7 @@ internal fun SettingsPage.HomeHeaderMenu() {
                     //  闸住它就成了「提示让你重启服务、而重启服务是灰的」，只能重启手机。
                     //  与上面「默认界面」同档：这两条是逃生口，不吃任何闸。
                     MenuEntry.Row(
-                        title = I18n.get(Strings.MENU_RESTART_SERVICE, "重启服务"),
+                        title = I18n.get(Strings.MENU_RESTART_SERVICE),
                         //  副标题写**宿主进程已经跑了多久**（重启服务重启的就是它）——
                         //  这一句同时是「你按重启之前，它是不是刚重启过」的证据。
                         summary = hostUptime?.let { I18n.format(Strings.MENU_RESTART_UPTIME, it) },
@@ -141,7 +141,7 @@ internal fun SettingsPage.HomeHeaderMenu() {
                     },
                     // 第三项：导出日志 —— 同样跟着 [rowsEnabled]
                     MenuEntry.Row(
-                        title = I18n.get(Strings.MENU_EXPORT_LOG, "导出日志"),
+                        title = I18n.get(Strings.MENU_EXPORT_LOG),
                         //  副标题是这次会导出去多少（几个进程的缓冲合起来）
                         summary = logSummary,
                         icon = PageIcons.MenuExport,
@@ -158,7 +158,7 @@ internal fun SettingsPage.HomeHeaderMenu() {
                     //  （配置列表 / 命令库 / 变量 / 界面状态，见 `resetModule`）。
                     //  `dividerBefore`：它是破坏性动作，与上面三项不是一类 —— 上面一条加深带。
                     MenuEntry.Row(
-                        title = I18n.get(Strings.MENU_RESET_MODULE, "重置模块"),
+                        title = I18n.get(Strings.MENU_RESET_MODULE),
                         icon = PageIcons.MenuReset,
                         //  **不吃 `readOnly` 那道闸**：只读态（建页那次没读成功）下，这一项正是
                         //  「明说要丢掉重来」的正门 —— `resetModule` 自己会先把只读位放行。
@@ -192,10 +192,10 @@ private fun SettingsPage.HomeHeaderConfirmDialogs() {
     val scope = rememberCoroutineScope()
     ConfirmDialog(
         show = overlays.confirmRestart,
-        title = I18n.get(Strings.DIALOG_RESTART_TITLE, "重启服务"),
+        title = I18n.get(Strings.DIALOG_RESTART_TITLE),
         //  **不带正文**（用户口径）：这一个是「下一步马上就好」的动作，那句「未保存的改动将丢失」
         //  反而像个警告 —— 用户点的是重启，不是要放弃什么。
-        action = I18n.get(Strings.DIALOG_RESTART_CONFIRM, "重启"),
+        action = I18n.get(Strings.DIALOG_RESTART_CONFIRM),
         onDismiss = { overlays.confirmRestart = false },
         onConfirm = {
             overlays.confirmRestart = false
@@ -207,22 +207,22 @@ private fun SettingsPage.HomeHeaderConfirmDialogs() {
     //  （所有配置 / 命令与变量 / 界面状态），否则用户看不出两个入口为什么并存。
     ConfirmDialog(
         show = overlays.confirmResetModule,
-        title = I18n.get(Strings.DIALOG_RESET_MODULE_TITLE, "重置模块"),
+        title = I18n.get(Strings.DIALOG_RESET_MODULE_TITLE),
         //  正文两行、对齐方式不同：第一行说明「重置了什么」（左对齐，长了会折行），
         //  第二行是代价（短，**居中**）—— 所以走 `body` 槽自己排，不用 `summary` 那一整段。
         body = {
             EmphasisText(
-                text = I18n.get(Strings.DIALOG_RESET_MODULE_MESSAGE, "配置（含列表）、命令与变量、界面状态回到出厂。"),
+                text = I18n.get(Strings.DIALOG_RESET_MODULE_MESSAGE),
                 textAlign = TextAlign.Start,
                 modifier = Modifier.fillMaxWidth(),
             )
             EmphasisText(
-                text = I18n.get(Strings.DIALOG_RESET_MODULE_IRREVERSIBLE, "**不可恢复**。"),
+                text = I18n.get(Strings.DIALOG_RESET_MODULE_IRREVERSIBLE),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
         },
-        action = I18n.get(Strings.DIALOG_RESET_MODULE_CONFIRM, "重置"),
+        action = I18n.get(Strings.DIALOG_RESET_MODULE_CONFIRM),
         onDismiss = { overlays.confirmResetModule = false },
         onConfirm = {
             overlays.confirmResetModule = false

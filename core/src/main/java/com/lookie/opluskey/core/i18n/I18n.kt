@@ -236,17 +236,33 @@ object I18n {
     }
 
     /**
-     * 获取指定 key 的国际化文本。
-     * @param key 字典中的键（例如 "setting.key_binding"）
-     * @param default 找不到对应 key 时的兜底文案（默认返回 key 本身）
+     * 获取指定 key 的国际化文本 —— **只有这一个参数**，兜底由字典自己负责。
+     *
+     *  为什么没有「兜底文案」这个参数：`Strings` 常量与两份字典的键集合由 `check-i18n-keys.py`
+     *  逐键对齐（`verify-apk.py` 还核一遍占位符），发布包里不可能缺键；抄一份中文在调用点只会
+     *  让同一句有两个来源，改字典还得回头改代码。**这里靠签名拦，不靠约定** —— 想写第三参根本
+     *  编译不过，所以不会像早先那 867 处一样慢慢长回来。
+     *
+     *  确实需要一句「字典里没有时说什么」的，只有**动态键**（键名来自枚举 / 配置，编译器看不见
+     *  它有没有进字典）：那是少数几处，写成 [getOr]，名字本身就把「这里是例外」说清楚了。
+     *
+     * @param key 字典中的键（例如 "setting.key_binding"）；查不到时返回 key 本身
      */
-    fun get(
-        key: String,
-        default: String = key,
-    ): String =
+    operator fun get(key: String): String =
         //  **空串也算「没有」**：字典加载时把 JSON null / 非标量值写成了空串（见 [loadJson]），
-        //  只判 null 的话回退链会取到空串而不是 default —— 界面上出现一个空格子。
-        dict()[key]?.takeIf { it.isNotEmpty() } ?: default
+        //  只判 null 的话回退链会取到空串而不是 key —— 界面上出现一个空格子。
+        dict()[key]?.takeIf { it.isNotEmpty() } ?: key
+
+    /**
+     * **动态键**专用：查不到时用 [fallback]（不用 key 本身）。
+     *
+     *  只给「键在枚举 / 配置里、编译器看不见」的那几处（导出失败提示、命令失败、作者 / 打赏目标
+     *  的名字这类）。静态键一律用 [get] —— 那里给兜底就是把字典正文抄第二遍。
+     */
+    fun getOr(
+        key: String,
+        fallback: String,
+    ): String = dict()[key]?.takeIf { it.isNotEmpty() } ?: fallback
 
     /**
      * 带格式化参数的国际化文本获取（`%s` / `%d`）。
@@ -278,7 +294,4 @@ object I18n {
             pattern
         }
     }
-
-    /** 操作符重载，支持 I18n["key"] 形式快捷调用。 */
-    operator fun get(key: String): String = get(key, key)
 }

@@ -65,7 +65,7 @@ private fun SettingsPage.BranchRowMenu(
                 add(branchToggleRow(rules, at, menus))
                 add(
                     MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_DELETE, "删除"),
+                        title = I18n.get(Strings.COMMON_DELETE),
                         icon = PageIcons.CommandDelete,
                         danger = true,
                         // 删除与上面那一档不是一类：一条加深带隔开
@@ -122,7 +122,7 @@ private fun SettingsPage.BranchConditionFlow(
             //  轮不到，而界面上两行都好好列着。选完就拦（与「同一个应用只能当一次条件」同一套），
             //  窗已经关了 —— 提示里说清楚，让用户回去改。
             if (branchTimeOverlaps(range, timeAt, condIndex)) {
-                hint(I18n.get(Strings.COMMAND_COND_TIME_OVERLAP, "时间区间不允许重叠"))
+                hint(I18n.get(Strings.COMMAND_COND_TIME_OVERLAP))
             } else {
                 applyBranchCondition(draft, timeAt, condIndex, BranchCondition.of(ConditionKind.TIME, range), menus)
             }
@@ -169,7 +169,7 @@ internal fun SettingsPage.appendCondition(
     if (pending) {
         //  与其它「为什么这一步做不了」共用同一个位
         hint(
-            I18n.get(Strings.COMMAND_BRANCH_CONDITION_PENDING, "有场景尚未选择"),
+            I18n.get(Strings.COMMAND_BRANCH_CONDITION_PENDING),
             slot = HINT_SLOT_DISABLED,
         )
         return
@@ -196,7 +196,7 @@ internal fun SettingsPage.conditionDeleteRow(
 ): MenuEntry.Row? {
     if (conditions.size <= 1 || condIndex < 0) return null
     return MenuEntry.Row(
-        title = I18n.get(Strings.COMMON_DELETE, "删除"),
+        title = I18n.get(Strings.COMMON_DELETE),
         icon = PageIcons.CommandDelete,
         danger = true,
         dividerBefore = true,

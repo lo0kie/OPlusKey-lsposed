@@ -168,7 +168,7 @@ private fun SettingsPage.writeComboMode(
         }
     val combo = next.combos.firstOrNull { it.id == comboId }
     writeAndNotice(next, what, slot = HINT_SLOT_COMBO, chips = { modeNames(next, combo) }) {
-        I18n.get(Strings.COMBO_MODE_SWITCHED, "已切换触发方式：") + modeText(mode, combo)
+        I18n.get(Strings.COMBO_MODE_SWITCHED) + modeText(mode, combo)
     }
 }
 
@@ -221,8 +221,8 @@ internal fun SettingsPage.ComboModeAskDialog() {
     val textColor = COUITheme.colorScheme.onBackgroundVariant
     ConfirmDialog(
         show = mine,
-        title = I18n.get(Strings.COMBO_MODE_ASK_TITLE, "按住手势需要松手时触发"),
-        action = I18n.get(Strings.COMBO_MODE_ASK_ACTION, "切换并添加"),
+        title = I18n.get(Strings.COMBO_MODE_ASK_TITLE),
+        action = I18n.get(Strings.COMBO_MODE_ASK_ACTION),
         //  不是破坏性动作：这一步是把长按挪到抬手执行，好让「按住久一点再补一颗」成立
         positiveDanger = false,
         onDismiss = { ComboModeAsk.clear() },
@@ -247,13 +247,13 @@ internal fun SettingsPage.ComboModeAskDialog() {
         body = {
             Column(verticalArrangement = Arrangement.spacedBy(FIRE_OFF_PARAGRAPH_GAP)) {
                 ChipSentence(
-                    template = I18n.get(Strings.COMBO_MODE_ASK_LEAD, "%s 的长按目前会在按住到时就执行，按住手势会被它打断。切换为松手时触发并添加？"),
+                    template = I18n.get(Strings.COMBO_MODE_ASK_LEAD),
                     names = listOf(label),
                     style = textStyle,
                     color = textColor,
                 )
                 EmphasisText(
-                    text = I18n.get(Strings.COMBO_MODE_ASK_TAIL, "这颗键的连续触发会随之失效。"),
+                    text = I18n.get(Strings.COMBO_MODE_ASK_TAIL),
                     textAlign = TextAlign.Start,
                 )
             }
@@ -360,8 +360,7 @@ private fun SettingsPage.writeFireOnRelease(
         I18n
             .get(
                 if (on) Strings.TOAST_SWITCH_ON else Strings.TOAST_SWITCH_OFF,
-                if (on) "已开启 %s" else "已关闭 %s",
-            ).format(I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE, "松手时触发"))
+            ).format(I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE))
     }
 }
 
@@ -428,11 +427,11 @@ internal fun SettingsPage.ComboStarterBlockedDialog() {
         show = live != null,
         title =
             if (ComboStarterBlocked.reason == ComboStarterBlocked.Reason.WAIT_MEMBER) {
-                I18n.get(Strings.COMBO_MEMBER_BLOCKED_TITLE, "无法加入等待组合")
+                I18n.get(Strings.COMBO_MEMBER_BLOCKED_TITLE)
             } else {
-                I18n.get(Strings.COMBO_STARTER_BLOCKED_TITLE, "无法用作按住起点")
+                I18n.get(Strings.COMBO_STARTER_BLOCKED_TITLE)
             },
-        action = I18n.get(Strings.COMBO_STARTER_BLOCKED_ACTION, "知道了"),
+        action = I18n.get(Strings.COMBO_STARTER_BLOCKED_ACTION),
         positiveDanger = false,
         //  这一条没有「确认之后做点什么」—— 两颗按钮都只是把窗关掉
         onDismiss = { ComboStarterBlocked.clear() },
@@ -441,15 +440,9 @@ internal fun SettingsPage.ComboStarterBlockedDialog() {
             ChipSentence(
                 template =
                     if (ComboStarterBlocked.reason == ComboStarterBlocked.Reason.WAIT_MEMBER) {
-                        I18n.get(
-                            Strings.COMBO_MEMBER_BLOCKED_BODY,
-                            "%s 开着 只参与非首键的按住组合，单键手势归系统；而等待组合的成员按下后要先等一个窗口，系统动作也跟着延后。",
-                        )
+                        I18n.get(Strings.COMBO_MEMBER_BLOCKED_BODY)
                     } else {
-                        I18n.get(
-                            Strings.COMBO_STARTER_BLOCKED_BODY,
-                            "%s 开着 只参与非首键的按住组合，这颗键的 松手时触发 改不了；而按住组合的起点要先按住到点、再松手。",
-                        )
+                        I18n.get(Strings.COMBO_STARTER_BLOCKED_BODY)
                     },
                 names = listOf(label),
                 style = textStyle,
@@ -556,8 +549,8 @@ internal fun SettingsPage.ComboOnlyBlockedDialog() {
     val textColor = COUITheme.colorScheme.onBackgroundVariant
     ConfirmDialog(
         show = live != null,
-        title = I18n.get(Strings.COMBO_ONLY_BLOCKED_TITLE, "不能只作后续成员"),
-        action = I18n.get(Strings.COMBO_ONLY_BLOCKED_ACTION, "知道了"),
+        title = I18n.get(Strings.COMBO_ONLY_BLOCKED_TITLE),
+        action = I18n.get(Strings.COMBO_ONLY_BLOCKED_ACTION),
         positiveDanger = false,
         //  这一条没有「确认之后做点什么」—— 两颗按钮都只是把窗关掉
         onDismiss = { ComboOnlyBlocked.clear() },
@@ -568,15 +561,9 @@ internal fun SettingsPage.ComboOnlyBlockedDialog() {
                 ChipSentence(
                     template =
                         if (waitMember) {
-                            I18n.get(
-                                Strings.COMBO_ONLY_BLOCKED_WAIT_BODY,
-                                "%s 是这些等待组合的成员，不能只作后续成员：",
-                            )
+                            I18n.get(Strings.COMBO_ONLY_BLOCKED_WAIT_BODY)
                         } else {
-                            I18n.get(
-                                Strings.COMBO_ONLY_BLOCKED_BODY,
-                                "%s 是这些按住组合的起点，不能只作后续成员：",
-                            )
+                            I18n.get(Strings.COMBO_ONLY_BLOCKED_BODY)
                         },
                     names = listOf(label),
                     style = textStyle,
@@ -590,15 +577,9 @@ internal fun SettingsPage.ComboOnlyBlockedDialog() {
                         if (waitMember) {
                             //  等待组合的成员没有「改一档」这条路：它就是这一档的一颗成员，
                             //  要么删掉那一档、要么把它换成别的键
-                            I18n.get(
-                                Strings.COMBO_ONLY_BLOCKED_WAIT_TAIL,
-                                "先删掉它们，或者把成员换成别的键。",
-                            )
+                            I18n.get(Strings.COMBO_ONLY_BLOCKED_WAIT_TAIL)
                         } else {
-                            I18n.get(
-                                Strings.COMBO_ONLY_BLOCKED_TAIL,
-                                "先把它们改成等待组合，或者删掉。",
-                            )
+                            I18n.get(Strings.COMBO_ONLY_BLOCKED_TAIL)
                         },
                     style = textStyle,
                     color = textColor,
@@ -659,7 +640,7 @@ internal fun SettingsPage.FireReleaseOffDialog() {
     val textColor = COUITheme.colorScheme.onBackgroundVariant
     ConfirmDialog(
         show = live,
-        title = I18n.get(Strings.BINDING_FIRE_OFF_TITLE, "关掉 松手时触发 会让按住手势失效"),
+        title = I18n.get(Strings.BINDING_FIRE_OFF_TITLE),
         //  **动作项报个数**：这一步真正发生的是那几档按住组合被停用（不换触发方式），
         //  数目比「停用」这个动词更直接。
         action = I18n.format(Strings.BINDING_FIRE_OFF_ACTION, shownCombos.size),
@@ -674,7 +655,7 @@ internal fun SettingsPage.FireReleaseOffDialog() {
         body = {
             Column(verticalArrangement = Arrangement.spacedBy(FIRE_OFF_PARAGRAPH_GAP)) {
                 ChipSentence(
-                    template = I18n.get(Strings.BINDING_FIRE_OFF_LEAD, "%s 是这些组合里先按住的那一颗："),
+                    template = I18n.get(Strings.BINDING_FIRE_OFF_LEAD),
                     names = listOf(shownKey.label),
                     style = textStyle,
                     color = textColor,
@@ -683,7 +664,7 @@ internal fun SettingsPage.FireReleaseOffDialog() {
                 //  那一档的判据就是「谁先按住」，只念成员名读不出来）
                 ComboNameLines(cfg = cfg, combos = shownCombos, style = textStyle, color = textColor)
                 EmphasisText(
-                    text = I18n.get(Strings.BINDING_FIRE_OFF_TAIL, "继续会同时停用这几档按住组合。"),
+                    text = I18n.get(Strings.BINDING_FIRE_OFF_TAIL),
                     textAlign = TextAlign.Start,
                 )
             }

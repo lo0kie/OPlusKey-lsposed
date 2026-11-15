@@ -24,23 +24,23 @@ private fun SettingsPage.payloadBlockedReason(): String? =
         }
 
         CommandKind.SERIAL -> {
-            if (commandDraft.draft.steps.isEmpty()) I18n.get(Strings.COMMAND_NEED_STEP, "尚未添加步骤") else null
+            if (commandDraft.draft.steps.isEmpty()) I18n.get(Strings.COMMAND_NEED_STEP) else null
         }
     }
 
 /** 单条那一档的载荷判据（[payloadBlockedReason] 的一半，判据仍只有那一处）。 */
 private fun SettingsPage.singlePayloadBlockedReason(): String? {
     val raw = commandDraft.draft.single
-    if (raw.isBlank()) return I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令")
+    if (raw.isBlank()) return I18n.get(Strings.COMMAND_CMD_HINT)
     if (!Action.hasSupportedFormat(raw)) {
-        return I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "必须以支持的格式开头")
+        return I18n.get(Strings.COMMAND_FORMAT_REQUIRED)
     }
     // 写法合法之后，再看这段字**解析出来到底做不做事**：`shell:` / `cmd:` 这种只有前缀的
     //  （[Action.isBarePrefix]），以及 `keyevent:` 空正文 / 认不出的键码 / `none`（解析成
     //  [Action.None]）——存下去都是一条注定什么都不做的命令。
     val action = Action.parse(raw)
     return if (action.isBarePrefix || !action.isBound) {
-        I18n.get(Strings.COMMAND_PAYLOAD_INCOMPLETE, "命令内容还不完整")
+        I18n.get(Strings.COMMAND_PAYLOAD_INCOMPLETE)
     } else {
         // 这里**必须**能返回 `null`：它是「能不能存」的唯一判据，一直非空就等于保存按钮永远灰着。
         null
@@ -54,7 +54,7 @@ private fun SettingsPage.singlePayloadBlockedReason(): String? {
  */
 internal fun SettingsPage.commandNameProblem(): String? =
     if (commandNameDuplicated(commandDraft.draft.name, commandDraft.draft.editingName)) {
-        I18n.get(Strings.COMMAND_NAME_DUPLICATE, "与已有命令重名，请换个名字")
+        I18n.get(Strings.COMMAND_NAME_DUPLICATE)
     } else {
         null
     }
@@ -66,7 +66,7 @@ internal fun SettingsPage.commandNameProblem(): String? =
  *  「这一项现在不可用」对「写了 `shell:`、正文还空着」的人等于什么都没说。
  */
 internal fun SettingsPage.saveBlockedReason(): String? {
-    if (commandDraft.draft.name.isBlank()) return I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称")
+    if (commandDraft.draft.name.isBlank()) return I18n.get(Strings.COMMAND_NAME_HINT)
     payloadBlockedReason()?.let { return it }
     return commandNameProblem()
 }

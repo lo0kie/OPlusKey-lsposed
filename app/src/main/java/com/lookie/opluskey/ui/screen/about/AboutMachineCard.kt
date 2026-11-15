@@ -39,7 +39,7 @@ internal fun SettingsPage.MachineCard(
                 // 版本那一行 —— 点一下开一层菜单（检查更新 / 项目仓库），不再直接跳外链。
                 add(
                     CardRow.Item(
-                        title = I18n.get(Strings.MORE_ABOUT_VERSION, "版本"),
+                        title = I18n.get(Strings.MORE_ABOUT_VERSION),
                         summary = version,
                         icon = PageIcons.Versions,
                         //  行尾不挂红点：有新版由首页顶上那块「模块状态」说（见 `HomeActivationCard`）
@@ -56,7 +56,7 @@ internal fun SettingsPage.MachineCard(
                 //  行尾给选择器字形（不是链接符号）：链接符号留给菜单里那两行。
                 add(
                     CardRow.Item(
-                        title = I18n.get(Strings.MORE_ABOUT_AUTHOR, "作者"),
+                        title = I18n.get(Strings.MORE_ABOUT_AUTHOR),
                         summary = AUTHOR,
                         icon = PageIcons.UserScreen,
                         trailing = { RowEndIcon(PageIcons.Selector) },
@@ -69,7 +69,7 @@ internal fun SettingsPage.MachineCard(
                 // 反馈与交流那一行 —— 同样是一层菜单；不给副标题（渠道名在菜单里逐条列着）。
                 add(
                     CardRow.Item(
-                        title = I18n.get(Strings.MORE_ABOUT_FEEDBACK, "反馈与交流"),
+                        title = I18n.get(Strings.MORE_ABOUT_FEEDBACK),
                         icon = PageIcons.Feedback,
                         trailing = { RowEndIcon(PageIcons.Selector) },
                         modifier = Modifier.preciseClickAnchor(ui.feedbackClick),

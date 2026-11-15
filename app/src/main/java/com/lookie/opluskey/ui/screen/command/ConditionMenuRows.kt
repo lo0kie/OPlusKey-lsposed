@@ -62,7 +62,7 @@ internal fun conditionKindRows(
                 if (limits.blockFull) {
                     I18n.format(Strings.COMMAND_BRANCH_CONDITION_LIMIT, SceneRule.MAX_CONDITIONS)
                 } else {
-                    I18n.get(Strings.COMMAND_BRANCH_KIND_FULL, "这一类场景已经加满了")
+                    I18n.get(Strings.COMMAND_BRANCH_KIND_FULL)
                 },
             // 这一条现在是这一档 ⇒ 画成选中（行首对勾 + 文字主题色）
             selected = kind == current,

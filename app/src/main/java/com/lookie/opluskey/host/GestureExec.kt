@@ -848,9 +848,9 @@ internal object GestureExec {
     /** 一档手势在提示里的名字（字典优先，缺了就退回模型上那个中文常量）。 */
     private fun gestureName(gesture: Gesture): String =
         when (gesture) {
-            Gesture.SINGLE -> I18n.get(Strings.GESTURE_SINGLE, gesture.label)
-            Gesture.DOUBLE -> I18n.get(Strings.GESTURE_DOUBLE, gesture.label)
-            Gesture.LONG -> I18n.get(Strings.GESTURE_LONG, gesture.label)
+            Gesture.SINGLE -> I18n.get(Strings.GESTURE_SINGLE)
+            Gesture.DOUBLE -> I18n.get(Strings.GESTURE_DOUBLE)
+            Gesture.LONG -> I18n.get(Strings.GESTURE_LONG)
         }
 
     /**

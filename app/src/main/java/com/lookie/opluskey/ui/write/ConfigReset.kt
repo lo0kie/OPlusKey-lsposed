@@ -153,15 +153,15 @@ private fun SettingsPage.reportReset(
         }
 
         cleared == CommandsSave.Failed -> {
-            hint(I18n.get(Strings.TOAST_CONFIG_CLEAR_FAILED, "配置已重置，命令库清空失败"))
+            hint(I18n.get(Strings.TOAST_CONFIG_CLEAR_FAILED))
         }
 
         else -> {
             hint(
                 if (moduleReset) {
-                    I18n.get(Strings.TOAST_MODULE_RESET, "已重置模块")
+                    I18n.get(Strings.TOAST_MODULE_RESET)
                 } else {
-                    I18n.get(Strings.TOAST_CONFIG_CLEARED, "已重置配置")
+                    I18n.get(Strings.TOAST_CONFIG_CLEARED)
                 },
             )
         }

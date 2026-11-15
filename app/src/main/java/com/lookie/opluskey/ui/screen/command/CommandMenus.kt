@@ -85,7 +85,7 @@ internal fun SettingsPage.CommandMenuPopup(
                 // 「预览」排第一：与轻点卡片同一件事，菜单里再留一处入口 ——
                 //  手指停在卡片上时不必先挪开再点一下，直接从这儿进。
                 MenuEntry.Row(
-                    title = I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"),
+                    title = I18n.get(Strings.COMMAND_DETAIL_TITLE),
                     icon = PageIcons.ZoomIn,
                 ) {
                     onDismiss()
@@ -94,14 +94,14 @@ internal fun SettingsPage.CommandMenuPopup(
                 // 「测试」—— 把这条命令当场跑一遍（不写配置、不改绑定）。原先它是卡片右上角单独一颗，
                 //  收进菜单之后那颗位置让给了「更多」。
                 MenuEntry.Row(
-                    title = I18n.get(Strings.COMMAND_TEST_BUTTON, "测试命令"),
+                    title = I18n.get(Strings.COMMAND_TEST_BUTTON),
                     icon = PageIcons.TestCommand,
                 ) {
                     onDismiss()
                     testCommand(cmd)
                 },
                 MenuEntry.Row(
-                    title = I18n.get(Strings.COMMON_EDIT, "编辑"),
+                    title = I18n.get(Strings.COMMON_EDIT),
                     icon = PageIcons.CommandEdit,
                 ) {
                     onDismiss()
@@ -126,7 +126,7 @@ internal fun SettingsPage.CommandMenuPopup(
                 },
                 // 两项之间那条细线由菜单自己加
                 MenuEntry.Row(
-                    title = I18n.get(Strings.COMMON_DELETE, "删除"),
+                    title = I18n.get(Strings.COMMON_DELETE),
                     icon = PageIcons.CommandDelete,
                     danger = true,
                 ) {
@@ -544,7 +544,7 @@ private fun SettingsPage.SavedCommandsGroup(
 ) {
     //  与上面那几组同一份内边距、同一个写法（条数拼进标题）
     SectionTitle(
-        text = titleWithCount(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"), specs.size),
+        text = titleWithCount(I18n.get(Strings.COMMAND_SAVED_COMMANDS), specs.size),
         insideMargin = SHEET_TITLE_MARGIN,
     )
     StepSheetCard(specs, ctx)

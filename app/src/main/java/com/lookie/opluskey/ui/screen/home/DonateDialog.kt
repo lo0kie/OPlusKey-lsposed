@@ -109,13 +109,10 @@ private fun DonateBody(target: DonateTarget?) {
     ) {
         DonateCode(target)
         Spacer(Modifier.height(DONATE_CODE_TEXT_GAP))
-        DonateNote(I18n.get(Strings.DONATE_HINT, "您的慷慨将帮助此项目持续发展"))
+        DonateNote(I18n.get(Strings.DONATE_HINT))
         Spacer(Modifier.height(DONATE_NOTE_GAP))
         DonateNote(
-            I18n.get(
-                Strings.DONATE_NAME_NOTE,
-                "备注昵称即可加入捐赠列表，不备注按匿名标注",
-            ),
+            I18n.get(Strings.DONATE_NAME_NOTE),
         )
     }
 }

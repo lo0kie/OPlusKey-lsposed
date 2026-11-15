@@ -121,7 +121,7 @@ private fun SettingsPage.writeBinding(
         XLog.w("选动作失败（忽略）：$token", e)
         //  点了格子必须有个说法：只记日志的话用户看到的就是「点了一下没反应」。
         //  同一页只有一条回执 ⇒ 它**顶掉**上一条（而不是叠一条）—— 失败本该盖住那句「已绑定」。
-        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"), slot = HINT_SLOT_BINDING)
+        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED), slot = HINT_SLOT_BINDING)
         false
     }
 }
@@ -297,7 +297,7 @@ private fun SettingsPage.boundNotice(
         } else {
             commandTitleOf(action).forSentence(action, { appName ?: appLabelOf(pkg) }, action.token)
         }
-    return I18n.get(Strings.TOAST_BOUND, "已绑定 %s").format(shown)
+    return I18n.get(Strings.TOAST_BOUND).format(shown)
 }
 
 /**
@@ -378,7 +378,6 @@ internal fun SettingsPage.setKeyEnabledFromMenu(
     ) {
         I18n.get(
             if (on) Strings.TOAST_KEY_ENABLED else Strings.TOAST_KEY_DISABLED,
-            if (on) "已启用 %s" else "已停用 %s",
         )
     }
 }

@@ -18,18 +18,18 @@ import com.lookie.opluskey.ui.model.theme.PagePalette
 
 /** 「按键绑定」子页的标题。 */
 internal val BINDING_TITLE: String
-    get() = I18n.get(Strings.BINDING_TITLE, "按键绑定")
+    get() = I18n.get(Strings.BINDING_TITLE)
 
 /** 「自定义命令」子页的标题（第三级页面，从「按键绑定」页尾部网格进入）。 */
 internal val COMMANDS_TITLE: String
-    get() = I18n.get(Strings.ACTION_CUSTOM_COMMAND, "自定义命令")
+    get() = I18n.get(Strings.ACTION_CUSTOM_COMMAND)
 
 /**
  * 「条件执行」页的标题 —— 与「按键绑定」页菜单里那一项**共用同一个键**
  * （`command.type_branch`）：点的那一行与进去之后看到的标题同名。
  */
 internal val BRANCHES_TITLE: String
-    get() = I18n.get(Strings.COMMAND_TYPE_BRANCH, "系统场景")
+    get() = I18n.get(Strings.COMMAND_TYPE_BRANCH)
 
 /**
  * 「按键设置」页的标题 —— 首页「按键操作」卡第二行、「按键功能」页顶栏那颗齿轮进来。
@@ -39,7 +39,7 @@ internal val BRANCHES_TITLE: String
  *  自己那份覆盖，这一页是所有档共用的默认。
  */
 internal val GENERAL_TITLE: String
-    get() = I18n.get(Strings.GENERAL_TITLE, "按键设置")
+    get() = I18n.get(Strings.GENERAL_TITLE)
 
 /**
  * 「组合按键」—— **列表页与编辑页共用这一个标题**（用户口径：顶栏不要「列表」两个字）。
@@ -50,7 +50,7 @@ internal val GENERAL_TITLE: String
  *  —— 与顶栏同一个词，但说的是**那一列是什么**，不是「这一页叫什么」。
  */
 internal val COMBO_TITLE: String
-    get() = I18n.get(Strings.COMBO_TITLE, "组合按键")
+    get() = I18n.get(Strings.COMBO_TITLE)
 
 /**
  * 「按键功能」页的标题 —— 那页三块清单：默认按键（内置侧键）/ 自定义按键 / 组合按键。
@@ -58,11 +58,11 @@ internal val COMBO_TITLE: String
  *  与首页那一行同名（[Strings.KEYS_ENTRY] 那一行）：点进来看到的标题与点的那一行一致。
  */
 internal val KEYS_TITLE: String
-    get() = I18n.get(Strings.KEYS_TITLE, "按键列表")
+    get() = I18n.get(Strings.KEYS_TITLE)
 
 /** 「选择应用」页的标题。 */
 internal val APP_PICKER_TITLE: String
-    get() = I18n.get(Strings.APP_PICKER_TITLE, "选择应用")
+    get() = I18n.get(Strings.APP_PICKER_TITLE)
 
 /**
  * 「选择界面」页的标题 —— 「选择应用」页上**点**某个应用进来（二级页）。
@@ -71,7 +71,7 @@ internal val APP_PICKER_TITLE: String
  *  用户不需要知道 Activity 这个词（用户定稿口径）。
  */
 internal val ACTIVITY_PICKER_TITLE: String
-    get() = I18n.get(Strings.APP_PICKER_ACTIVITY_TITLE, "应用组件")
+    get() = I18n.get(Strings.APP_PICKER_ACTIVITY_TITLE)
 
 /**
  * 「更多选项」页的标题（首页「其他 → 更多选项」那一行进入；这是**唯一入口**）。
@@ -82,7 +82,7 @@ internal val ACTIVITY_PICKER_TITLE: String
  * 内部符号仍叫 `ABOUT_*`（页面枚举 `Screen.ABOUT` 等同理），只改**给用户看的**这一处。
  */
 internal val ABOUT_TITLE: String
-    get() = I18n.get(Strings.MORE_OPTIONS_TITLE, "更多选项")
+    get() = I18n.get(Strings.MORE_OPTIONS_TITLE)
 
 /**
  * 「捐赠列表」页的标题（首页「其他 → 捐赠打赏」那层菜单里最后那一项进入；这是**唯一入口**）。
@@ -92,7 +92,7 @@ internal val ABOUT_TITLE: String
  *  从这个键开始往下才是「一份带金额的名单」。
  */
 internal val DONATE_LIST_TITLE: String
-    get() = I18n.get(Strings.DONATE_LIST_TITLE, "捐赠列表")
+    get() = I18n.get(Strings.DONATE_LIST_TITLE)
 
 /**
  * 首页那条常驻提示的文案（页面被闸住时弹，见 [HomeScreen] 的 `blockHint`）。
@@ -102,7 +102,7 @@ internal val DONATE_LIST_TITLE: String
  * 五句一句话说清一件事，逐条见下面各条自己的说明。
  */
 internal val MODULE_UNAVAILABLE_HINT: String
-    get() = I18n.get(Strings.STATUS_UNAVAILABLE, "页面尚未就绪，请重新进入本页")
+    get() = I18n.get(Strings.STATUS_UNAVAILABLE)
 
 /**
  * 首页那条常驻提示的**另一种**文案：这次**配置没读成功**（文件在、但读不了 / 读不懂）。
@@ -112,7 +112,7 @@ internal val MODULE_UNAVAILABLE_HINT: String
  *（等多久都没用）。此时页面整页只读（见 `SettingsPage.configReadOnly`）。
  */
 internal val CONFIG_READ_FAILED_HINT: String
-    get() = I18n.get(Strings.STATUS_CONFIG_FAILED, "配置读取失败，请重进页面")
+    get() = I18n.get(Strings.STATUS_CONFIG_FAILED)
 
 /**
  * 首页那条常驻提示的第五种文案：**模块总闸关着**（`GlobalConfig.enabled = false`）。
@@ -129,7 +129,7 @@ internal val CONFIG_READ_FAILED_HINT: String
  *  点一下说「可在 ⋮ 菜单里启用」（见 `disabledClickReason`）。
  */
 internal val KEY_DISABLED_HINT: String
-    get() = I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，按系统原生行为")
+    get() = I18n.get(Strings.STATUS_KEY_DISABLED)
 
 /**
  * 首页那条常驻提示的第六种文案：**宿主那一路服务没起来**（`link.hostServiceUp = false`）。
@@ -138,7 +138,7 @@ internal val KEY_DISABLED_HINT: String
  *  只是宿主主进程没报活 —— 要么它被杀了，要么它那一侧的手势劫持没装上。用户能做的是重进页面 / 重启。
  */
 internal val SERVICE_NOT_RUNNING_HINT: String
-    get() = I18n.get(Strings.STATUS_SERVICE_NOT_RUNNING, "后台服务未运行")
+    get() = I18n.get(Strings.STATUS_SERVICE_NOT_RUNNING)
 
 /**
  * 首页那条常驻提示的第七种文案：**注入侧没回音** —— 两种来路，动作是同一句：
@@ -149,10 +149,7 @@ internal val SERVICE_NOT_RUNNING_HINT: String
  */
 internal val INJECT_NOT_LOADED_HINT: String
     get() =
-        I18n.get(
-            Strings.STATUS_DISABLED,
-            "没生效：在 LSPosed 里勾上 系统框架 和 手势体感，重启手机",
-        )
+        I18n.get(Strings.STATUS_DISABLED)
 
 /**
  * 自检**还没问完**时那条提示 —— 这一小段（开机后几秒、或刚进页面那一下）此前什么都不显示。
@@ -164,7 +161,7 @@ internal val INJECT_NOT_LOADED_HINT: String
  *  就是为这件事加的）。
  */
 internal val CHECKING_HINT: String
-    get() = I18n.get(Strings.STATUS_CHECKING, "正在检查模块…")
+    get() = I18n.get(Strings.STATUS_CHECKING)
 
 /**
  * 「装了新版、系统侧还没用上」与「作用域里撤掉了系统框架」**共用**的一句话。
@@ -175,10 +172,7 @@ internal val CHECKING_HINT: String
  */
 internal val PENDING_OR_SCOPE_HINT: String
     get() =
-        I18n.get(
-            Strings.STATUS_PENDING_OR_SCOPE,
-            "已更新：重启手机生效；仍见本行请前往 LSPosed 确认 系统框架 已勾选",
-        )
+        I18n.get(Strings.STATUS_PENDING_OR_SCOPE)
 
 /**
  * 首页那条常驻提示的第十二种文案：**系统侧回着话，但它跑的是旧包**（进程比盘上这个包起得还早）。
@@ -189,10 +183,7 @@ internal val PENDING_OR_SCOPE_HINT: String
  */
 internal val SYSTEM_STALE_HINT: String
     get() =
-        I18n.get(
-            Strings.STATUS_SYSTEM_STALE,
-            "系统侧还是旧版，重启手机后生效",
-        )
+        I18n.get(Strings.STATUS_SYSTEM_STALE)
 
 /**
  * 首页那条常驻提示的第十一种文案：**宿主侧跑着旧包** —— 那个进程比盘上这个包起得还早。
@@ -201,7 +192,7 @@ internal val SYSTEM_STALE_HINT: String
  *  （`AGENTS.md` 五之一、6）。把它混进「重启手机」那一档，等于让人为一次装包多付一次重启。
  */
 internal val HOST_STALE_HINT: String
-    get() = I18n.get(Strings.STATUS_HOST_STALE, "服务是旧版，点 重启服务")
+    get() = I18n.get(Strings.STATUS_HOST_STALE)
 
 /**
  * 「能用，只是这次没落到新代码上」那两档提醒的**身份** —— 去重比的是它，不是文案。
@@ -241,7 +232,7 @@ internal enum class LinkNotice {
  *  主文件当场修好，下次进页不再恢复、也不再提这句。
  */
 internal val CONFIG_RECOVERED_HINT: String
-    get() = I18n.get(Strings.STATUS_CONFIG_RECOVERED, "配置已从备份恢复，最近的改动可能未保留")
+    get() = I18n.get(Strings.STATUS_CONFIG_RECOVERED)
 
 /**
  * 首页那条常驻提示的第九种文案：回包了、但**一个接管点都没装上** —— 这一版 ROM 把那些私有类改了形。
@@ -249,7 +240,7 @@ internal val CONFIG_RECOVERED_HINT: String
  *  用户什么也做不了（只能等适配），所以不写任何「请重试」。
  */
 internal val API_MISMATCH_HINT: String
-    get() = I18n.get(Strings.STATUS_API_MISMATCH, "系统接口不匹配，等待适配")
+    get() = I18n.get(Strings.STATUS_API_MISMATCH)
 
 /**
  * 首页那条常驻提示的第十种文案：**设置没同步到系统那一侧**（两边指纹对不上）。
@@ -257,7 +248,7 @@ internal val API_MISMATCH_HINT: String
  *  这一档重进页面就会重发一遍配置，所以写的动作是「重进本页」，不是「等」。
  */
 internal val CONFIG_NOT_SYNCED_HINT: String
-    get() = I18n.get(Strings.STATUS_CONFIG_NOT_SYNCED, "设置未同步，重进本页即可")
+    get() = I18n.get(Strings.STATUS_CONFIG_NOT_SYNCED)
 
 /**
  * 「导入配置」校验没过时的那**一句**提示。
@@ -266,11 +257,11 @@ internal val CONFIG_NOT_SYNCED_HINT: String
  *（见 `XLog`）。措辞说清「怎么办」，不说内部结构。
  */
 internal val UNKNOWN_CONFIG_FORMAT: String
-    get() = I18n.get(Strings.CONFIG_UNKNOWN_FORMAT, "未知的配置格式，请检查后重试")
+    get() = I18n.get(Strings.CONFIG_UNKNOWN_FORMAT)
 
 /** 「风险提示与免责声明」那个弹窗的标题（首次启用、以及清空配置之后再启用时弹）。 */
 internal val DISCLAIMER_TITLE: String
-    get() = I18n.get(Strings.DIALOG_DISCLAIMER_TITLE, "风险提示与免责声明")
+    get() = I18n.get(Strings.DIALOG_DISCLAIMER_TITLE)
 
 /**
  * 弹窗正文：一句风险、一句让用户自己拍板。
@@ -280,17 +271,11 @@ internal val DISCLAIMER_TITLE: String
  */
 internal val DISCLAIMER_TEXT: String
     get() =
-        I18n.get(
-            Strings.DIALOG_DISCLAIMER_CONTENT,
-            "本模块会将代码注入系统进程，属于非官方改动。可能出现：\n\n" +
-                "- 按键失灵、功能异常\n" +
-                "- 极端情况下无法开机\n\n" +
-                "请确认你已知晓并**自行承担风险**。",
-        )
+        I18n.get(Strings.DIALOG_DISCLAIMER_CONTENT)
 
 /** 「温馨提醒」那个弹窗的标题 —— 免责声明**确认之后**接着弹（见 `ui/screen/HomeScreen`）。 */
 internal val FREE_NOTICE_TITLE: String
-    get() = I18n.get(Strings.DIALOG_FREE_NOTICE_TITLE, "温馨提醒")
+    get() = I18n.get(Strings.DIALOG_FREE_NOTICE_TITLE)
 
 /**
  * 「温馨提醒」的正文：模块免费、认准官方正版。
@@ -301,14 +286,11 @@ internal val FREE_NOTICE_TITLE: String
  */
 internal val FREE_NOTICE_TEXT: String
     get() =
-        I18n.get(
-            Strings.DIALOG_FREE_NOTICE_CONTENT,
-            "本模块**完全免费**，请确认使用的是**官方正版**。",
-        )
+        I18n.get(Strings.DIALOG_FREE_NOTICE_CONTENT)
 
 /** 「自定义命令」那一页的风险提示标题（首次进那一页弹；不确认就退出那一页）。 */
 internal val COMMAND_DISCLAIMER_TITLE: String
-    get() = I18n.get(Strings.DIALOG_COMMAND_DISCLAIMER_TITLE, "自定义命令风险提示")
+    get() = I18n.get(Strings.DIALOG_COMMAND_DISCLAIMER_TITLE)
 
 /**
  * 「自定义命令」那一份的正文 —— **自成一段**，不复用首页那份免责声明（[DISCLAIMER_TEXT]）。
@@ -321,12 +303,7 @@ internal val COMMAND_DISCLAIMER_TITLE: String
  */
 internal val COMMAND_DISCLAIMER_TEXT: String
     get() =
-        I18n.get(
-            Strings.DIALOG_COMMAND_DISCLAIMER_CONTENT,
-            "自定义命令是**高度危险**的功能。\n\n" +
-                "本模块**不会对编写的命令做任何检验或保护**。\n\n" +
-                "请自行确认命令安全并承担相应后果。",
-        )
+        I18n.get(Strings.DIALOG_COMMAND_DISCLAIMER_CONTENT)
 
 /**
  * 「支持的命令格式」卡上的几行 —— 讲**命令输入框里能写什么**。
@@ -374,65 +351,62 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
             //  左列写法 / 右列说明分成两条键取 —— 卡片排的是两列，各自要能单独对齐。
             CommandFormatLine(
                 icon = PageIcons.FormatShell,
-                label = I18n.get(Strings.COMMAND_FORMAT_SHELL, "shell:<命令>"),
-                desc = I18n.get(Strings.COMMAND_FORMAT_SHELL_DESC, "执行 shell 命令"),
-                tip = I18n.get(Strings.COMMAND_FORMAT_SHELL_TIP, "shell:<命令>"),
+                label = I18n.get(Strings.COMMAND_FORMAT_SHELL),
+                desc = I18n.get(Strings.COMMAND_FORMAT_SHELL_DESC),
+                tip = I18n.get(Strings.COMMAND_FORMAT_SHELL_TIP),
                 prefix = Action.SHELL_PREFIX,
             ),
             CommandFormatLine(
                 icon = PageIcons.FormatKeyEvent,
-                label = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT, "keyevent:<按键>"),
-                desc = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT_DESC, "模拟按键"),
+                label = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT),
+                desc = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT_DESC),
                 //  唯一一种**载荷不是文字**的写法：这里填的是 keycode，写「电源键」这种名字
                 //  解析器认不出（见 `Action.parseKeyEvent`），所以提示里把「数字」点出来。
-                tip = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT_TIP, "keyevent:<keycode>（数字）"),
+                tip = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT_TIP),
                 prefix = Action.KEYEVENT_PREFIX,
             ),
             CommandFormatLine(
                 icon = PageIcons.FormatIntent,
-                label = I18n.get(Strings.COMMAND_FORMAT_INTENT, "intent:<Action>"),
-                desc = I18n.get(Strings.COMMAND_FORMAT_INTENT_DESC, "发送 Intent"),
-                tip = I18n.get(Strings.COMMAND_FORMAT_INTENT_TIP, "intent:<Action>（广播 action 名）"),
+                label = I18n.get(Strings.COMMAND_FORMAT_INTENT),
+                desc = I18n.get(Strings.COMMAND_FORMAT_INTENT_DESC),
+                tip = I18n.get(Strings.COMMAND_FORMAT_INTENT_TIP),
                 prefix = Action.INTENT_PREFIX,
             ),
             //  发通知（`notify:`）放这里：它是**通知中心里那条**通知，与「执行时提示」那个 toast
             //  不是一回事 —— 后者是模块自己的反馈，这一条是用户主动要的、能留着的通知。
             CommandFormatLine(
                 icon = PageIcons.FormatNotify,
-                label = I18n.get(Strings.COMMAND_FORMAT_NOTIFY, "notify:<正文>"),
-                desc = I18n.get(Strings.COMMAND_FORMAT_NOTIFY_DESC, "以宿主身份发一条通知"),
-                tip = I18n.get(Strings.COMMAND_FORMAT_NOTIFY_TIP, "notify:<正文>"),
+                label = I18n.get(Strings.COMMAND_FORMAT_NOTIFY),
+                desc = I18n.get(Strings.COMMAND_FORMAT_NOTIFY_DESC),
+                tip = I18n.get(Strings.COMMAND_FORMAT_NOTIFY_TIP),
                 prefix = Action.NOTIFY_PREFIX,
             ),
             //  流体云（`fluid:`）紧跟其后：同样是「让用户看见一句话」，但它是状态栏 / AOD 上
             //  那颗几秒就收起的胶囊，通知中心里不留记录 —— 两行的说明各自说清这一点。
             CommandFormatLine(
                 icon = PageIcons.FormatFluid,
-                label = I18n.get(Strings.COMMAND_FORMAT_FLUID, "fluid:<正文>"),
-                desc = I18n.get(Strings.COMMAND_FORMAT_FLUID_DESC, "弹一条流体云胶囊"),
+                label = I18n.get(Strings.COMMAND_FORMAT_FLUID),
+                desc = I18n.get(Strings.COMMAND_FORMAT_FLUID_DESC),
                 //  这一族多一段：正文前面可以再带一个图标 id（见 `Action.Fluid` 的 token），
                 //  卡片一行放不下，弹窗里才说得清。
                 tip =
-                    I18n.get(
-                        Strings.COMMAND_FORMAT_FLUID_TIP,
-                        "fluid:<正文>（带图标写 fluid:<图标 id>|正文）",
-                    ),
+                    I18n.get(Strings.COMMAND_FORMAT_FLUID_TIP),
                 prefix = Action.FLUID_PREFIX,
             ),
             //  提示（`toast:`）与上面两行是同一件事的第三个落点：「说完就没」的那一档 ——
             //  通知中心不留、状态栏不挂。排在这里是因为三者按「留多久」递减排：留着 / 几秒 / 不挂。
             CommandFormatLine(
                 icon = PageIcons.FormatToast,
-                label = I18n.get(Strings.COMMAND_FORMAT_TOAST, "toast:<正文>"),
-                desc = I18n.get(Strings.COMMAND_FORMAT_TOAST_DESC, "在屏幕上闪一条提示"),
-                tip = I18n.get(Strings.COMMAND_FORMAT_TOAST_TIP, "toast:<正文>"),
+                label = I18n.get(Strings.COMMAND_FORMAT_TOAST),
+                desc = I18n.get(Strings.COMMAND_FORMAT_TOAST_DESC),
+                tip = I18n.get(Strings.COMMAND_FORMAT_TOAST_TIP),
                 prefix = Action.TOAST_PREFIX,
             ),
             CommandFormatLine(
                 icon = PageIcons.FormatShortcut,
-                label = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT, "shortcut:<ID>"),
-                desc = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_DESC, "触发快捷方式"),
-                tip = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_TIP, "shortcut:<ID>（快捷指令 id）"),
+                label = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT),
+                desc = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_DESC),
+                tip = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_TIP),
                 prefix = Action.SHORTCUT_PREFIX,
             ),
         )
@@ -467,11 +441,11 @@ internal fun gestureLabel(
     fallback: String,
 ): String =
     when (id) {
-        Gesture.SINGLE.id -> I18n.get(Strings.GESTURE_SINGLE, "单击")
+        Gesture.SINGLE.id -> I18n.get(Strings.GESTURE_SINGLE)
 
-        Gesture.DOUBLE.id -> I18n.get(Strings.GESTURE_DOUBLE, "双击")
+        Gesture.DOUBLE.id -> I18n.get(Strings.GESTURE_DOUBLE)
 
-        Gesture.LONG.id -> I18n.get(Strings.GESTURE_LONG, "长按")
+        Gesture.LONG.id -> I18n.get(Strings.GESTURE_LONG)
 
         //  认不得的 id：那是（将来的）自定义手势，名字是用户起的，不翻译
         else -> fallback
@@ -480,8 +454,8 @@ internal fun gestureLabel(
 /** 两个分段标题（单条 / 多条），理由同上。 */
 internal fun commandKindLabel(kind: CommandKind): String =
     when (kind) {
-        CommandKind.SINGLE -> I18n.get(Strings.COMMAND_TYPE_SINGLE, "单条命令")
-        CommandKind.SERIAL -> I18n.get(Strings.COMMAND_TYPE_SERIAL, "多条命令")
+        CommandKind.SINGLE -> I18n.get(Strings.COMMAND_TYPE_SINGLE)
+        CommandKind.SERIAL -> I18n.get(Strings.COMMAND_TYPE_SERIAL)
     }
 
 /**
@@ -492,9 +466,9 @@ internal fun commandKindLabel(kind: CommandKind): String =
  */
 internal fun languageLabel(lang: AppLanguage): String =
     when (lang) {
-        AppLanguage.AUTO -> I18n.get(Strings.MORE_LANGUAGE_AUTO, "跟随系统")
-        AppLanguage.ZH_CN -> I18n.get(Strings.MORE_LANGUAGE_ZH, "简体中文")
-        AppLanguage.EN -> I18n.get(Strings.MORE_LANGUAGE_EN, "English")
+        AppLanguage.AUTO -> I18n.get(Strings.MORE_LANGUAGE_AUTO)
+        AppLanguage.ZH_CN -> I18n.get(Strings.MORE_LANGUAGE_ZH)
+        AppLanguage.EN -> I18n.get(Strings.MORE_LANGUAGE_EN)
     }
 
 /**
@@ -505,12 +479,12 @@ internal fun languageLabel(lang: AppLanguage): String =
  */
 internal fun paletteLabel(palette: PagePalette): String =
     when (palette) {
-        PagePalette.DEFAULT -> I18n.get(Strings.MORE_PALETTE_DEFAULT, "默认")
-        PagePalette.BLUE -> I18n.get(Strings.MORE_PALETTE_BLUE, "蓝色")
-        PagePalette.GREEN -> I18n.get(Strings.MORE_PALETTE_GREEN, "绿色")
-        PagePalette.ORANGE -> I18n.get(Strings.MORE_PALETTE_ORANGE, "橙色")
-        PagePalette.PURPLE -> I18n.get(Strings.MORE_PALETTE_PURPLE, "紫色")
-        PagePalette.PINK -> I18n.get(Strings.MORE_PALETTE_PINK, "玫红色")
+        PagePalette.DEFAULT -> I18n.get(Strings.MORE_PALETTE_DEFAULT)
+        PagePalette.BLUE -> I18n.get(Strings.MORE_PALETTE_BLUE)
+        PagePalette.GREEN -> I18n.get(Strings.MORE_PALETTE_GREEN)
+        PagePalette.ORANGE -> I18n.get(Strings.MORE_PALETTE_ORANGE)
+        PagePalette.PURPLE -> I18n.get(Strings.MORE_PALETTE_PURPLE)
+        PagePalette.PINK -> I18n.get(Strings.MORE_PALETTE_PINK)
     }
 
 /**
@@ -520,10 +494,10 @@ internal fun paletteLabel(palette: PagePalette): String =
  */
 internal fun themeLabel(theme: AppTheme): String =
     when (theme) {
-        AppTheme.AUTO -> I18n.get(Strings.MORE_THEME_AUTO, "跟随系统")
-        AppTheme.MONET -> I18n.get(Strings.MORE_THEME_MONET, "跟随系统 (Monet)")
-        AppTheme.LIGHT -> I18n.get(Strings.MORE_THEME_LIGHT, "浅色")
-        AppTheme.DARK -> I18n.get(Strings.MORE_THEME_DARK, "深色")
+        AppTheme.AUTO -> I18n.get(Strings.MORE_THEME_AUTO)
+        AppTheme.MONET -> I18n.get(Strings.MORE_THEME_MONET)
+        AppTheme.LIGHT -> I18n.get(Strings.MORE_THEME_LIGHT)
+        AppTheme.DARK -> I18n.get(Strings.MORE_THEME_DARK)
     }
 
 /**
@@ -534,8 +508,7 @@ internal fun themeLabel(theme: AppTheme): String =
  *  说明挪到子标题（[themeTag]）。卡片那一行的副标题仍用 [themeLabel] —— 那一格只有一行字，
  *  拆开就没地方放「Monet」了。
  */
-internal fun themeTitle(theme: AppTheme): String =
-    if (theme == AppTheme.MONET) I18n.get(Strings.MORE_THEME_AUTO, "跟随系统") else themeLabel(theme)
+internal fun themeTitle(theme: AppTheme): String = if (theme == AppTheme.MONET) I18n.get(Strings.MORE_THEME_AUTO) else themeLabel(theme)
 
 /** 主题菜单里那一行的**子标题** —— 只有 Monet 那一档有。 */
-internal fun themeTag(theme: AppTheme): String? = if (theme == AppTheme.MONET) I18n.get(Strings.MORE_THEME_MONET_TAG, "Monet") else null
+internal fun themeTag(theme: AppTheme): String? = if (theme == AppTheme.MONET) I18n.get(Strings.MORE_THEME_MONET_TAG) else null

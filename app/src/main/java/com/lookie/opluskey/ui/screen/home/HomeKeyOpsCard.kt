@@ -41,8 +41,8 @@ internal fun SettingsPage.HomeKeyOpsCard(pageEnabled: Boolean) {
  */
 private fun SettingsPage.keysEntryRow(pageEnabled: Boolean): CardRow.Item =
     CardRow.Item(
-        title = I18n.get(Strings.KEYS_ENTRY, "按键列表"),
-        summary = I18n.get(Strings.KEYS_ENTRY_DESC, "按键列表与组合按键"),
+        title = I18n.get(Strings.KEYS_ENTRY),
+        summary = I18n.get(Strings.KEYS_ENTRY_DESC),
         icon = PageIcons.MenuKeyList,
         enabled = pageEnabled,
         arrow = true,
@@ -66,8 +66,8 @@ private fun SettingsPage.keysEntryRow(pageEnabled: Boolean): CardRow.Item =
  */
 private fun SettingsPage.settingsEntryRow(pageEnabled: Boolean): CardRow.Item =
     CardRow.Item(
-        title = I18n.get(Strings.GENERAL_TITLE, "按键设置"),
-        summary = I18n.get(Strings.HOME_GENERAL_DESC, "接口、振动与组合按键"),
+        title = I18n.get(Strings.GENERAL_TITLE),
+        summary = I18n.get(Strings.HOME_GENERAL_DESC),
         icon = PageIcons.SettingsCog,
         enabled = pageEnabled,
         arrow = true,

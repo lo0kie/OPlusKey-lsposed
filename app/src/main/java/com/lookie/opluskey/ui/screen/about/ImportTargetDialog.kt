@@ -60,7 +60,7 @@ internal fun SettingsPage.ImportTargetDialog() {
     val state = rememberImportTargetState(pending)
     FrostedDialog(
         show = pending != null,
-        title = I18n.get(Strings.PROFILE_IMPORT_OVERWRITE_TITLE, "覆盖配置"),
+        title = I18n.get(Strings.PROFILE_IMPORT_OVERWRITE_TITLE),
         onDismiss = { pendingImport = null },
         onDismissFinished = {
             //  这一窗真的收场了再弹确认窗（同帧开两个会叠在一起）
@@ -102,7 +102,7 @@ internal fun SettingsPage.ImportTargetDialog() {
                     DialogPositiveStyle(
                         enabled = state.selected != null,
                         onDisabledClick = {
-                            hint(I18n.get(Strings.PROFILE_IMPORT_PICK_FIRST, "先从列表里选一份配置"))
+                            hint(I18n.get(Strings.PROFILE_IMPORT_PICK_FIRST))
                         },
                     ),
             )
@@ -188,7 +188,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ImportTargetRows(
 ) {
     //  「最多三份」这句**写在行上**，不能挂在点击回调里：`PickerRow` 的可点性跟着 `enabled` 走
     //  （见它自己的实现），置灰行根本收不到点击 —— 挂在 `onClick` 里那句永远不会执行。
-    val fullText = I18n.get(Strings.PROFILE_FULL, "最多三份配置")
+    val fullText = I18n.get(Strings.PROFILE_FULL)
     Column(
         Modifier
             .weight(1f, fill = false)
@@ -213,7 +213,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ImportTargetRows(
         }
         PickerRow(
             //  已满时这一行置灰，字换成「最多三份配置」—— 这就是那句回执本身。
-            label = if (full) fullText else I18n.get(Strings.PROFILE_IMPORT_NEW, "新增配置"),
+            label = if (full) fullText else I18n.get(Strings.PROFILE_IMPORT_NEW),
             selected = selected == ImportTarget.New,
             enabled = !full,
             traits = PickerRowTraits(interactive = interactive),
@@ -255,7 +255,7 @@ private fun SettingsPage.createImportedProfile(pending: PendingImport) {
     val slot = ConfigProfiles.importAs(pending.config, pending.commands, pending.name)
     if (slot == null) {
         XLog.w("导入配置：没写成（存储不可写？）")
-        hint(I18n.get(Strings.TOAST_CONFIG_IMPORT_FAILED, "导入失败"))
+        hint(I18n.get(Strings.TOAST_CONFIG_IMPORT_FAILED))
         return
     }
     hint(I18n.format(Strings.PROFILE_IMPORTED, ConfigProfiles.readOf(slot)?.profileName ?: pending.name))
@@ -277,7 +277,7 @@ internal fun SettingsPage.overwriteProfile(overwrite: ImportOverwrite) {
     val ordered = ConfigProfiles.importInto(overwrite.slot, overwrite.content.config, overwrite.content.commands)
     if (ordered == null) {
         XLog.w("导入配置：覆盖 ${overwrite.slot} 没写成")
-        hint(I18n.get(Strings.TOAST_CONFIG_IMPORT_FAILED, "导入失败"))
+        hint(I18n.get(Strings.TOAST_CONFIG_IMPORT_FAILED))
         return
     }
     //  覆盖的是当前生效那份：文件已经换成新的，但页面状态、命令库、注入侧还都是旧的 ——
@@ -302,13 +302,13 @@ internal fun SettingsPage.ImportOverwriteConfirmDialog() {
     val overwrite = pendingImportOverwrite
     ConfirmDialog(
         show = overwrite != null,
-        title = I18n.get(Strings.PROFILE_IMPORT_OVERWRITE_TITLE, "覆盖配置"),
+        title = I18n.get(Strings.PROFILE_IMPORT_OVERWRITE_TITLE),
         summary =
             I18n.format(
                 Strings.PROFILE_IMPORT_OVERWRITE_MESSAGE,
                 escapeEmphasis(overwrite?.displayName.orEmpty()),
             ),
-        action = I18n.get(Strings.PROFILE_IMPORT_OVERWRITE_ACTION, "覆盖"),
+        action = I18n.get(Strings.PROFILE_IMPORT_OVERWRITE_ACTION),
         onDismiss = { pendingImportOverwrite = null },
         onConfirm = {
             pendingImportOverwrite = null

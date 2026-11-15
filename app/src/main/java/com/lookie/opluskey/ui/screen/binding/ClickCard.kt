@@ -71,17 +71,11 @@ internal fun SettingsPage.ClickDelayCard(source: ClickParamSource) {
         rows =
             listOf(
                 CardRow.Switch(
-                    title = I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW, "固定窗口起点"),
+                    title = I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW),
                     summaryOn =
-                        I18n.get(
-                            Strings.BINDING_WAIT_MULTI_WINDOW_ON,
-                            "从首次按下起算一个窗口，不随后续按压延长",
-                        ),
+                        I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW_ON),
                     summaryOff =
-                        I18n.get(
-                            Strings.BINDING_WAIT_MULTI_WINDOW_OFF,
-                            "每次松手重新起算，按压越久等待越长",
-                        ),
+                        I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW_OFF),
                     icon = PageIcons.CollectWindow,
                     checked = source.collect,
                     enabled = source.enabled,
@@ -95,9 +89,9 @@ internal fun SettingsPage.ClickDelayCard(source: ClickParamSource) {
                             SliderSpec(
                                 //  标题**统一叫「等待窗口」**（两处逐字相同）：这一根在两种判定时机下
                                 //  写的值不同，但问的是同一件事 —— 「按下去之后等多久」。
-                                title = I18n.get(Strings.BINDING_WAIT_WINDOW, "等待窗口"),
+                                //  **不画副标题**：两种时机的差别在上面那颗开关的副标题里说清了。
+                                title = I18n.get(Strings.BINDING_WAIT_WINDOW),
                                 icon = PageIcons.ComboWait,
-                                summary = I18n.get(Strings.BINDING_WAIT_WINDOW_DESC, "多击判定所用的窗口长度"),
                                 //  上下限两个判定时机**统一**（100~1000）：一根滑杆写两处，
                                 //  切换时机时可用范围跟着跳一截的话，看着像值被改了。
                                 min = KeyConfig.MIN_DOUBLE_CLICK_MS,
@@ -164,8 +158,8 @@ internal fun SettingsPage.clickKeyParams(
     val own = key.useOwnSettings
     val hint =
         when {
-            !own -> I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 使用独立设置")
-            pageEnabled && noMulti -> I18n.get(Strings.BINDING_NO_MULTI_GESTURE, "没有启用任何多击手势")
+            !own -> I18n.get(Strings.KEY_SETTINGS_NEED_OWN)
+            pageEnabled && noMulti -> I18n.get(Strings.BINDING_NO_MULTI_GESTURE)
             else -> pageDisabledHint
         }
     //  **不是 [key.multiWaitMs] 的原值**：0 表示「跟随单击延迟」（老配置就长这样），

@@ -70,7 +70,7 @@ private fun SettingsPage.finishRestart(
         XLog.w("重启：宿主主进程不在，没人能把页面拉回来，放弃")
         // 点了没反应最容易被当成「按钮坏了」—— 这一句把「没找到进程」与「杀掉了」分开。
         //  文案里不提「宿主进程」：那是内部结构（用户界面不需要技术细节），只回答成没成。
-        hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
+        hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED))
         return
     }
     // 把「把页面拉回来 + 自己重来一遍」整个交给宿主主进程（见 host/PageRelaunch）。
@@ -103,22 +103,19 @@ private fun SettingsPage.finishRestart(
                     XLog.w("重启：回执迟了 ${late}ms（宿主是老顺序）⇒ 不杀本进程，请再点一次")
                     requestSystemToast(
                         context,
-                        I18n.get(
-                            Strings.TOAST_SERVICE_RESTART_NEED_RELAUNCH,
-                            "宿主还是旧代码：已替你重载宿主，请再点一次重启服务",
-                        ),
+                        I18n.get(Strings.TOAST_SERVICE_RESTART_NEED_RELAUNCH),
                     )
                     return
                 }
                 XLog.w("重启：宿主主进程回了回执（已接下这一轮），${PAGE_KILL_DELAY_MS}ms 后杀本进程")
                 // 回执用**注入侧**那条通道弹：本进程马上要死，页面里的提示条留不住；
                 // 注入侧（system_server）那个 toast 不随这两个进程消失。
-                requestSystemToast(context, I18n.get(Strings.TOAST_SERVICE_RESTARTED, "已重启服务"))
+                requestSystemToast(context, I18n.get(Strings.TOAST_SERVICE_RESTARTED))
                 killPageProcess()
             }
         }
     if (!context.registerLocalReceiver("重启服务：等宿主回执", receiver, ModuleWire.ACTION_PAGE_RELAUNCH_ACK)) {
-        hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
+        hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED))
         return
     }
     val asked =
@@ -132,7 +129,7 @@ private fun SettingsPage.finishRestart(
         //  日后宿主那条 `ACTION_PAGE_RELAUNCH_ACK` 一到（比如用户从别处又点了一次重启），
         //  这个早已作废的回调会把**当前**页面进程杀掉。与超时那一支同一口径。
         runCatching { context.unregisterReceiver(receiver) }
-        hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
+        hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED))
         return
     }
     XLog.w("重启：已请宿主主进程稍后拉起页面（等回执，最多 ${ACK_WAIT_MS}ms）")
@@ -141,7 +138,7 @@ private fun SettingsPage.finishRestart(
         if (acked.compareAndSet(false, true)) {
             XLog.w("重启：${ACK_WAIT_MS}ms 内没收到宿主回执 ⇒ 放弃（不杀本进程，页面留着）")
             runCatching { context.unregisterReceiver(receiver) }
-            hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
+            hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED))
         }
     }, ACK_WAIT_MS)
 }

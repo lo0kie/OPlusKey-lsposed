@@ -87,12 +87,12 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
                 ui.checkUpdateNow = false
                 //  「正在检查」这条用「本页杂项」那一档 holdMs 撑不住 10 秒的检查（2 秒就自己没了，
                 //  中间空一截）；给它一个长兜底，真正的收场是查完那句回执顶上来。
-                hint(I18n.get(Strings.UPDATE_CHECKING, "正在检查更新…"), holdMs = UPDATE_CHECKING_HOLD_MS)
+                hint(I18n.get(Strings.UPDATE_CHECKING), holdMs = UPDATE_CHECKING_HOLD_MS)
                 val outcome = UpdateState.checkManually(this@AboutScreen.updateHost())
                 val text =
                     when (outcome) {
-                        UpdateState.CheckOutcome.LATEST -> I18n.get(Strings.UPDATE_LATEST, "已是最新版本")
-                        else -> I18n.get(Strings.UPDATE_FAILED, "没查到（网络或源不可用）")
+                        UpdateState.CheckOutcome.LATEST -> I18n.get(Strings.UPDATE_LATEST)
+                        else -> I18n.get(Strings.UPDATE_FAILED)
                     }
                 //  有新版时已经弹窗了，不再叠一条提示 —— 而且要把「正在检查」那条**立刻收掉**：
                 //  它的 holdMs 是 11 秒的兜底（见上面那句），不该真让它在弹窗后面挂那么久。
@@ -107,16 +107,16 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
         //  块与块之间的间距由小标题自带（上 16 / 下 0），页面不再写 `Spacer`。
-        SectionTitle(I18n.get(Strings.MORE_SECTION_STATUS, "运行状态"))
+        SectionTitle(I18n.get(Strings.MORE_SECTION_STATUS))
         LinkStatusCard()
 
-        SectionTitle(I18n.get(Strings.MORE_SECTION_APPEARANCE, "外观"))
+        SectionTitle(I18n.get(Strings.MORE_SECTION_APPEARANCE))
         AppearanceCard(currentTheme, currentPalette, ui)
 
-        SectionTitle(I18n.get(Strings.MORE_SECTION_CONFIG, "配置"))
+        SectionTitle(I18n.get(Strings.MORE_SECTION_CONFIG))
         ConfigCard(currentLang, ui)
 
-        SectionTitle(I18n.get(Strings.MORE_SECTION_ABOUT, "关于"))
+        SectionTitle(I18n.get(Strings.MORE_SECTION_ABOUT))
         MachineCard(
             version,
             SignatureInfo(signatureTitle, signatureNote, fingerprint, signatureOfficial),
@@ -176,8 +176,8 @@ internal class SignatureInfo(
  */
 private fun signatureTitle(context: Context): String =
     when (Seal.verdict(context)) {
-        Verdict.UNOFFICIAL -> I18n.get(Strings.MORE_SIGNATURE_MISMATCH, "签名不符")
-        else -> I18n.get(Strings.MORE_ABOUT_SIGNATURE, "签名")
+        Verdict.UNOFFICIAL -> I18n.get(Strings.MORE_SIGNATURE_MISMATCH)
+        else -> I18n.get(Strings.MORE_ABOUT_SIGNATURE)
     }
 
 /**
@@ -199,12 +199,12 @@ private fun signatureNote(context: Context): String =
         }
 
         Verdict.UNKNOWN -> {
-            I18n.get(Strings.MORE_SIGNATURE_UNKNOWN, "读不到本包签名")
+            I18n.get(Strings.MORE_SIGNATURE_UNKNOWN)
         }
 
         // debug 包的结论也是 OFFICIAL，但那一侧**根本没校验**（`SealPin` 那份里 SEAL_ENABLED=false），
         //  必须说明 —— 否则调试包看起来像「已验过的正版」。
         Verdict.OFFICIAL -> {
-            if (SEAL_ENABLED) "" else I18n.get(Strings.MORE_SIGNATURE_DEBUG, "调试版本（不校验签名）")
+            if (SEAL_ENABLED) "" else I18n.get(Strings.MORE_SIGNATURE_DEBUG)
         }
     }

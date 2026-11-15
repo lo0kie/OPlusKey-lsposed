@@ -55,30 +55,30 @@ fun conditionValueLabel(
  *  空串是「还没配」（老配置里那几档允许空取值，执行侧按默认档解释），那一档说「未设置」；
  *  其余认不出的取值直接显示原文：它来自更新的版本或手改，原样露出来才看得出「这一条不是我以为的那个档」。
  */
-private fun unknownValue(value: String): String = if (value.isBlank()) I18n.get(Strings.COMMAND_COND_VALUE_UNSET, "未设置") else value
+private fun unknownValue(value: String): String = if (value.isBlank()) I18n.get(Strings.COMMAND_COND_VALUE_UNSET) else value
 
 /** 响铃三档在界面上叫什么 —— 条件行、条件菜单与 `${sys.ringer.text}` 共用。 */
 fun ringerLabel(mode: String): String =
     when (mode) {
-        "vibrate" -> I18n.get(Strings.COMMAND_COND_RINGER_VIBRATE, "振动")
-        "silent" -> I18n.get(Strings.COMMAND_COND_RINGER_SILENT, "静音")
-        "normal" -> I18n.get(Strings.COMMAND_COND_RINGER_NORMAL, "响铃")
+        "vibrate" -> I18n.get(Strings.COMMAND_COND_RINGER_VIBRATE)
+        "silent" -> I18n.get(Strings.COMMAND_COND_RINGER_SILENT)
+        "normal" -> I18n.get(Strings.COMMAND_COND_RINGER_NORMAL)
         else -> unknownValue(mode)
     }
 
 /** 屏幕方向两档在界面上叫什么。 */
 fun orientationLabel(value: String): String =
     when (value) {
-        "landscape" -> I18n.get(Strings.COMMAND_COND_ORIENTATION_LANDSCAPE, "横屏")
-        "portrait" -> I18n.get(Strings.COMMAND_COND_ORIENTATION_PORTRAIT, "竖屏")
+        "landscape" -> I18n.get(Strings.COMMAND_COND_ORIENTATION_LANDSCAPE)
+        "portrait" -> I18n.get(Strings.COMMAND_COND_ORIENTATION_PORTRAIT)
         else -> unknownValue(value)
     }
 
 /** Wi-Fi 开关两档在界面上叫什么。 */
 fun wifiLabel(value: String): String =
     when (value) {
-        "off" -> I18n.get(Strings.COMMAND_COND_WIFI_OFF, "关")
-        "on" -> I18n.get(Strings.COMMAND_COND_WIFI_ON, "开")
+        "off" -> I18n.get(Strings.COMMAND_COND_WIFI_OFF)
+        "on" -> I18n.get(Strings.COMMAND_COND_WIFI_ON)
         else -> unknownValue(value)
     }
 
@@ -93,32 +93,32 @@ fun switchLabel(value: String): String = wifiLabel(value)
 /** 媒体状态两档在界面上叫什么。 */
 fun mediaLabel(value: String): String =
     when (value) {
-        "paused" -> I18n.get(Strings.COMMAND_COND_MEDIA_PAUSED, "暂停中")
-        "playing" -> I18n.get(Strings.COMMAND_COND_MEDIA_PLAYING, "播放中")
+        "paused" -> I18n.get(Strings.COMMAND_COND_MEDIA_PAUSED)
+        "playing" -> I18n.get(Strings.COMMAND_COND_MEDIA_PLAYING)
         else -> unknownValue(value)
     }
 
 /** 屏幕状态三档在界面上叫什么（亮屏 / 熄屏 / 锁屏）。 */
 fun screenLabel(value: String): String =
     when (value) {
-        "locked" -> I18n.get(Strings.COMMAND_COND_LOCKED, "锁屏")
-        "off" -> I18n.get(Strings.COMMAND_COND_SCREEN_OFF, "熄屏")
-        "on" -> I18n.get(Strings.COMMAND_COND_SCREEN_ON, "亮屏")
+        "locked" -> I18n.get(Strings.COMMAND_COND_LOCKED)
+        "off" -> I18n.get(Strings.COMMAND_COND_SCREEN_OFF)
+        "on" -> I18n.get(Strings.COMMAND_COND_SCREEN_ON)
         else -> unknownValue(value)
     }
 
 /** 充电状态两档在界面上叫什么（充电中 / 没在充电）。 */
 fun chargingLabel(value: String): String =
     when (value) {
-        "idle" -> I18n.get(Strings.COMMAND_COND_CHARGING_OFF, "没在充电")
-        "charging" -> I18n.get(Strings.COMMAND_COND_CHARGING, "充电中")
+        "idle" -> I18n.get(Strings.COMMAND_COND_CHARGING_OFF)
+        "charging" -> I18n.get(Strings.COMMAND_COND_CHARGING)
         else -> unknownValue(value)
     }
 
 /** 耳机状态两档在界面上叫什么（已连接耳机 / 未连接耳机）。 */
 fun headsetLabel(value: String): String =
     when (value) {
-        "disconnected" -> I18n.get(Strings.COMMAND_COND_HEADSET_OFF, "未连接耳机")
-        "connected" -> I18n.get(Strings.COMMAND_COND_HEADSET, "已连接耳机")
+        "disconnected" -> I18n.get(Strings.COMMAND_COND_HEADSET_OFF)
+        "connected" -> I18n.get(Strings.COMMAND_COND_HEADSET)
         else -> unknownValue(value)
     }

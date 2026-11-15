@@ -205,7 +205,7 @@ private fun SettingsPage.pageTitle(s: Screen): String =
         //  不再显示宿主 Activity 那句「快捷键」：这一页是模块的门面，标题该说「这是谁」，
         //  而不是复述宿主给这一格起的名 —— 宿主那串只在字典缺这一档时兜底（`hooks.homeTitle`）。
         Screen.SHORTCUTS -> {
-            I18n.get(Strings.HOME_TITLE, hooks.homeTitle)
+            I18n.get(Strings.HOME_TITLE)
         }
 
         Screen.BINDING -> {
@@ -216,7 +216,7 @@ private fun SettingsPage.pageTitle(s: Screen): String =
         //  两页都叫「按键设置」时，用户分不清进的是默认值还是覆盖值。副标题写「在改哪一颗」
         //  （见 [pageSubtitle]）。
         Screen.KEY_SETTINGS -> {
-            I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置")
+            I18n.get(Strings.KEY_SETTINGS_TITLE)
         }
 
         Screen.COMMANDS -> {
@@ -225,7 +225,7 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 
         // 「常用命令」：与绑定页那一段同名 —— 同一个东西在两处叫两个名字只是多一处要记。
         Screen.COMMON_COMMANDS -> {
-            I18n.get(Strings.BINDING_COMMON_COMMANDS, "常用命令")
+            I18n.get(Strings.BINDING_COMMON_COMMANDS)
         }
 
         Screen.BRANCHES -> {
@@ -235,7 +235,7 @@ private fun SettingsPage.pageTitle(s: Screen): String =
         //  **不与「系统场景」同名**：那一页是这张表，这一页是表里某一块的某一档 ——
         //  两页都写「系统场景」时分不清退一层会回到哪里。
         Screen.SCENE_BINDING -> {
-            I18n.get(Strings.COMMAND_BRANCH_BINDING_TITLE, "场景动作")
+            I18n.get(Strings.COMMAND_BRANCH_BINDING_TITLE)
         }
 
         Screen.APP_PICKER -> {
@@ -247,9 +247,9 @@ private fun SettingsPage.pageTitle(s: Screen): String =
             //  才落盘，写「打开应用」会被读成「点一下就打开它」。三档的判据与行尾图标、
             //  点行行为同一个 `appOnly` 家族，不另立一套。
             when {
-                picker.forBranch -> I18n.get(Strings.APP_PICKER_MULTI_TITLE, "多选应用")
-                picker.stopApp -> I18n.get(Strings.TOOL_STOP_APP, "结束应用")
-                else -> I18n.get(Strings.TOOL_OPEN_APP, "打开应用")
+                picker.forBranch -> I18n.get(Strings.APP_PICKER_MULTI_TITLE)
+                picker.stopApp -> I18n.get(Strings.TOOL_STOP_APP)
+                else -> I18n.get(Strings.TOOL_OPEN_APP)
             }
         }
 
@@ -281,7 +281,7 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 
         // 变量页标题与「快捷功能」里那一格同名：用户是从那一格进来的，两处叫法要一致
         Screen.VARIABLES -> {
-            I18n.get(Strings.TOOL_VARIABLES, "自定义变量")
+            I18n.get(Strings.TOOL_VARIABLES)
         }
     }
 
@@ -307,7 +307,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         // 首页这一行**不写版本号**（用户口径）：一句模块是干什么的，短，且不随构建变。
         //  版本只在下面「激活状态」那张卡里（见 `appVersionLabel`）。
         Screen.SHORTCUTS -> {
-            I18n.get(Strings.HOME_SUBTITLE, "把任意动作绑到侧键与自定义按键")
+            I18n.get(Strings.HOME_SUBTITLE)
         }
 
         // 停在哪一颗就写哪一颗：侧键那一组仍叫「快捷键」，收集来的键用它自己的名字。
@@ -327,7 +327,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         // 直接说「没有保存的命令」，与页内那块空态同一句话。
         Screen.COMMANDS -> {
             if (configState.commands.value.isEmpty()) {
-                I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令")
+                I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS)
             } else {
                 I18n.format(Strings.COMMAND_SAVED_COUNT, configState.commands.value.size)
             }
@@ -343,7 +343,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         Screen.COMMON_COMMANDS -> {
             val count = configState.config.value.global.commonCommands.size
             if (count == 0) {
-                I18n.get(Strings.COMMON_COMMANDS_SUBTITLE_EMPTY, "没有添加的动作")
+                I18n.get(Strings.COMMON_COMMANDS_SUBTITLE_EMPTY)
             } else {
                 I18n.format(Strings.COMMON_COMMANDS_SUBTITLE, count)
             }
@@ -375,7 +375,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         // 二级页：这行小字说明**在看哪个应用**（页面标题只写「选择界面」，那一行放不下应用名）
         Screen.ACTIVITY_PICKER -> {
             picker.activityTarget?.let { appNameOf(it) }
-                ?: I18n.get(Strings.APP_PICKER_NONE_SELECTED, "没有选择应用")
+                ?: I18n.get(Strings.APP_PICKER_NONE_SELECTED)
         }
 
         // 组合键编辑页：这一行写**在编哪一组**（`侧键 × 电量 +`）—— 标题只写「组合键」，
@@ -387,32 +387,32 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
             ComboEditState.editingId
                 ?.let { id -> cfg.combos.firstOrNull { it.id == id } }
                 ?.let { comboLabelOf(comboKeyNames(cfg, it)) }
-                ?: I18n.get(Strings.COMBO_PICK_KEYS, "选择按键")
+                ?: I18n.get(Strings.COMBO_PICK_KEYS)
         }
 
         // 「按键功能」：这一页就是两张清单，标题已经说了叫什么，这一行说清单里是什么。
         Screen.KEYS -> {
-            I18n.get(Strings.KEYS_ENTRY_DESC, "按键列表与组合按键")
+            I18n.get(Strings.KEYS_ENTRY_DESC)
         }
 
         // 「更多选项」：这一页是三节 + 一节关于，一句「装了什么」比重复版本号有用。
         Screen.ABOUT -> {
-            I18n.get(Strings.MORE_SUBTITLE, "运行状态、外观与配置")
+            I18n.get(Strings.MORE_SUBTITLE)
         }
 
         // 「捐赠列表」：一句谢谢（与页内空态同一句，不改口径）。
         Screen.DONATE_LIST -> {
-            I18n.get(Strings.DONATE_LIST_EMPTY_SUMMARY, "收到的每一份支持都会记在这里")
+            I18n.get(Strings.DONATE_LIST_EMPTY_SUMMARY)
         }
 
         // 「按键设置」（公共那份）：与每颗键自己那份「独立设置」相对 —— 这里改的是默认值。
         Screen.GENERAL -> {
-            I18n.get(Strings.GENERAL_SUBTITLE, "所有按键共用")
+            I18n.get(Strings.GENERAL_SUBTITLE)
         }
 
         // 变量：一句「它是干什么用的」—— 这一页没有「在编谁」可言（清单是整份）。
         Screen.VARIABLES -> {
-            I18n.get(Strings.VARIABLES_SUBTITLE, "命令与场景里可以引用")
+            I18n.get(Strings.VARIABLES_SUBTITLE)
         }
     }
 
@@ -576,7 +576,7 @@ private fun keyNames(
 internal fun SettingsPage.editingKeyName(): String =
     KeyWatchState
         .editing(configState.config.value)
-        .let { if (it.isCustom) it.label else I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键") }
+        .let { if (it.isCustom) it.label else I18n.get(Strings.BINDING_SECTION_KEYS) }
 
 /**
  * 「独立设置」页那一行副标题 —— 在改**哪一颗键 / 哪一组组合**。

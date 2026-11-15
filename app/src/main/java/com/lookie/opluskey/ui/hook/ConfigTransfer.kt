@@ -236,7 +236,7 @@ internal object ConfigTransfer {
         now: java.time.LocalDateTime,
     ) {
         if (body.isEmpty()) {
-            HostSession.page?.hint(I18n.get(Strings.TOAST_LOG_EMPTY, "暂无日志"))
+            HostSession.page?.hint(I18n.get(Strings.TOAST_LOG_EMPTY))
             return
         }
         if (exportInFlight) {
@@ -266,7 +266,7 @@ internal object ConfigTransfer {
             exportInFlight = false
             XLog.w("导出日志：拉不起选择器：${e.message}")
             HostSession.page?.hint(
-                I18n.get(ExportKind.LOG.failKey, ExportKind.LOG.failDefault),
+                I18n.getOr(ExportKind.LOG.failKey, ExportKind.LOG.failDefault),
             )
         }
     }
@@ -294,7 +294,7 @@ internal object ConfigTransfer {
         //  命令全没了，而且已经不知道原先是哪些。宁可明确失败，让他先去看那条「库读不懂」的提示。
         if (page.configState.commandsReadOnly) {
             XLog.w("导出配置：命令库读不懂（只读态），导出的备份会缺全部命令 ⇒ 放弃")
-            page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
+            page.hint(I18n.getOr(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
             return
         }
         // 导出**当前这份**就用页面手上这份（= 用户看到的），不是重读一遍文件：两边正常时等价。
@@ -323,7 +323,7 @@ internal object ConfigTransfer {
                     try {
                         if (config == null || lib is ProfileCommands.Load.Unreadable) {
                             XLog.w("导出配置：$slot 读不出来，放弃")
-                            page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
+                            page.hint(I18n.getOr(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
                         } else {
                             openConfigExport(activity, config, commands)
                         }
@@ -333,7 +333,7 @@ internal object ConfigTransfer {
                 }
             } catch (e: Throwable) {
                 XLog.w("导出配置：读盘失败（已忽略）：${e.javaClass.simpleName}", e)
-                postHint { page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault)) }
+                postHint { page.hint(I18n.getOr(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault)) }
             }
         }
     }
@@ -351,7 +351,7 @@ internal object ConfigTransfer {
         }
         val text = ConfigBundle.export(config, commands)
         if (text.isEmpty()) {
-            page.hint(I18n.get(Strings.TOAST_CONFIG_EXPORT_FAILED, "导出配置失败"))
+            page.hint(I18n.get(Strings.TOAST_CONFIG_EXPORT_FAILED))
             return
         }
         val now = java.time.LocalDateTime.now()
@@ -375,7 +375,7 @@ internal object ConfigTransfer {
             pendingExport = null
             exportInFlight = false
             XLog.w("导出配置：拉不起选择器：${e.message}")
-            page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
+            page.hint(I18n.getOr(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
         }
     }
 
@@ -407,7 +407,7 @@ internal object ConfigTransfer {
             XLog.w("导入配置：已弹出文件选择器")
         } catch (e: Throwable) {
             XLog.w("导入配置：拉不起选择器：${e.message}")
-            HostSession.page?.hint(I18n.get(Strings.TOAST_CONFIG_IMPORT_FAILED, "导入失败"))
+            HostSession.page?.hint(I18n.get(Strings.TOAST_CONFIG_IMPORT_FAILED))
         }
     }
 
@@ -467,7 +467,7 @@ internal object ConfigTransfer {
                         val name =
                             parsed.config.profileName
                                 .trim()
-                                .ifEmpty { I18n.get(Strings.MORE_IMPORT_CONFIG, "导入配置") }
+                                .ifEmpty { I18n.get(Strings.MORE_IMPORT_CONFIG) }
                         //  命令名去重这条闸原本在 `saveCommands` 里，导入不经过它，所以自己过一遍
                         //  （同理：`cmd:<名字>` 只命中第一条）
                         val commands = dedupeByName(parsed.commands)
@@ -519,7 +519,7 @@ internal object ConfigTransfer {
         if (bytes <= MAX_IMPORT_BYTES) return false
         XLog.w("导入配置：这个文件太大（$bytes 字节 > $MAX_IMPORT_BYTES），不像是本模块导出的配置")
         //  提示要和原因对上：报「未知的配置格式」会让用户去检查格式，而该换的是文件。
-        val tooLarge = I18n.get(Strings.CONFIG_TOO_LARGE, "文件太大，不像是本模块导出的配置")
+        val tooLarge = I18n.get(Strings.CONFIG_TOO_LARGE)
         postHint { HostSession.page?.hint(tooLarge) }
         return true
     }
@@ -604,7 +604,7 @@ internal object ConfigTransfer {
             XLog.w("${kind.what}：拿不到页面（它已经关了），这次不写盘")
             mainHandler.post {
                 try {
-                    HostSession.page?.hint(I18n.get(kind.failKey, kind.failDefault))
+                    HostSession.page?.hint(I18n.getOr(kind.failKey, kind.failDefault))
                 } catch (e: Throwable) {
                     XLog.w("${kind.what}：回执没弹出来（已忽略）：${e.javaClass.simpleName}", e)
                 }
@@ -629,9 +629,9 @@ internal object ConfigTransfer {
                     try {
                         HostSession.page?.hint(
                             if (written) {
-                                I18n.get(kind.okKey, kind.okDefault)
+                                I18n.getOr(kind.okKey, kind.okDefault)
                             } else {
-                                I18n.get(kind.failKey, kind.failDefault)
+                                I18n.getOr(kind.failKey, kind.failDefault)
                             },
                         )
                     } catch (e: Throwable) {

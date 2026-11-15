@@ -1,13 +1,23 @@
 package com.lookie.opluskey.core.i18n
 
 /**
- * 集中管理所有多语言文案 Key 常量。
- * 对应多语言字典存放在 assets/locales/zh-CN.json 等 JSON 文件中。
+ * 多语言文案的键常量 —— **生成物，别手改常量表**。
  *
- *  **`LargeClass` 是有意压住的**：这里一行一个常量、按页面分组、组内按字母序 —— 它是一张
- *  「键名 → 字典条目」的表，没有任何行为，行数只会随页面数量单调长。拆成几个对象（`Strings.Keys`
- *  那种）能把行数分散掉，代价是每个调用点多一层前缀、而键名字符串的守卫要靠人记 —— 这层前缀
- *  不对应任何职责。真正该拆的信号是「这里开始出现逻辑」，那时单开文件，而不是给常量换个门牌。
+ *  源是 `app/src/main/assets/locales/zh-CN.json`：那边有一个键，这里就有一条常量；键的顺序就是
+ *  这个文件的顺序。生成器是 `tools/gen-static-tables.py`（CI 跑的是它的 `--check`，重跑一遍
+ *  看工作区有没有变）。加一条文案 = 两份字典各加一行，再跑一次生成器。
+ *
+ *  ## 能手工改的只有注释
+ *
+ *  每条常量上方的说明会被生成器**原样带走**，所以补一句「这一条说的是哪一格」是安全的；
+ *  改名字、改取值、调顺序都会被下一次生成覆盖 —— 那些属于字典或这里推导出来的那一半。
+ *
+ *  ## 为什么整块不拆
+ *
+ *  `LargeClass` 是有意压住的：它是一张「键名 → 字典条目」的表，没有任何行为，行数只会随页面
+ *  数量单调长。拆成几个对象（`Strings.Keys` 那种）能把行数分散掉，代价是每个调用点多一层前缀、
+ *  而键名字符串的守卫要靠人记 —— 这层前缀不对应任何职责。真正该拆的信号是「这里开始出现逻辑」，
+ *  那时单开文件，而不是给常量换个门牌。
  */
 @Suppress("LargeClass")
 object Strings {
@@ -119,11 +129,10 @@ object Strings {
     /**
      * 「等待窗口」那一根 —— 两根值（单击延迟 / 多击窗口）共用的一根滑杆。
      *
-     *  副标题只说明「这一根是给上面那颗判定时机用的」，不复述开 / 关各自的语义：那两句在
-     *  上面那颗开关的副标题里已经写着，同一件事在两个地方各说一遍迟早对不上。
+     *  **不画副标题**：上面那颗开关的副标题已经说清两种判定时机的差别，这一根只问「等多久」，
+     *  再写一句只会把同一件事说第二遍（而且更容易和那边对不上）。
      */
     const val BINDING_WAIT_WINDOW = "binding.wait_window"
-    const val BINDING_WAIT_WINDOW_DESC = "binding.wait_window_desc"
 
     /**
      * 两根窗口滑杆灰着被点一下时说的话 —— 这颗键**一个多击手势都没开**，窗口没有可等的对象。
@@ -604,14 +613,12 @@ object Strings {
      * 「等待窗口」滑杆（紧接上面那颗开关）—— 这一档等多久。
      *
      *  滑杆上挂的是**两格数**（`ComboWindows.wait` / `waitPair`），显示与写入都按那颗开关挑一格：
-     *  开着时管**整串**（从首个成员按下起只等这一个窗口，[COMBO_FIXED_WINDOW_DESC]），
-     *  关着时管**相邻两颗**（每按一颗重新等，[COMBO_FIXED_WINDOW_DESC_OFF]）。
+     *  开着时管**整串**（从首个成员按下起只等这一个窗口），关着时管**相邻两颗**（每按一颗重新等）。
+     *  那一格是「整串」还是「相邻两颗」由上面那颗开关的副标题说清，滑杆**不画副标题**。
      *  原先这里还有一根「按键之间的等待」量相邻两颗 —— 那本来是同一件事的第二个旋钮，已删；
      *  现在它是「关」的那一格，随开关露面。
      */
     const val COMBO_FIXED_WINDOW_TITLE = "combo.fixed_window_title"
-    const val COMBO_FIXED_WINDOW_DESC = "combo.fixed_window_desc"
-    const val COMBO_FIXED_WINDOW_DESC_OFF = "combo.fixed_window_desc_off"
 
     /**
      * 「按顺序触发」开关（标题 + 开/关两句说明）—— 等待组合是否要求成员按选键的顺序先后按下。
@@ -712,14 +719,8 @@ object Strings {
     const val COMBO_ONLY_BLOCKED_TAIL = "combo.combo_only_blocked_tail"
     const val COMBO_ONLY_BLOCKED_ACTION = "combo.combo_only_blocked_action"
 
-    /** 组合键：等待组合的「等待窗口」（滑杆标题，与按住组合那张卡同名同一句）。 */
+    /** 组合键：等待组合的「等待窗口」（滑杆标题，与按住组合那张卡同名同一句；**不画副标题**）。 */
     const val COMBO_WINDOW_TITLE = "combo.window_title"
-
-    /** 组合键：等待窗口的副标题（固定窗口起点**关**：相邻两颗之间最多隔多久）。 */
-    const val COMBO_WINDOW_DESC = "combo.window_desc"
-
-    /** 组合键：等待窗口的副标题（固定窗口起点**开**：整串共用一个窗口）。 */
-    const val COMBO_WINDOW_DESC_FIXED = "combo.window_desc_fixed"
 
     /** 灵感语音 —— 菜单里那一行（点开再选开始 / 结束）。 */
     const val CATALOG_VOICE_MEMORY = "catalog.voice_memory"

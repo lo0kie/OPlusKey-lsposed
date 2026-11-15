@@ -23,7 +23,7 @@ fun appControlTitle(
 ): String =
     CommandTitle
         .of(
-            parent = I18n.get(Strings.TOOL_APP_CONTROL, "应用控制"),
+            parent = I18n.get(Strings.TOOL_APP_CONTROL),
             name = verb,
             state = target,
         ).sentence()
@@ -57,8 +57,8 @@ fun appTargetLabel(
 ): String {
     val extras =
         listOfNotNull(
-            if (window) I18n.get(Strings.COMMON_WINDOW_TAG, "小窗") else null,
-            if (stockAnim) I18n.get(Strings.COMMON_STOCK_ANIM_TAG, "原版动画") else null,
+            if (window) I18n.get(Strings.COMMON_WINDOW_TAG) else null,
+            if (stockAnim) I18n.get(Strings.COMMON_STOCK_ANIM_TAG) else null,
             detail?.takeIf { it.isNotBlank() && it != appName },
         )
     if (extras.isEmpty()) return appName

@@ -61,7 +61,7 @@ private fun SettingsPage.commandsToSave(
 ): List<Command>? {
     if (configState.commandsReadOnly) {
         XLog.w("命令库处在只读态（这次没读成功），拒绝写回：$what")
-        hint(I18n.get(Strings.TOAST_COMMANDS_READ_FAILED, "命令库读取失败，未保存"))
+        hint(I18n.get(Strings.TOAST_COMMANDS_READ_FAILED))
         return null
     }
     val unique = dedupeByName(next)
@@ -107,7 +107,7 @@ private fun SettingsPage.applySavedCommands(
 ): CommandsSave {
     if (!saved) {
         XLog.w("命令库写入失败（界面状态与文件都没变）：$what")
-        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"))
+        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED))
         return CommandsSave.Failed
     }
     configState.commands.value = unique

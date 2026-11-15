@@ -106,7 +106,7 @@ internal fun SettingsPage.AppSearchBand() {
             //  一旦已经有内容就**照收**：应用名里可能真要空格（`We Chat` 那种），拦掉就打不进去。
             picker.filter.value = if (picker.filter.value.isEmpty()) next.trimStart() else next
         },
-        label = I18n.get(Strings.APP_PICKER_SEARCH_APP, "搜索应用"),
+        label = I18n.get(Strings.APP_PICKER_SEARCH_APP),
         height = bands[Screen.APP_PICKER],
         //  空着搜索框时把「列出来几行」写上（那两个显示开关算过、搜索词不算 —— 空着时两者一样）
         count = appPickerUi.shown.size,
@@ -125,7 +125,7 @@ internal fun SettingsPage.ActivitySearchBand() {
             picker.activityFilter.value =
                 if (picker.activityFilter.value.isEmpty()) next.trimStart() else next
         },
-        label = I18n.get(Strings.APP_PICKER_SEARCH_ACTIVITY, "搜索应用组件"),
+        label = I18n.get(Strings.APP_PICKER_SEARCH_ACTIVITY),
         height = bands[Screen.ACTIVITY_PICKER],
         //  这一页的清单是页面里 `remember` 出来的（见 `ActivityPickerList`），顶栏这条带子读不到 ——
         //  由那一页把条数交到页面对象上（`AppPickerState.activityCount`）
@@ -308,7 +308,7 @@ private fun SettingsPage.AppPickerPlaceholders(
         PickListLoadingState(
             visible = ui.loaded == null && !ui.failed,
             topInset = topInset,
-            text = I18n.get(Strings.APP_PICKER_LOADING_APPS, "正在加载应用…"),
+            text = I18n.get(Strings.APP_PICKER_LOADING_APPS),
         )
         PickListFailedState(
             visible = ui.loaded == null && ui.failed,
@@ -441,8 +441,8 @@ private fun SettingsPage.SelectionPrune(ui: AppPickerUiState) {
 /** 下拉刷新那四句 —— 库默认是英文（"Pull down to refresh" …），这一页是中文界面。 */
 internal fun pickerRefreshTexts(): List<String> =
     listOf(
-        I18n.get(Strings.APP_PICKER_PULL_REFRESH, "下拉刷新"),
-        I18n.get(Strings.APP_PICKER_RELEASE_REFRESH, "松开刷新"),
-        I18n.get(Strings.APP_PICKER_REFRESHING, "正在刷新"),
-        I18n.get(Strings.APP_PICKER_REFRESH_DONE, "刷新完成"),
+        I18n.get(Strings.APP_PICKER_PULL_REFRESH),
+        I18n.get(Strings.APP_PICKER_RELEASE_REFRESH),
+        I18n.get(Strings.APP_PICKER_REFRESHING),
+        I18n.get(Strings.APP_PICKER_REFRESH_DONE),
     )

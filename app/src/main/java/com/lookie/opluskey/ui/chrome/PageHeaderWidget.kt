@@ -676,7 +676,7 @@ internal fun SettingsPage.HeaderBackIcon(
                 }
             },
         ) {
-            Icon(PageIcons.Back, contentDescription = I18n.get(Strings.COMMON_BACK, "返回"))
+            Icon(PageIcons.Back, contentDescription = I18n.get(Strings.COMMON_BACK))
         }
     }
 }
@@ -694,6 +694,6 @@ internal fun SettingsPage.HeaderMenuButton(
         onClick = onOpen,
         modifier = Modifier.preciseClickAnchor(preciseClick),
     ) {
-        Icon(PageIcons.Menu, contentDescription = I18n.get(Strings.COMMON_MENU, "菜单"))
+        Icon(PageIcons.Menu, contentDescription = I18n.get(Strings.COMMON_MENU))
     }
 }

@@ -169,8 +169,8 @@ def source_files() -> list[Path]:
     for root in SOURCE_ROOTS:
         if not root.is_dir():
             #  **目录不存在就报错退出**：以前是静默跳过，于是「路径写错 / 目录改名」的表现是
-            #  「0 个文件、0 条边、审计通过」—— 判据全绿，其实一条都没跑（`check-i18n-fallbacks`
-            #  与 `audit-arch` 同一条纪律，那两处也改成了同一个写法）。
+            #  「0 个文件、0 条边、审计通过」—— 判据全绿，其实一条都没跑（`audit-arch` 同一条纪律，
+            #  那处也改成了同一个写法）。
             sys.exit(f"耦合审计：源码目录不存在：{root}")
         out.extend(sorted(root.rglob("*.kt")))
     return out

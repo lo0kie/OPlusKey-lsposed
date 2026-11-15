@@ -94,7 +94,7 @@ internal fun SettingsPage.KeySettingsScreen(
         //  **卡片不再自己让顶边距**：那个 `SECTION_TITLE_PAD_TOP` 是「上面没有标题」时的替代品，
         //  加了标题之后它自带同一档上间距，两处都给就是双份空隙。
         if (target is SettingsTarget.Key) {
-            SectionTitle(I18n.get(Strings.KEY_SETTINGS_MULTI_CLICK, "多击手势"))
+            SectionTitle(I18n.get(Strings.KEY_SETTINGS_MULTI_CLICK))
             ExtraClicksCard(
                 target = target,
                 cfg = cfg,
@@ -122,7 +122,7 @@ internal fun SettingsPage.KeySettingsScreen(
         //  又多一道「有没有多击手势」：这一页管的是「这颗键的多击怎么判」，一档都没开时
         //  没有可判的东西。卡片与公共设置页是同一份（`ClickDelayCard`），只是状态源换成这颗键。
         if (target is SettingsTarget.Key) {
-            SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK, "单击"))
+            SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK))
             ClickDelayCard(clickKeyParams(target.id, pageEnabled && !comboOnly))
         }
 
@@ -218,9 +218,9 @@ private fun SettingsPage.comboOnlyRow(
     enabled: Boolean,
 ): CardRow =
     CardRow.Switch(
-        title = I18n.get(Strings.BINDING_COMBO_ONLY, "只参与非首键的按住组合"),
-        summaryOn = I18n.get(Strings.BINDING_COMBO_ONLY_ON, "单键手势交还系统，只作为按住组合的后续成员（不能当首键）"),
-        summaryOff = I18n.get(Strings.BINDING_COMBO_ONLY_OFF, "单键手势由模块接管"),
+        title = I18n.get(Strings.BINDING_COMBO_ONLY),
+        summaryOn = I18n.get(Strings.BINDING_COMBO_ONLY_ON),
+        summaryOff = I18n.get(Strings.BINDING_COMBO_ONLY_OFF),
         icon = PageIcons.ComboOnly,
         checked = key.comboOnly,
         enabled = enabled,
@@ -255,7 +255,7 @@ private fun SettingsPage.comboOnlyRow(
                 val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(comboOnly = on)))
                 val what = "own_settings target=${settingsTargetLabel(target)} combo_only=${if (on) 1 else 0}"
                 writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
-                    switchNotice(I18n.get(Strings.BINDING_COMBO_ONLY, "只参与非首键的按住组合"), on)
+                    switchNotice(I18n.get(Strings.BINDING_COMBO_ONLY), on)
                 }
             }
         }
@@ -275,9 +275,9 @@ private fun SettingsPage.clickThenLongRow(
     enabled: Boolean,
 ): CardRow =
     CardRow.Switch(
-        title = I18n.get(Strings.SETTING_CLICK_THEN_LONG, "启用单击后长按"),
-        summaryOn = I18n.get(Strings.SETTING_CLICK_THEN_LONG_ON, "第二击按住不放时触发"),
-        summaryOff = I18n.get(Strings.SETTING_CLICK_THEN_LONG_OFF, "不识别单击后长按"),
+        title = I18n.get(Strings.SETTING_CLICK_THEN_LONG),
+        summaryOn = I18n.get(Strings.SETTING_CLICK_THEN_LONG_ON),
+        summaryOff = I18n.get(Strings.SETTING_CLICK_THEN_LONG_OFF),
         icon = PageIcons.gestureIcon(GestureTrigger.ClickThenLong),
         checked = key.clickThenLongOn,
         enabled = enabled,
@@ -288,7 +288,7 @@ private fun SettingsPage.clickThenLongRow(
         val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(clickThenLongOn = on)))
         val what = "own_settings target=${settingsTargetLabel(target)} click_then_long=${if (on) 1 else 0}"
         writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
-            switchNotice(I18n.get(Strings.SETTING_CLICK_THEN_LONG, "启用单击后长按"), on)
+            switchNotice(I18n.get(Strings.SETTING_CLICK_THEN_LONG), on)
         }
     }
 
@@ -308,9 +308,9 @@ private fun SettingsPage.doubleClickOnRow(
     enabled: Boolean,
 ): CardRow =
     CardRow.Switch(
-        title = I18n.get(Strings.SETTING_CLICK2, "启用双击"),
-        summaryOn = I18n.get(Strings.SETTING_CLICK2_ON, "双击可绑定动作"),
-        summaryOff = I18n.get(Strings.SETTING_CLICK2_OFF, "不识别双击"),
+        title = I18n.get(Strings.SETTING_CLICK2),
+        summaryOn = I18n.get(Strings.SETTING_CLICK2_ON),
+        summaryOff = I18n.get(Strings.SETTING_CLICK2_OFF),
         //  字形与三击 / 四击同一个来源（`gestureIcon`）：这两行说的就是「要不要多出这一档」。
         icon = PageIcons.gestureIcon(GestureTrigger.Click(2)),
         checked = key.doubleClickOn,
@@ -322,7 +322,7 @@ private fun SettingsPage.doubleClickOnRow(
         val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(doubleClickOn = on)))
         val what = "own_settings target=${settingsTargetLabel(target)} double_click=${if (on) 1 else 0}"
         writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
-            switchNotice(I18n.get(Strings.SETTING_CLICK2, "启用双击"), on)
+            switchNotice(I18n.get(Strings.SETTING_CLICK2), on)
         }
     }
 
@@ -342,18 +342,18 @@ private fun SettingsPage.extraClickRow(
     return CardRow.Switch(
         title =
             when (count) {
-                COUNT3 -> I18n.get(Strings.SETTING_CLICK3, "启用三击")
-                else -> I18n.get(Strings.SETTING_CLICK4, "启用四击")
+                COUNT3 -> I18n.get(Strings.SETTING_CLICK3)
+                else -> I18n.get(Strings.SETTING_CLICK4)
             },
         summaryOn =
             when (count) {
-                COUNT3 -> I18n.get(Strings.SETTING_CLICK3_ON, "三击可绑定动作")
-                else -> I18n.get(Strings.SETTING_CLICK4_ON, "四击可绑定动作")
+                COUNT3 -> I18n.get(Strings.SETTING_CLICK3_ON)
+                else -> I18n.get(Strings.SETTING_CLICK4_ON)
             },
         summaryOff =
             when (count) {
-                COUNT3 -> I18n.get(Strings.SETTING_CLICK3_OFF, "不识别三击")
-                else -> I18n.get(Strings.SETTING_CLICK4_OFF, "不识别四击")
+                COUNT3 -> I18n.get(Strings.SETTING_CLICK3_OFF)
+                else -> I18n.get(Strings.SETTING_CLICK4_OFF)
             },
         //  字形直接用那一档自己的（`gestureIcon` 里第 3 击起与双击共用两根手指）：
         //  这两行说的就是「要不要多出这一档」，不必新起只此一处的图标。
@@ -376,9 +376,9 @@ private fun SettingsPage.extraClickRow(
                 "click$count=${if (checked) 1 else 0} 全档=${clicksOn.sorted()}"
         val title =
             if (count == COUNT3) {
-                I18n.get(Strings.SETTING_CLICK3, "启用三击")
+                I18n.get(Strings.SETTING_CLICK3)
             } else {
-                I18n.get(Strings.SETTING_CLICK4, "启用四击")
+                I18n.get(Strings.SETTING_CLICK4)
             }
         writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) { switchNotice(title, checked) }
     }
@@ -420,17 +420,17 @@ private fun SettingsPage.ComboParamCards(
     //  各行共用这一句 —— 同一个原因不该在几个地方各算一遍。
     val needOwnHint =
         if (enabled && !ownOn) {
-            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 使用独立设置")
+            I18n.get(Strings.KEY_SETTINGS_NEED_OWN)
         } else {
             null
         }
     val source = comboOwnParams(combo, rowsEnabled, needOwnHint)
     //  两种触发方式是**互斥的**，所以只摆这一组自己那一张。
     if (combo.isWait) {
-        SectionTitle(I18n.get(Strings.COMBO_SECTION_WAIT, "等待组合"))
+        SectionTitle(I18n.get(Strings.COMBO_SECTION_WAIT))
         WaitComboCard(source)
     } else {
-        SectionTitle(I18n.get(Strings.COMBO_SECTION_HOLD, "按住组合"))
+        SectionTitle(I18n.get(Strings.COMBO_SECTION_HOLD))
         HoldComboCard(source)
     }
 }
@@ -527,30 +527,30 @@ private fun ownSwitchNotice(
 ): String? =
     when (field) {
         OwnField.USE_OWN -> {
-            switchNotice(I18n.get(Strings.SETTING_USE_OWN, "使用独立设置"), values.useOwnSettings)
+            switchNotice(I18n.get(Strings.SETTING_USE_OWN), values.useOwnSettings)
         }
 
         OwnField.COLOR_OS -> {
-            switchNotice(I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"), values.colorOsApi)
+            switchNotice(I18n.get(Strings.HOME_COLOROS_TITLE), values.colorOsApi)
         }
 
         OwnField.VIBRATE -> {
-            switchNotice(I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"), values.vibrate)
+            switchNotice(I18n.get(Strings.HOME_VIBRATE_TITLE), values.vibrate)
         }
 
         OwnField.VIBRATE_ON_NONE -> {
             switchNotice(
-                I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE, "无操作时振动"),
+                I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE),
                 values.vibrateOnNone,
             )
         }
 
         OwnField.TOAST -> {
-            switchNotice(I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"), values.toastOnRun)
+            switchNotice(I18n.get(Strings.HOME_TOAST_TITLE), values.toastOnRun)
         }
 
         OwnField.FLUID -> {
-            switchNotice(I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"), values.toastFluid)
+            switchNotice(I18n.get(Strings.HOME_TOAST_FLUID_TITLE), values.toastFluid)
         }
 
         OwnField.STRENGTH, OwnField.TEMPLATE -> {
@@ -636,7 +636,7 @@ private fun SettingsPage.commitOwnField(
  */
 private fun ownCardTitles(): OwnCardTitles =
     OwnCardTitles(
-        master = I18n.get(Strings.KEY_SETTINGS_SECTION, "总开关"),
-        interfaceTitle = I18n.get(Strings.GENERAL_SECTION_INTERFACE, "接口与显示"),
-        behavior = I18n.get(Strings.HOME_BINDING_CARD_TITLE, "按键行为"),
+        master = I18n.get(Strings.KEY_SETTINGS_SECTION),
+        interfaceTitle = I18n.get(Strings.GENERAL_SECTION_INTERFACE),
+        behavior = I18n.get(Strings.HOME_BINDING_CARD_TITLE),
     )

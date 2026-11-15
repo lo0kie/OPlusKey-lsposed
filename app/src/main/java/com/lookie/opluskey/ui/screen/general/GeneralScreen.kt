@@ -69,24 +69,24 @@ internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
         //  块与块之间的间距由小标题自带（与首页同一套），页面不再写 `Spacer`。
-        SectionTitle(I18n.get(Strings.GENERAL_SECTION_INTERFACE, "接口与显示"))
+        SectionTitle(I18n.get(Strings.GENERAL_SECTION_INTERFACE))
         InterfaceCard(pageEnabled)
-        SectionTitle(I18n.get(Strings.HOME_BINDING_CARD_TITLE, "按键行为"))
+        SectionTitle(I18n.get(Strings.HOME_BINDING_CARD_TITLE))
         ActionsCard(pageEnabled)
         //  —— 单击（判定时机 + 单击延迟）——
         //  这一节是**全局默认值**：没开「使用独立设置」的键都按这一份判。
         //  它不吃「有没有多击手势」那道闸 —— 单键也要有个地方改「按下之后等多久」；
         //  逐键那一份在独立设置页里，只有开了多击才可调（同一张卡，见 `clickKeyParams`）。
-        SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK, "单击"))
+        SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK))
         ClickDelayCard(clickGlobalParams(pageEnabled))
         //  组合键那几项 —— 从「按键功能」页搬来：它们是**全局**设置，与「有哪几颗键」无关，
         //  与上面两节同一类。**按触发方式分成两节两张卡**（用户口径）：一条组合只认一种触发方式，
         //  两种方式的参数互不相干，并在一张卡里读起来像「同一套设置的四个旋钮」。
         //  两张卡本身在 `:combo` 包，与某一组「独立设置」页用的是同一份 —— 那边只换状态源。
         val combo = comboPublicParams(pageEnabled)
-        SectionTitle(I18n.get(Strings.COMBO_SECTION_WAIT, "等待组合"))
+        SectionTitle(I18n.get(Strings.COMBO_SECTION_WAIT))
         WaitComboCard(combo)
-        SectionTitle(I18n.get(Strings.COMBO_SECTION_HOLD, "按住组合"))
+        SectionTitle(I18n.get(Strings.COMBO_SECTION_HOLD))
         HoldComboCard(combo)
     }
 }
@@ -108,7 +108,7 @@ private fun SettingsPage.InterfaceCard(pageEnabled: Boolean) {
             buildList {
                 add(
                     CardRow.Switch(
-                        title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
+                        title = I18n.get(Strings.HOME_COLOROS_TITLE),
                         icon = PageIcons.ColorOsLink,
                         checked = colorOs,
                         // 吃整页总闸（含主开关自己）：主开关一关，这一行跟着灰
@@ -146,7 +146,7 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
             buildList {
                 add(
                     CardRow.Switch(
-                        title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
+                        title = I18n.get(Strings.HOME_VIBRATE_TITLE),
                         icon = PageIcons.Vibrate,
                         checked = vibrate,
                         // `enabled = false` 时 COUI 不挂 `clickableModifier`、开关也跟着灰，
@@ -162,7 +162,7 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                 //  （与下面那根强度同一口径）。显隐复用 `visible` 那套进出场动画。
                 add(
                     CardRow.Switch(
-                        title = I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE, "无操作时振动"),
+                        title = I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE),
                         icon = PageIcons.VibrateOnNone,
                         checked = vibrateOnNone,
                         enabled = pageEnabled,
@@ -194,9 +194,9 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                 if (SHOW_HOME_MINI_ANIM) {
                     add(
                         CardRow.Switch(
-                            title = I18n.get(Strings.HOME_MINI_ANIM_TITLE, "前台应用转小窗时使用动画"),
-                            summaryOn = I18n.get(Strings.HOME_MINI_ANIM_DESC_ON, "前台转小窗时播放缩小动画"),
-                            summaryOff = I18n.get(Strings.HOME_MINI_ANIM_DESC_OFF, "前台转小窗时不播动画"),
+                            title = I18n.get(Strings.HOME_MINI_ANIM_TITLE),
+                            summaryOn = I18n.get(Strings.HOME_MINI_ANIM_DESC_ON),
+                            summaryOff = I18n.get(Strings.HOME_MINI_ANIM_DESC_OFF),
                             icon = PageIcons.MiniWindow,
                             checked = cfg.global.miniWindowAnim,
                             enabled = pageEnabled,
@@ -223,7 +223,7 @@ private fun SettingsPage.toastFluidRow(
     visible: Boolean,
 ): CardRow =
     CardRow.Switch(
-        title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"),
+        title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE),
         icon = PageIcons.FormatFluid,
         checked = checked,
         enabled = enabled,
@@ -246,7 +246,7 @@ private fun SettingsPage.toastTemplateRow(
     onEdit: () -> Unit,
 ): CardRow =
     CardRow.Item(
-        title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE, "提示文案"),
+        title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE),
         //  这两句**不给兜底**：里面带 `$`，而兜底审计是按源码字面量逐字比的 —— 写成 `\$` 就与字典
         //  对不上、不写反斜杠又编译不过。缺字典时显示的就是 key 本身，一眼看得出是哪一条。
         summary = global.toastTemplate.ifBlank { I18n.get(Strings.HOME_TOAST_TEMPLATE_DEFAULT) },
@@ -266,8 +266,8 @@ private fun SettingsPage.toastTemplateRow(
  */
 private fun SettingsPage.manageCommonCommandsRow(enabled: Boolean): CardRow =
     CardRow.Item(
-        title = I18n.get(Strings.COMMON_COMMANDS_MANAGE, "管理常用命令"),
-        summary = I18n.get(Strings.COMMON_COMMANDS_MANAGE_DESC, "添加、改名、换图标与固定"),
+        title = I18n.get(Strings.COMMON_COMMANDS_MANAGE),
+        summary = I18n.get(Strings.COMMON_COMMANDS_MANAGE_DESC),
         icon = PageIcons.CommonCommandsManage,
         arrow = true,
         enabled = enabled,
@@ -292,10 +292,10 @@ private fun SettingsPage.toastTemplateDialog(
 ) {
     NameDialog(
         show = show,
-        title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE, "提示文案"),
+        title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE),
         //  占位只写「留空则用默认」，**不再把默认那句摆进去**：那句话随时会变，摆进占位就成了
         //  一处会过期的说明；要看默认长什么样，清空（或按「重置」）之后行尾副标题就是它。
-        label = I18n.get(Strings.HOME_TOAST_TEMPLATE_PLACEHOLDER, "留空将使用默认提示"),
+        label = I18n.get(Strings.HOME_TOAST_TEMPLATE_PLACEHOLDER),
         //  六个占位符各是什么写在下面那行小字里 —— 填着内容时也一直在（这才是「变量提示」）。
         //  变量名单独排一档（与键名同一个写法）：这一行要读成「几个能填的变量」，
         //  纯文字读起来是一句话。顺序由 `ToastNotice.PLACEHOLDERS` 定。
@@ -341,7 +341,7 @@ private fun SettingsPage.toastRow(
     enabled: Boolean,
 ): CardRow =
     CardRow.Switch(
-        title = I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"),
+        title = I18n.get(Strings.HOME_TOAST_TITLE),
         icon = PageIcons.CommandToast,
         checked = checked,
         enabled = enabled,
@@ -369,7 +369,7 @@ private fun SettingsPage.VibrateStrengthRow(
         position = position,
         spec =
             SliderSpec(
-                title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE, "振动强度"),
+                title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE),
                 // 档位由行首那枚数字图标表达（1 / 2 / 3）
                 icon = PageIcons.vibrateLevel(level),
                 min = GlobalConfig.VIBRATE_WEAK,
@@ -396,14 +396,14 @@ private fun SettingsPage.VibrateStrengthRow(
 private fun vibrateStrengthLabel(level: Int): String =
     when (level) {
         GlobalConfig.VIBRATE_WEAK -> {
-            I18n.get(Strings.HOME_VIBRATE_STRENGTH_WEAK, "弱")
+            I18n.get(Strings.HOME_VIBRATE_STRENGTH_WEAK)
         }
 
         GlobalConfig.VIBRATE_STRONG -> {
-            I18n.get(Strings.HOME_VIBRATE_STRENGTH_STRONG, "强")
+            I18n.get(Strings.HOME_VIBRATE_STRENGTH_STRONG)
         }
 
         else -> {
-            I18n.get(Strings.HOME_VIBRATE_STRENGTH_MEDIUM, "中")
+            I18n.get(Strings.HOME_VIBRATE_STRENGTH_MEDIUM)
         }
     }

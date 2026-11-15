@@ -38,7 +38,7 @@ internal fun SettingsPage.CommandFluidIconCard(
     val message = fluid?.message ?: text.removePrefix(Action.FLUID_PREFIX).trim()
     //  小标题与卡片一起进退（`AnimatedColumn` 里面自带 `Column`，两行不会叠在一处）
     AnimatedColumn(visible = isFluid) {
-        SectionTitle(I18n.get(Strings.COMMAND_FLUID_ICON_TITLE, "图标"))
+        SectionTitle(I18n.get(Strings.COMMAND_FLUID_ICON_TITLE))
         FluidIconRow(
             //  显隐已由外面那一档管着，这一行只在本档在场时才组合 ⇒ 恒为显示
             show = true,

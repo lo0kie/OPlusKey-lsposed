@@ -633,7 +633,7 @@ internal fun SettingsPage.disabledClickReason(): HintText {
         //  带键名的两句：名字按颗归位（模板里只留 `%s`）
         !cfg.key(key).enabled -> {
             HintText(
-                I18n.get(Strings.KEY_DISABLED_ITEM, "%s 已停用，可在菜单里启用"),
+                I18n.get(Strings.KEY_DISABLED_ITEM),
                 listOf(keyName(key)),
             )
         }
@@ -642,7 +642,7 @@ internal fun SettingsPage.disabledClickReason(): HintText {
         //  否则用户只看到一片灰，去翻「是不是停用了」（停用是另一回事，旁边那句才是它）
         cfg.key(key).comboOnly -> {
             HintText(
-                I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED, "按键 %s 只能作按住组合的后续成员"),
+                I18n.get(Strings.BINDING_COMBO_ONLY_BLOCKED),
                 listOf(keyName(key)),
             )
         }
@@ -650,7 +650,7 @@ internal fun SettingsPage.disabledClickReason(): HintText {
         //  这一项自己没有原因 ⇒ 才轮到「整页为什么不对」（重启 / 勾作用域那几句）；
         //  页面是通的、这一项仍然点不动（比如行要求先选一颗键）：说结论，不编一个「没就绪」
         else -> {
-            HintText(blockedReason() ?: I18n.get(Strings.CONTROL_UNAVAILABLE, "这一项现在不可用"))
+            HintText(blockedReason() ?: I18n.get(Strings.CONTROL_UNAVAILABLE))
         }
     }
 }
@@ -676,14 +676,14 @@ private fun SettingsPage.takeOverCheck(): LinkCheck {
     val anyKeyOn = cfg.allKeys.any { cfg.key(it).enabled }
     return LinkCheck(
         icon = PageIcons.LinkTakeOver,
-        name = I18n.get(Strings.LINK_CHECK_TAKE_OVER, "按键接管"),
+        name = I18n.get(Strings.LINK_CHECK_TAKE_OVER),
         ok = masterOn && anyKeyOn,
         detail =
             when {
-                readOnly -> I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
-                !masterOn -> I18n.get(Strings.LINK_CHECK_MASTER_OFF_ALL, "主开关已关闭，所有按键都不接管")
-                !anyKeyOn -> I18n.get(Strings.LINK_CHECK_ALL_KEYS_OFF, "所有按键都已停用")
-                else -> I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
+                readOnly -> I18n.get(Strings.LINK_CHECK_CONFIG_FAILED)
+                !masterOn -> I18n.get(Strings.LINK_CHECK_MASTER_OFF_ALL)
+                !anyKeyOn -> I18n.get(Strings.LINK_CHECK_ALL_KEYS_OFF)
+                else -> I18n.get(Strings.LINK_CHECK_NORMAL)
             },
         blocking = false,
         inSummary = true,
@@ -700,14 +700,14 @@ private fun SettingsPage.takeOverCheck(): LinkCheck {
 private fun SettingsPage.usageCheck(inj: InjectStatus?): LinkCheck =
     LinkCheck(
         icon = PageIcons.LinkUsage,
-        name = I18n.get(Strings.LINK_CHECK_USAGE_VERIFIED, "使用验证"),
+        name = I18n.get(Strings.LINK_CHECK_USAGE_VERIFIED),
         ok = link.hostLastActionAt > 0,
         // 判到过手势、却一次都没执行 —— 多半是这一档绑的是「无操作」
         detail =
             when {
-                link.hostLastActionAt > 0 -> I18n.get(Strings.LINK_CHECK_VERIFIED, "已生效")
-                inj != null && inj.lastGestureAt > 0 -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
-                else -> I18n.get(Strings.LINK_CHECK_NOT_USED_YET, "尚未使用")
+                link.hostLastActionAt > 0 -> I18n.get(Strings.LINK_CHECK_VERIFIED)
+                inj != null && inj.lastGestureAt > 0 -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE)
+                else -> I18n.get(Strings.LINK_CHECK_NOT_USED_YET)
             },
         blocking = false,
     )
@@ -747,24 +747,24 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
     return listOf(
         LinkCheck(
             icon = PageIcons.LinkService,
-            name = I18n.get(Strings.LINK_CHECK_SERVICE_STATUS, "服务运行"),
+            name = I18n.get(Strings.LINK_CHECK_SERVICE_STATUS),
             ok = hostOk,
             detail =
                 if (hostOk) {
-                    I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
+                    I18n.get(Strings.LINK_CHECK_NORMAL)
                 } else {
-                    I18n.get(Strings.LINK_CHECK_NOT_RUNNING, "未运行")
+                    I18n.get(Strings.LINK_CHECK_NOT_RUNNING)
                 },
         ),
         LinkCheck(
             icon = PageIcons.LinkKeyResponse,
-            name = I18n.get(Strings.LINK_CHECK_KEY_RESPONSE, "按键响应"),
+            name = I18n.get(Strings.LINK_CHECK_KEY_RESPONSE),
             ok = respondOk,
             detail =
                 when {
-                    inj == null -> I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE, "等待响应")
-                    inj.hooks <= 0 -> I18n.get(Strings.LINK_CHECK_NOT_RESPONDING, "未响应")
-                    else -> I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
+                    inj == null -> I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE)
+                    inj.hooks <= 0 -> I18n.get(Strings.LINK_CHECK_NOT_RESPONDING)
+                    else -> I18n.get(Strings.LINK_CHECK_NORMAL)
                 },
         ),
         // 「按键接管」：接管点挂上 ≠ 按键真被接住 —— 总闸关着时上面那段照样绿，
@@ -774,7 +774,7 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
         // 合成一段：对用户来说都是「设置到底生效了没有」，分开报只是把内部结构摆到脸上。
         LinkCheck(
             icon = PageIcons.LinkConfig,
-            name = I18n.get(Strings.LINK_CHECK_CONFIG_EFFECTIVE, "设置生效"),
+            name = I18n.get(Strings.LINK_CHECK_CONFIG_EFFECTIVE),
             // 与总闸**同源**：配置侧那半直接用 [configSideOk]，免得两边各写一份慢慢跑偏。
             //  第三项是**执行侧**用不用得上那份配置 —— 前两项都在 system_server 那条线上，
             //  真正执行动作的宿主主进程读不懂时它们照样全绿（真机撞过：所有按键都没反应、自检全绿）。
@@ -804,11 +804,11 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
                     //  与 `blockedReason` 同一档分法：跑着旧版时「配置读取失败」是误诊 ——
                     //  文件没问题，是这一侧的结构比文件旧。
                     f.readOnly && f.hostStale -> {
-                        I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需要重启")
+                        I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED)
                     }
 
                     f.readOnly -> {
-                        I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
+                        I18n.get(Strings.LINK_CHECK_CONFIG_FAILED)
                     }
 
                     // **执行侧**那份配置用不了（设置页自己读得懂）：它与「主开关关着」在
@@ -817,45 +817,45 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
                     //  跑着旧包时它是那件事的影子（说「需要重启」，指重启服务）；否则是真读不懂。
                     f.hostConfigBroken -> {
                         if (f.hostStale) {
-                            I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需要重启")
+                            I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED)
                         } else {
-                            I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
+                            I18n.get(Strings.LINK_CHECK_CONFIG_FAILED)
                         }
                     }
 
                     inj == null -> {
-                        I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE, "等待响应")
+                        I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE)
                     }
 
                     !inj.configOk -> {
-                        I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
+                        I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE)
                     }
 
                     restartNeeded -> {
-                        I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需要重启")
+                        I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED)
                     }
 
                     // 收到过、但指纹对不上（且不是换包没重启造成的）：改过的那一次没送到它手上
                     //  判据与上面 `ok` **同源**（[configSideOk]）—— 这里原来另算了一遍，两处条件
                     //  还差一个 `isNotEmpty()`，于是「横幅说重启、这一行说未同步」。
                     !configSide -> {
-                        I18n.get(Strings.LINK_CHECK_NOT_SYNCED, "未同步")
+                        I18n.get(Strings.LINK_CHECK_NOT_SYNCED)
                     }
 
                     //  **用户没关、执行侧读到的是关**（`hostSwitchMissing`）：这一档说的是
                     //  「另一边手上不是这一份」，不是「主开关已关闭」—— 与首页那条提示同一句话
                     //  （`blockedReason` 里也是这个分支）。不单列的话会把人指去拨一个本来就开着的开关。
                     f.hostSwitchMissing -> {
-                        I18n.get(Strings.LINK_CHECK_NOT_SYNCED, "未同步")
+                        I18n.get(Strings.LINK_CHECK_NOT_SYNCED)
                     }
 
                     // 读到默认值只有两种来路：主开关被关了，或者开机还没解锁
                     !link.hostEnabled -> {
-                        I18n.get(Strings.LINK_CHECK_SWITCH_OFF, "主开关已关闭")
+                        I18n.get(Strings.LINK_CHECK_SWITCH_OFF)
                     }
 
                     else -> {
-                        I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
+                        I18n.get(Strings.LINK_CHECK_NORMAL)
                     }
                 },
         ),

@@ -94,11 +94,11 @@ internal fun SettingsPage.UpdateDialog() {
     val info = UpdateState.offer
     FrostedDialog(
         show = info != null,
-        title = I18n.get(Strings.UPDATE_TITLE, "发现新版本"),
+        title = I18n.get(Strings.UPDATE_TITLE),
         onDismiss = { UpdateState.dismiss() },
         footer = {
             DialogButtonRow(
-                negative = I18n.get(Strings.UPDATE_LATER, "稍后"),
+                negative = I18n.get(Strings.UPDATE_LATER),
                 onNegative = { UpdateState.dismiss() },
                 onPositive = {
                     //  `takeDownload` 无论有没有地址都会把 offer / pending 清掉 —— 地址为空时先拦住：
@@ -107,7 +107,7 @@ internal fun SettingsPage.UpdateDialog() {
                     if (url.isNullOrBlank()) {
                         XLog.w("更新：这条 release 没有可打开的地址（version=${UpdateState.offer?.version}）")
                         UpdateState.dismiss()
-                        hint(I18n.get(Strings.UPDATE_NO_URL, "这条更新没有下载地址，去发布页看"))
+                        hint(I18n.get(Strings.UPDATE_NO_URL))
                     } else {
                         //  先去浏览器，再收窗：`takeDownload` 会把勾选框那一笔一起记下
                         UpdateState.takeDownload()
@@ -119,7 +119,7 @@ internal fun SettingsPage.UpdateDialog() {
                     DialogPositiveStyle(
                         danger = false,
                         enabled = true,
-                        label = I18n.get(Strings.UPDATE_DOWNLOAD, "去下载"),
+                        label = I18n.get(Strings.UPDATE_DOWNLOAD),
                     ),
             )
         },
@@ -188,7 +188,7 @@ private fun ColumnScope.UpdateBody(info: ReleaseInfo) {
     if (info.notes.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
         Text(
-            text = I18n.get(Strings.UPDATE_NOTES, "更新说明"),
+            text = I18n.get(Strings.UPDATE_NOTES),
             style = caption,
             color = COUITheme.colorScheme.onSurfaceVariantSummary,
             //  库只给标题与摘要垫 `insideMargin`，`content` 槽不垫 —— 这几块要自己补，
@@ -236,7 +236,7 @@ private fun ColumnScope.UpdateBody(info: ReleaseInfo) {
         )
         Spacer(Modifier.width(8.dp))
         Text(
-            text = I18n.get(Strings.UPDATE_DONT_REMIND, "不再提示这个版本"),
+            text = I18n.get(Strings.UPDATE_DONT_REMIND),
             style = summary,
             color = COUITheme.colorScheme.onSurfaceContainer,
         )

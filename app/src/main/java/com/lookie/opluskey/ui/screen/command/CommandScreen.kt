@@ -147,7 +147,7 @@ internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
         pagerState = pagerState,
         labels =
             CommandKind.FORM_TABS.map { commandKindLabel(it) } +
-                I18n.get(Strings.COMMAND_TAB_LIST, "命令步骤"),
+                I18n.get(Strings.COMMAND_TAB_LIST),
         // 排序态下这一条也禁用 —— 与「按键绑定」页主开关为关时同一套（做法在 [PageTabBand] 里）
         enabled = !commandDraft.stepEditing,
         band = bands[Screen.COMMANDS],
@@ -329,9 +329,9 @@ private fun fabFace(
     sortingSteps: Boolean,
 ): Pair<ImageVector, String> =
     when {
-        listEditing -> PageIcons.CommandDelete to I18n.get(Strings.COMMON_DELETE, "删除")
-        sortingSteps -> PageIcons.Confirm to I18n.get(Strings.COMMAND_STEP_SORT_DONE, "完成")
-        else -> PageIcons.Confirm to I18n.get(Strings.COMMON_CONFIRM, "确定")
+        listEditing -> PageIcons.CommandDelete to I18n.get(Strings.COMMON_DELETE)
+        sortingSteps -> PageIcons.Confirm to I18n.get(Strings.COMMAND_STEP_SORT_DONE)
+        else -> PageIcons.Confirm to I18n.get(Strings.COMMON_CONFIRM)
     }
 
 /**
@@ -426,7 +426,7 @@ internal fun SettingsPage.CommandNameField(
     enabled: Boolean = true,
 ) {
     IconInputView(
-        spec = InputSpec(PageIcons.LabelImportant, I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称"), MAX_NAME_LENGTH),
+        spec = InputSpec(PageIcons.LabelImportant, I18n.get(Strings.COMMAND_NAME_HINT), MAX_NAME_LENGTH),
         value = form.name,
         //  换行由输入框那一层折掉（`AppInputField` 的 `foldLineBreaks`）—— 这里不再清第二道。
         //  trim 在保存（[addCommand]）与解析（`CommandLibrary.commandOf`）时做：带 trim 的版本

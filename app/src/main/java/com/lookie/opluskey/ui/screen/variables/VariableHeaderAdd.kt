@@ -32,7 +32,7 @@ internal fun SettingsPage.VariableHeaderAdd() {
     ) {
         Icon(
             PageIcons.CommandAdd,
-            contentDescription = I18n.get(Strings.VARIABLES_ADD, "新建变量"),
+            contentDescription = I18n.get(Strings.VARIABLES_ADD),
         )
     }
 }

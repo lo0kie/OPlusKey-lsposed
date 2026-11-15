@@ -34,7 +34,7 @@ internal fun SettingsPage.HomeDisclaimers(ui: HomeUiState) {
         show = ui.disclaimerPending,
         title = DISCLAIMER_TITLE,
         summary = DISCLAIMER_TEXT,
-        action = I18n.get(Strings.DIALOG_DISCLAIMER_ACKNOWLEDGE, "我已了解"),
+        action = I18n.get(Strings.DIALOG_DISCLAIMER_ACKNOWLEDGE),
         // 不丢用户任何东西的确认 ⇒ 走主题色，不给红：红会读成「这个操作有危险」，
         // 而这里只是「你点的那一下要你先看一眼说明」。
         positiveDanger = false,
@@ -60,7 +60,7 @@ internal fun SettingsPage.HomeDisclaimers(ui: HomeUiState) {
         show = ui.freeNoticePending,
         title = FREE_NOTICE_TITLE,
         summary = FREE_NOTICE_TEXT,
-        action = I18n.get(Strings.DIALOG_CONFIRM, "确定"),
+        action = I18n.get(Strings.DIALOG_CONFIRM),
         positiveDanger = false,
         onDismiss = { ui.freeNoticePending = false },
         onConfirm = { ui.freeNoticePending = false },

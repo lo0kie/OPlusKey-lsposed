@@ -45,7 +45,7 @@ private const val COMBO_KEY_CLOSE = "]"
  *  这一条也是**执行时提示**（`GestureExec`）与「按键功能」页清单的唯一来源 ——
  *  两处原先各有一份实现，改一处就会有一处还是旧叫法。
  */
-fun keyName(id: KeyId): String = if (id.isCustom) id.label else I18n.get(Strings.KEY_SIDE, id.label)
+fun keyName(id: KeyId): String = if (id.isCustom) id.label else I18n.get(Strings.KEY_SIDE)
 
 /**
  * 一档组合键的**成员键名**（`["侧键", "电量 +"]`）—— 需要**逐个各归各位**的地方用它。
@@ -78,7 +78,7 @@ fun comboOrderSummary(combo: ComboKey): String? {
     if (members.size < 2) return null
     //  有序档的先后由标题的「→」表达，不再重复写副标题
     if (combo.ordered) return null
-    return I18n.get(Strings.COMBO_ORDER_ANY, "不分顺序")
+    return I18n.get(Strings.COMBO_ORDER_ANY)
 }
 
 /**
@@ -139,7 +139,7 @@ private fun joinComboNames(
     fun name(it: String): String = if (chip) chipOrBare(it) else it
     if (combo.isHold && names.size >= 2) {
         return I18n
-            .get(Strings.COMBO_MODE_HOLD, "按住 %1\$s 后再按 %2\$s")
+            .get(Strings.COMBO_MODE_HOLD)
             .replace("%1\$s", name(names.first()))
             .replace("%2\$s", names.drop(1).joinToString(" $sep ") { name(it) })
     }

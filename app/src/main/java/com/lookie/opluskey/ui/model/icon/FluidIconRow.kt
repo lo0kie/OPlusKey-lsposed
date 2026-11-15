@@ -44,7 +44,7 @@ internal fun SettingsPage.FluidIconRow(
             listOf(
                 CardRow.Item(
                     visible = show,
-                    title = I18n.get(Strings.COMMAND_FLUID_ICON_TITLE, "图标"),
+                    title = I18n.get(Strings.COMMAND_FLUID_ICON_TITLE),
                     //  副标题讲**这一格后面有多少东西**（`当前有 48 个图标`）——它是「值不值得点进去」
                     //  的量，而不是「现在用的是哪一颗」：把 id 念成 `click` 对谁都没帮助，
                     //  想知道当前是哪颗，点开窗看一眼网格就够。

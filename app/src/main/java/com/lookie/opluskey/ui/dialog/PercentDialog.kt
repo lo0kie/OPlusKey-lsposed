@@ -241,7 +241,7 @@ internal fun SettingsPage.BrightnessDialog(
         show = show,
         prompt =
             NumberPrompt(
-                title = I18n.get(Strings.CATALOG_BRIGHTNESS, "屏幕亮度"),
+                title = I18n.get(Strings.CATALOG_BRIGHTNESS),
                 min = if (mode == Action.Brightness.Mode.FIX) 0 else PERCENT_STEP,
                 labelOf = { actionDetail(Action.Brightness(mode, it)).orEmpty() },
             ),
@@ -287,9 +287,9 @@ internal fun SettingsPage.VolumeDialog(
             NumberPrompt(
                 title =
                     if (ringer) {
-                        I18n.get(Strings.CATALOG_RINGER_VOLUME, "铃声音量")
+                        I18n.get(Strings.CATALOG_RINGER_VOLUME)
                     } else {
-                        I18n.get(Strings.CATALOG_VOLUME, "媒体音量")
+                        I18n.get(Strings.CATALOG_VOLUME)
                     },
                 min = if (mode == Action.Volume.Mode.FIX) 0 else PERCENT_STEP,
                 labelOf = { percent ->
@@ -343,7 +343,7 @@ internal fun SettingsPage.TimerDialog(
         show = show,
         prompt =
             NumberPrompt(
-                title = I18n.get(Strings.CATALOG_CLOCK, "计时器"),
+                title = I18n.get(Strings.CATALOG_CLOCK),
                 min = TIMER_STEP_SECONDS,
                 max = TIMER_SLIDER_MAX_SECONDS,
                 step = TIMER_STEP_SECONDS,

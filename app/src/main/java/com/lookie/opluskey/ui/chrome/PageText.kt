@@ -45,9 +45,9 @@ internal fun SettingsPage.addCommand() {
     // 结果一句话（改 / 覆盖 / 新增各一条；失败由 [saveCommands] 自己报）
     val tip =
         when {
-            editingFrom != null -> I18n.get(Strings.TOAST_COMMAND_MODIFIED, "已修改")
-            replaced -> I18n.get(Strings.TOAST_COMMAND_OVERWRITTEN, "已覆盖")
-            else -> I18n.get(Strings.TOAST_COMMAND_SAVED, "已保存")
+            editingFrom != null -> I18n.get(Strings.TOAST_COMMAND_MODIFIED)
+            replaced -> I18n.get(Strings.TOAST_COMMAND_OVERWRITTEN)
+            else -> I18n.get(Strings.TOAST_COMMAND_SAVED)
         }
     // 改名回滚要用它：库先落盘、绑定后挪，绑定没挪成时得把库退回改名前的样子（见下面那条）。
     val previousLibrary = configState.commands.value

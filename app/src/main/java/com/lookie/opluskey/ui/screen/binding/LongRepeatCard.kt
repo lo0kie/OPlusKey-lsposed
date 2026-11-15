@@ -119,7 +119,7 @@ internal fun SettingsPage.LongPressCard(
         show = pickingRelease,
         sheet =
             StepSheetSpec(
-                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE, "松手执行额外动作"),
+                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE),
                 current = releaseAction,
                 onOpenPicker = { page ->
                     pickingRelease = false
@@ -194,10 +194,10 @@ private fun sectionsFor(target: BindingTarget): LongPressSections =
  */
 internal fun SettingsPage.repeatBlockedReason(current: Action): String? {
     if (isSerialCommand(configState.commands.value, current.token)) {
-        return I18n.get(Strings.BINDING_SERIAL_UNSUPPORTED_REPEAT, "多条命令不支持连续触发")
+        return I18n.get(Strings.BINDING_SERIAL_UNSUPPORTED_REPEAT)
     }
     val voice = (current as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true
-    return if (voice) I18n.get(Strings.BINDING_VOICE_UNSUPPORTED_REPEAT, "灵感语音不支持连续触发") else null
+    return if (voice) I18n.get(Strings.BINDING_VOICE_UNSUPPORTED_REPEAT) else null
 }
 
 /**
@@ -222,10 +222,7 @@ private fun longPressBlockedReason(
             //  三种原因共用这一档（主开关 / 链路未就绪 / 配置只读），所以只能说**通用**的那一句 ——
             //  报「按键绑定已关闭」会让用户去翻一颗本来好好的开关（`STATUS_KEY_DISABLED` 的正文
             //  说的就是「按键绑定」这件事）。
-            I18n.get(
-                Strings.STATUS_PAGE_LOCKED,
-                "这一页暂不可修改（主开关已关闭 / 链路未就绪 / 配置只读），按系统原生行为",
-            )
+            I18n.get(Strings.STATUS_PAGE_LOCKED)
         }
 
         else -> {

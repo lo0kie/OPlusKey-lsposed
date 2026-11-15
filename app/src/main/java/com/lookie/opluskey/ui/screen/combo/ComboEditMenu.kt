@@ -167,7 +167,7 @@ private fun SettingsPage.ComboDeleteDialog(
     ConfirmDialog(
         show = show,
         title = I18n.format(Strings.COMBO_DELETE_CONFIRM, label),
-        action = I18n.get(Strings.COMBO_DELETE, "删除组合按键"),
+        action = I18n.get(Strings.COMBO_DELETE),
         onDismiss = onDismiss,
         onConfirm = onConfirm,
     )
@@ -187,8 +187,8 @@ private fun SettingsPage.ComboDisableDialog(
 ) {
     ConfirmDialog(
         show = show,
-        title = I18n.get(Strings.COMBO_DISABLE, "停用组合按键"),
-        action = I18n.get(Strings.COMMON_DISABLE, "停用"),
+        title = I18n.get(Strings.COMBO_DISABLE),
+        action = I18n.get(Strings.COMMON_DISABLE),
         onDismiss = onDismiss,
         onConfirm = onConfirm,
     )
@@ -258,7 +258,7 @@ private fun SettingsPage.comboMenuEntries(
                 onPick = actions.onOpenBranches,
             ),
             MenuEntry.Row(
-                title = I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置"),
+                title = I18n.get(Strings.KEY_SETTINGS_TITLE),
                 icon = PageIcons.SettingsCog,
                 submenu = true,
                 trailingIcon = PageIcons.EnterArrow,
@@ -270,16 +270,16 @@ private fun SettingsPage.comboMenuEntries(
             MenuEntry.Row(
                 title =
                     if (enabled) {
-                        I18n.get(Strings.COMBO_DISABLE, "停用组合按键")
+                        I18n.get(Strings.COMBO_DISABLE)
                     } else {
-                        I18n.get(Strings.COMBO_ENABLE, "启用组合按键")
+                        I18n.get(Strings.COMBO_ENABLE)
                     },
                 //  停用 / 启用各一颗（锁 / 开锁）：这一行本来就随状态换文案，图标跟着换才一致
                 icon = if (enabled) PageIcons.KeyLocked else PageIcons.KeyUnlocked,
                 onPick = actions.onToggleEnabled,
             ),
             MenuEntry.Row(
-                title = I18n.get(Strings.COMBO_DELETE, "删除组合按键"),
+                title = I18n.get(Strings.COMBO_DELETE),
                 icon = PageIcons.CommandDelete,
                 danger = true,
                 onPick = actions.onAskDelete,

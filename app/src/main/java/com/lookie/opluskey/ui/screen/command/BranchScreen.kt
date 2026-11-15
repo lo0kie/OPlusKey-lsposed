@@ -99,7 +99,7 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
         PageCornerFab(visible = draft.dirty) { BranchSaveFab() }
     }
     // 改了还没保存就按返回时，`goBack` 会先置这一位 —— 这个窗必须挂上，否则返回被拦住却**没有窗**
-    LeaveDiscardDialog(I18n.get(Strings.DIALOG_DISCARD_CONDITION_TITLE, "放弃未保存的场景"))
+    LeaveDiscardDialog(I18n.get(Strings.DIALOG_DISCARD_CONDITION_TITLE))
 }
 
 /**
@@ -146,13 +146,13 @@ private fun SettingsPage.BranchSaveFab() {
             if (blocked != null) {
                 hint(blocked, slot = HINT_SLOT_DISABLED)
             } else if (saveScenes()) {
-                hint(I18n.get(Strings.COMMAND_BRANCH_SAVED, "已保存系统场景"), slot = HINT_SLOT_PAGE)
+                hint(I18n.get(Strings.COMMAND_BRANCH_SAVED), slot = HINT_SLOT_PAGE)
             }
         },
     ) {
         PageFabIcon(
             PageIcons.Confirm,
-            contentDescription = I18n.get(Strings.COMMON_CONFIRM, "确定"),
+            contentDescription = I18n.get(Strings.COMMON_CONFIRM),
         )
     }
 }
@@ -193,9 +193,9 @@ internal fun SettingsPage.BranchDeleteDialog(menus: BranchMenuState) {
     val at = menus.deleteAt
     ConfirmDialog(
         show = at >= 0,
-        title = I18n.get(Strings.DIALOG_DELETE_CONDITION_TITLE, "删除场景"),
-        summary = I18n.get(Strings.DIALOG_DELETE_CONDITION_MESSAGE, "这条场景与其动作将一并删除。"),
-        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        title = I18n.get(Strings.DIALOG_DELETE_CONDITION_TITLE),
+        summary = I18n.get(Strings.DIALOG_DELETE_CONDITION_MESSAGE),
+        action = I18n.get(Strings.COMMON_DELETE),
         onDismiss = { menus.deleteAt = -1 },
         onConfirm = {
             // 只**标出来**，不在这里删：行要先播完收缩（见 [BranchMenuState.deletingAt]），
@@ -229,8 +229,8 @@ internal fun SettingsPage.BranchToggleDialog(
     //  场景已经不在了（这一趟里删过）⇒ 窗不显示
     ConfirmDialog(
         show = scene != null,
-        title = I18n.get(Strings.COMMAND_BRANCH_DISABLE, "停用场景"),
-        action = I18n.get(Strings.COMMON_DISABLE, "停用"),
+        title = I18n.get(Strings.COMMAND_BRANCH_DISABLE),
+        action = I18n.get(Strings.COMMON_DISABLE),
         onDismiss = { menus.toggleAt = -1 },
         onConfirm = {
             menus.toggleAt = -1
@@ -256,8 +256,8 @@ internal fun SettingsPage.BranchConditionDeleteDialog(menus: BranchMenuState) {
     val target = menus.deletingCond
     ConfirmDialog(
         show = target != null,
-        title = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_TITLE, "删除这条场景"),
-        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        title = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_TITLE),
+        action = I18n.get(Strings.COMMON_DELETE),
         onDismiss = { menus.deletingCond = null },
         onConfirm = {
             //  只**标出来**，不在这里删：那一行要先播完收起（与删整块同一个做法，见
@@ -327,7 +327,7 @@ internal fun SettingsPage.BranchEmptyHint() {
         },
         //  上面一句说**状态**，下面一句说**现在会发生什么** —— 只有下面那句时，
         //  用户得先读完整句才知道这块是空的。
-        title = I18n.get(Strings.COMMAND_BRANCH_EMPTY_TITLE, "尚未添加场景"),
+        title = I18n.get(Strings.COMMAND_BRANCH_EMPTY_TITLE),
         text = branchEmptyText(),
         modifier = Modifier.fillMaxWidth(),
     )
@@ -355,17 +355,17 @@ internal fun SettingsPage.branchRulesBlockedReason(): String? {
     val scenes = branchDraftNow().scenes
     return when {
         scenes.any { !it.isReady } -> {
-            I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有场景没选完")
+            I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION)
         }
 
         //  时间区间两两不许重叠 —— 选的时候已经拦过一次，这里兜手改 / 导入来的配置：
         //  那种表里两条重叠的区间，后一条永远轮不到，界面上却看不出来。
         branchTimesOverlap() -> {
-            I18n.get(Strings.COMMAND_COND_TIME_OVERLAP, "时间区间不允许重叠")
+            I18n.get(Strings.COMMAND_COND_TIME_OVERLAP)
         }
 
         duplicateBlockIndexes(scenes).isNotEmpty() -> {
-            I18n.get(Strings.COMMAND_BRANCH_SAME_SCENE_SAVE, "有两块的场景完全一样，请并成一块")
+            I18n.get(Strings.COMMAND_BRANCH_SAME_SCENE_SAVE)
         }
 
         else -> {
@@ -381,7 +381,7 @@ internal fun SettingsPage.branchRulesBlockedReason(): String? {
  *  三档都在同一页里，一句话点名其中一档反而误导；这句只说明「没有场景时会回落到按键绑定」。
  */
 internal fun SettingsPage.branchEmptyText(): String {
-    val template = I18n.get(Strings.COMMAND_BRANCH_EMPTY, "将执行按键绑定里的 %s")
+    val template = I18n.get(Strings.COMMAND_BRANCH_EMPTY)
     //  这句不拼「键名 - 手势」：三档都在同一页里，一句话点名其中一档反而误导。
     //  模板里的 `%s` 没有可填的键名：去掉它时连同旁边那一个空格一起收掉，再压掉连续空格，
     //  否则中文会拖着行尾空格、英文会留下「Will run  from …」这种双空格。

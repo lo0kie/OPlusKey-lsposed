@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,6 +30,7 @@ import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.model.page.ROW_START_ICON_GAP
 import com.lookie.opluskey.ui.model.page.SLIDER_EDGE_BLEED
 import com.lookie.opluskey.ui.model.page.SLIDER_ICON_INSET
+import com.lookie.opluskey.ui.model.page.SLIDER_ICON_SINK
 import com.lookie.opluskey.ui.model.page.SLIDER_INSIDE_MARGIN
 import com.lookie.opluskey.ui.model.page.SLIDER_ROW_TAP_TRACK
 import com.lookie.opluskey.ui.model.page.SLIDER_TOP_TUCK
@@ -170,8 +172,14 @@ private fun SettingsPage.SliderRowBody(
                 spec.icon,
                 contentDescription = null,
                 tint = sliderIconColor,
-                //  补上库少给的那 8dp，图标两侧留白才一样宽（见 [ROW_START_ICON_GAP]）
-                modifier = Modifier.padding(end = ROW_START_ICON_GAP),
+                modifier =
+                    Modifier
+                        //  补上库少给的那 8dp，图标两侧留白才一样宽（见 [ROW_START_ICON_GAP]）
+                        .padding(end = ROW_START_ICON_GAP)
+                        //  库只把图标居中在标题与摘要那一块上，底下的滑杆不算进 `rowHeight`
+                        //  （见 [SLIDER_ICON_SINK]）：往下坐半个「文本块以下」的高度，中心才落在整行内容上。
+                        //  走 `offset` 而不是 `padding` —— 后者会改量出来的尺寸，父级按新高度重新居中，只挪到一半。
+                        .offset(y = SLIDER_ICON_SINK),
             )
         },
         // 行尾**不再站一列**：当前值挪到主标题那一行的右侧（见 [SliderRowTexts]）。
@@ -235,7 +243,7 @@ private fun SettingsPage.SliderValueInput(
     NameDialog(
         show = show,
         title = spec.title,
-        label = I18n.get(Strings.SLIDER_INPUT_LABEL, "手动输入"),
+        label = I18n.get(Strings.SLIDER_INPUT_LABEL),
         icon = spec.icon,
         initial = spec.value.toString(),
         range = spec.min..spec.max,

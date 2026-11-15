@@ -74,12 +74,12 @@ internal fun SettingsPage.CommandVarsCard(
     var lastKind by remember { mutableStateOf<ConditionKind?>(null) }
     picking?.let { lastKind = it }
     //  小标题说的是这一档的名字，行里只留这一档的名字（进去能挑什么，点开就看见了）。
-    SectionTitle(I18n.get(Strings.COMMAND_VARS_TITLE, "可用变量"))
+    SectionTitle(I18n.get(Strings.COMMAND_VARS_TITLE))
     CardList(
         rows =
             listOf(
                 CardRow.Item(
-                    title = I18n.get(Strings.COMMAND_VARS_ENTRY_TITLE, "系统状态"),
+                    title = I18n.get(Strings.COMMAND_VARS_ENTRY_TITLE),
                     //  与变量页那一列同一颗（`variable`）—— 这一档进去挑的就是「某个量此刻是什么」
                     icon = TablerIcons.Outline.Variable,
                     //  行尾是 **selector**（「点了要选点什么」）而不是箭头：这一行不进下一层，
@@ -111,7 +111,7 @@ internal fun SettingsPage.CommandVarsCard(
                 //  （`PopupSectionTitle` / `titleWithCount`），数的是这一层菜单实际列出几行。
                 title =
                     titleWithCount(
-                        I18n.get(Strings.COMMAND_VARS_TITLE, "可用变量"),
+                        I18n.get(Strings.COMMAND_VARS_TITLE),
                         SYSTEM_VAR_KINDS.size,
                     ),
                 rows =
@@ -168,7 +168,7 @@ private fun SettingsPage.VarPicker(
     val name = kind.systemVarName.orEmpty()
     val output = remember(kind) { ConditionProbe.varValue(name, context) }
     val label = remember(kind) { ConditionProbe.varValue(name + SYSTEM_VAR_TEXT_SUFFIX, context) }
-    val missing = I18n.get(Strings.COMMAND_VARS_UNKNOWN, "读取不到")
+    val missing = I18n.get(Strings.COMMAND_VARS_UNKNOWN)
     PickerActionDialog(
         show = show,
         //  标题就是要插进正文的那一串（`${sys.wifi}`）—— 与下面两行是同一族写法，一眼对得上
@@ -197,7 +197,7 @@ private fun stateText(
     value: String?,
 ): String =
     if (value.isNullOrBlank()) {
-        I18n.get(Strings.COMMAND_VARS_UNKNOWN, "读取不到")
+        I18n.get(Strings.COMMAND_VARS_UNKNOWN)
     } else {
         conditionValueText(kind, BranchCondition.of(kind, value)) { it }
     }
