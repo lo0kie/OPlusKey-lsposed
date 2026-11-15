@@ -228,8 +228,6 @@ internal fun SettingsPage.ConfigCard(
                 //  与「外观」那几行同一类（页面怎么画），所以不吃总闸。
                 CardRow.Switch(
                     title = I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_TITLE, "显示更详细的按键设置"),
-                    summaryOn = I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_ON, "按键页显示全部参数"),
-                    summaryOff = I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_OFF, "按键页只显示常用参数"),
                     icon = PageIcons.DetailedKeySettings,
                     checked = configState.config.value.global.detailedKeySettings,
                     onCheckedChange = { setDetailedKeySettings(it) },
@@ -259,9 +257,6 @@ internal fun SettingsPage.ConfigCard(
                 ),
                 CardRow.Item(
                     title = I18n.get(Strings.MORE_EXPORT_CONFIG, "导出配置"),
-                    // 副标题只报「做什么」的一句话，不解释机制 —— 用户界面不写
-                    // 「把配置与自定义命令存成一份文件」那种交代细节的写法
-                    summary = I18n.get(Strings.MORE_EXPORT_CONFIG_SUMMARY, "保存到本地文件"),
                     icon = PageIcons.ConfigExport,
                     // 行尾选择器：点开的是一层「导出哪份」的菜单
                     trailing = { RowEndIcon(PageIcons.Selector) },
@@ -273,7 +268,6 @@ internal fun SettingsPage.ConfigCard(
                 ),
                 CardRow.Item(
                     title = I18n.get(Strings.MORE_IMPORT_CONFIG, "导入配置"),
-                    summary = I18n.get(Strings.MORE_IMPORT_CONFIG_SUMMARY, "从本地文件读取"),
                     icon = PageIcons.ConfigImport,
                     arrow = true,
                     onClick = {
@@ -354,12 +348,6 @@ internal fun SettingsPage.AppearanceCard(
                 //  不是随机 RGB（见 `IconTint`）。
                 CardRow.Switch(
                     title = I18n.get(Strings.MORE_RANDOM_ICON_TINT, "随机图标配色"),
-                    summaryOn =
-                        I18n.get(
-                            Strings.MORE_RANDOM_ICON_TINT_ON,
-                            "每次打开重新生成配色",
-                        ),
-                    summaryOff = I18n.get(Strings.MORE_RANDOM_ICON_TINT_OFF, "图标跟随主题色"),
                     icon = PageIcons.RandomIconTint,
                     checked = configState.config.value.global.iconTintSeed != 0,
                     onCheckedChange = { setRandomIconTint(it) },
@@ -367,10 +355,6 @@ internal fun SettingsPage.AppearanceCard(
                 // 第 4 行：跟随系统显示大小 —— 关掉后模块页面按出厂标准大小渲染（见 GlobalConfig）
                 CardRow.Switch(
                     title = I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE, "跟随系统显示大小"),
-                    summaryOn =
-                        I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE_ON, "页面比例随系统变化"),
-                    summaryOff =
-                        I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE_OFF, "页面显示为按标准大小"),
                     icon = PageIcons.TextSize,
                     checked = configState.config.value.global.followDisplaySize,
                     onCheckedChange = {
@@ -390,21 +374,15 @@ internal fun SettingsPage.AppearanceCard(
                 //  与这一页其它几行一样**不吃总闸**：主开关关着时页面照样能点，照样该有手感。
                 CardRow.Switch(
                     title = I18n.get(Strings.MORE_UI_VIBRATE_TITLE, "界面振动反馈"),
-                    summaryOn = I18n.get(Strings.MORE_UI_VIBRATE_ON, "点按界面控件时振动一次"),
-                    summaryOff = I18n.get(Strings.MORE_UI_VIBRATE_OFF, "点按界面控件时不振动"),
                     icon = PageIcons.Vibrate,
                     checked = configState.config.value.global.uiVibrate,
                     onCheckedChange = { setUiVibrate(it) },
                 ),
-                // 第 7 行：使用预测返回手势 —— 返回时整页跟不跟手。
+                // 第 7 行：使用预测性返回手势 —— 返回时整页跟不跟手。
                 //  与上面几行同一类（页面自己的手感），同样不吃总闸；拨完立刻重挂返回回调
                 //  （见 `setPredictiveBack`），不需要退出重进。
                 CardRow.Switch(
-                    title = I18n.get(Strings.MORE_PREDICTIVE_BACK_TITLE, "使用预测返回手势"),
-                    summaryOn =
-                        I18n.get(Strings.MORE_PREDICTIVE_BACK_ON, "返回时页面跟着手指走"),
-                    summaryOff =
-                        I18n.get(Strings.MORE_PREDICTIVE_BACK_OFF, "松手后一次性返回"),
+                    title = I18n.get(Strings.MORE_PREDICTIVE_BACK_TITLE, "使用预测性返回手势"),
                     icon = PageIcons.PredictiveBack,
                     checked = configState.config.value.global.predictiveBack,
                     onCheckedChange = { setPredictiveBack(it) },
@@ -421,7 +399,6 @@ private fun SettingsPage.PageScaleRow(position: CardListPosition) {
         spec =
             SliderSpec(
                 title = I18n.get(Strings.MORE_PAGE_SCALE, "页面缩放"),
-                summary = I18n.get(Strings.MORE_PAGE_SCALE_DESC, "只影响模块页面"),
                 icon = PageIcons.ZoomIn,
                 min = GlobalConfig.PAGE_SCALE_MIN,
                 max = GlobalConfig.PAGE_SCALE_MAX,

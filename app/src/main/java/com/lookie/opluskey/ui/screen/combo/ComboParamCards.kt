@@ -159,9 +159,12 @@ internal fun SettingsPage.WaitComboCard(source: ComboParamSource) {
                                 max = GlobalConfig.COMBO_WINDOW_MAX_MS,
                                 value = if (wholeString) source.windows.wait else source.windows.waitPair,
                                 default = if (wholeString) source.windowDefaults.wait else source.windowDefaults.waitPair,
-                                //  10ms 一档：20~1000 之间 98 档。放宽到 1 秒是为了手慢 / 三颗的组合留余地，
-                                //  精度仍然留在 10ms 这一档（细调靠点轨道 + 手动输入，见 `tapSliderToSeek`）
+                                //  取值 10ms 一档（20~1000 之间 98 档）—— 这个数同时是「算不算凑齐」与
+                                //  「第一颗键等多久才回落单击」，细档只影响手输与落盘。
+                                //  **拖动 50ms 一档**：98 档铺在一根轨道上手指根本分不开，粗拖 + 手输
+                                //  才是这一行的用法（见 `SliderSpec.dragStep`）
                                 step = 10,
+                                dragStep = 50,
                                 enabled = source.enabled,
                                 disabledHint = source.disabledHint,
                                 //  行尾写「80 ms」—— 这一行问的就是「等多久」，不写数看不出来
@@ -178,19 +181,19 @@ internal fun SettingsPage.WaitComboCard(source: ComboParamSource) {
  * 「按住组合」那张卡 —— **先按住一颗再按另一颗**那两条按法（`MODE_HOLD_FIRST` /
  * `MODE_HOLD_SECOND`）的参数：
  *
- *  1. **首键按住时长**：按住那两档的下限 —— 首键要按满这么久、且还没抬手，第二颗落下才算这一档。
- *     两颗键几乎同时落下（实测相差 0~40ms，谁先上报看硬件）不算「按住」：那种「一起按」归
- *     等窗口那一档，这一行划的正是那条线。上限 500ms 与组合长按阈值同量级：调得比那颗键自己的
- *     长按还宽时，它早就先判出长按、按住那条本来就作废了（`ComboDetector.longPressPassed`）。
- *  2. **系统场景在首键按下时固定**：按下那一刻固定（开，默认），还是凑成那一刻再取（关）。
- *     取早了不怕「按住期间换了应用」，取晚了才反映「刚切过去」；两种口径各有道理，所以给成开关。
- *  3. **首键松手后仍执行长按**：组合动作走完之后，首键自己那颗长按还留不留。默认关 =
- *     一次按压只执行一个动作；开着时这一次按压被**两件事共享** —— 所以图标是 `pointer-share`，
- *     而不是「松手执行额外动作」那颗 `pointer-up`。
- *  4. **等待窗口**（最后一行）：后续成员要在窗口内陆续落完 —— 固定窗口起点开着时从首个成员
+ *  1. **固定窗口起点 + 等待窗口**（头两行）：后续成员要在窗口内陆续落完 —— 起点开着时从首个成员
  *     按下起算一个，关着则每颗重新等一个。**与「等待组合」那张卡那一根不是同一个值**：
  *     两档各有自己的一格（`ComboWindows.hold` / `holdFollower`），调宽「按住组合的成员接收」
  *     不会连带拖钝「等待组合的收集」。
+ *  2. **首键按住时长**：按住那两档的下限 —— 首键要按满这么久、且还没抬手，第二颗落下才算这一档。
+ *     两颗键几乎同时落下（实测相差 0~40ms，谁先上报看硬件）不算「按住」：那种「一起按」归
+ *     等窗口那一档，这一行划的正是那条线。上限 500ms 与组合长按阈值同量级：调得比那颗键自己的
+ *     长按还宽时，它早就先判出长按、按住那条本来就作废了（`ComboDetector.longPressPassed`）。
+ *  3. **系统场景在首键按下时固定**：按下那一刻固定（开，默认），还是凑成那一刻再取（关）。
+ *     取早了不怕「按住期间换了应用」，取晚了才反映「刚切过去」；两种口径各有道理，所以给成开关。
+ *  4. **首键松手后仍执行长按**：组合动作走完之后，首键自己那颗长按还留不留。默认关 =
+ *     一次按压只执行一个动作；开着时这一次按压被**两件事共享** —— 所以图标是 `pointer-share`，
+ *     而不是「松手执行额外动作」那颗 `pointer-up`。
  *
  *  **不按「有没有按住组合」显隐**：这一整张卡都是参数，没有哪一行跟着列表内容变。
  */
@@ -202,6 +205,65 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
     CardList(
         rows =
             listOf(
+                //  这两行是**这一档自己的窗口**（按住组合那两格：起点开关 + 窗口滑杆），
+                //  与等待组合那张卡不是同一个值
+                CardRow.Switch(
+                    //  与「等待组合」那张卡**同名、同文案，但是另一颗开关、另一个变量**
+                    //  （`Config.comboHoldFixedWindowStartFor`）：一种按法改成整串共用一个，
+                    //  另一种不该跟着变，所以两颗各存各的
+                    title = I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"),
+                    summaryOn =
+                        I18n.get(
+                            Strings.COMBO_FIXED_WINDOW_START_DESC_ON,
+                            "首个成员按下即开始计时，整串共用一个窗口",
+                        ),
+                    summaryOff =
+                        I18n.get(
+                            Strings.COMBO_FIXED_WINDOW_START_DESC_OFF,
+                            "每次按下成员都重新计时（相邻两颗各一个窗口）",
+                        ),
+                    icon = PageIcons.CollectWindow,
+                    checked = source.holdFixedWindowStart,
+                    enabled = source.enabled,
+                    disabledHint = source.disabledHint,
+                    onCheckedChange = source.onHoldFixedWindowStart,
+                ),
+                CardRow.Custom { position ->
+                    SliderRow(
+                        position = position,
+                        spec =
+                            SliderSpec(
+                                title = I18n.get(Strings.COMBO_FIXED_WINDOW_TITLE, "等待窗口"),
+                                summary =
+                                    if (wholeString) {
+                                        I18n.get(
+                                            Strings.COMBO_FIXED_WINDOW_DESC,
+                                            "从首个成员按下起，后续成员要在这个窗口内落完",
+                                        )
+                                    } else {
+                                        I18n.get(
+                                            Strings.COMBO_FIXED_WINDOW_DESC_OFF,
+                                            "后续成员要接连落下，彼此相差不超过这个窗口",
+                                        )
+                                    },
+                                icon = PageIcons.ComboWait,
+                                min = GlobalConfig.COMBO_WINDOW_MIN_MS,
+                                max = GlobalConfig.COMBO_WINDOW_MAX_MS,
+                                value = if (wholeString) source.windows.hold else source.windows.holdFollower,
+                                default = if (wholeString) source.windowDefaults.hold else source.windowDefaults.holdFollower,
+                                //  与「等待组合」那一根同一套：取值 10ms、拖动 50ms（理由见那边）
+                                step = 10,
+                                dragStep = 50,
+                                enabled = source.enabled,
+                                disabledHint = source.disabledHint,
+                                valueText = { "$it ms" },
+                            ),
+                        onCommit = if (wholeString) source.onHoldWindow else source.onHoldFollower,
+                    )
+                },
+                //  首键按住时长摆在**窗口那两行之后**：先答「成员多快接上」（窗口），再答
+                //  「首键要按住多久才算数」—— 两件都是时序，但后者是「凑成」的门槛，
+                //  放在窗口后面读起来是「窗口定完，门槛在这」。
                 CardRow.Custom { position ->
                     SliderRow(
                         position = position,
@@ -264,59 +326,6 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                     disabledHint = source.disabledHint,
                     onCheckedChange = source.onStarterKeepLong,
                 ),
-                //  等待窗口：**这一档自己的那一格**（按住组合），与等待组合那张卡不是同一个值
-                CardRow.Switch(
-                    //  与「等待组合」那张卡**同名、同文案，但是另一颗开关、另一个变量**
-                    //  （`Config.comboHoldFixedWindowStartFor`）：一种按法改成整串共用一个，
-                    //  另一种不该跟着变，所以两颗各存各的
-                    title = I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"),
-                    summaryOn =
-                        I18n.get(
-                            Strings.COMBO_FIXED_WINDOW_START_DESC_ON,
-                            "首个成员按下即开始计时，整串共用一个窗口",
-                        ),
-                    summaryOff =
-                        I18n.get(
-                            Strings.COMBO_FIXED_WINDOW_START_DESC_OFF,
-                            "每次按下成员都重新计时（相邻两颗各一个窗口）",
-                        ),
-                    icon = PageIcons.CollectWindow,
-                    checked = source.holdFixedWindowStart,
-                    enabled = source.enabled,
-                    disabledHint = source.disabledHint,
-                    onCheckedChange = source.onHoldFixedWindowStart,
-                ),
-                CardRow.Custom { position ->
-                    SliderRow(
-                        position = position,
-                        spec =
-                            SliderSpec(
-                                title = I18n.get(Strings.COMBO_FIXED_WINDOW_TITLE, "等待窗口"),
-                                summary =
-                                    if (wholeString) {
-                                        I18n.get(
-                                            Strings.COMBO_FIXED_WINDOW_DESC,
-                                            "从首个成员按下起，后续成员要在这个窗口内落完",
-                                        )
-                                    } else {
-                                        I18n.get(
-                                            Strings.COMBO_FIXED_WINDOW_DESC_OFF,
-                                            "后续成员要接连落下，彼此相差不超过这个窗口",
-                                        )
-                                    },
-                                icon = PageIcons.ComboWait,
-                                min = GlobalConfig.COMBO_WINDOW_MIN_MS,
-                                max = GlobalConfig.COMBO_WINDOW_MAX_MS,
-                                value = if (wholeString) source.windows.hold else source.windows.holdFollower,
-                                default = if (wholeString) source.windowDefaults.hold else source.windowDefaults.holdFollower,
-                                step = 10,
-                                enabled = source.enabled,
-                                disabledHint = source.disabledHint,
-                                valueText = { "$it ms" },
-                            ),
-                        onCommit = if (wholeString) source.onHoldWindow else source.onHoldFollower,
-                    )
-                },
             ),
     )
 }

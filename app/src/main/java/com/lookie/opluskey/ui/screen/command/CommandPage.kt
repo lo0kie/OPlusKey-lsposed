@@ -630,7 +630,6 @@ private fun SettingsPage.StepDelayCard(
                             SliderSpec(
                                 title = I18n.get(Strings.COMMAND_DELAY_LABEL, "命令间隔时长"),
                                 icon = PageIcons.DelayStep,
-                                summary = I18n.get(Strings.COMMAND_DELAY_DESC, "等多久再执行下一条"),
                                 min = Command.MIN_STEP_DELAY_MS,
                                 max = Command.MAX_STEP_DELAY_MS,
                                 //  读**多条那一份**：这张卡只出现在多条页，而 `draft.stepDelayMs`
@@ -638,6 +637,12 @@ private fun SettingsPage.StepDelayCard(
                                 //  （滑杆随即又跳回来，看着像自己动了一下）。
                                 value = commandDraft.draft.serialForm.stepDelayMs,
                                 default = Command.DEFAULT_STEP_DELAY_MS,
+                                //  取值 10ms 一档（100~1500 之间 140 档）—— 手输与落盘按它；
+                                //  **拖动落点吸到 50 的整数倍**：140 档铺在一根轨道上拖不准，粗拖 + 手输
+                                //  才是这一行的用法（见 `SliderSpec.snapDrag`）。范围两端都是 50 的倍数，
+                                //  于是拖动序列就是 100 / 150 / … / 1500
+                                step = 10,
+                                dragStep = 50,
                                 // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
                                 enabled = enabled,
                             ),

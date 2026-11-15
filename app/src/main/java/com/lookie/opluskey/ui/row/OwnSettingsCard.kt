@@ -189,8 +189,6 @@ private fun SettingsPage.interfaceRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
-        summaryOn = I18n.get(Strings.HOME_COLOROS_DESC_ON, "部分命令走 ColorOS 专属接口"),
-        summaryOff = I18n.get(Strings.HOME_COLOROS_DESC_OFF, "部分命令改用 AOSP 标准接口"),
         icon = PageIcons.ColorOsLink,
         checked = show.colorOsApi,
         enabled = rowsEnabled,
@@ -209,8 +207,6 @@ private fun SettingsPage.vibrateRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
-        summaryOn = I18n.get(Strings.HOME_VIBRATE_DESC_ON, "每次执行动作振动一次"),
-        summaryOff = I18n.get(Strings.HOME_VIBRATE_DESC_OFF, "执行动作时不振动"),
         icon = PageIcons.Vibrate,
         checked = show.vibrate,
         enabled = rowsEnabled,
@@ -222,6 +218,10 @@ private fun SettingsPage.vibrateRow(
 /**
  * 「无操作时振动」—— 与 [vibrateRow] 是两颗开关：那一颗管「执行了动作」，
  * 这一颗管「按了、但这一档什么动作都没有」。
+ *
+ *  **它依赖振动反馈**（`show.vibrate`，判据与 [strengthRow] 同一条、也取生效值）：
+ *  振动关着时整个振动链路都不走，这一颗摆着就是让人调一个不起作用的东西。
+ *  显隐复用 `visible` 那套进出场动画，与公共页那一行同一个做法。
  */
 @Composable
 private fun SettingsPage.vibrateOnNoneRow(
@@ -232,12 +232,11 @@ private fun SettingsPage.vibrateOnNoneRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE, "无操作时振动"),
-        summaryOn = I18n.get(Strings.HOME_VIBRATE_ON_NONE_DESC_ON, "未配置动作时同样振动"),
-        summaryOff = I18n.get(Strings.HOME_VIBRATE_ON_NONE_DESC_OFF, "未配置动作时不振动"),
         icon = PageIcons.VibrateOnNone,
         checked = show.vibrateOnNone,
         enabled = rowsEnabled,
         disabledHint = ownHint,
+        visible = show.vibrate,
     ) {
         edit(OwnField.VIBRATE_ON_NONE) { v -> v.copy(vibrateOnNone = it) }
     }
@@ -269,7 +268,6 @@ private fun SettingsPage.strengthRow(
             spec =
                 SliderSpec(
                     title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE, "振动强度"),
-                    summary = I18n.get(Strings.HOME_VIBRATE_STRENGTH_DESC, "命令触发时振动的力度"),
                     icon = PageIcons.vibrateLevel(value),
                     min = GlobalConfig.VIBRATE_WEAK,
                     max = GlobalConfig.VIBRATE_STRONG,
@@ -305,8 +303,6 @@ private fun SettingsPage.toastRows(
     listOf(
         CardRow.Switch(
             title = I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"),
-            summaryOn = I18n.get(Strings.HOME_TOAST_DESC_ON, "每次执行动作弹一条提示"),
-            summaryOff = I18n.get(Strings.HOME_TOAST_DESC_OFF, "执行动作时不弹提示"),
             icon = PageIcons.CommandToast,
             checked = show.toastOnRun,
             enabled = rowsEnabled,
@@ -316,8 +312,6 @@ private fun SettingsPage.toastRows(
         },
         CardRow.Switch(
             title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"),
-            summaryOn = I18n.get(Strings.HOME_TOAST_FLUID_DESC_ON, "显示在状态栏的流体云里"),
-            summaryOff = I18n.get(Strings.HOME_TOAST_FLUID_DESC_OFF, "以 Toast 弹出"),
             icon = PageIcons.FormatFluid,
             checked = show.toastFluid,
             //  流体云是 ColorOS 的能力：这一档随「使用 ColorOS 接口」走，关掉之后由执行侧回落 Toast

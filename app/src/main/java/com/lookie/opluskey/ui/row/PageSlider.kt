@@ -46,6 +46,9 @@ import kotlin.math.roundToInt
 /**
  * 滑杆提交结果的统一出口：成功不动（等重组把 `dragging` 归位到新值），失败拨回当前真实值。
  *
+ *  **先吸到取值刻度上**（[SliderSpec.snap]）：拖动那一路已经过 `snapDrag`（拖动刻度，取
+ *  [SliderSpec.dragStep] 的整数倍），两者不一定是同一格 —— `dragStep` 不是 `step` 的整数倍时，
+ *  这一步才是保证「写下去的数在取值刻度上」的那道闸；两者对齐时它对值是空操作。
  */
 private fun sliderCommit(
     dragging: androidx.compose.runtime.MutableFloatState,
@@ -57,7 +60,7 @@ private fun sliderCommit(
         //  参数写反只该得到「夹到那一个值」，不该崩。
         val lo = minOf(spec.min, spec.max)
         val hi = maxOf(spec.min, spec.max)
-        val v = raw.coerceIn(lo, hi)
+        val v = spec.snap(raw.coerceIn(lo, hi))
         // 判据级：滑杆是「拖了没反应 / 值自己跳」这类问题的唯一锚点 ——
         //  它一次交互只有一条（抬手或点轨道各一条），不会刷屏。
         //  拨一次滑杆就是一次提交（高频）⇒ d；失败那条仍留 w
@@ -120,11 +123,14 @@ private fun SettingsPage.SliderRowBody(
     //  因为 `commit` 是个每次重组都新建的 val）。这里让闭包捕获一个**稳定的 State 对象**、
     //  调用时才读值，键不必跟着回调变、也不会在手势中途重启检测。
     val seekLatest by rememberUpdatedState<(Int) -> Unit> { v ->
+        //  点轨道与拖动落同一套刻度（见 [SliderSpec.snapDrag]）：否则点一下落在细格上、
+        //  拖一下落在粗格上，同一条轨道两套节奏。
+        val next = spec.snapDrag(v)
         // 与 `commit` 那条分开记：点轨道与拖动是两条不同的来路，
         //  出问题时靠这两条就能分出「手势没进来」还是「进来了但没提交」。
-        XLog.d { "滑杆点轨道跳值：${spec.title} → $v" }
+        XLog.d { "滑杆点轨道跳值：${spec.title} → $next" }
         tick()
-        commit(v)
+        commit(next)
     }
     // 拖动触觉与「点轨道跳值」共用同一条通道（`rememberTick`）：判据只有系统静音，
     //  与模块的「振动反馈」开关无关（完整口径见 `tickNow`）。
@@ -181,10 +187,12 @@ private fun SettingsPage.SliderRowBody(
                 spec = spec,
                 value = dragging.floatValue,
                 onValueChange = { raw ->
-                    // 跨过一档振一次。判据用取整后的值：滑杆是离散刻度，`raw` 已是吸附后的值，
-                    //  与上一帧显示的那个值一比就知道有没有跨档（不用另存一份状态）。
-                    if (raw.roundToInt() != dragging.floatValue.roundToInt()) tick()
-                    dragging.floatValue = raw
+                    //  落点先吸到**拖动刻度**上（`spec.snapDrag` 取 dragStep 的整数倍）。
+                    //  库的 `steps` 只按取值刻度均分，粗拖交给它会落出 175 / 278 那种数。
+                    val next = spec.snapDrag(raw.roundToInt())
+                    // 跨过一档振一次：与上一帧显示的那个值一比就知道有没有跨档（不用另存一份状态）。
+                    if (next != dragging.floatValue.roundToInt()) tick()
+                    dragging.floatValue = next.toFloat()
                 },
                 onValueChangeFinished = { commit(dragging.floatValue.roundToInt()) },
             )
@@ -231,9 +239,13 @@ private fun SettingsPage.SliderValueInput(
         icon = spec.icon,
         initial = spec.value.toString(),
         range = spec.min..spec.max,
-        //  值域与**真实档距**放在框下面常驻：占位在填着字时就看不见了，而这两件事正是打字时要看的。
-        //  档距取 `spec.tickStep`（区间不整除时是均分出来的那一档），与轨道 / 吸附同一套。
-        hint = I18n.format(Strings.SLIDER_INPUT_RANGE, spec.min, spec.max, spec.tickStep),
+        //  值域、**真实档距**与出厂默认值放在框下面常驻：占位在填着字时就看不见了，而这三件事
+        //  正是打字时要看的。档距取 `spec.tickStep`（区间不整除时是均分出来的那一档），
+        //  与轨道 / 吸附同一套；默认值就是轨道上那个圆点标的数（`SliderSpec.default`）——
+        //  「想不起来原来是多少」时不用退出小窗去看那一点。
+        //  四个数都按**输入框的单位**写（原始值，不走 `spec.valueText`）：那一档可能把它写成
+        //  「弱 / 中 / 强」，与框里的数字并排会读成两个参数。
+        hint = I18n.format(Strings.SLIDER_INPUT_RANGE, spec.min, spec.max, spec.tickStep, spec.default),
         onDismiss = onDismiss,
         onConfirm = { raw ->
             onDismiss()
@@ -286,12 +298,15 @@ private fun SliderRowTexts(
                 )
             }
         }
-        RowSummaryLine(
-            text = spec.summary,
-            // 全宽：不设 `weight` / 不套行，摘要自己按整行宽度折行
-            modifier = Modifier.padding(top = ROW_LINE_GAP),
-            color = colors.summary,
-        )
+        //  副标题没写就不画这一行（`null` 与空串不是一回事：空串会留一行空白）
+        spec.summary?.let { summary ->
+            RowSummaryLine(
+                text = summary,
+                // 全宽：不设 `weight` / 不套行，摘要自己按整行宽度折行
+                modifier = Modifier.padding(top = ROW_LINE_GAP),
+                color = colors.summary,
+            )
+        }
     }
 }
 
@@ -307,6 +322,8 @@ private fun SliderTrack(
         value = value,
         min = spec.min,
         max = spec.max,
+        //  库这一层的刻度只有一套（取值刻度）。「拖粗一点」那件事由 `onValueChange` 里
+        //  按 `spec.snapDrag` 吸绝对倍数来做 —— 库的 `steps` 只能均分，除不尽会出 175 / 278 那种数
         step = spec.step,
         enabled = spec.enabled,
         modifier =
@@ -344,6 +361,10 @@ private fun SliderTrack(
  *  值域（min / max / step / enabled）、当前值、两个回调、`modifier`、刻度点 —— 全是行参，
  *  拆成 options 对象只会让两个调用点各多一层壳（与 `NameInputBody` 那边同一个理由）。
  *
+ * @param step 轨道上那两个端点之间**分几档**由它算（见 `sliderTickCount`）—— 走的是**取值刻度**。
+ *   拖动要更粗不在这里做：库的 `steps` 只能把区间均分，除不尽时会分出不整的数
+ *   （20~1000 分 19 档 ⇒ 175 / 278 那种），所以「粗拖」由调用方按 `SliderSpec.snapDrag` 吸
+ *   绝对倍数（见 `SliderRow`）。
  * @param keyPoints 要在轨道上**画出来的**刻度点；`null` = 一个点都不画
  *   （库那边 `showKeyPoints` 只在 `keyPoints` 非 null 时有效）
  */
@@ -398,8 +419,9 @@ internal fun TrackSlider(
                 keyPointForegroundColor = if (enabled) scheme.sliderKeyPointForeground else trackTickDim,
             ),
         valueRange = min.toFloat()..max.toFloat(),
-        // 离散刻度：两端之间分 `sliderTickCount` 档（`steps` 不含两个端点）——
-        //  与 `snapToStep` / 输入窗那句「步进」同一个来源（见 `SliderSpec.ticks` / `tickStep`）
+        // 离散刻度：两端之间分 `sliderTickCount` 档（`steps` 不含两个端点）—— 取值刻度，
+        //  与 `snapToStep` / 输入窗那句「步进」同一个来源。**粗拖不靠它**（它只能均分，
+        //  除不尽就分出不整的数），见 `TrackSlider` 的 @param step 与 `SliderSpec.snapDrag`。
         steps = (sliderTickCount(min, max, step) - 1).coerceAtLeast(0),
         // 调用方给了刻度点就画（库的 `keyPoints` + `showKeyPoints` 要一起给）。
         //  只标**不吸附**：`steps > 0` 时库的磁性吸附分支本来就走不到（它只在 `steps == 0`

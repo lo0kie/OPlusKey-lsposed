@@ -73,14 +73,13 @@ internal fun SettingsPage.CommandVarsCard(
     var picking by remember { mutableStateOf<ConditionKind?>(null) }
     var lastKind by remember { mutableStateOf<ConditionKind?>(null) }
     picking?.let { lastKind = it }
-    //  小标题说的是这一档的名字，行里说的是「进去能挑什么」—— 两处不写同一句话。
+    //  小标题说的是这一档的名字，行里只留这一档的名字（进去能挑什么，点开就看见了）。
     SectionTitle(I18n.get(Strings.COMMAND_VARS_TITLE, "可用变量"))
     CardList(
         rows =
             listOf(
                 CardRow.Item(
                     title = I18n.get(Strings.COMMAND_VARS_ENTRY_TITLE, "系统状态"),
-                    summary = I18n.get(Strings.COMMAND_VARS_ENTRY_DESC, "取值与系统场景条件相同"),
                     //  与变量页那一列同一颗（`variable`）—— 这一档进去挑的就是「某个量此刻是什么」
                     icon = TablerIcons.Outline.Variable,
                     //  行尾是 **selector**（「点了要选点什么」）而不是箭头：这一行不进下一层，

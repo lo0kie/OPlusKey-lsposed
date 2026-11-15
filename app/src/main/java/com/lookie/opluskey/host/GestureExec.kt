@@ -565,9 +565,10 @@ internal object GestureExec {
      *  代价是比「按下那刻就振」晚一趟广播（宿主常驻时几毫秒，感知不到；宿主刚被拉起时要等
      *  那 300ms 的补发，但那时**动作**也是 300ms 才发生 —— 振与动作仍然同时）。
      *
-     * 「振动反馈」开关关着时不振；「无操作」那一档由它自己的「无操作时振动」决定
-     * （`OwnSettings.vibrateOnNone`，见下面派发前那一支）。连续触发的重复由那颗键自己的
-     * 「连续触发时振动」决定：关着时只在长按那一下振一次，开着时每次重复都振。
+     * 「振动反馈」是**总闸**：关着时什么都不振，包括「按了但没动作」那一支。那一支另由
+     * 「无操作时振动」决定振不振（`OwnSettings.vibrateOnNone`，见下面派发前那一支）。
+     * 连续触发的重复由那颗键自己的「连续触发时振动」决定：关着时只在长按那一下振一次，
+     * 开着时每次重复都振。
      */
     private fun runAction(
         id: KeyId,
@@ -867,15 +868,19 @@ internal object GestureExec {
         config: Config,
         owner: OwnSettings,
         /**
-         * `true` = **不看**「振动反馈」那一位（「无操作时振动」这一路用它）：
-         * 那一颗管「执行了动作」，这一颗管「按了但没动作」，两者互不依赖。
+         * `true` = 这一次是**「按了但没动作」**那一支（由「无操作时振动」决定振不振）。
+         *
+         *  它**不是**「不看振动反馈」：那一颗是总闸，关着时整条振动链路都不走 ——
+         *  包括这一支。早先这里写着「两者互不依赖」，于是关掉振动反馈、只开「无操作时振动」
+         *  时仍然振（用户报过）。界面上那颗现在也只在振动反馈开着时出现，两处同一条口径。
          */
         force: Boolean = false,
     ) {
         //  一次解析，振不振与振多强都读它（判据见 `Config.effectiveFor`）
         val own = config.effectiveFor(owner)
-        if (!force && !own.vibrate) return
-        //  「无操作时振动」是独立开关：它开着才振，不看 `vibrate`
+        //  **「振动反馈」是总闸**：关着就一律不振，`force` 那一支也不例外
+        if (!own.vibrate) return
+        //  「无操作时振动」只管「按了但没动作」那一支：它开着才振
         if (force && !own.vibrateOnNone) return
         try {
             val ctx = appContext ?: return

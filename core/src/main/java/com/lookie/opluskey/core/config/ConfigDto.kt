@@ -1035,8 +1035,8 @@ internal data class GlobalDto(
     /**
      * **遗留（v73）**：那一个「等待窗口」（毫秒）—— 现在只在读老文件时当四格窗口的铺底值。
      *
-     *  写出去永远是出厂 80（新文件不再用它）；读回来时由 [legacyWindowMs] 交给
-     *  [comboWaitWindowMs] 那三位。
+     *  写出去永远是出厂那个数（`DEFAULT_COMBO_WINDOW_MS`，新文件不再用它）；读回来时由
+     *  [legacyWindowMs] 交给 [comboWaitWindowMs] 那三位。
      */
     @SerialName("combo_window_ms")
     val comboWindowMs: Int = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,

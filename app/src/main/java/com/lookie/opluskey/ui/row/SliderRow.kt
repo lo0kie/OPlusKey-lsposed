@@ -18,6 +18,11 @@ import kotlin.math.roundToInt
  *
  *  这个重载只负责「别把 [spec] 拆开抄」：值域与步长必须一起传；只传 min / max 会让触点折算用错
  *  `step` —— 三档滑杆上 `(max-min)/step` 算成 0、夹到 1，点中间只能落到端点上。
+ *
+ *  **这里传的是取值刻度**（[SliderSpec.step]），折算出来的只是「点在轨道哪个位置」；
+ *  真正写下去之前还要过两层吸：调用方的 `snapDrag`（拖动刻度，取整数倍）与 `sliderCommit`
+ *  里的 `spec.snap`（取值刻度）。粗拖那条路不走库的 `steps` —— 它只能均分，除不尽就会
+ *  落出 175 这种数（见 `SliderSpec.snapDrag`）。
  */
 internal fun Modifier.tapSliderToSeek(
     spec: SliderSpec,

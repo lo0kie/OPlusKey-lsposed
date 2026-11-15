@@ -11,8 +11,20 @@ import kotlin.math.roundToInt
  *  合成一个类型是为了让 [SettingsPage.SliderRow] 的参数表停在一只手数得过来的量级 ——
  *  这些本来就是一件事（「这一行是一根什么样的滑杆」），一起给比散在五个形参里更好读。
  *
- * @param step 相邻两档的**目标**步长 —— 轨道上有几档由它算；区间不整除时真实档距是均分出来的
- *   （见 [ticks] / [tickStep]），提示里报的是真实那一档。
+ * ## 一条区间，两套刻度
+ *
+ *  · **取值刻度**（[step] / [tickStep] / [snap]）：值能落在哪几格 —— 手动输入、写盘、输入窗那句
+ *    「步进」都用它；
+ *  · **拖动刻度**（[dragStep] / [snapDrag]）：手指滑一下跨多宽 —— 拖动落点由它吸。
+ *
+ *  两者**由调用点各自决定**，默认是同一个数。想「拖粗一点、精确值靠手输」的，就在那一行把
+ *  [dragStep] 传大一些 —— 取值刻度不受影响，写下去、手输吸、输入窗报步进全都还按 [step]。
+ *  这里故意不做「按区间自动稀疏化」那一套：一根滑杆该分几档是手感，不是能算出来的东西。
+ *
+ * @param step 取值刻度：相邻两格的目标步长。区间不整除时真实档距是均分出来的（见 [tickStep]），
+ *   提示里报的是真实那一档。
+ * @param dragStep 拖动刻度：拖动落点取它的**整数倍**（见 [snapDrag]），默认与 [step] 相同。
+ *   比 [step] 大就是「粗拖」—— 拖出来的值仍会在提交前被 [snap] 吸回取值刻度。
  * @param enabled 这一根滑杆能不能动
  * @param disabledHint 灰着被点一下时**这一行自己的说法**（`null` = 用整页那句，见 [DisabledHint]）。
  *   与 `CardRow.Item.disabledHint` / `CardRow.Switch.disabledHint` 同一个意思、同一套判据：
@@ -27,31 +39,60 @@ import kotlin.math.roundToInt
  */
 internal data class SliderSpec(
     val title: String,
-    val summary: String,
+    /** 副标题（`null` = 这一行不画副标题，只留标题与滑杆）。 */
+    val summary: String? = null,
     val icon: ImageVector,
     val min: Int,
     val max: Int,
     val value: Int,
     val default: Int,
     val step: Int = STEP_MS,
+    /** 拖动那一套刻度，见类注释的「两套刻度」；不传 = 与 [step] 同一套。 */
+    val dragStep: Int = step,
     val enabled: Boolean = true,
     val disabledHint: String? = null,
     val valueText: ((Int) -> String)? = { durationText(it) },
     val keyPoints: List<Float>? = null,
 ) {
-    /** 把任意值**吸到这一根滑杆的刻度上** —— 手动输入那一档用它（见 [snapToStep]）。 */
+    /** 把任意值**吸到这一根滑杆的取值刻度上** —— 手动输入那一档与提交前那一步都用它（见 [snapToStep]）。 */
     fun snap(raw: Int): Int = snapToStep(raw, min, max, step)
 
     /**
-     * 轨道上分成几档（含两端）—— 与 `Slider.steps`、[snapToStep] 同一套。
+     * 把**拖动**的落点吸到 [dragStep] 上 —— 取它的**整数倍**（绝对值，不是从区间起点数）。
      *
-     *  **提示与真实档距必须同源**：区间不整除时，真实一档是 `span / ticks` 均分出来的，
-     *  与参数里的 [step] 不是同一个数。各说各的时输入窗写着「步进 50」、轨道上一档却是 51。
+     *  为什么是绝对倍数：拖的时候看到的是「50 / 100 / 150」，而不是「20 / 70 / 120」那种从下限
+     *  起算的数列，更不是「175 / 278」这种怪数 —— 后者是「区间 ÷ 档数」均分出来的（980 ÷ 50 除不尽，
+     *  `Slider.steps` 那条路只能均分）。出厂值（四格窗口的 150）正好落在这一套刻度上，
+     *  拖回默认值不会停在旁边的怪数上。
+     *
+     *  两端夹回 [min] / [max]：区间下限自己不在刻度上时（20），拖到最左仍取得到 20。
      */
-    val ticks: Int get() = sliderTickCount(min, max, step)
+    fun snapDrag(raw: Int): Int {
+        val lo = minOf(min, max)
+        val hi = maxOf(min, max)
+        val s = dragStep.coerceAtLeast(1)
+        return ((raw.coerceIn(lo, hi).toFloat() / s).roundToInt() * s).coerceIn(lo, hi)
+    }
 
-    /** 真实的一档多宽（见 [ticks]）——输入窗那句「步进」用它，不用 [step]。 */
-    val tickStep: Int get() = ((max - min).coerceAtLeast(1)).toDouble().div(ticks).roundToInt()
+    /**
+     * 取值真实的一档多宽 —— 输入窗那句「步进」与 [snap] 用它，不用 [step]。
+     *
+     *  **提示与真实档距必须同源**：区间不整除时，真实一档是「区间 ÷ 档数」均分出来的，
+     *  与参数里的 [step] 不是同一个数。各说各的时输入窗写着「步进 50」、实际一档却是 51。
+     */
+    val tickStep: Int get() = realStep(min, max, step)
+}
+
+/** 区间按 [step] 均分之后，真实的一档多宽（区间不整除时不是 [step]）。 */
+private fun realStep(
+    min: Int,
+    max: Int,
+    step: Int,
+): Int {
+    val lo = minOf(min, max)
+    val hi = maxOf(min, max)
+    val span = (hi - lo).coerceAtLeast(1)
+    return span.toDouble().div(sliderTickCount(lo, hi, step)).roundToInt()
 }
 
 /**

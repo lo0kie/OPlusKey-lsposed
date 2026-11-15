@@ -50,7 +50,6 @@ internal fun SettingsPage.HomeOtherCard(
                 //  这一行会写配置（存命令），所以吃整页总闸。
                 CardRow.Item(
                     title = I18n.get(Strings.ACTION_CUSTOM_COMMAND, "自定义命令"),
-                    summary = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND_DESC, "一条命令或多个动作"),
                     icon = PageIcons.CommandCode,
                     enabled = pageEnabled,
                     arrow = true,

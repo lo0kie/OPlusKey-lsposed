@@ -207,8 +207,9 @@ internal sealed interface CardRow {
      */
     class Switch(
         val title: String,
-        val summaryOn: String,
-        val summaryOff: String,
+        /** 副标题（`null` = 这一行不画副标题，只留标题与开关）。 */
+        val summaryOn: String? = null,
+        val summaryOff: String? = null,
         val icon: ImageVector,
         val checked: Boolean,
         val enabled: Boolean = true,

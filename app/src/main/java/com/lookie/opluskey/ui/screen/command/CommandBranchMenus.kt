@@ -15,13 +15,8 @@ import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.state.binding.BranchDraft
 import com.lookie.opluskey.ui.state.picker.AppPickerState
-import io.github.lyxnx.compose.ui.tablericons.TablerIcons
-import io.github.lyxnx.compose.ui.tablericons.outline.ArrowDown
-import io.github.lyxnx.compose.ui.tablericons.outline.ArrowUp
-import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 
-// 分叉那几张菜单 —— 第一层（行本身：加条件 / 停用 / 上移 / 下移 / 删除）、条件种类菜单（每种一行）、
-// 取值二级。
+// 分叉那几张菜单 —— 第一层（行本身：停用 / 删除）、条件种类菜单（每种一行）、取值二级。
 //
 //  **动作那一档不再有菜单**：点动作行进「场景动作」页编那一档（与「按键绑定」页同一张网格、
 //  同一条三档手势带），所以这里没有「选命令」那一张了。
@@ -31,8 +26,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Plus
  *
  * ```
  * 左列（条件）→ 条件种类菜单 ─┬─ 前台应用 → 进「选择应用」页
- *                             ├─ 其余每一档 → 取值（二级）
- *                             └─ 上移 / 下移 / 删除
+ *                             └─ 其余每一档 → 取值（二级）
+ * 行尾（更多）→ 停用 / 启用、删除
  * 右列（动作）→ **换页**（`Screen.SCENE_BINDING`），不弹菜单
  * ```
  */
@@ -45,21 +40,20 @@ internal fun SettingsPage.BranchMenus(
     tick: () -> Unit,
 ) {
     BranchConditionFlow(draft = draft, rules = rules, menus = menus, tick = tick)
-    BranchRowMenu(draft = draft, rules = rules, menus = menus)
+    BranchRowMenu(rules = rules, menus = menus)
 }
 
 /**
- * 行尾那颗「更多」菜单 —— 再加一条条件 / 上移 / 下移 / 删除。
+ * 行尾那颗「更多」菜单 —— 停用 / 启用、删除。
  *
- *  两列各点各的（换条件 / 换动作），这一颗管**这一行本身**：顺序就是判定顺序，
- *  所以要能挪；删也放在这里，不与换值混在一起。
+ *  这一颗只管**这一行本身现在怎么样**：判定的顺序就是表里的先后，这一页不给挪位置；
+ *  「再加一条条件」也归块末尾那一行（`CommandBranches` 的 `addRow`），不在这里再开一个入口 ——
+ *  同一件事摆两处，用户还得在两处之间对号。
  *
- *  「再加一条条件」也归这一颗而不是条件菜单：它说的是**这一行里多一条条件**（一块可以带好几条，
- *  同种类之间「或」、不同种类之间「且」），而条件菜单只管「当前那一条是什么」。
+ *  删除是这一页唯一不可逆的动作，所以它单占一段（加深带隔开）。
  */
 @Composable
 private fun SettingsPage.BranchRowMenu(
-    draft: BranchDraft,
     rules: List<SceneRule>,
     menus: BranchMenuState,
 ) {
@@ -67,54 +61,14 @@ private fun SettingsPage.BranchRowMenu(
     PageMenu(
         entries =
             buildList {
-                //  「添加条件」—— 一块可以带**好几条**条件（同种类之间「或」），所以「再加一条」
-                //  是这一行的操作，和上移 / 下移 / 删除一起放在这里。
-                //  它单占第一段（下面用加深带断开）：那三件是「这一行本身怎么摆」，这一件是
-                //  「这一行里的条件再多一条」，两类不同。
-                //
-                //  **点了直接插一条空条件，不弹菜单**：用户要的是「先占个位」。空条件在执行侧
-                //  永不成立（`BranchCondition.isUsable` 假），而 `isReady` 为假会拦住保存 ——
-                //  正好是「还没配完」该有的样子；页面上那一行显示「未选择条件」，点它才开菜单。
-                //
-                //  **这一行还没有可用的条件**就不再插：末尾那条还是空的，或者**一条都还没有**
-                //  （那种时候页面上那一行「未选择条件」是**占位**，不是真条件 —— 只看
-                //  `lastOrNull()` 的话它返回 null、判不出「已经有待配的那一行」，于是照样插进去，
-                //  变成两行「未选择条件」，用户还得分清哪行是刚加的）。
-                //  两种情况都给同一句提示，把注意力推回那一行。
-                add(addConditionRow(draft, at, menus))
-                //  停用 / 启用紧跟在「添加场景」下面（同属「这一行现在怎么样」）——
-                //  行本体在 `CommandBranches.kt`：这边只摆菜单，那边摆行。
+                //  停用 / 启用 —— 这一行现在怎么样。行本体在 `CommandBranches.kt`：这边只摆菜单，那边摆行。
                 add(branchToggleRow(rules, at, menus))
-                add(
-                    MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_MOVE_UP, "上移"),
-                        icon = TablerIcons.Outline.ArrowUp,
-                        enabled = at > 0,
-                        //  禁用的行必须自带说法：不给就会落到整页那条（讲的是模块/宿主链路）
-                        disabledHint = I18n.get(Strings.COMMAND_BRANCH_TOP_REACHED, "已经在最上面"),
-                        dividerBefore = true,
-                    ) {
-                        draft.move(at, at - 1)
-                        menus.menuAt = -1
-                    },
-                )
-                add(
-                    MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
-                        icon = TablerIcons.Outline.ArrowDown,
-                        enabled = at >= 0 && at < rules.lastIndex,
-                        disabledHint = I18n.get(Strings.COMMAND_BRANCH_BOTTOM_REACHED, "已经在最下面"),
-                    ) {
-                        draft.move(at, at + 1)
-                        menus.menuAt = -1
-                    },
-                )
                 add(
                     MenuEntry.Row(
                         title = I18n.get(Strings.COMMON_DELETE, "删除"),
                         icon = PageIcons.CommandDelete,
                         danger = true,
-                        // 删除与上面两步「挪位置」不是一类：一条加深带隔开
+                        // 删除与上面那一档不是一类：一条加深带隔开
                         dividerBefore = true,
                     ) {
                         // **不在这里删**：删除是这一页唯一不可逆的动作，先收起菜单、弹确认窗
@@ -177,27 +131,9 @@ private fun SettingsPage.BranchConditionFlow(
 }
 
 /**
- * 「添加条件」那一行 —— 点了**直接插一条空条件**，不弹菜单。
+ * 「这一块再加一条条件」—— 入口是**卡片末尾那一行**（`CommandBranches` 的 `addRow`）。
  *
- *  抽成一支；判据见那边那段注释：
- *  用户要的是「先占个位」，空条件在执行侧永不成立、会拦住保存，正好是「还没配完」的样子。
- *  这一行**还没有可用的条件**时不再插，只给一句提示把注意力推回那一行。
- */
-private fun SettingsPage.addConditionRow(
-    draft: BranchDraft,
-    at: Int,
-    menus: BranchMenuState,
-): MenuEntry.Row =
-    MenuEntry.Row(
-        title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景"),
-        icon = TablerIcons.Outline.Plus,
-        onPick = { appendCondition(draft, at, menus) },
-    )
-
-/**
- * 「这一块再加一条条件」—— 菜单里那一行与**卡片末尾那一行**共用这一支（权威实现只有这份）。
- *
- *  两张入口说的是同一件事：「这一块的场景再多一条」。放在卡片末尾是用户口径
+ *  一句话说的是「这一块的场景再多一条」。放在卡片末尾是用户口径
  *  （不必点「更多」再找，列表滚到哪儿就能就地加）。
  *
  *  判据是「**还没有可用的条件**」，不是「最后一条是空的」：条件列表为空时页面同样已经摆了

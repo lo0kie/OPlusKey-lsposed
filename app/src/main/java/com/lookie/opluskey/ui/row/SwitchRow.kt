@@ -83,8 +83,9 @@ private const val SWITCH_SETTLE_MS = 500L
 @Composable
 internal fun SwitchRow(
     title: String,
-    summaryOn: String,
-    summaryOff: String,
+    /** 副标题（`null` = 这一行不画副标题，只留标题与开关）。 */
+    summaryOn: String?,
+    summaryOff: String?,
     icon: ImageVector,
     checked: Boolean,
     position: CardListPosition,

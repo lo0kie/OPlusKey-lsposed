@@ -4,7 +4,6 @@ import android.os.Handler
 import android.os.SystemClock
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
-import com.lookie.opluskey.core.model.ComboWindows
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
@@ -36,7 +35,7 @@ private const val MULTI_MIN_KEYS = ComboKey.MIN_KEYS + 1
 /**
  * 按住组合里**后续成员**的窗口兜底值（毫秒）—— 只在配置还没送到、或送来的值不合法时用。
  *
- *  正常取值走四格里那一格（见 [ComboDetector.windowsFor]）：固定窗口起点开着用 `hold`
+ *  正常取值走四格里那一格（见 [DetectorBinds.windowsFor]）：固定窗口起点开着用 `hold`
  *  （从首个成员按下起算一个），关着用 `holdFollower`（每颗各自往前一个）。
  *  逐次重置那一档只判「后续那一颗是不是紧接着落下的」，150ms 够人手一颗一颗按下去，
  *  又不至于把「按完 B 过一会儿再按 C」也算进来。
@@ -46,105 +45,12 @@ private const val HOLD_FOLLOWER_WINDOW_MS = 150L
 /**
  * 组合键的判定 —— **几颗已接管的键**在窗口内先后按下，就当作一次组合，不再各自判单击 / 长按。
  *
- *  判出组合之后执行什么，由装配方决定（`onCombo`）：这里只回答「哪一档 + 短按还是长按」。
+ *  与 [GestureDetector] 的分工：那个判单颗键的手势，这个只判「几颗键的重叠」。判出组合之后
+ *  执行什么由装配方决定（`onCombo`），这里只回答「哪一档 + 短按还是长按」；一旦认出组合就
+ *  摘掉成员键的单键状态机（[resetKey]），一次按键只出一个动作。
  *
- *  与 [GestureDetector] 的分工：那个判单颗键的手势，这个只判「几颗键的重叠」。一旦认出组合，
- *  立刻把这几颗键的单键状态机**摘掉**（[resetKey]），否则先按下的那颗会在组合期间判出长按 ——
- *  一次按键执行两个动作。
- *
- * ## 先问 [bindingsFor]
- *
- *  组合成立就会摘掉成员键的单键状态机。没有绑定还照样摘，用户看到的就是「几键同按什么反应都没有」——
- *  而这正是最容易被当成「模块坏了」的那种表现。所以**先判有没有这一档，再动任何状态**：
- *  查不到就把这一下原样交回单键判定器，那几颗键各走各的。
- *
- * ## 顺序按下也算组合（组合的等待压过单键的单击）
- *
- *  判据只是「几颗键的 DOWN 相差不超过窗口」，**不要求同时按着**：先按 A、松手、紧接着按 B
- *  同样算这一档组合。代价面在单键那一侧 —— 参与组合的键按下后要**等满一个窗口**才进单键判定器
- *  （见 `HeldPresses`），所以「A 的单击」不会在 B 到来之前先跑掉。用户口径：先后按几颗组合键，
- *  只该触发组合，不该每颗各来一次。
- *
- *  **这一整条只服务「等窗口」那一档**（`ComboKey.MODE_WAIT`，也就是默认那一档）：
- *  按住那两档的成员根本不等窗口（它们的判据在下一节），所以也不会被压一拍。
- *
- *  **扫**候选时相对当前这一下算（`now - at <= window`）：几颗键之间夹了一颗不相干的键时，
- *  这一档照样成立。**算不算数**则由这一档自己的**整串跨度**判（[spanFor]）：固定窗口起点开着
- *  就只等一个窗口，关着则按相邻两颗各一个窗口放大（n 颗 = n-1 个）。
- *
- * ## 「先按住某颗」那一档不看窗口，但**要真的按住**
- *
- *  那两档（`MODE_HOLD_FIRST` / `MODE_HOLD_SECOND`）的判据是「**起点键还按着**」（读 `down`），
- *  不拿时间量间隔 —— 按住三秒再补第二颗照样成立。
- *
- *  起点是谁由这一档**明写**（`ComboKey.starterKey`），不由物理先后推：两颗键几乎同时落下时
- *  谁先上报看硬件，推出来的顺序会摇摆；而按住那一档本来就是「我特意先按这颗」的表态。
- *
- *  但**反过来有一条下限**（`holdMinFor`，每档可设）：起点要按满[这么久]才算「按住」——
- *  两颗键几乎同时落下（实测相差 0~40ms）不叫按住，那种「一起按」只归窗口那条。
- *  没有这条下限，一起按会按物理先后落进某一种顺序，于是同一个物理动作有时命中、有时整条落空。
- *
- *  上界由长按接管（[longPressPassed]）：那颗键的长按一旦判出来，它已经执行过自己的动作了，
- *  再认组合就是一次按压两个动作。
- *
- *  **「松手时触发」的键没有这条上界**：那一档到点并不执行（动作押在抬手），所以「已经执行过」不成立
- *  —— 按住手势要的正是「按住久一点再补一颗」。凑成之后那颗键的状态机被摘掉，押着的那次长按跟着没。
- *
- *  这条与「只参与非首键的按住组合」（`KeyConfig.comboOnly`）是两件事：那个说的是「这颗键不判单键」，
- *  这个说的是「按住了多久都还算组合的第一颗」。
- *
- *  长按是另一条判据：必须成员**都还按着**（读 [down]）—— 先松开一颗就凑不出「一起按住不放」。
- *
- * ## 两颗走配对，3 颗起走凑齐
- *
- *  [pairFor]：窗口内挑一颗「配得上、且按下时刻最新」的同伴，两颗成一组 —— 这条是老路径，
- *  「按下时刻由近到远」只在两颗这一档有意义（三颗以上的候选里挑谁都不是唯一的）。
- *
- *  [multiFor]：把窗口内按下的那一组**整体**递给绑定闸，「成员多的赢」由 `Config.comboFor`
- *  判（`maxByOrNull { keys.size }`）。成员表按**命中那一档自己的清单**取，候选里夹的别的键
- *  不算成员（它们还得自己走单键判定）。
- *
- *  界面现在能造三颗（`ComboKey.MAX_KEYS`），四颗以上仍只对手改配置生效 —— 判定、执行、
- *  日志三处都是同一条真链路，不是旁路。判定侧这一层的判据全部**按成员集算**、不认「两颗 / 三颗」
- *  这种数字：多成员那条从 3 颗起（[MULTI_MIN_KEYS]），「等更宽的一档」按**真子集**判，
- *  整串跨度按成员的颗数放大 —— 四颗、五颗走的是同一条路。
- *
- * ## 组合进行中再来的按键只出一组
- *
- *  组合进行中再来的按键整条吞掉（按下 + 抬手），所以「几颗里有两组组合」也只出**先凑成的那一组**。
- *
- *  **唯一的例外是「更大的一档被这一下凑齐了」**（[absorb]）：子集那一档总是先成立，
- *  不让位的话更大的一档永远轮不到 —— 那一档换成更大的、抬手时派发的是它，仍然只出一组。
- *  **另一条例外**是「这一组只在等更宽的一档、而成员已经松过手」（[absorb]）：那一组先收尾派发，
- *  这一颗走正常判定 —— 否则「刚按完 A + B，紧接着单独按 A」会整颗失灵到窗口结束。
- *
- * ## 更宽的一档还来得及 ⇒ 先不派发
- *
- *  【{A,B} 与 {A,B,C} 同时配着，且 {A,B,C} 的窗口被调宽】小的一凑齐就派发，等于大那一档永远
- *  只剩「所有手指同时落」才成立 —— 用户把大那一档的等待时间拉长，手感上却一点没变（先松手的
- *  那颗已经把小的那一档的动作用掉了）。所以凑成之后先问一句「还有更宽的一档吗」：
- *
- *  · 有，且**它整串的跨度还没用完**（从最早那一颗算，[spanFor]）⇒ [awaitWider]
- *    记下这一档、把派发压到那个时刻；
- *  · 期间来了它缺的那颗 ⇒ [absorb] 换成更大的一档（换过去之后接着等更宽的那一档，
- *    于是 `{A,B}` ⊂ `{A,B,C}` ⊂ `{A,B,C,D}` 能一级一级往上走）；
- *  · 到点还没凑成 ⇒ 才派发小那一档（[awaitWider] 里那一枪）；
- *  · 期间成员还都按着 ⇒ 来的按键照老规矩吞掉；**已经松过手** ⇒ 这一组是「待派发」状态，
- *    先派发它、再让新按下的那颗走正常判定（[absorb]）。
- *
- *  等多久只按更宽那一档算，**与这一档自己的窗口无关**：等的是「下一颗还来不来得及」，
- *  而不是「这几颗算不算同时按」。
- *
- *  有一条**不**跟着等：长按。这一档按住超过自己的阈值就照旧派发（[scheduleLong]），
- *  之后也不再升级 —— 长按本身就是「按住不放」的明确表态，到那一刻就不该再等下一颗。
- *
- * ## 长按阈值取组合自己的
- *
- *  `ComboKey.longPressMs` 是这一档自己的（默认 500ms，与单键默认值同档）。不用某颗成员键的阈值：
- *  两颗键可能各配一个值，取谁的都是任选其一；而「一起按住多久算长按」是这一档的语义。
- *
- * 线程：与 [GestureDetector] 同一条输入线程（DOWN/UP 都在它上面进来），长按那一枪走
- * [handler]（main looper）。跨线程的字段一律 `@Volatile`。
+ *  判据的**完整口径**（顺序按下算组合、按住档、配对 / 凑齐、更宽升级、长按阈值、线程模型）
+ *  见 `docs/runtime/combo-detector.md` —— 这里不再逐段复述，改判据前先读那一页。
  */
 internal class ComboDetector(
     private val handler: Handler,
@@ -231,42 +137,15 @@ internal class ComboDetector(
      *  `longPressMs` 算；「只参与非首键的按住组合」的键恒返回 `false`（它压根不判单键）。
      */
     private val longPressPassed: (KeyId, Long, Long) -> Boolean = { _, _, _ -> false },
+    /**
+     * 那几样**可选功能**的回调 —— 见 [DetectorBinds]：首键补派、按住档固定窗口起点、四格窗口。
+     *
+     *  收成一份 data class 而不是三个构造参数：它们不是「判定器必须知道什么」，是可选功能，
+     *  早先只能放类体 `var` 再 `apply { }` 设（构造清单已贴 detekt 上限），那样「必须设」被降成
+     *  可空、装配也有两个入口。现在一次给全、类型非空。
+     */
+    private val binds: DetectorBinds = DetectorBinds(),
 ) {
-    /**
-     * 「**首键松手后仍执行它自己的长按**」那一档 —— 判据与派发两半，`null` = 这一档没接。
-     *
-     *  原设计是一次按压只执行一个动作：组合凑成时成员键的单键状态机被摘掉（[resetKey]），
-     *  首键按多久都判不出自己的长按。开着这一位之后，首键松手时补派一次它自己的长按
-     *  （见 [onUp]）—— 组合那一下照旧执行，等于一次按压两个动作。
-     *
-     *  **放在类体里而不是构造参数**：它是**可选**的（不接就是不启用这个功能），而构造参数
-     *  那张清单已经贴着 detekt 的 `LongParameterList` 上限 —— 那张清单回答的是「这个判定器
-     *  必须知道什么」，这一位不在其中。装配方在构造之后 `apply { }` 一次（见 `KeyHooks`）。
-     */
-    @Volatile
-    var starterKeepLong: StarterKeepLong? = null
-
-    /**
-     * 这一档**固定窗口起点**（`Config.comboFixedWindowStartFor`）—— 按住档的成员接收窗口
-     * 按它决定「从首个成员起固定窗口」还是「逐次重置」；等待档的整串跨度在 [spanFor] 里已经
-     * 由 `comboSpanFor` 处理，不经过这里。
-     *
-     *  **放类体而不是构造参数**：构造参数清单已贴着 detekt 上限，且这一位是可选的（不接 = 默认
-     *  逐次重置，与之前一致）。装配方在构造之后 `apply { }` 一次。
-     */
-    @Volatile
-    var fixedWindowStartFor: ((ComboKey) -> Boolean)? = null
-
-    /**
-     * 这一档**四格窗口**（`Config.comboWindowsFor`）—— 按住档的成员接收窗口按它取：
-     * 固定窗口起点开着用 `hold`（从首个成员按下起算一个），关着用 `holdFollower`（每颗各算）。
-     *
-     *  **放类体而不是构造参数**：构造参数清单已贴着 detekt 上限，且这一位是可选的（不接 = 用
-     *  常量兜底）。装配方在构造之后 `apply { }` 一次。
-     */
-    @Volatile
-    var windowsFor: ((ComboKey) -> ComboWindows)? = null
-
     /**
      * 一次 DOWN 的处理结果 —— 调用方据此决定「吞掉 / 延迟喂 / 立刻喂」。
      */
@@ -379,6 +258,30 @@ internal class ComboDetector(
          */
         @Volatile
         var waiting: Waiting? = null
+
+        /**
+         * 这一组**当前处在哪个阶段** —— 由 [waiting] / [longFired] / [repeatShot] 三个标志
+         * 派生出来，是**唯一**的判据入口。
+         *
+         *  早先「这一组是什么状态」要靠调用点自己去组合这三个标志（`waiting != null && !longFired`
+         *  之类），同一套组合在 [absorb] / [onUp] / [awaitWider] / [scheduleRepeat] 里各写一份，
+         *  加一个阶段就要改四处。现在收成这一个属性，判「该走哪条路」只看它。
+         *
+         *  三个标志仍是**事实来源**（阶段由它们推出、不另存一份可变状态，避免两头漂）：
+         *  这里只是把「读三样推理状态」变成「读一个名字」，行为不变。
+         *
+         *  派生顺序有讲究：`repeatShot` 只在长按判出之后才有，所以 `REPEATING` 必须先于
+         *  `LONG_FIRED` 判；`waiting` 只在长按判出**之前**有意义（长按是「按住不放」的明确表态，
+         *  到那一刻不再等下一颗），所以 `AWAIT_WIDER` 在 `LONG_FIRED` 之前。
+         */
+        val phase: ComboPhase
+            get() =
+                when {
+                    repeatShot != null -> ComboPhase.REPEATING
+                    longFired -> ComboPhase.LONG_FIRED
+                    waiting != null -> ComboPhase.AWAIT_WIDER
+                    else -> ComboPhase.PAIRED
+                }
     }
 
     /**
@@ -409,6 +312,26 @@ internal class ComboDetector(
         val until: Long,
         val shot: Runnable,
     )
+
+    /**
+     * 一组组合在判定侧走过的阶段 —— 见 [Combo.phase]，那是唯一判据入口。
+     *
+     *  只描述「这一组现在在等什么」，不含「有没有派发过」—— 派发与阶段是两件事：
+     *  [PAIRED] 也可能已经按「一起短按」派发过（成员一松就收尾），收尾时照旧再走一遍判据。
+     */
+    private enum class ComboPhase {
+        /** 已凑成，还没等到长按阈值（长按枪还挂着）。 */
+        PAIRED,
+
+        /** 已凑成，且还有更宽的一档来来得及 ⇒ 先不派发，等它窗口结束。 */
+        AWAIT_WIDER,
+
+        /** 长按已经判出（`longFired`），但没在连发。 */
+        LONG_FIRED,
+
+        /** 长按判出后，`longRepeat` 那串自循环连发还在跑。 */
+        REPEATING,
+    }
 
     /**
      * 组合进行中又按下 [id] —— `true` = 这一颗归组合（调用方吞掉），`false` = 这一组已经收尾并清掉，
@@ -469,7 +392,7 @@ internal class ComboDetector(
         }
         val waiting = c.waiting
         //  成员还都按着 ⇒ 这一下还在这一组里，新按下的那颗不掺和；没在等更宽的一档也照老规矩吞掉
-        if (waiting == null || c.keys.all { down.containsKey(it) }) {
+        if (c.phase != ComboPhase.AWAIT_WIDER || c.keys.all { down.containsKey(it) }) {
             consumed += id
             return true
         }
@@ -478,7 +401,7 @@ internal class ComboDetector(
         if (!c.longFired) {
             XLog.w(
                 "组合键：${c.keys.joinToString(" + ") { it.label }} 短按" +
-                    "（${id.label} 按下，不再等 ${waiting.key.id}）",
+                    "（${id.label} 按下，不再等 ${waiting!!.key.id}）",
             )
             fire(c, GestureTrigger.Click(1), repeat = false)
         }
@@ -529,8 +452,7 @@ internal class ComboDetector(
                                 "（等到点也没凑成 ${self.key.id}）",
                         )
                         fire(c, GestureTrigger.Click(1), repeat = false)
-                        cancelShots(c)
-                        combo = null
+                        finishCombo(c)
                     } catch (e: Throwable) {
                         // 这一枪跑在 system_server 主线程上，抛出去就是整机崩
                         XLog.w("组合键等宽判定失败（忽略）：${e.javaClass.simpleName}", e)
@@ -598,8 +520,7 @@ internal class ComboDetector(
             //  一并撤掉 —— 它缺了一条抬手，再派发就是替一次说不清的按压收尾。
             combo?.let { c ->
                 if (id in c.keys) {
-                    cancelShots(c)
-                    combo = null
+                    finishCombo(c)
                 }
             }
             recent.remove(id)
@@ -705,7 +626,7 @@ internal class ComboDetector(
             starterKeepPending = null
             if (short) {
                 XLog.w("组合键：首键 ${id.label} 松手，补派它自己的长按（组合已收尾）")
-                starterKeepLong?.fire(id)
+                binds.starterKeepLong?.fire(id)
             }
         }
         if (id !in consumed) return false
@@ -716,18 +637,17 @@ internal class ComboDetector(
             //  （见 [awaitWider]）。**长按已经派发过的不在此列**：那时等的意义已经没有了，
             //  「松手才触发 / 松手额外动作」得照老规矩立刻办。
             val waiting = c.waiting
-            if (waiting != null && !c.longFired) {
+            if (c.phase == ComboPhase.AWAIT_WIDER) {
                 //  **取消**也不在此列：取消的含义是「这一下不算数」（窗口失焦 / 来电打断），
                 //  留着那一枪会让它到点凭空短按一次。
                 if (!short) {
-                    XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 这一按被取消 ⇒ 不再等 ${waiting.key.id}")
-                    cancelShots(c)
-                    combo = null
+                    XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 这一按被取消 ⇒ 不再等 ${waiting!!.key.id}")
+                    finishCombo(c)
                     return true
                 }
                 XLog.w(
                     "组合键：${c.keys.joinToString(" + ") { it.label }} 先松开 ${id.label}，" +
-                        "继续等 ${waiting.key.id}",
+                        "继续等 ${waiting!!.key.id}",
                 )
                 return true
             }
@@ -759,8 +679,7 @@ internal class ComboDetector(
             //  等于这个开关从没生效过（真机反馈：「拨了没效果」）。
             //  取消（`short = false`）仍不补：那一下不算数。
             if (short) keepStarterLong(c, id)
-            cancelShots(c)
-            combo = null
+            finishCombo(c)
         }
         // 组合的另一颗键可能还按着 —— 它的抬手同样要吞（`consumed` 里还留着它）
         return true
@@ -788,7 +707,7 @@ internal class ComboDetector(
     ) {
         //  四个出口各留一行：这一位是「拨了没效果」唯一抓得住的地方 —— 没有它，
         //  「开关关着」「没接上」「认不出首键」「首键已经不在按着」在这条链路上长得一模一样。
-        val keep = starterKeepLong
+        val keep = binds.starterKeepLong
         if (keep == null) {
             XLog.w("组合键：${c.key.id} 首键长按这一档没接上（装配处没设 starterKeepLong）⇒ 不补")
             return
@@ -838,10 +757,7 @@ internal class ComboDetector(
      *  不能一路走到长按。
      */
     fun reset() {
-        combo?.let {
-            cancelShots(it)
-        }
-        combo = null
+        combo?.let(::finishCombo)
         //  这一笔欠账跟着配置一起作废：关掉主开关 / 改了配置之后，那颗键的抬手不该再派旧动作
         starterKeepPending = null
         down.clear()
@@ -929,6 +845,22 @@ internal class ComboDetector(
     }
 
     /**
+     * 收掉当前这一组、回到空闲 —— [cancelShots] 撤枪 + 清 [combo] 两件事**成对**收在这里。
+     *
+     *  早先这两个动作在 [absorb] / [onUp] / [awaitWider] / [onDown] 的自愈与重复键分支里
+     *  各写一遍（`cancelShots(c); combo = null`），一共六处 —— 漏掉「撤枪」那一半时，
+     *  定时链到点会把已经收尾的组合再补派一次（同一按执行两次）。收成一支之后，
+     *  「收尾」只有一个入口，不会只撤一半。
+     *
+     *  不管 [combo] 现在是不是 [c]（可能已经被别处换掉 / 收掉）：调用点已经判断过归属，
+     *  这里只做「撤这一组的枪、把当前组合清掉」这一件事。
+     */
+    private fun finishCombo(c: Combo) {
+        cancelShots(c)
+        combo = null
+    }
+
+    /**
      * 「长按连续触发」的重复派发 —— 与单键那条（`GestureDetector.scheduleRepeat`）同一个形状：
      * 每 [ComboKey.longRepeatIntervalMs] 派一次，抬手 / 重置 / 超过上限时停。
      *
@@ -977,19 +909,6 @@ internal class ComboDetector(
             XLog.w("组合键派发失败（已忽略）：${e.javaClass.simpleName}", e)
         }
     }
-
-    /**
-     * 「首键松手后仍执行它自己的长按」那一档的两个回调 —— 见构造参数里的同名项。
-     *
-     *  判据在装配方（`Config.comboStarterKeepLongFor`：独立设置关着就看公共那份），
-     *  派发也在装配方（转给宿主，走与普通长按同一条 `forward`）。
-     */
-    internal class StarterKeepLong(
-        /** 这一档开了吗。 */
-        val enabled: (ComboKey) -> Boolean,
-        /** 补派首键自己的长按。 */
-        val fire: (KeyId) -> Unit,
-    )
 
     /**
      * 一次**凑成**：哪一档、真要算成员的那几颗、以及「从最早那一颗到这一下」隔了多久（只进日志）。
@@ -1063,10 +982,10 @@ internal class ComboDetector(
             //  按住档：**首键按多久都行**（下限由 [holdReady] 管），但后续成员每颗都得是
             //  窗口内刚落下的。那个窗口是四格里的一格：固定窗口起点开着用 `hold`（从首个成员
             //  按下起算一个），关着用 `holdFollower`（每颗各自往前一个）。
-            val w = windowsFor?.invoke(hit)
+            val w = binds.windowsFor(hit)
             val followers = members.drop(1)
             val fresh =
-                if (fixedWindowStartFor?.invoke(hit) == true) {
+                if (binds.holdFixedWindowStartFor(hit)) {
                     val firstAt = followers.firstOrNull()?.let { recent[it] } ?: now
                     now - firstAt <= (w?.hold?.toLong() ?: HOLD_FOLLOWER_WINDOW_MS)
                 } else {

@@ -668,16 +668,9 @@ private fun RuleBlock(
                                 //  这一行本身仍可点，靠文案「未选择条件」说清缺什么就够了。
                                 iconTint = if (line.empty) disabledTint else null,
                                 titleTint = if (line.empty) disabledTint else null,
-                                //  行尾一律画那枚「点开还有一层」的选择器（每行都可点、都还有下一层）；
-                                //  「已停用」那半句只挂在**最后一条**条件行 ——
-                                //  那说的是「这一行整体」不生效，不是某一条条件的问题。
-                                trailing = {
-                                    ConditionTrailing(
-                                        //  「已停用」**每一行都说**（用户口径：停用要标在列表的每一行上）：
-                                        //  一块有几条条件就几行都带，不只是最后一行。与动作那一行同一档。
-                                        off = state == RuleState.OFF,
-                                    )
-                                },
+                                //  行尾一律画那枚「点开还有一层」的选择器（每行都可点、都还有下一层）。
+                                //  **不再逐行标「已停用」**：那一句只在小标题上写一次（用户口径）。
+                                trailing = { ConditionTrailing() },
                                 modifier = Modifier.preciseClickAnchor(cells.anchors.conditionAt(condIndex)),
                                 onClick = { cells.onCondition(condIndex) },
                                 //  **进出场走通用动画**（`CardRow` 的 `visible`，与卡里其它行同一套：
@@ -706,7 +699,7 @@ private fun RuleBlock(
         )
 
         Spacer(Modifier.height(RULE_CARD_GAP))
-        RuleActionRows(text, state, cells)
+        RuleActionRows(text, cells)
     }
 }
 
@@ -716,9 +709,8 @@ private fun RuleBlock(
  *  翻转之后「一块 = 它能配的每一档」就落在这里：一块场景命中时，这几行各自决定那一档做什么。
  *  没配的那一档写「跟随默认」并压禁用色 —— 它与「无操作」是两件事（见 [ActionLine]）。
  *
- *  这一块自己关着时，行尾先说一句「已停用」：条件行由 [ConditionTrailing] 说，动作这几行在这里补，
- *  用户扫「未设置 / 无操作 / 打开应用…」时也能看出整块已经关掉了。小标题那一行**不说**
- *  （用户口径：标在列表的每一行上）。
+ *  这一块自己关着时，**不在这些行上标「已停用」**：那一句只在整块的小标题上写一次
+ *  （用户口径）。逐行再写一遍同一句话，扫列表时看着像每一档各自停用了。
  *
  *  **行数与档位名都不写死在这里**：一张卡几行由 `text.actions` 给（源头是 `sceneGesturePages()`），
  *  名字走 `gestureLabel` —— 那两支就是接自定义手势的地方，这一层不必动。
@@ -726,7 +718,6 @@ private fun RuleBlock(
 @Composable
 private fun RuleActionRows(
     text: RuleText,
-    state: RuleState,
     cells: RuleCells,
 ) {
     val disabled = COUITheme.colorScheme.disabledOnSecondaryVariant
@@ -747,12 +738,10 @@ private fun RuleActionRows(
                     iconTint = if (line.empty) disabled else null,
                     titleTint = if (line.empty) disabled else null,
                     trailing = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (state == RuleState.OFF) RuleStateHint(RuleState.OFF)
-                            //  这一行是**换页**（进「场景动作」编那一档），行尾给「进下一层」那枚右箭头；
-                            //  选择器那枚说的是「点了要选点什么」，与这里的去处对不上。
-                            RowEndIcon()
-                        }
+                        //  这一行是**换页**（进「场景动作」编那一档），行尾给「进下一层」那枚右箭头；
+                        //  选择器那枚说的是「点了要选点什么」，与这里的去处对不上。
+                        //  **不再标「已停用」**：那一句只在小标题上写一次（用户口径）。
+                        RowEndIcon()
                     },
                     //  这一行是**换页**（进「场景动作」编那一档），不是弹浮层 ——
                     //  所以不挂触点锚点：锚点只服务「菜单弹在被点的那一格旁边」。
@@ -910,17 +899,14 @@ internal class ConditionLine(
 )
 
 /**
- * 条件那一行的行尾：先标一句状态，再接那枚选择器。
+ * 条件那一行的行尾 —— 只有那枚选择器。
  *
- *  [off]「已停用」（弱色）—— 它自己关着（行尾「更多」菜单里的停用，`SceneRule.enabled`）。
- *
- *  为什么标在**这一行**而不是小标题：小标题是库组件 `SmallTitle`，只能给一整串字，染不了一半；
- *  而这一行本来就是「这一条什么时候执行」，写在这儿读起来最顺。
+ *  「已停用」**只标在小标题那一行**（[RuleStateHint] 在 `SectionTitle` 的 `trailing` 里）：
+ *  一块有几条条件就有几行，逐行再写一遍同一句话，读起来像好几件事各自停用了。
  */
 @Composable
-internal fun ConditionTrailing(off: Boolean = false) {
+internal fun ConditionTrailing() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        if (off) RuleStateHint(RuleState.OFF)
         RowEndIcon(PageIcons.Selector)
     }
 }
@@ -928,8 +914,9 @@ internal fun ConditionTrailing(off: Boolean = false) {
 /**
  * 行尾那半句话 —— 「已停用」（弱色）/「与上面重复」（红字）/ 什么都不画。
  *
- *  **只有这一份**：条件行与场景小标题行都显示同一种状态（用户口径「场景停用时行尾也要说」），
- *  两处各写一遍的话，字号 / 颜色 / 与右侧图标的间距迟早会各走各的。
+ *  **只有这一份**，而且**只用在小标题那一行**：一块场景停用时，整块的小标题上写一次就够了；
+ *  条件行与动作行不再逐行重复（用户口径：只保留小标题那个）。「与上面重复」同样只在小标题上 ——
+ *  那说的是这一整块与上一块撞了。
  */
 @Composable
 internal fun RuleStateHint(state: RuleState) {

@@ -1359,7 +1359,9 @@ data class GlobalConfig(
         /**
          * 四格窗口共用的三档 —— 下限 / 出厂值 / 上限（毫秒）。
          *
-         *  出厂 80 就是这一位出现之前写死的那个窗口：老配置读回来行为完全不变。
+         *  出厂 **150**：四格（等待组合的整串 / 相邻两颗、按住组合的整串 / 后续成员）出厂同一个数，
+         *  与 [DEFAULT_COMBO_HOLD_FOLLOWER_MS] 对齐 —— 四格量的都是一件事「人手按下相邻两颗的间隔」，
+         *  出厂给两个不同的数只会让同一次按法在换格之后手感变了。
          *  下限 20：再短就几乎是「必须精确同时按」，组合键会挑手。
          *
          *  上限放到 1000（原 300）：这个数同时管「算不算凑齐」与「第一颗键等多久才回落单击」，
@@ -1369,7 +1371,7 @@ data class GlobalConfig(
          *  **四格共用这三档**：四格里量的都是「人手的节奏」，没有哪一格需要另一套边界。
          */
         const val COMBO_WINDOW_MIN_MS = 20
-        const val DEFAULT_COMBO_WINDOW_MS = 80
+        const val DEFAULT_COMBO_WINDOW_MS = 150
         const val COMBO_WINDOW_MAX_MS = 1000
 
         /**
@@ -1377,6 +1379,8 @@ data class GlobalConfig(
          *
          *  那一格判的是「后续成员是不是紧接着落下的」：150ms 够人手一颗一颗按下去，
          *  又不至于把「按完 B 过一会儿再按 C」也算进来。原先是写死的常量，现在成了可调的一项。
+         *
+         *  **与 [DEFAULT_COMBO_WINDOW_MS] 是同一个数**：四格出厂值统一，换格不该换手感。
          */
         const val DEFAULT_COMBO_HOLD_FOLLOWER_MS = 150
 

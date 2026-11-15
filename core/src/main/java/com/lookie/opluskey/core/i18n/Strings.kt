@@ -235,10 +235,8 @@ object Strings {
      * 按键绑定页那一段「常用命令」的小标题 —— 现成命令的快捷入口（表见 `CommonCommands`）。
      *
      *  条数拼进标题（与内置动作那几组同一个写法）：这一段是「有几条」由表决定的列，不写就看不出有没有漏。
-     *  [BINDING_COMMON_COMMANDS_ADD_DESC] 是它为空时那行「添加」的小字。
      */
     const val BINDING_COMMON_COMMANDS = "binding.common_commands"
-    const val BINDING_COMMON_COMMANDS_ADD_DESC = "binding.common_commands_add_desc"
 
     /**
      * 「常用命令」**自己那条命令的名字**（[COMMON_COMMAND_WECHAT_SCAN] 等）。
@@ -827,7 +825,6 @@ object Strings {
     const val CATEGORY_SYSTEM_NAV = "category.system_nav"
     const val COMMAND_ADD = "command.add"
     const val COMMAND_CMD_HINT = "command.cmd_hint"
-    const val COMMAND_DELAY_DESC = "command.delay_desc"
     const val COMMAND_DELAY_LABEL = "command.delay_label"
 
     /** 命令预览里那一行间隔 —— 带前缀（`执行间隔：3 秒`）：单看一个「3 秒」不知道是谁的间隔。 */
@@ -961,9 +958,6 @@ object Strings {
      *  东西」的量，用户据此知道值不值得点进去。
      */
     const val COMMAND_FLUID_ICON_COUNT = "command.fluid_icon_count"
-
-    /** 入口行的小字：这一档的取值从哪儿来（不是状态值本身）。 */
-    const val COMMAND_VARS_ENTRY_DESC = "command.vars_entry_desc"
 
     /** 菜单里那一行 / 选择窗里：这一档**判不出**（读不到系统服务 / 那个开关还没出现过）。 */
     const val COMMAND_VARS_UNKNOWN = "command.vars_unknown"
@@ -1137,8 +1131,6 @@ object Strings {
 
     /** 「添加条件」被拦下时那句话：这一块最后一条还是「未选择条件」，再插一条只是多一行空的。 */
     const val COMMAND_BRANCH_CONDITION_PENDING = "command.branch_condition_pending"
-    const val COMMAND_BRANCH_TOP_REACHED = "command.branch_top_reached"
-    const val COMMAND_BRANCH_BOTTOM_REACHED = "command.branch_bottom_reached"
 
     /** 时间区间那个选择弹窗：标题与两列的小标题（开始 / 结束）。 */
     const val COMMAND_COND_TIME_START = "command.cond_time_start"
@@ -1506,11 +1498,9 @@ object Strings {
     const val HOME_SWITCH_DESC_OFF = "home.switch_desc_off"
     const val HOME_SWITCH_DESC_ON = "home.switch_desc_on"
 
-    /** 首页「使用 ColorOS 接口」那行开关的标题与副标题。 */
+    /** 首页「使用 ColorOS 接口」那行开关的标题。 */
     const val HOME_COLOROS_TITLE = "home.coloros_title"
 
-    const val HOME_COLOROS_DESC_OFF = "home.coloros_desc_off"
-    const val HOME_COLOROS_DESC_ON = "home.coloros_desc_on"
     const val HOME_TITLE = "home.title"
 
     /** 首页大标题下面那一行 —— 一句话说这个模块是干什么的（不是版本号，用户口径）。 */
@@ -1518,8 +1508,6 @@ object Strings {
     const val HOME_MINI_ANIM_DESC_OFF = "home.mini_anim_desc_off"
     const val HOME_MINI_ANIM_DESC_ON = "home.mini_anim_desc_on"
     const val HOME_MINI_ANIM_TITLE = "home.mini_anim_title"
-    const val HOME_TOAST_DESC_OFF = "home.toast_desc_off"
-    const val HOME_TOAST_DESC_ON = "home.toast_desc_on"
     const val HOME_TOAST_TITLE = "home.toast_title"
 
     /**
@@ -1529,8 +1517,6 @@ object Strings {
      *  原因（`_NEEDS_COLOROS`），执行侧也会回落 Toast（见 `GestureExec.noticeIfNeeded`）。
      */
     const val HOME_TOAST_FLUID_TITLE = "home.toast_fluid_title"
-    const val HOME_TOAST_FLUID_DESC_ON = "home.toast_fluid_desc_on"
-    const val HOME_TOAST_FLUID_DESC_OFF = "home.toast_fluid_desc_off"
     const val HOME_TOAST_FLUID_NEEDS_COLOROS = "home.toast_fluid_needs_coloros"
 
     /** 「执行时提示」的**文案模板**：那一行的标题 / 输入框占位 / 弹窗里的占位符说明 / 为空时那句默认。 */
@@ -1538,9 +1524,6 @@ object Strings {
     const val HOME_TOAST_TEMPLATE_HINT = "home.toast_template_hint"
     const val HOME_TOAST_TEMPLATE_DEFAULT = "home.toast_template_default"
     const val HOME_TOAST_TEMPLATE_PLACEHOLDER = "home.toast_template_placeholder"
-    const val HOME_VIBRATE_DESC_OFF = "home.vibrate_desc_off"
-    const val HOME_VIBRATE_DESC_ON = "home.vibrate_desc_on"
-    const val HOME_VIBRATE_STRENGTH_DESC = "home.vibrate_strength_desc"
 
     /** 「振动强度」三档的说法（弱 / 中 / 强）—— 那一行**行尾**写的是它。 */
     const val HOME_VIBRATE_STRENGTH_MEDIUM = "home.vibrate_strength_medium"
@@ -1554,8 +1537,6 @@ object Strings {
      * 这一颗管「按下去有反应、但这一档什么动作都没有」那一档，默认关。
      */
     const val HOME_VIBRATE_ON_NONE_TITLE = "home.vibrate_on_none_title"
-    const val HOME_VIBRATE_ON_NONE_DESC_ON = "home.vibrate_on_none_desc_on"
-    const val HOME_VIBRATE_ON_NONE_DESC_OFF = "home.vibrate_on_none_desc_off"
     const val LINK_CHECK_ALL_NORMAL = "link_check.all_normal"
     const val LINK_CHECK_BROKEN_FORMAT = "link_check.broken_format"
     const val LINK_CHECK_CONFIG_EFFECTIVE = "link_check.config_effective"
@@ -1681,9 +1662,7 @@ object Strings {
     const val MORE_ABOUT_SIGNATURE = "more.about_signature"
     const val MORE_ABOUT_VERSION = "more.about_version"
     const val MORE_EXPORT_CONFIG = "more.export_config"
-    const val MORE_EXPORT_CONFIG_SUMMARY = "more.export_config_summary"
     const val MORE_IMPORT_CONFIG = "more.import_config"
-    const val MORE_IMPORT_CONFIG_SUMMARY = "more.import_config_summary"
     const val MORE_LANGUAGE = "more.language"
     const val MORE_LANGUAGE_AUTO = "more.language_auto"
     const val MORE_LANGUAGE_EN = "more.language_en"
@@ -1710,19 +1689,14 @@ object Strings {
     /** 「更多选项」页「外观」那一卡：界面颜色（跟随系统 / 浅色 / 深色）。 */
     const val MORE_THEME = "more.theme"
 
-    /** 「跟随系统显示大小」那一行（开关）。 */
+    /** 「跟随系统显示大小」那一行（开关）—— 只有标题，没有副标题。 */
     const val MORE_FOLLOW_DISPLAY_SIZE = "more.follow_display_size"
-    const val MORE_FOLLOW_DISPLAY_SIZE_ON = "more.follow_display_size_on"
-    const val MORE_FOLLOW_DISPLAY_SIZE_OFF = "more.follow_display_size_off"
 
-    /** 「随机图标配色」那一行（外观卡）：标题 + 开 / 关两句副标题。 */
+    /** 「随机图标配色」那一行（外观卡）—— 只有标题，没有副标题。 */
     const val MORE_RANDOM_ICON_TINT = "more.random_icon_tint"
-    const val MORE_RANDOM_ICON_TINT_ON = "more.random_icon_tint_on"
-    const val MORE_RANDOM_ICON_TINT_OFF = "more.random_icon_tint_off"
 
-    /** 「页面缩放」那一行（只在「跟随系统显示大小」关掉时出现）。 */
+    /** 「页面缩放」那一行（只在「跟随系统显示大小」关掉时出现）—— 只有标题。 */
     const val MORE_PAGE_SCALE = "more.page_scale"
-    const val MORE_PAGE_SCALE_DESC = "more.page_scale_desc"
 
     /**
      * 「界面振动反馈」那一行（外观卡）—— 点行 / 拨开关 / 拖滑杆那一下。
@@ -1731,26 +1705,20 @@ object Strings {
      *  所在的页面走：那一颗在「按键设置」页，这一颗在「更多选项」页。
      */
     const val MORE_UI_VIBRATE_TITLE = "more.ui_vibrate_title"
-    const val MORE_UI_VIBRATE_ON = "more.ui_vibrate_on"
-    const val MORE_UI_VIBRATE_OFF = "more.ui_vibrate_off"
 
     /**
-     * 「使用预测返回手势」那一行（外观卡）—— 返回时页面跟不跟手。
+     * 「使用预测性返回手势」那一行（外观卡）—— 返回时页面跟不跟手。
      *
-     *  只在 API 34+ 有逐帧进度；那一版以下拨到哪一档都是「松手才弹」，所以副标题不承诺版本。
+     *  只在 API 34+ 有逐帧进度；那一版以下拨到哪一档都是「松手才弹」，所以标题不承诺版本。
      */
     const val MORE_PREDICTIVE_BACK_TITLE = "more.predictive_back_title"
-    const val MORE_PREDICTIVE_BACK_ON = "more.predictive_back_on"
-    const val MORE_PREDICTIVE_BACK_OFF = "more.predictive_back_off"
 
     /**
      * 「显示更详细的按键设置」那一行（配置卡第一行）—— 按键设置页收不收全部参数。
      *
-     *  纯显示项：副标题只回答「多出什么 / 少掉什么」，不解释机制。
+     *  纯显示项，只有标题：开 / 关各多出什么，看按键页就知道了。
      */
     const val MORE_DETAILED_KEY_SETTINGS_TITLE = "more.detailed_key_settings_title"
-    const val MORE_DETAILED_KEY_SETTINGS_ON = "more.detailed_key_settings_on"
-    const val MORE_DETAILED_KEY_SETTINGS_OFF = "more.detailed_key_settings_off"
 
     const val MORE_THEME_AUTO = "more.theme_auto"
 
@@ -1790,10 +1758,16 @@ object Strings {
     const val SLIDER_INPUT_LABEL = "slider.input_label"
 
     /**
-     * 同一个弹窗里输入框下面那行常驻说明 —— 值域与步进（三个 `%d`：最小 / 最大 / 步长）。
+     * 同一个弹窗里输入框下面那行常驻说明 —— 值域、步进与出厂默认值
+     * （四个 `%d`：最小 / 最大 / 步长 / 默认值）。
      *
-     *  为什么放框下面而不是写进占位：占位在填着字时就看不见了，而「能填多大」与「打进去的数
-     *  会被吸到哪一档」正是打字时要看的两件事（用户口径「range 提示优化」）。
+     *  为什么放框下面而不是写进占位：占位在填着字时就看不见了，而「能填多大」「打进去的数
+     *  会被吸到哪一档」「本来是多少」正是打字时要看的三件事（用户口径「range 提示优化」）。
+     *
+     *  四个数**同一个单位**（输入框收的那个）：默认值也按原值写，不走各行的 `valueText` ——
+     *  那一档可能把它写成「弱 / 中 / 强」，而框里填的是数字，两套单位并排会读成两个参数。
+     *
+     *  轨道上那个圆点标的也是这个数（`SliderSpec.default`），两处同一个来源。
      */
     const val SLIDER_INPUT_RANGE = "slider.input_range"
     const val STATUS_API_MISMATCH = "status.api_mismatch"

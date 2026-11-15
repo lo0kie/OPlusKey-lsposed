@@ -14,6 +14,7 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.core.rom.RomKeyFamilies
 import com.lookie.opluskey.inject.input.ComboDetector
+import com.lookie.opluskey.inject.input.DetectorBinds
 import com.lookie.opluskey.inject.input.GestureDetector
 import com.lookie.opluskey.inject.input.HeldPresses
 import com.lookie.opluskey.inject.wire.ConfigChannel
@@ -149,23 +150,24 @@ internal class SideKeyInterceptor(
                 val key = ConfigChannel.config.key(id)
                 !key.comboOnly && !key.longFireOnRelease && now - at >= key.longPressMs
             },
-        ).apply {
-            //  「首键松手仍执行它自己的长按」—— 判据在 `Config.comboStarterKeepLongFor` 一处
-            //  （独立设置关着就看公共那份），派发交给 `KeyHooks` 那条单键通道。
-            //  走属性而不是构造参数：这是可选功能，见 `ComboDetector.starterKeepLong`。
-            starterKeepLong =
-                ComboDetector.StarterKeepLong(
-                    enabled = { c -> ConfigChannel.config.comboStarterKeepLongFor(c) },
-                    fire = onStarterLong,
-                )
-            //  按住档成员的「固定窗口起点」—— 判据在 `Config.comboHoldFixedWindowStartFor` 一处。
-            //  **这一位与等待组合那颗开关是两个变量**：两张卡各管一种按法，共用一个的话
-            //  在「按住组合」卡上拨一下，等待组合那根滑杆也会跟着换一格。
-            fixedWindowStartFor = { c -> ConfigChannel.config.comboHoldFixedWindowStartFor(c) }
-            //  这一档的四格窗口（等待 / 按住 × 固定窗口起点 开 / 关）—— 取值只在
-            //  `Config.comboWindowsFor` 一处，这里只把那一份递进去
-            windowsFor = { c -> ConfigChannel.windowsFor(c) }
-        }
+            binds =
+                DetectorBinds(
+                    //  「首键松手仍执行它自己的长按」—— 判据在 `Config.comboStarterKeepLongFor` 一处
+                    //  （独立设置关着就看公共那份），派发交给 `KeyHooks` 那条单键通道。
+                    starterKeepLong =
+                        DetectorBinds.StarterKeepLong(
+                            enabled = { c -> ConfigChannel.config.comboStarterKeepLongFor(c) },
+                            fire = onStarterLong,
+                        ),
+                    //  按住档成员的「固定窗口起点」—— 判据在 `Config.comboHoldFixedWindowStartFor` 一处。
+                    //  **这一位与等待组合那颗开关是两个变量**：两张卡各管一种按法，共用一个的话
+                    //  在「按住组合」卡上拨一下，等待组合那根滑杆也会跟着换一格。
+                    holdFixedWindowStartFor = { c -> ConfigChannel.config.comboHoldFixedWindowStartFor(c) },
+                    //  这一档的四格窗口（等待 / 按住 × 固定窗口起点 开 / 关）—— 取值只在
+                    //  `Config.comboWindowsFor` 一处，这里只把那一份递进去
+                    windowsFor = { c -> ConfigChannel.windowsFor(c) },
+                ),
+        )
 
     /**
      * 已经报过「这个码不认识」的键码 —— 每个码只报**一次** W，之后退回 `d`。

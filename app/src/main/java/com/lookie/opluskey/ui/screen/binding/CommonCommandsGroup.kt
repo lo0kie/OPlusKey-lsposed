@@ -199,12 +199,9 @@ private fun SettingsPage.onPickCommon(
  *  它**不受 `linkReady` 那一道闸限制**：链路没就绪时绑不了，但「去添加一条」与链路无关 ——
  *  这里只跟整页那道闸（主开关 / 只读 / 自己停用）走。
  *
- *  ## 小字不采用「点右下角加号」
- *
- *  本页右下角那颗加号形 FAB 进入的是「自定义命令」页，与常用命令无关（见 `BindingFab`：
- *  两页共用同一颗，`contentDescription` 即「自定义命令」）。沿用清单页那句「点右下角加号添加」，
- *  指向的是本页不存在的入口，用户据此操作会进入另一处 —— 所以这里说的是**它自己**的下一步：
- *  在「常用命令」页添加（`BINDING_COMMON_COMMANDS_ADD_DESC`）。
+ *  **不加小字**：这一行本身就叫「添加命令」，副标题写「在常用命令页添加」是把同一件事说两遍。
+ *  早先那一句是为了挡住「点右下角加号」那个错误指引（本页那颗加号形 FAB 进的是「自定义命令」页，
+ *  见 `BindingFab`），现在整句去掉 —— 行尾那颗箭头已经说明「后面还有一页」。
  *
  *  **只剩这一种情形**：原先还有「有清单但均未勾选『在按键绑定页显示』」那一支，而那一项
  *  已经改成固定（用户口径），清单非空就一定有格子，这个函数只服务「清单为空」。
@@ -219,7 +216,6 @@ private fun AddCommonCommandRow(
             listOf(
                 CardRow.Item(
                     title = I18n.get(Strings.COMMON_COMMANDS_ADD, "添加命令"),
-                    summary = I18n.get(Strings.BINDING_COMMON_COMMANDS_ADD_DESC, "在常用命令页添加"),
                     //  行尾箭头：「这一行后面还有一页」（与 `CreateCommandRow` 同一条理由）
                     arrow = true,
                     enabled = enabled,

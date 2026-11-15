@@ -370,7 +370,7 @@ internal fun SettingsPage.setDetailedKeySettings(on: Boolean) =
 internal fun SettingsPage.setPredictiveBack(on: Boolean) {
     toggleGlobal(
         "predictive_back=${if (on) 1 else 0}",
-        I18n.get(Strings.MORE_PREDICTIVE_BACK_TITLE, "使用预测返回手势"),
+        I18n.get(Strings.MORE_PREDICTIVE_BACK_TITLE, "使用预测性返回手势"),
         on,
     ) {
         it.copy(predictiveBack = on)

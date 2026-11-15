@@ -109,9 +109,6 @@ private fun SettingsPage.InterfaceCard(pageEnabled: Boolean) {
                 add(
                     CardRow.Switch(
                         title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
-                        // 开 = 走专属接口，关 = 走 AOSP —— 两句都只说「现在走哪条路」
-                        summaryOn = I18n.get(Strings.HOME_COLOROS_DESC_ON, "部分命令走 ColorOS 专属接口"),
-                        summaryOff = I18n.get(Strings.HOME_COLOROS_DESC_OFF, "部分命令改用 AOSP 标准接口"),
                         icon = PageIcons.ColorOsLink,
                         checked = colorOs,
                         // 吃整页总闸（含主开关自己）：主开关一关，这一行跟着灰
@@ -150,8 +147,6 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                 add(
                     CardRow.Switch(
                         title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
-                        summaryOn = I18n.get(Strings.HOME_VIBRATE_DESC_ON, "每次执行动作振动一次"),
-                        summaryOff = I18n.get(Strings.HOME_VIBRATE_DESC_OFF, "执行动作时不振动"),
                         icon = PageIcons.Vibrate,
                         checked = vibrate,
                         // `enabled = false` 时 COUI 不挂 `clickableModifier`、开关也跟着灰，
@@ -162,15 +157,16 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                     },
                 )
                 //  「无操作时振动」：与上面那颗分开 —— 上面管「执行了动作」，这颗管
-                //  「按下去有反应、但这一档什么都没绑」。不跟着 `vibrate` 显隐：两者互不依赖。
+                //  「按下去有反应、但这一档什么都没绑」。**它依赖上面那颗**：振动反馈关着时
+                //  整条振动链路都不走，再摆一颗「无操作时振动」等于让人调一个不起作用的东西
+                //  （与下面那根强度同一口径）。显隐复用 `visible` 那套进出场动画。
                 add(
                     CardRow.Switch(
                         title = I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE, "无操作时振动"),
-                        summaryOn = I18n.get(Strings.HOME_VIBRATE_ON_NONE_DESC_ON, "未配置动作时同样振动"),
-                        summaryOff = I18n.get(Strings.HOME_VIBRATE_ON_NONE_DESC_OFF, "未配置动作时不振动"),
                         icon = PageIcons.VibrateOnNone,
                         checked = vibrateOnNone,
                         enabled = pageEnabled,
+                        visible = vibrate,
                     ) {
                         setVibrateOnNone(it)
                     },
@@ -228,8 +224,6 @@ private fun SettingsPage.toastFluidRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"),
-        summaryOn = I18n.get(Strings.HOME_TOAST_FLUID_DESC_ON, "显示在状态栏的流体云里"),
-        summaryOff = I18n.get(Strings.HOME_TOAST_FLUID_DESC_OFF, "以 Toast 弹出"),
         icon = PageIcons.FormatFluid,
         checked = checked,
         enabled = enabled,
@@ -348,8 +342,6 @@ private fun SettingsPage.toastRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"),
-        summaryOn = I18n.get(Strings.HOME_TOAST_DESC_ON, "每次执行动作弹一条提示"),
-        summaryOff = I18n.get(Strings.HOME_TOAST_DESC_OFF, "执行动作时不弹提示"),
         icon = PageIcons.CommandToast,
         checked = checked,
         enabled = enabled,
@@ -378,7 +370,6 @@ private fun SettingsPage.VibrateStrengthRow(
         spec =
             SliderSpec(
                 title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE, "振动强度"),
-                summary = I18n.get(Strings.HOME_VIBRATE_STRENGTH_DESC, "命令触发时振动的力度"),
                 // 档位由行首那枚数字图标表达（1 / 2 / 3）
                 icon = PageIcons.vibrateLevel(level),
                 min = GlobalConfig.VIBRATE_WEAK,

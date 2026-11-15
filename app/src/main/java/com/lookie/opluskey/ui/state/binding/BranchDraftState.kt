@@ -173,24 +173,6 @@ internal class BranchDraft {
         if (index in slots.indices) slots.removeAt(index)
     }
 
-    /** 把第 [from] 块挪到 [to] —— 顺序就是判定顺序，所以这就是「上移 / 下移」。 */
-    fun move(
-        from: Int,
-        to: Int,
-    ) {
-        if (from !in scenes.indices || to !in scenes.indices || from == to) return
-        scenes.add(to, scenes.removeAt(from))
-        if (from in ids.indices) {
-            val id = ids.removeAt(from)
-            if (to <= ids.size) ids.add(to, id)
-        }
-        //  槽位跟着行走：挪块改的是顺序，不是「这一块在配置里换了位置」
-        if (from in slots.indices) {
-            val slot = slots.removeAt(from)
-            if (to <= slots.size) slots.add(to, slot)
-        }
-    }
-
     companion object {
         /** 键的标识 —— 只用来判「草稿还是不是这一颗的」。 */
         fun ownerOf(key: KeyId): String = key.id
