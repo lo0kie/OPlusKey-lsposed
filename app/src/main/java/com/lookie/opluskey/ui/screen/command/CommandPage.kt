@@ -25,6 +25,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.host.action.shell.ShizukuHost
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
@@ -37,6 +38,7 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.text.commandKindLabel
+import com.lookie.opluskey.ui.model.text.isTypingCommandPrefix
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SectionTitle
@@ -54,6 +56,9 @@ import com.lookie.opluskey.ui.style.visibleAreaHeight
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 // 「自定义命令」页的一页（单条 / 多条各一份）—— 从 `CommandScreen.kt` 拆出来。
 //
@@ -143,11 +148,11 @@ internal fun SettingsPage.CommandPage(
                 //  「图标」只在正文是 `fluid:` 时出现（那一档决定胶囊左边画什么）：
                 //  点开是网格选择器，选中即渲染成 png 落盘，命令里只记图标 id。
                 CommandFluidIconCard(form, enabled = !sorting)
-                //  「命令设置」对单条只有一件事：这条命令要不要以 root 执行。
-                //  它是**每条命令自己的**开关（存在命令上、随命令一起落盘），并且**只在正文是
-                //  `shell:` 时出现** —— 那一行的小标题与卡片一起进退，所以这里不再单独留一条
-                //  （见 `RootSwitchCard`）。
-                RootSwitchCard(form, enabled = !sorting)
+                //  「命令设置」对单条只说一件事：这条命令**以什么身份**跑 —— 以 root、还是经
+                //  Shizuku（见 `ExecSwitchCard`）。它是**每条命令自己的**开关（存在命令上、随命令
+                //  一起落盘），并且**只在正文是 `shell:` 时出现** —— 那一行的小标题与卡片一起进退，
+                //  所以这里不再单独留一条。
+                ExecSwitchCard(form, enabled = !sorting)
             }
 
             // `keyevent:` 注入同毫秒生效，而「最近任务 / 通知中心 / 控制中心」要跨四个进程、`shell:` 更
@@ -339,7 +344,7 @@ internal fun SettingsPage.StepListMenu(
                                 //  那种状态下要退出编辑，走右下角那颗改成了「完成」的 FAB。
                                 MenuEntry.Row(
                                     title = I18n.get(Strings.COMMAND_STEP_SORT),
-                                    icon = PageIcons.CommandEditCog,
+                                    icon = PageIcons.StepReorder,
                                     //  列表空着 / 编辑中 ⇒ 禁用；`disabledHint` 是**这一行自己**的限制，
                                     //  不填就会掉到整页那句「系统侧还是旧版」上
                                     enabled = !sorting && commandDraft.draft.steps.isNotEmpty(),
@@ -483,15 +488,41 @@ private fun SettingsPage.CommandSettingsSection(
 }
 
 /**
- * 「以 root 执行」那张卡 —— 单条命令**自己**的一项设置（多条命令的步骤没有各自的开关）。
+ * 读一次 Shizuku 授权最多等多久（毫秒）。
  *
- *  两档互不兜底：开 = 只走 `su`（拿不到 root 就是这次失败，**不**退回 `sh`），关 = 只走 `sh`。
- *  这台机器的宿主域没有 `/system/bin/sh` 的执行权，关掉之后多数命令会**起不来**
- *  （失败提示会报「要 root」），所以副标题把两种走法都写清楚，不替用户做判断。
+ *  它只是一次 binder 调用，正常是几毫秒；给个上限是为了「读不到」别把那一行卡成永远打不开
+ *  —— 界面上宁可按「没授权」显示（点一下还能再去申请），也不要停在一个不动的东西上。
+ */
+private const val GRANT_READ_TIMEOUT_MS = 2_000L
+
+/**
+ * 「命令设置」那张卡 —— 单条命令**自己**的两项设置：以 root 执行、以 Shizuku 执行。
+ * （多条命令的步骤没有各自的开关，它的「命令设置」是间隔时长，见 [CommandSettingsSection]。）
+ *
+ * ## 两行说的是同一件事：这次命令**以什么身份**跑 —— 所以**互斥**
+ *
+ *  · root 那一行两档互不兜底：开 = 只走 `su`（拿不到 root 就是这次失败，**不**退回 `sh`），
+ *    关 = 只走 `sh`。这台机器的宿主域没有 `/system/bin/sh` 的执行权，关掉之后多数命令会
+ *    **起不来**（失败提示会报「要 root」），所以副标题把两种走法都写清楚，不替用户做判断。
+ *  · Shizuku 那一行是**另一条通道**：借 Shizuku 的 adb 权限跑，不需要 root。
+ *  · 两条通道就是「这一次以谁的身份起进程」，同时成立没有意义，所以**打开一个就把另一个关掉**。
+ *    （执行侧仍先判 Shizuku —— 那只是为了兼容配置里已经两条都开了的旧命令，不是给人用的状态。）
+ *
+ * ## 开关的勾选状态**跟着授权结果走**，不是自己说开就开
+ *
+ *  两行都是「先有授权，才许打开」：没授权时点一下就是**去申请**，拿到才真的停在「开」上；
+ *  拒绝 / 拿不到就退回「关」并弹那句失败提示。判据分两种来源：
+ *  · Shizuku 是**能读**的（`Shizuku.checkSelfPermission`，不发弹窗）—— 进这一栏读一次，
+ *    所以别处撤了授权，这里的勾也跟着消失；
+ *  · root 读不了（探一次 `su` 本身就可能弹一次授权框），只在**按下去那一刻**探：
+ *    平时按存的那一档显示，点开时先探、拿到才置真。
+ *
+ *  申请途中**不锁住这一行**：授权框可能被直接关掉（Sui 那边关了框既不给回执、状态也不变），
+ *  锁着等一个不会来的结果，看上去就是「一直挂起」。框还在时再点一下最多是再问一次。
  *
  * ## 为什么只在 `shell:` 时出现
  *
- *  这个开关管的是**执行身份**，而只有「另起一个进程跑一段命令」那一档有身份可挑 ——
+ *  这两行管的是**执行身份**，而只有「另起一个进程跑一段命令」那一档有身份可挑 ——
  *  `toast:` / `notify:` / `fluid:` / `keyevent:` 这些走的是模块自己的通道，从头到尾不经过
  *  shell，开了也不会有任何差别（判据见 [Action.usesRoot]）。
  *
@@ -502,12 +533,27 @@ private fun SettingsPage.CommandSettingsSection(
  *  一半（`shell:` 后面还没写字）时这张卡不该忽隐忽现。
  */
 @Composable
-private fun SettingsPage.RootSwitchCard(
+private fun SettingsPage.ExecSwitchCard(
     form: CommandForm,
     enabled: Boolean,
 ) {
     val text = form.single.trim()
     val show = remember(text) { Action.parse(text).usesRoot }
+    //  Shizuku 的授权读得到（见函数头）：初值按「没授权」，读完再纠正 —— 读不到也不能把这一行
+    //  卡在「打不开」上（读的是一次 binder 调用，卡住时界面还得能用）。
+    var shizukuGranted by remember { mutableStateOf(false) }
+    //  正在探 root（那一次 `su` 可能要等管理器弹框）：只在这一行上禁用，避免连点叠两次探测。
+    var pendingRoot by remember { mutableStateOf(false) }
+    //  读授权要过 binder（Sui 那一档还要 `Sui.init`），别放在组合 / 主线程上。
+    LaunchedEffect(show) {
+        if (!show) return@LaunchedEffect
+        shizukuGranted =
+            withContext(Dispatchers.IO) {
+                withTimeoutOrNull(GRANT_READ_TIMEOUT_MS) {
+                    ShizukuHost.readGranted(context.packageName)
+                }
+            } ?: false
+    }
     //  小标题与卡片一起进退（`AnimatedColumn` 里面自带 `Column`，两行不会叠在一处）
     AnimatedColumn(visible = show) {
         SectionTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE))
@@ -521,12 +567,52 @@ private fun SettingsPage.RootSwitchCard(
                         icon = PageIcons.CommandRoot,
                         checked = form.root,
                         // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
-                        enabled = enabled,
-                        //  打开这一档就顺手申请一次授权（没有 root 时那句提示会顶上来）；
-                        //  关掉那一档只用 `sh`，没有东西可申请。
+                        enabled = enabled && !pendingRoot,
                         onCheckedChange = { on ->
-                            form.root = on
-                            if (on) requestRootGrant()
+                            if (!on) {
+                                form.root = false
+                            } else {
+                                //  先探一次 root：**拿到才置真**。没有 root 时不许停在「开」上
+                                //  （否则这条命令此后每次执行都判「要 root」，而用户以为已经开了）。
+                                form.root = false
+                                pendingRoot = true
+                                requestRootGrant { granted ->
+                                    pendingRoot = false
+                                    form.root = granted
+                                    //  两条通道互斥：这一条开了，Shizuku 那条就得关
+                                    if (granted) form.viaShizuku = false
+                                }
+                            }
+                        },
+                    ),
+                    CardRow.Switch(
+                        title = I18n.get(Strings.COMMAND_SHIZUKU_TITLE),
+                        summaryOn = I18n.get(Strings.COMMAND_SHIZUKU_DESC_ON),
+                        summaryOff = I18n.get(Strings.COMMAND_SHIZUKU_DESC_OFF),
+                        icon = PageIcons.CommandShizuku,
+                        //  存的是「这条命令要用 Shizuku」，可**显示**要连授权一起看：
+                        //  撤了授权的那条命令不该还亮着。
+                        checked = form.viaShizuku && shizukuGranted,
+                        //  **等授权框期间不禁用**：框可能被直接关掉（那就没有任何回执），
+                        //  把这一行锁住等一个不会来的结果是「一直挂起」的全部观感。
+                        enabled = enabled,
+                        onCheckedChange = { on ->
+                            if (!on) {
+                                form.viaShizuku = false
+                            } else if (shizukuGranted) {
+                                form.viaShizuku = true
+                                //  两条通道互斥：这一条开了，root 那条就得关
+                                form.root = false
+                            } else {
+                                //  没授权 ⇒ 这一步就是去申请（框由 Shizuku / Sui 弹），
+                                //  **结果决定勾选**：关掉框 / 拒绝就退回关。
+                                requestShizukuGrant { granted ->
+                                    shizukuGranted = granted
+                                    form.viaShizuku = granted
+                                    //  两条通道互斥：这一条开了，root 那条就得关
+                                    if (granted) form.root = false
+                                }
+                            }
                         },
                     ),
                 ),
@@ -574,14 +660,6 @@ private fun SettingsPage.SingleCommandField(
         //  —— 不清的话「切走再切回来」会按旧计数再滚一次。
         ui.singleScrollRequest = 0
     }
-    // 格式不对时在这一栏下面出红字 —— 保存按钮同时是灰的（见 `commandPayloadReady`），
-    //  用户得知道**为什么**存不进去。空白不算错（还没开始写）。
-    val formatError =
-        if (raw.isNotBlank() && !Action.hasSupportedFormat(raw)) {
-            I18n.get(Strings.COMMAND_FORMAT_REQUIRED)
-        } else {
-            ""
-        }
     Column {
         IconInputView(
             spec =
@@ -595,7 +673,9 @@ private fun SettingsPage.SingleCommandField(
                 //  值进来时已经折过换行（见下面的 `sanitize`），这里只管往上交。
                 form.single = value
             },
-            errorMessage = formatError,
+            //  红字走输入框那一格（库的 `errorMessage`）：格式提示已并进「支持的命令格式」卡，
+            //  输入框底下不再单独画提示，红字就回到库那套。
+            errorMessage = singleFormatError(raw),
             // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
             enabled = enabled,
             // **不再挂 `focusRequester`**：这一栏没有「从别处被叫来打字」的场景了（见函数头）。
@@ -605,15 +685,20 @@ private fun SettingsPage.SingleCommandField(
             //  `AppInputField` 默认那道折成空格，折成空格就成了一条语法错误的命令。
             sanitize = ::singleLine,
         )
-        //  输入框底下那句**格式提示**：现在写的是哪个前缀，就说那一种后面该跟什么
-        //  （`keyevent:<keycode>（数字）`）。认不出前缀时整句不画、也不占位 ——
-        //  于是它和上面那条红字天然互斥：红字出现时前缀本来就不合法。
-        //
-        //  画在**这一层**（不是页面那一层）：`raw` 已经在这儿读着了，页面那边再读一次
-        //  等于把整页拖进每一次击键的重组里（见 `CommandNameField` 同一个理由）。
-        CommandFormatTip(raw)
     }
 }
+
+/**
+ * 单条命令正文的「格式错误」红字判据 —— 空白不算错、只打了个前缀也不算错（见 [SingleCommandField]
+ * 头注）。抽出来是为了让「输入框」与「脚注」两处对同一串正文说同一句话：脚注被拿到页面层
+ * （`SingleCommandField` 之外）单独渲染，那里也得能算这份红字。
+ */
+private fun singleFormatError(raw: String): String =
+    if (raw.isNotBlank() && !isTypingCommandPrefix(raw) && !Action.hasSupportedFormat(raw)) {
+        I18n.get(Strings.COMMAND_FORMAT_REQUIRED)
+    } else {
+        ""
+    }
 
 /** 单条命令能输入多少字（超出的部分在输入框里直接吃掉）—— 取 1024，够放下一条带好几个参数的长命令。 */
 internal const val MAX_SINGLE_LENGTH = 1024

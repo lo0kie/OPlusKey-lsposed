@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -29,10 +30,8 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.icon.icon
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.text.COMMAND_FORMAT_LINES
-import com.lookie.opluskey.ui.model.text.formatTipOf
 import com.lookie.opluskey.ui.model.theme.CommandFormatLine
 import com.lookie.opluskey.ui.state.command.CommandUiState
-import com.lookie.opluskey.ui.style.AnimatedColumn
 import com.lookie.opluskey.ui.style.tinted
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -48,18 +47,24 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  没跟上，同一个界面里就出现两种「注脚」。
  *
  *  @param text 整句；调用方负责把它翻好（本函数只管排版）
+ *  @param color 文字颜色 —— 只有「必须以支持的格式开头」那一句改成错误色（**排版不动**）：
+ *    它和格式提示说的是同一个位置的同一件事，换一套字号 / 边距会让那一块看起来像另一条警告。
  */
 @Composable
-internal fun CommandFootnote(text: String) {
+internal fun CommandFootnote(
+    text: String,
+    color: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
+    top: Dp = FOOTNOTE_TOP,
+) {
     Text(
         text = text,
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(start = FOOTNOTE_EDGE, end = FOOTNOTE_EDGE, top = FOOTNOTE_TOP),
+                .padding(start = FOOTNOTE_EDGE, end = FOOTNOTE_EDGE, top = top),
         textAlign = TextAlign.Center,
         style = COUITheme.textStyles.footnote1,
-        color = COUITheme.colorScheme.onSurfaceVariantSummary,
+        color = color,
     )
 }
 
@@ -68,45 +73,6 @@ private val FOOTNOTE_EDGE = 32.dp
 
 /** 注脚与上面那一段之间空多少 —— 一档 6dp：「贴着但不同段」。 */
 private val FOOTNOTE_TOP = 6.dp
-
-/**
- * 「命令详情」输入框底下那句**格式提示** —— 正文以哪种前缀开头，就把那一种的骨架摆出来
- * （`keyevent:<keycode>（数字）`）。
- *
- *  与上面那张「支持的命令格式」卡说的是同一件事，但**位置与粒度不同**：那张卡是「能写什么」的
- *  总览，这一句只讲**现在写的这一段**——用户正在输入的是一个具体前缀，最想知道的就是它后面
- *  该跟什么。`keyevent:` 那一行尤其需要：卡片上地方小，只能写 `<按键>`，而这里填的其实是
- *  keycode 数字（见 `Action.parseKeyEvent`），写「电源键」这种名字解析器认不出。
- *
- *  认不出前缀时不画（空输入、老配置、以及 `app:` 那类内建动作的 token）—— 那种命令本来就不该
- *  手写，硬贴一条「格式」只会把人往错的方向教。不画也就不占位，下面的「可用变量」不会空一段。
- *
- *  **进出场走全项目那一套显隐动画**（[AnimatedColumn] → `VISIBILITY_ENTER` / `VISIBILITY_EXIT`：
- *  淡入 + 从顶边缘纵向展开，退场先快淡出再收缩）。换前缀时这条提示要么从无到有、要么长短一变，
- *  硬切会让下面整块内容原地跳一下 —— 展开 / 收缩把那段推移交给动画，观感与页面上其它动态显隐一致。
- */
-@Composable
-internal fun SettingsPage.CommandFormatTip(body: String) {
-    //  先取再画（不写成 `?.let { CommandFootnote(it) }`）：`let` 那一支的返回类型推不出来，
-    //  编译器会在调用点报「Cannot infer type for type parameter 'T'」。
-    val tip = formatTipOf(body)
-    //  退场那 200ms 里 `tip` 已经是 `null`，但那一块还要再画一次 —— 直接用 `tip` 的话这一帧是
-    //  一个空盒子在收缩：字先没了、底下的内容才慢慢合上。留一份 `last`，普通对象、**不是 state**
-    //  （写它不该触发重组，与 `CommandDetailOverlay` 里那个 `LastCommand` 同一条账）。
-    val last = remember { LastTip() }
-    if (tip != null) last.value = tip
-    //  **容器从第一帧就在组合里**：不能写成「没有提示就 return」再画 —— `AnimatedVisibility` 只在
-    //  「组合进来时 visible=false、之后翻成 true」那一次播进场动画；第一帧就是 true 的话它把初始
-    //  状态当成「已经显示」，直接硬切。那正是「这一页第一次出现格式提示时没有滑入」的原因。
-    //  看不见时内容槽位根本不组合（库那一层判「当前或目标可见」），所以传空串不会画出一个空盒子，
-    //  也就不占位（与「认不出前缀时不画」同一条读法）。
-    AnimatedColumn(visible = tip != null) { CommandFootnote(last.value.orEmpty()) }
-}
-
-/** 退场期间要画的那一份（见 [CommandFormatTip]）。 */
-private class LastTip {
-    var value: String? = null
-}
 
 /**
  * 「支持的命令格式」卡 —— 说的是「命令输入框里能写什么」。
@@ -147,9 +113,17 @@ internal fun SettingsPage.CommandFormatsCard(
             ),
         ) {
             lines.forEachIndexed { index, line ->
-                //  分隔线跟**文字**那一档对齐（不跟着行的外扩走）：行按下时那一块比线更宽，
-                //  正是「一整行是一块」的样子；线跟着外扩会顶到卡片边上，与卡片自己的边线打架。
-                if (index > 0) HorizontalDivider(Modifier.padding(horizontal = FORMAT_ROW_INSET))
+                //  分隔线**左端只到文字**：起点缩进到图标 + 图标间距之后（`FORMAT_ROW_ICON +
+                //  FORMAT_ICON_GAP`），与左列写法那一列对齐；右端仍按行的外扩那一档让回来，
+                //  线跟着外扩会顶到卡片边上，与卡片自己的边线打架。
+                if (index > 0) {
+                    HorizontalDivider(
+                        Modifier.padding(
+                            start = FORMAT_ROW_INSET + FORMAT_ROW_ICON + FORMAT_ICON_GAP,
+                            end = FORMAT_ROW_INSET,
+                        ),
+                    )
+                }
                 FormatRow(
                     line = line,
                     labelColumn = labelColumn,

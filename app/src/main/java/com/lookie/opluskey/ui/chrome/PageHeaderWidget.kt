@@ -535,8 +535,11 @@ internal fun Modifier.headerPressTick(tick: () -> Unit): Modifier =
  *  0.3：压在磨砂顶栏上只勾出「这儿有个圆」，不至于读成一枚端着的按钮（用户口径「边框再降
  *  亮度」）。要再淡 / 再亮都只动这一个数，别去换颜色角色 —— 换角色会把 Monet 那一档的
  *  `outlineVariant` 也一起换掉。
+ *
+ *  **浮层菜单面板那一圈描边也用这一档**（见 `PageMenuPopup`）：两处都是「压在磨砂上、只要
+ *  一个边界」的同一种描边，各写一个系数迟早一深一浅。
  */
-private const val HEADER_BORDER_ALPHA = 0.3f
+internal const val HEADER_BORDER_ALPHA = 0.3f
 
 /**
  * 顶栏两颗圆键之间的间距 —— 两个圆不贴在一起（首页那排、选择应用页那两颗、按键页编辑态那两颗

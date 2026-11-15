@@ -4,12 +4,13 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.layout.Box
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,8 +41,10 @@ import com.lookie.opluskey.ui.model.page.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.DISABLED_ALPHA
+import com.lookie.opluskey.ui.model.theme.EASING_EMPHASIZED_ACCEL
 import com.lookie.opluskey.ui.model.theme.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER_MS
+import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.model.theme.isDarkScheme
 import com.lookie.opluskey.ui.style.LocalAppTheme
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -220,6 +223,9 @@ internal fun SettingsPage.IconInputView(
                     imeHoldMs = if (show != null) IME_GUARD_WINDOW_MS else 0L,
                 ),
         )
+        //  红字这一格**始终在组合里**：`visible = false` 时高度收成 0，靠 `InputErrorText` 里的
+        //  `expandVertically` / `shrinkVertically` 做高度过渡 —— 不在场时不留空盒子、也不让底下
+        //  元素被「从无到有」硬顶一下（那正是「红字出现高度硬切、底下生硬让位」的来路）。
         InputErrorText(shownError, isError)
     }
     // 焦点 / 键盘守卫 —— 只有弹窗里的输入框（`show != null`）才启用（见 [ImeGuard]）
@@ -227,45 +233,46 @@ internal fun SettingsPage.IconInputView(
 }
 
 /**
- * 输入框下面那一行红字 —— 出现 / 消失是**纵向滑动**，不是只淡入淡出。
+ * 输入框下面那一行红字 —— 出现 / 消失是**纵向展开 / 收起**，不只是淡入淡出。
  *
- * ## 高度为什么不用 `expandVertically`
+ *  ## 高度为什么不用 `expandVertically` 之外的东西
  *
- *  那一支的尺寸变换首帧是从 `(0, 0)` 拉起来的：**宽度也跟着从 0 拉到文本宽**，看起来是
- *  「从左往右擦出来」，而且只有**第一次**是这样（之后尺寸被记住了，就只剩纵向）。
- *  `animateContentSize` 的起点是**当前尺寸**，外层填满宽度、宽度从头到尾不变，于是只有高度在动
- *  —— 与 `ExpandableRow` / `CommandFullscreen` 那两处同一条做法，时长与缓动也取同一档。
+ *  红字这一格要**一直在组合里**（`visible = false` 时高度收成 0），底下的元素才不会在它
+ *  出现 / 消失时被「硬顶一下」。`AnimatedVisibility` 的 `expandVertically` / `shrinkVertically`
+ *  把「高度从 0 展开」交给动画，底下的内容平滑让位；里面再叠 `fadeIn` / `fadeOut` 只淡透明，
+ *  两件事各管一维，才不会一边涨一边缩。
  *
- *  里面那层只管淡入淡出：高度已经由外面补成过渡，再叠一次尺寸动画就成了两段。
+ *  `MutableTransitionState` 让**首次就是 `true`** 时也播进场：普通 `AnimatedVisibility(visible = …)`
+ *  首帧就在场、不播；这里把初始状态钉成 `false`，再切到目标，第一次出现同样展开 + 淡入。
  *
- *  单独一支而不就地写：就地写在 `Column` 里时，`AnimatedVisibility` 会被解析成
- *  `ColumnScope` 那个扩展（隐式接收者比顶层函数优先），而它在这里拿不到那个接收者。
+ *  单独一支而不就地写：就地写在 `Column` 里时，`AnimatedVisibility` 会被解析成 `ColumnScope`
+ *  那个扩展（隐式接收者比顶层函数优先），而它在这里拿不到那个接收者。
  */
 @Composable
 private fun InputErrorText(
     text: String,
     visible: Boolean,
 ) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .animateContentSize(tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL)),
+    val state = remember { MutableTransitionState(false) }
+    state.targetState = visible
+    AnimatedVisibility(
+        visibleState = state,
+        enter = expandVertically(tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL)) + fadeIn(),
+        exit = shrinkVertically(tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL)) + fadeOut(),
     ) {
-        AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
-            Text(
-                text = text,
-                fontSize = InputViewDefaults.ErrorFontSize,
-                color = InputViewDefaults.inputViewColors().errorColor,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            top = InputViewDefaults.ErrorPaddingTop,
-                            start = InputViewDefaults.ContentPadding,
-                            end = InputViewDefaults.ContentPadding,
-                        ),
-            )
-        }
+        Text(
+            text = text,
+            fontSize = InputViewDefaults.ErrorFontSize,
+            color = InputViewDefaults.inputViewColors().errorColor,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        top = InputViewDefaults.ErrorPaddingTop,
+                        start = InputViewDefaults.ContentPadding,
+                        end = InputViewDefaults.ContentPadding,
+                    ),
+        )
     }
 }
 

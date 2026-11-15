@@ -367,6 +367,13 @@ dependencies {
     // Xposed API：运行时由 LSPosed 提供
     compileOnly("io.github.libxposed:api:102.0.0")
 
+    // Shizuku：无 root 时借 adb 权限跑 shell（`shell:` 动作的一条执行通道）。
+    //
+    //  `provider` 那一支不能省：权限申请（`Shizuku.requestPermission`）要靠它注册的
+    //  ContentProvider 走 binder，只在清单里声明了 `<provider>` 才连得上（见 AndroidManifest）。
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+
     // 界面：COUI（ColorOS 16 设计语言的 Compose 实现，自带色板与组件，不依赖宿主主题）
     //
     //  `strictly` 不能去：Gradle 版本序里纯 `1.1.0` 比 `1.1.0-title2r2` 更高（带限定符算更低），

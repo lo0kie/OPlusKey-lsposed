@@ -58,6 +58,14 @@ internal class CommandForm(
     var root by mutableStateOf(false)
 
     /**
+     * 这条命令要不要**经 Shizuku 执行**（「命令设置 → 以 Shizuku 执行」那一行）。
+     *
+     *  与 [root] 同一档：只对 `shell:` 有意义、每条命令自己的开关。打开后不申请 root，
+     *  命令转给模块进程用 Shizuku 跑（见 `Command.viaShizuku` 与 `ShizukuShellClient`）。
+     */
+    var viaShizuku by mutableStateOf(false)
+
+    /**
      * 「点击已保存的命令时可编辑」—— 加载后记着原名，UI 据此把卡片标题 / 提交按钮切成
      * 「修改命令 / 修改」；`addCommand` 据此判「名字改没改」（改了 = 真替换，没改 = 原地覆盖）。
      *
@@ -89,6 +97,7 @@ internal class CommandForm(
         steps.clear()
         stepDelayMs = Command.DEFAULT_STEP_DELAY_MS
         root = false
+        viaShizuku = false
         editingName = null
         loaded = null
     }
@@ -130,7 +139,10 @@ internal class CommandForm(
         steps.clear()
         steps.addAll(cmd.steps)
         stepDelayMs = cmd.stepDelayMs
-        root = cmd.root
+        //  两条执行通道互斥（见 `ExecSwitchCard`）：配置里两条都为真的那一档只可能是
+        //  这一版之前存下来的，读进来时归一成 Shizuku（执行侧本来也是先判它）。
+        viaShizuku = cmd.viaShizuku
+        root = cmd.root && !cmd.viaShizuku
         editingName = cmd.name
         // 快照按**折过之后**那份记：只改表单不动它，[CommandDraft.dirty] 就是「与它比有没有变」——
         //  记原文的话，打开一条带换行的老命令会立刻被判成「改过」，退出时白问一句。
@@ -281,6 +293,12 @@ internal class CommandDraft {
         get() = form.root
         set(value) {
             form.root = value
+        }
+
+    var viaShizuku: Boolean
+        get() = form.viaShizuku
+        set(value) {
+            form.viaShizuku = value
         }
 
     var editingName: String?

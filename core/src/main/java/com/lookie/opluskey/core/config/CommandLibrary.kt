@@ -105,7 +105,13 @@ object CommandLibrary {
         //  被静默读成单条，而用户下一次保存就把它固化进文件。
         return when (kind) {
             CommandKind.SINGLE -> {
-                Command(name = name, kind = CommandKind.SINGLE, single = dto.single, root = dto.root)
+                Command(
+                    name = name,
+                    kind = CommandKind.SINGLE,
+                    single = dto.single,
+                    root = dto.root,
+                    viaShizuku = dto.viaShizuku,
+                )
             }
 
             CommandKind.SERIAL -> {
@@ -115,6 +121,7 @@ object CommandLibrary {
                     steps = dto.steps.map { it?.trim().orEmpty() }.filter { it.isNotEmpty() },
                     stepDelayMs = dto.stepDelayMs.coerceIn(Command.MIN_STEP_DELAY_MS, Command.MAX_STEP_DELAY_MS),
                     root = dto.root,
+                    viaShizuku = dto.viaShizuku,
                 )
             }
         }
@@ -397,6 +404,8 @@ internal data class CommandDto(
      * 老文件里没有这一位，读出来就是「以 root 执行」那一档（只走 `su`，不降级到 `sh`）。
      */
     val root: Boolean = true,
+    /** 是否经 Shizuku 执行（同上：只有 `shell:` 用得上，缺键 ⇒ 不走）。 */
+    val viaShizuku: Boolean = false,
 ) {
     companion object {
         fun of(c: Command): CommandDto =
@@ -407,6 +416,7 @@ internal data class CommandDto(
                 steps = c.steps,
                 stepDelayMs = c.stepDelayMs,
                 root = c.root,
+                viaShizuku = c.viaShizuku,
             )
     }
 }

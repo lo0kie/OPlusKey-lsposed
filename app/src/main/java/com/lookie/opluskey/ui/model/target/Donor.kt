@@ -269,8 +269,8 @@ internal enum class FeedbackTarget(
     val icon: ImageVector
         get() =
             when (this) {
-                // 「群」没有品牌字形，用「一群人」那颗
-                QQ_GROUP -> PageIcons.FeedbackGroup
+                //  三档都是品牌字形：QQ 群去的就是 QQ（`brand-qq`），与「捐赠」那两支同一套
+                QQ_GROUP -> PageIcons.BrandQq
 
                 TELEGRAM -> PageIcons.BrandTelegram
 

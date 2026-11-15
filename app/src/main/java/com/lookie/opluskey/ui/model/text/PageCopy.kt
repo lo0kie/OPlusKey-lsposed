@@ -325,15 +325,18 @@ internal val COMMAND_DISCLAIMER_TEXT: String
 internal fun formatIconOf(text: String?): ImageVector? = formatLineOf(text)?.icon
 
 /**
- * 「命令详情」弹窗正文底下那句格式提示 —— 这一段是哪一种写法，就把那一种的骨架摆出来。
+ * 这一栏**还只是个前缀**吗（`keyevent:` / `shell:` 后面还没写）。
  *
- *  与 [formatIconOf] 走**同一个**匹配（[formatLineOf]）：两处各挑一遍的话，图标的归属和
- *  提示的归属迟早会分叉（同一段命令行首是「模拟按键」、底下却说 `shell:<命令>`）。
+ *  这是「往下写」的中间态，不是格式错误：格式提示正指着后面该跟什么，保存与测试另有一道
+ *  「有没有正文」的判据（`Action.hasBody` / `isBarePrefix`）拦着。
+ *  判据取「格式提示认不认得它」—— 提示认得的就是这一栏允许手写的那几种前缀；`bright:` 那类
+ *  内置动作的前缀认不出，照旧按「格式不支持」报错。
  *
- *  没有前缀、或者前缀不在支持清单里（老配置、内建动作的 `app:` 那一类）返回 `null` ——
- *  那几种本来就不该手写，硬贴一条「格式」只会把人往错的方向教。
+ *  **两处共用**：输入框底下那条红字（`SingleCommandField`）与保存按钮的禁用原因
+ *  (`singlePayloadBlockedReason`)。各写一遍的话，一处不报了、另一处还报，用户点保存又被同
+ *  一句「必须以支持的格式开头」拦住。
  */
-internal fun formatTipOf(text: String?): String? = formatLineOf(text)?.tip
+internal fun isTypingCommandPrefix(text: String?): Boolean = formatLineOf(text) != null && !Action.hasBody(text)
 
 /** 这段命令开头是哪一行格式（[COMMAND_FORMAT_LINES]）；认不出返回 `null`。 */
 private fun formatLineOf(text: String?): CommandFormatLine? {
@@ -353,23 +356,18 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
                 icon = PageIcons.FormatShell,
                 label = I18n.get(Strings.COMMAND_FORMAT_SHELL),
                 desc = I18n.get(Strings.COMMAND_FORMAT_SHELL_DESC),
-                tip = I18n.get(Strings.COMMAND_FORMAT_SHELL_TIP),
                 prefix = Action.SHELL_PREFIX,
             ),
             CommandFormatLine(
                 icon = PageIcons.FormatKeyEvent,
                 label = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT),
                 desc = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT_DESC),
-                //  唯一一种**载荷不是文字**的写法：这里填的是 keycode，写「电源键」这种名字
-                //  解析器认不出（见 `Action.parseKeyEvent`），所以提示里把「数字」点出来。
-                tip = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT_TIP),
                 prefix = Action.KEYEVENT_PREFIX,
             ),
             CommandFormatLine(
                 icon = PageIcons.FormatIntent,
                 label = I18n.get(Strings.COMMAND_FORMAT_INTENT),
                 desc = I18n.get(Strings.COMMAND_FORMAT_INTENT_DESC),
-                tip = I18n.get(Strings.COMMAND_FORMAT_INTENT_TIP),
                 prefix = Action.INTENT_PREFIX,
             ),
             //  发通知（`notify:`）放这里：它是**通知中心里那条**通知，与「执行时提示」那个 toast
@@ -378,7 +376,6 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
                 icon = PageIcons.FormatNotify,
                 label = I18n.get(Strings.COMMAND_FORMAT_NOTIFY),
                 desc = I18n.get(Strings.COMMAND_FORMAT_NOTIFY_DESC),
-                tip = I18n.get(Strings.COMMAND_FORMAT_NOTIFY_TIP),
                 prefix = Action.NOTIFY_PREFIX,
             ),
             //  流体云（`fluid:`）紧跟其后：同样是「让用户看见一句话」，但它是状态栏 / AOD 上
@@ -387,10 +384,6 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
                 icon = PageIcons.FormatFluid,
                 label = I18n.get(Strings.COMMAND_FORMAT_FLUID),
                 desc = I18n.get(Strings.COMMAND_FORMAT_FLUID_DESC),
-                //  这一族多一段：正文前面可以再带一个图标 id（见 `Action.Fluid` 的 token），
-                //  卡片一行放不下，弹窗里才说得清。
-                tip =
-                    I18n.get(Strings.COMMAND_FORMAT_FLUID_TIP),
                 prefix = Action.FLUID_PREFIX,
             ),
             //  提示（`toast:`）与上面两行是同一件事的第三个落点：「说完就没」的那一档 ——
@@ -399,14 +392,12 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
                 icon = PageIcons.FormatToast,
                 label = I18n.get(Strings.COMMAND_FORMAT_TOAST),
                 desc = I18n.get(Strings.COMMAND_FORMAT_TOAST_DESC),
-                tip = I18n.get(Strings.COMMAND_FORMAT_TOAST_TIP),
                 prefix = Action.TOAST_PREFIX,
             ),
             CommandFormatLine(
                 icon = PageIcons.FormatShortcut,
                 label = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT),
                 desc = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_DESC),
-                tip = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_TIP),
                 prefix = Action.SHORTCUT_PREFIX,
             ),
         )

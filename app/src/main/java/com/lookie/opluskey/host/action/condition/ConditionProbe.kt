@@ -85,6 +85,10 @@ internal object ConditionProbe {
                 //  会各走一路。（它的**输出值**是时间戳，见 [varValue]。）
                 ConditionKind.TIME -> TimeRange.clock(minuteOfDayNow())
 
+                //  前台应用也没有候选档：它的值就是**此刻前台那个包名**（见 `ForegroundApp`）——
+                //  判定用的是同一份，所以「判 `app:com.tencent.mm` 命中」与「`${sys.app}` 念出它」同源。
+                ConditionKind.APP -> ForegroundApp.packageName()
+
                 else -> kind.choices.firstOrNull { judge(kind, it, ctx) }
             }
         } catch (e: Throwable) {
@@ -112,8 +116,21 @@ internal object ConditionProbe {
         val ref = systemVarOf(name) ?: return null
         if (ref.kind == ConditionKind.TIME && !ref.asText) return System.currentTimeMillis().toString()
         val raw = current(ref.kind, ctx) ?: return null
+        //  前台应用的**文案值是应用名**（「微信」）：包名给人看不合适。其余各档的文案走
+        //  `conditionValueLabel` 那张词表 —— 那一支不认识包名，只会把包名原样吐回来。
+        if (ref.kind == ConditionKind.APP && ref.asText) return appLabelOf(raw, ctx) ?: raw
         return if (ref.asText) conditionValueLabel(ref.kind, raw) else raw
     }
+
+    /** 包名 → 桌面上那个名字（读不到就 `null`，由调用方退回包名本身）。 */
+    private fun appLabelOf(
+        pkg: String,
+        ctx: Context,
+    ): String? =
+        runCatching {
+            val pm = ctx.packageManager
+            pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString()
+        }.getOrNull()
 
     private fun judge(
         kind: ConditionKind,

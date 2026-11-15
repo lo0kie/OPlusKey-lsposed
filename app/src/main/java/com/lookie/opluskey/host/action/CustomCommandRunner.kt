@@ -27,7 +27,7 @@ internal class CustomCommandRunner(
      *  第三参 = **跑完之后**回调一次（不论成败、也不论「根本没跑」）—— 只在有步骤间隔的多条命令里
      *  给：那时下一步要**等这一步真的结束**才排（见 [runSteps]）。`null` = 不用回执。
      */
-    private val execShell: (String, Boolean, (() -> Unit)?) -> Unit,
+    private val execShell: (String, Boolean, Boolean, (() -> Unit)?) -> Unit,
     /** 派发一个非 shell 的内置动作。 */
     private val dispatch: (Action) -> Unit,
     /** 展开失败时的通知出口。 */
@@ -167,7 +167,7 @@ internal class CustomCommandRunner(
         if (parsed is Action.Shell) {
             //  单条自己的「以 root 执行」只在这一支生效：它是**整条命令**的开关，不跟着正文的
             //  `shell:` 前缀走（前缀只是格式，同一个前缀在「多条」的步骤里也一样用）。
-            execShell(parsed.command, cmd.root, null)
+            execShell(parsed.command, cmd.root, cmd.viaShizuku, null)
             return
         }
         //  正文里写 `cmd:<另一条>` 是**老版本 / 手改文件**才有的写法：命令正文不再支持引用另一条
@@ -221,14 +221,14 @@ internal class CustomCommandRunner(
         if (shell != null && KsuCompat.isSidebarAlias(shell)) {
             XLog.w("  第 ${index + 1} 步（KSU 别名）→ $shell")
             //  多条命令的步骤没有各自的开关 ⇒ 一律按默认（`su`，起不来不退回 `sh`）
-            execShell(shell, true, null)
+            execShell(shell, true, false, null)
             scheduleNext(steps, index + 1, gapMs, name)
             return
         }
 
         if (shell != null && gapMs > 0) {
             XLog.w("  第 ${index + 1} 步（shell，等它跑完再等 ${gapMs}ms）→ ${XLog.redactCommand(shell)}")
-            execShell(shell, true) { scheduleNext(steps, index + 1, gapMs, name) }
+            execShell(shell, true, false) { scheduleNext(steps, index + 1, gapMs, name) }
             return
         }
 
@@ -237,7 +237,7 @@ internal class CustomCommandRunner(
                 // 只有「没有步骤间隔」时才合并：`a; b` 是零延迟，合并等于把用户配的 stepDelayMs 抹掉。
                 val (joined, nextIndex) = collectShellRun(steps, index)
                 XLog.w("  第 ${index + 1}~$nextIndex 步（shell，合并成一条）→ ${XLog.redactCommand(joined)}")
-                execShell(joined, true, null)
+                execShell(joined, true, false, null)
                 nextIndex
             } else {
                 val action = Action.parse(steps[index])
@@ -511,6 +511,14 @@ internal enum class CommandFailure(
      *  两者按「先看命令的开关，再看机器有没有 root」的顺序判（见 `ShellRunner.classifyFailure`）。
      */
     SHELL_ROOT_OFF(Strings.COMMAND_FAILURE_SHELL_ROOT_OFF, "此命令需要 root 权限"),
+
+    /**
+     * 勾了「以 Shizuku 执行」，但这台机器上**没有可用的 Shizuku**（没装 / 服务没起 / 没授权）。
+     *
+     *  与 [SHELL_NO_ROOT] 分开：这一档该做的事是「装上 Shizuku 或在模块里重新授权」，
+     *  不是去 root 管理器。判定在模块进程那一侧（`ShizukuShellService` 里 ping + 查授权）。
+     */
+    SHELL_NO_SHIZUKU(Strings.COMMAND_FAILURE_SHELL_NO_SHIZUKU, "没有可用的 Shizuku（装上或重新授权后再试）"),
 
     /** 其它非 0 退出码 —— 命令跑起来了但自己报错。 */
     SHELL_FAILED(Strings.COMMAND_FAILURE_SHELL_FAILED, "命令没跑成功"),

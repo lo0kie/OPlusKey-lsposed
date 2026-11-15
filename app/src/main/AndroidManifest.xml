@@ -71,6 +71,33 @@
                 <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
             </intent-filter>
         </activity>
+
+        <!--
+          Shizuku 的 binder 通道：库靠这个 ContentProvider 接住 Shizuku 服务端送来的 binder
+          （`rikka.shizuku.ShizukuProvider`，authorities 必须是 `<包名>.shizuku`）。
+          没有它 `Shizuku.pingBinder()` 恒为 false —— 表现是「装了 Shizuku、也授权了，却一直报
+          没有可用的 Shizuku」。权限那条按库的官方写法：只允许系统那一级跨用户来取。
+
+          它只在**本模块自己的进程**里初始化（宿主进程不会跑别的包的 provider），所以不会影响注入侧。
+        -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!--
+          `shell:` 走 Shizuku 时的执行入口（`ShizukuShellService`）：宿主把命令转给本模块进程，
+          由被授权的那个 uid 真正跑 —— 授权按 uid 记，宿主那个 uid 拿不到。
+
+          `exported=true` 是为了让宿主 bind 得上；一条 `sh -c` 的入口不能对全机开放，所以服务
+          自己再按调用方 uid 拦一道（只认自己与 `com.oplus.gesture`，见它的类注释）。
+        -->
+        <service
+            android:name=".shizuku.ShizukuShellService"
+            android:exported="true" />
     </application>
 
 </manifest>

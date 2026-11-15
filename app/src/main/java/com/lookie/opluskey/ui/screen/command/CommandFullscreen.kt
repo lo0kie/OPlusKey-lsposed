@@ -27,7 +27,9 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.present.comboLabel
+import com.lookie.opluskey.host.action.CommandFailure
 import com.lookie.opluskey.host.action.shell.RootGrant
+import com.lookie.opluskey.host.action.shell.ShizukuHost
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.DialogButtonRow
 import com.lookie.opluskey.ui.dialog.FocusOnShow
@@ -225,8 +227,10 @@ private fun EditorField(
  *  时也一定拿得到；这里报没授权，按下去也是同一句失败提示。
  *
  *  开关**关掉**时不申请任何东西 —— 那一档只用 `sh`，没有要 root 的地方。
+ *
+ * @param onResult 拿到没有（**主线程**回调）—— 那一行拿它决定「这个开关许不许停在开上」。
  */
-internal fun SettingsPage.requestRootGrant() {
+internal fun SettingsPage.requestRootGrant(onResult: (Boolean) -> Unit = {}) {
     // 提示条是 Compose 状态（`HintQueue.push` 直接写 `mutableStateOf`），而结果回在 shell 线程上
     // ⇒ 回主线程再报。
     val main = Handler(Looper.getMainLooper())
@@ -239,11 +243,49 @@ internal fun SettingsPage.requestRootGrant() {
                     failure?.hint ?: I18n.get(Strings.COMMAND_ROOT_GRANTED),
                     slot = HINT_SLOT_COMMAND,
                 )
+                onResult(failure == null)
             }
         }
     } catch (e: Throwable) {
         // 页面动作绝不外抛（与 `testCommand` 同一条纪律）：抛出去会落到 Compose 的点击处理里
         XLog.w("申请 root 失败（已忽略）：${e.message}")
+        onResult(false)
+    }
+}
+
+/**
+ * 打开「以 Shizuku 执行」时**当场申请一次授权**（「命令设置」那一行）。
+ *
+ *  与 [requestRootGrant] 是同一件事的另一种说法：那条通道的授权框本该在第一次执行时弹，
+ *  而那时用户正在按侧键、看不到前因后果。既然他刚在这一行说了「这条走 Shizuku」，授权就该
+ *  发生在这一刻。
+ *
+ *  「在哪申请」由 [ShizukuHost] 决定（本进程 Sui / 模块进程真 Shizuku，见它的类注释）——
+ *  授权按 uid 记，申请的那个进程必须就是将来执行的那个进程。
+ *
+ *  结果**异步**回（用户可能要在授权框上想几秒），回调已切回主线程，所以这里能直接写提示条。
+ *  **把框关掉不算失败**：那时一个字都不报，开关自己停在「关」上；只有「这台机器没有可用的
+ *  Shizuku」才弹那句失败提示。
+ *
+ * @param onResult 拿到没有（**主线程**回调）—— 那一行拿它决定「这个开关许不许停在开上」。
+ */
+internal fun SettingsPage.requestShizukuGrant(onResult: (Boolean) -> Unit = {}) {
+    try {
+        ShizukuHost.requestGrant(context) { outcome ->
+            //  同一件事只有一处文案：失败那句直接用 `CommandFailure` 表里那句，与按侧键执行失败时
+            //  一字不差；拒绝 / 关掉框**不是故障**，一个字都不报（开关自己停在「关」上）。
+            val said =
+                when (outcome) {
+                    ShizukuHost.GrantOutcome.GRANTED -> I18n.get(Strings.COMMAND_SHIZUKU_GRANTED)
+                    ShizukuHost.GrantOutcome.UNAVAILABLE -> CommandFailure.SHELL_NO_SHIZUKU.hint
+                    ShizukuHost.GrantOutcome.DENIED -> null
+                }
+            if (said != null) hint(said, slot = HINT_SLOT_COMMAND)
+            onResult(outcome == ShizukuHost.GrantOutcome.GRANTED)
+        }
+    } catch (e: Throwable) {
+        XLog.w("申请 Shizuku 授权失败（已忽略）：${e.message}")
+        onResult(false)
     }
 }
 

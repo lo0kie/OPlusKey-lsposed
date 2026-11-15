@@ -23,13 +23,18 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.chrome.HEADER_BORDER_ALPHA
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.TickHapticScope
@@ -37,6 +42,7 @@ import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.MENU_ICON_SIZE
+import com.lookie.opluskey.ui.model.page.PANEL_BORDER_WIDTH
 import com.lookie.opluskey.ui.model.page.POPUP_PANEL_RADIUS
 import com.lookie.opluskey.ui.model.page.SCROLLBAR_WIDTH
 import com.lookie.opluskey.ui.model.page.STEP_PICKER_MAX_HEIGHT
@@ -64,6 +70,7 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
+import io.github.suqi8.coui.kmp.squircle.addSquircleRect
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /** 展开之后的一项 —— 渲染层只认这五种（调用方永远看不到它们）。 */
@@ -327,10 +334,69 @@ internal fun SettingsPage.MenuPopup(
             } ?: Modifier
         val anchor = options.columnAnchor
         val boxModifier = if (anchor == null) Modifier.gestureProbe(probe) else Modifier.preciseClickAnchor(anchor).gestureProbe(probe)
-        Box(boxModifier.then(frost)) {
-            column()
-            //  滚动条那一层自成一支（见 [MenuScrollBarLayer]）：它压在行上面，占了多宽就吃掉多宽的行点击
-            if (menuScroll.maxValue > 0) MenuScrollBarLayer(menuScroll, Modifier.matchParentSize())
+        //  面板描边取**顶栏圆键那一档色角色**（`dividerLine`，Monet 下就是 `outlineVariant`，
+        //  跟着壁纸走），但**不套顶栏那个 0.3 的衰减**：顶栏圆键底下是亮一档的实色圆底，淡线
+        //  还能辨出轮廓；菜单面板的底色与页面底色本来就接近，再乘一次就整条看不见了
+        //  （真机口径「边框不完整」——其实是整条都淡没了，圆角处最先消失）。
+        //
+        //  ## 描边的几何：让进**半个**线宽，半径同步减半个
+        //
+        //  线是沿「中心线」描的：中心线让进 `stroke/2`、半径减 `stroke/2`，描出来的**外沿**才
+        //  正好贴住面板边缘、圆角半径与面板相等 —— 两段弧平行，一圈粗细才一致。
+        //
+        //  早先让进**一整个**线宽（半径也减一整份）看着也一样细：直边上只差 0.75dp 看不出来，
+        //  但圆角处线的弧度比面板边缘更「紧」，两条弧不平行，角落就显细一截
+        //  （真机口径「加粗也没用，圆角还是比别处细」）。
+        //
+        //  ## 四角必须是**超椭圆**，不能用 `RoundedCornerShape`
+        //
+        //  COUI 的圆角全是 squircle（卡片 / 按钮 / 弹窗 / 顶栏都是），而按 `RoundedCornerShape`
+        //  画出来的是**正圆角**：两者四角曲率不同，正圆角那一段会伸到面板轮廓外面被裁掉 ⇒
+        //  描边在四个角上断一截（本项目在「选中那一行」那一圈上踩过同一条，见 `selectedRowRing`）。
+        //  所以这里同样用库的 `addSquircleRect` 拼路径 —— 形状定义只有库那一份，与面板是同一族曲线。
+        //
+        //  另外**贴边画**：只让进半个线宽（`stroke/2`），描出来的外沿正好压在面板轮廓上 ——
+        //  再往里让就能明显看出线缩了一圈（真机口径「内缩太多」）。半径同步减这半份，内外同心。
+        //
+        //  ## 描边为什么必须画在 `frost` 外面
+        //
+        //  [frosted] 里带 `clip(panelShape)`：同一个 modifier 链上，clip 会裁掉它右边（更内层）
+        //  的一切绘制。所以描边拆成**兄弟层**（`matchParentSize`，画在内层之上）—— 内层 Box 继续
+        //  管磨砂 + 收边，描边在外层 Box 里、不受那个 clip 约束。
+        //  颜色与**顶栏圆键**完全同一条：`dividerLine` × [HEADER_BORDER_ALPHA]（Monet 下就是
+        //  系统的 `outlineVariant` 那一档，跟着壁纸走，不必按主题分支）。
+        val dividerLine = COUITheme.colorScheme.dividerLine
+        val borderColor = dividerLine.copy(alpha = dividerLine.alpha * HEADER_BORDER_ALPHA)
+        val panelOutline: Modifier =
+            Modifier.drawWithContent {
+                drawContent()
+                val stroke = PANEL_BORDER_WIDTH.toPx()
+                val inset = stroke / 2f
+                val w = size.width - inset * 2
+                val h = size.height - inset * 2
+                if (w <= 0f || h <= 0f) return@drawWithContent
+                val path =
+                    Path().apply {
+                        addSquircleRect(
+                            width = w,
+                            height = h,
+                            cornerRadius = POPUP_PANEL_RADIUS.toPx() - inset,
+                        )
+                    }
+                translate(inset, inset) {
+                    drawPath(path, color = borderColor, style = Stroke(width = stroke))
+                }
+            }
+        Box(boxModifier) {
+            //  内层决定尺寸（外层 Box 由它撑开），磨砂 / 底色 / 收边都在这一层
+            Box(frost) {
+                column()
+                //  滚动条那一层自成一支（见 [MenuScrollBarLayer]）：它压在行上面，占了多宽就吃掉多宽的行点击
+                if (menuScroll.maxValue > 0) MenuScrollBarLayer(menuScroll, Modifier.matchParentSize())
+            }
+            //  描边这一层**只画不裁**：`drawWithContent` 里的 `drawContent()` 是空的，
+            //  它只负责在最上面补那一圈线
+            Box(Modifier.matchParentSize().then(panelOutline))
         }
     }
 }

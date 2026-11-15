@@ -859,25 +859,6 @@ object Strings {
     const val COMMAND_FORMAT_SHELL_DESC = "command.format_shell_desc"
     const val COMMAND_FORMAT_SHORTCUT = "command.format_shortcut"
     const val COMMAND_FORMAT_SHORTCUT_DESC = "command.format_shortcut_desc"
-
-    /**
-     * 「命令详情」弹窗正文底下那句**格式提示** —— 一条前缀一句。
-     *
-     *  与上面每行的 `..._LABEL` 不是一回事：卡片上地方小，占位处只能笼统写 `<按键>`；
-     *  弹窗里把那处**该填什么**写明确（`keyevent:<keycode>（数字）`），用来纠正
-     *  「写了个键名而不是数字」那一类错误。
-     *
-     *  只覆盖「支持的命令格式」卡上那七种 —— 别的写法（老配置、`app:` 那类内建动作的 token）
-     *  本来就不该手写，不贴提示。时钟那两条同理：它们在 `Action.PREFIXES` 里（选中之后要能
-     *  当单条命令的正文存下来），但入口是「快捷功能」那一格，卡片上不教手写。
-     */
-    const val COMMAND_FORMAT_SHELL_TIP = "command.format_shell_tip"
-    const val COMMAND_FORMAT_KEYEVENT_TIP = "command.format_keyevent_tip"
-    const val COMMAND_FORMAT_INTENT_TIP = "command.format_intent_tip"
-    const val COMMAND_FORMAT_NOTIFY_TIP = "command.format_notify_tip"
-    const val COMMAND_FORMAT_FLUID_TIP = "command.format_fluid_tip"
-    const val COMMAND_FORMAT_TOAST_TIP = "command.format_toast_tip"
-    const val COMMAND_FORMAT_SHORTCUT_TIP = "command.format_shortcut_tip"
     const val COMMAND_FORMATS_TITLE = "command.formats_title"
     const val COMMAND_LIST_TITLE = "command.list_title"
 
@@ -2059,4 +2040,16 @@ object Strings {
 
     /** 这条 release 没给下载地址（`html_url` 缺失且拼不出回退地址）时的回执。 */
     const val UPDATE_NO_URL = "update.no_url"
+
+    const val COMMAND_VARS_CURRENT = "command.vars_current"
+
+    const val COMMAND_SHIZUKU_TITLE = "command.shizuku_title"
+
+    const val COMMAND_SHIZUKU_DESC_ON = "command.shizuku_desc_on"
+
+    const val COMMAND_SHIZUKU_DESC_OFF = "command.shizuku_desc_off"
+
+    const val COMMAND_SHIZUKU_GRANTED = "command.shizuku_granted"
+
+    const val COMMAND_FAILURE_SHELL_NO_SHIZUKU = "command_failure.shell_no_shizuku"
 }

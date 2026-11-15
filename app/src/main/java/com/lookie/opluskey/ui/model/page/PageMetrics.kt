@@ -57,6 +57,14 @@ internal val FROSTED_BLUR_RADIUS = 24.dp
 internal val POPUP_PANEL_RADIUS = 12.dp
 
 /**
+ * 浮层菜单面板那圈描边的线宽 —— 1dp，与顶栏圆键那一圈同宽。
+ *
+ *  只给面板自己那层 `drawWithContent` 用。**别再靠加粗去补圆角**：加粗不改变「两条弧是否
+ *  平行」，圆的粗细只由几何决定（见 `PageMenuPopup` 里的描边注释）。
+ */
+internal val PANEL_BORDER_WIDTH = 1.dp
+
+/**
  * 细滚动条那条窄带的宽度 —— 浮层菜单与「更新说明」弹窗共用这一份。
  *
  *  不能按库的触摸目标（48dp）给：这一层压在可点内容上面，它有多宽就吃掉多宽。

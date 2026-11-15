@@ -34,6 +34,7 @@ import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.titleWithCount
 import com.lookie.opluskey.ui.state.command.CommandUiState
 import com.lookie.opluskey.ui.state.page.CommandForm
+import com.lookie.opluskey.ui.wire.appNameOf
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.Variable
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
@@ -118,7 +119,13 @@ internal fun SettingsPage.CommandVarsCard(
                     SYSTEM_VAR_KINDS.map { kind ->
                         MenuEntry.Row(
                             title = conditionKindLabel(kind),
-                            summary = stateText(kind, ConditionProbe.current(kind, context)),
+                            //  副标题是「此刻是什么」，前面点明「当前：」—— 这一列说的都是**现值**，
+                            //  不点出来会被读成「这个变量能取到哪些值」。
+                            summary =
+                                I18n.format(
+                                    Strings.COMMAND_VARS_CURRENT,
+                                    stateText(kind, ConditionProbe.current(kind, context), ::appNameOf),
+                                ),
                             icon = conditionIcon(kind),
                             onPick = {
                                 menu.dismiss()
@@ -144,7 +151,9 @@ internal fun SettingsPage.CommandVarsCard(
 
 /**
  * 点一行之后那个选择窗 —— 两种写法，各自写出**那一串展开之后的样子**
- * （`输出值（on）` / `文案值（开）`），于是点之前就能看见两种结果长什么样。
+ * （`文案值（开）` / `输出值（on）`），于是点之前就能看见两种结果长什么样。
+ *
+ *  **顺序是文案值在上、输出值在下**（用户口径：两者换个位置）。
  *
  *  两行都不在这里判断「哪种形态该念什么」：直接拿两个名字去问执行侧那一份
  *  （[ConditionProbe.varValue]）—— 于是「时间那一档的输出值是时间戳、文案值是 `14:30`」
@@ -171,35 +180,42 @@ private fun SettingsPage.VarPicker(
     val missing = I18n.get(Strings.COMMAND_VARS_UNKNOWN)
     PickerActionDialog(
         show = show,
-        //  标题就是要插进正文的那一串（`${sys.wifi}`）—— 与下面两行是同一族写法，一眼对得上
-        title = kind.systemVarRef.orEmpty(),
+        //  标题是**这一档状态本身**（「屏幕状态」「系统时间」），不是要插进去的那串
+        //  `${sys.wifi}`：用户点的是「哪一个状态」，写法在下面两行里挑，标题说变量只会让人
+        //  先读一遍记不住的串。
+        title = conditionKindLabel(kind),
         labels =
             listOf(
-                I18n.format(Strings.COMMAND_VARS_PICK_RAW, output ?: missing),
                 I18n.format(Strings.COMMAND_VARS_PICK_TEXT, label ?: missing),
+                I18n.format(Strings.COMMAND_VARS_PICK_RAW, output ?: missing),
             ),
         onDismiss = onDismiss,
-        onPick = { index -> onPick(index == 1) },
+        //  顺序是「文案值在上、输出值在下」（用户口径：两者换个位置）：第 0 行要文案值、第 1 行要输出值。
+        onPick = { index -> onPick(index == 0) },
     )
 }
 
 /**
- * 这一档此刻的值**在界面上**怎么念 —— 「静音」「开」「14:30」。
+ * 这一档此刻的值**在界面上**怎么念 —— 「静音」「开」「14:30」「微信」。
  *
  *  走场景条件**唯一**那条翻译（[conditionValueText]）—— 两边各写一份的话，以后加一档取值必有一处
  *  继续念旧词。判不出时说「读取不到」：这时 `${sys.xxx}` 会按原文留在命令里
  *  （见 `SYSTEM_VAR_PREFIX` 那段说明），菜单那一行正好把这件事说出来。
+ *
+ *  [appName] 是「包名 → 应用名」那一支：「前台应用」这一档的值是包名，菜单里要念成「微信」，
+ *  不能把 `com.tencent.mm` 直接摊在副标题上。别的档不经过它。
  *
  *  只给菜单的小字用；选择窗那两行不经过这里（它要显示的是**展开之后**的样子，见 [VarPicker]）。
  */
 private fun stateText(
     kind: ConditionKind,
     value: String?,
+    appName: (String) -> String,
 ): String =
     if (value.isNullOrBlank()) {
         I18n.get(Strings.COMMAND_VARS_UNKNOWN)
     } else {
-        conditionValueText(kind, BranchCondition.of(kind, value)) { it }
+        conditionValueText(kind, BranchCondition.of(kind, value), appName)
     }
 
 /**

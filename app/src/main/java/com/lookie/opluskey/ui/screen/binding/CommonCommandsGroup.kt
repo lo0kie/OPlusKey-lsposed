@@ -22,6 +22,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
+import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.icon.commonCommandIcon
 import com.lookie.opluskey.ui.model.page.GRID_GAP
 import com.lookie.opluskey.ui.model.page.GRID_ROW_GAP
@@ -199,7 +200,7 @@ private fun SettingsPage.onPickCommon(
  *  它**不受 `linkReady` 那一道闸限制**：链路没就绪时绑不了，但「去添加一条」与链路无关 ——
  *  这里只跟整页那道闸（主开关 / 只读 / 自己停用）走。
  *
- *  **不加小字**：这一行本身就叫「添加命令」，副标题写「在常用命令页添加」是把同一件事说两遍。
+ *  **不加小字**：这一行本身就叫「添加常用命令」，副标题写「在常用命令页添加」是把同一件事说两遍。
  *  早先那一句是为了挡住「点右下角加号」那个错误指引（本页那颗加号形 FAB 进的是「自定义命令」页，
  *  见 `BindingFab`），现在整句去掉 —— 行尾那颗箭头已经说明「后面还有一页」。
  *
@@ -216,6 +217,8 @@ private fun AddCommonCommandRow(
             listOf(
                 CardRow.Item(
                     title = I18n.get(Strings.COMMON_COMMANDS_ADD),
+                    //  行首加号：这一行是「往清单里加一条」（行尾那颗箭头说的是「后面还有一页」）
+                    icon = PageIcons.CommonCommandAdd,
                     //  行尾箭头：「这一行后面还有一页」（与 `CreateCommandRow` 同一条理由）
                     arrow = true,
                     enabled = enabled,

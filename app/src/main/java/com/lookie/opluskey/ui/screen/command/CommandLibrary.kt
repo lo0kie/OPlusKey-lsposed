@@ -21,6 +21,7 @@ import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
 import com.lookie.opluskey.ui.model.page.GRID_GAP
+import com.lookie.opluskey.ui.model.text.isTypingCommandPrefix
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.state.command.TestRunnerCache
 import com.lookie.opluskey.ui.write.saveCommands
@@ -43,7 +44,9 @@ internal fun SettingsPage.testCommand(cmd: Command) {
     //  是 `none`，执行侧什么都不做 —— 与「空命令」同一个道理，先派发再报错只会读成「试过了、没反应」。
     //  判据与保存那一栏共用 `hasSupportedFormat`（只针对单条：多条的每一步都是从列表里挑的，
     //  天然是支持的格式）。两条入口（命令列表的菜单、表单页的菜单）都走这一支，闸只加在这里。
-    if (cmd.kind == CommandKind.SINGLE && !Action.hasSupportedFormat(cmd.single)) {
+    //  **只打了个前缀**（`keyevent:`）不算「格式不支持」—— 那种命令由下面那道
+    //  「有没有正文」的闸拦，报的也应该是「空命令」；判据与输入框底下那条红字共用一处。
+    if (cmd.kind == CommandKind.SINGLE && !Action.hasSupportedFormat(cmd.single) && !isTypingCommandPrefix(cmd.single)) {
         //  正文可能内嵌令牌 / 密码（`shell:` 那一类）：走与执行侧同一套脱敏，不再截前 32 字符
         XLog.w("测试命令：正文格式不支持，不派发（${XLog.redactCommand(cmd.single)}）")
         hint(I18n.get(Strings.COMMAND_FORMAT_REQUIRED), slot = HINT_SLOT_COMMAND)

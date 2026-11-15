@@ -321,6 +321,19 @@ data class Command(
      *  多条命令的步骤不读这一位：步骤没有各自的开关（见 `CustomCommandRunner`）。
      */
     val root: Boolean = DEFAULT_ROOT,
+    /**
+     * 这条命令**要不要经 Shizuku 执行** —— 与 [root] 同一族（只有 `shell:` 用得上、每条命令自己的）。
+     *
+     *  打开时不走 `su` / `sh`，而是请**模块自己的进程**用 Shizuku（借 adb 权限）跑这条命令 ——
+     *  没 root 的机器也能执行。此时 [root] 不再参与（两条通道互斥，界面上也说清这一点）。
+     *
+     *  **为什么必须回到模块进程执行**：Shizuku 的授权按 **uid** 记（本机模块 10537、
+     *  宿主 `com.oplus.gesture` 10277）。宿主进程里 `checkSelfPermission` 永远是拒绝，
+     *  它也没有 Activity 可以发起授权 —— 所以侧键触发时只能把命令转给模块进程去跑。
+     *
+     *  默认 `false`：老配置与没勾这一档的命令一律走原来的 `su` / `sh`。
+     */
+    val viaShizuku: Boolean = false,
 ) {
     /**
      * 写进配置文件 `single` / `double` / `long` 那一档的取值。

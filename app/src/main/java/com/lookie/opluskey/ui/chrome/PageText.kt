@@ -237,6 +237,8 @@ internal fun SettingsPage.draftToLibrary(form: CommandForm = commandDraft.draft.
                     CommandKind.SINGLE,
                     single = body,
                     root = if (Action.parse(body).usesRoot) form.root else Command.DEFAULT_ROOT,
+                    //  同一条判据：`shell:` 之外那个开关根本不给用户看，也就不落盘
+                    viaShizuku = Action.parse(body).usesRoot && form.viaShizuku,
                 )
             }
 

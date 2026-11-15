@@ -277,6 +277,8 @@ object FluidCard {
  * ```
  * fluid:现在是${sys.ringer.text}          → 现在是静音
  * shell:echo ${sys.ringer} > /tmp/mode    → 写 silent
+ * shell:echo ${sys.app}                   → 写 com.tencent.mm
+ * fluid:前台是${sys.app.text}              → 前台是微信
  * ```
  *
  *   · **不带后缀** = 输出值，即**场景条件那一套词表**（`normal` / `vibrate` / `silent`、
@@ -284,14 +286,18 @@ object FluidCard {
  *     「场景里写 `ringer:vibrate` 会命中」是同一个串，两边共用同一份判据（`ConditionProbe`）。
  *   · **[SYSTEM_VAR_TEXT_SUFFIX]**（`${sys.ringer.text}`）= **文案**：界面上念的那几个字
  *     （`静音` / `开` / `亮屏`），跟着界面语言走。要弹给人看就用它。
+ *     「前台应用」那一档的文案是**应用名**（`微信`），输出值是包名。
  *
  *  界面上点一行时先问「要哪一种」，两行的样子就是此刻这个值分别在两种写法下的结果。
  *  不默认替你选：一段弹给人的字拿去比较会永远不相等，反过来一句英文键名弹出来也不像话。
  *
  * ## 哪些档能当变量
  *
- *  [ConditionKind.APP] / [ConditionKind.APP_NOT] 的取值是一组包名，没有「此刻是哪一组」这个说法，
- *  所以不进 [SYSTEM_VAR_KINDS]。
+ *  [ConditionKind.APP] 能：取值就是**此刻前台那个应用的包名**（输出值 `com.tencent.mm`、
+ *  文案值是应用名「微信」）—— 它回答的正是「此刻是什么」这个问法。
+ *
+ *  [ConditionKind.APP_NOT] 不能：那一档的取值是一组包名，问的是「前台在不在这一组里」，
+ *  没有「此刻是哪一组」这个说法，所以不进 [SYSTEM_VAR_KINDS]。
  *
  *  [ConditionKind.TIME] 是**另一种值**：它没有候选档。**文案值**是此刻的时刻（`HH:mm`，补零，
  *  `fluid:现在${sys.time.text}` → 「现在14:30」）；**输出值**是**时间戳**（毫秒，
@@ -324,13 +330,14 @@ const val SYSTEM_VAR_PREFIX = "sys."
  */
 const val SYSTEM_VAR_TEXT_SUFFIX = ".text"
 
-/** 这一档在变量里的名字（`sys.ringer`）；说不清「此刻是什么」的那两档（前台应用 / 以外）返回 `null`。 */
+/** 这一档在变量里的名字（`sys.ringer`）；说不清「此刻是什么」的那一档（「前台应用以外」）返回 `null`。 */
 val ConditionKind.systemVarName: String?
     get() =
         when (this) {
-            //  取值是一组包名：没有「此刻是哪一组」这个说法，所以不当变量
-            ConditionKind.APP, ConditionKind.APP_NOT -> null
+            //  取值是一组包名、问的是「在不在这一组里」：没有「此刻是哪一组」这个说法，所以不当变量
+            ConditionKind.APP_NOT -> null
 
+            //  `APP` 能当变量：取值就是此刻前台那个应用的包名（见 `SYSTEM_VAR_PREFIX` 那段）
             else -> SYSTEM_VAR_PREFIX + id
         }
 

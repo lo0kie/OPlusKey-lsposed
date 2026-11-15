@@ -4,6 +4,8 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.host.ProcessController
 import com.lookie.opluskey.host.action.CommandFailure
+import com.lookie.opluskey.shizuku.ShizukuExec
+import com.lookie.opluskey.shizuku.ShizukuShellService
 import java.util.concurrent.Future
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -49,6 +51,20 @@ internal object ShellRunner {
          *  读到的还是旧值（见 `BrightnessAction` 的刷新口令）。
          */
         onDone: (() -> Unit)? = null,
+        /**
+         * 走 Shizuku 时用的宿主 Context（`null` = 不是那一路）。
+         *
+         *  只有 Shizuku 通道需要它：那一路要先在**本进程**把 binder 弄到手（Sui 那档靠
+         *  `Sui.init(包名)`），拿不到才转交模块进程（见 [ShizukuHost]）—— 而 `ProcessBuilder`
+         *  那一支不需要任何 Context，所以可空、只在 [viaShizuku] 为真时读。
+         */
+        ctx: android.content.Context? = null,
+        /**
+         * 是否经 Shizuku 执行 —— 每条 `shell:` 命令自己的开关（`Command.viaShizuku`）。
+         *
+         *  打开时**不再**试 `su` / `sh`：直接交给 Shizuku 跑（先本进程、再模块进程，见 [ShizukuHost]）。
+         */
+        viaShizuku: Boolean = false,
     ) {
         if (command.isBlank()) {
             //  空命令不该走到这里（`shell:` 那一支解析时已经掉空值）；真走到就是配置里有条空的，
@@ -72,7 +88,7 @@ internal object ShellRunner {
                 //  `onDone` 包在**最外层**：`execBlocking` 内部有多个出口（占不到槽、起进程失败、
                 //  正常结束），只有包在这里才一种不漏。拒绝入队那一支不算「跑完」，不调它。
                 try {
-                    execBlocking(command, onFailure, onTip, preferRoot, onLine)
+                    execBlocking(command, onFailure, onTip, preferRoot, onLine, ctx, viaShizuku)
                 } finally {
                     onDone?.invoke()
                 }
@@ -97,6 +113,8 @@ internal object ShellRunner {
         onTip: (String) -> Unit,
         preferRoot: Boolean,
         onLine: ((String) -> Unit)?,
+        ctx: android.content.Context?,
+        viaShizuku: Boolean,
     ) {
         // 先占坑再起进程。`if (running.get() >= MAX) …` 那种**先查后加**在并发下会一起放行：两条
         //  会同时看到「没满」一起放行。占坑本身见 [acquireSlot]。
@@ -111,6 +129,16 @@ internal object ShellRunner {
         }
 
         try {
+            //  **Shizuku 那一路先分出去**：它不是本进程 fork/exec，而是交给 [ShizukuHost] 决定
+            //  「本进程（Sui）还是模块进程（真 Shizuku）」，拿回的是**退出码**而不是一个
+            //  `Process` —— 所以不能落到下面 `startProcess` / `awaitProcess` 那一套里。
+            //  槽位由 finally 照常归还（这里 return 不会跳过它）。
+            if (viaShizuku) {
+                val code = ShizukuHost.exec(ctx, command)
+                XLog.w("shell 已交给 Shizuku（exit=$code）：${XLog.redactCommand(command)}")
+                if (code != 0) onFailure(classifyShizukuFailure(code))
+                return
+            }
             val (proc, via) = startProcess(command, preferRoot)
             // 不给子进程留 stdin：我们从不用它，而有些命令会**等 stdin 到 EOF** 才肯退出
             // （`sh -c "cat"` 之类）—— 管道一直开着就是一条挂到超时的 shell，每次还漏一对管道。
@@ -351,6 +379,20 @@ internal object ShellRunner {
                     }
                 }
             }.onFailure { XLog.d("读 shell 输出失败：${it.message}") }
+        }
+
+    /**
+     * Shizuku 通道的退出码 → 失败档。
+     *
+     *  两条特殊码单独报：**没有可用 Shizuku**（没装 / 没起 / 没授权）与**连不上模块进程**
+     *  （模块被停用）—— 这两种该做的事都不是「改命令」。超时与普通非 0 走原有那两档，
+     *  退出码 126 / 127 仍按「命令本身不存在 / 没有执行位」精确报。
+     */
+    private fun classifyShizukuFailure(code: Int): CommandFailure =
+        when (code) {
+            ShizukuShellService.NO_SHIZUKU, ShizukuShellClient.CONNECT_FAIL -> CommandFailure.SHELL_NO_SHIZUKU
+            ShizukuExec.TIMEOUT_CODE, ShizukuShellClient.TIMEOUT -> CommandFailure.SHELL_TIMEOUT
+            else -> CommandFailure.ofShellExit(code)
         }
 
     /**

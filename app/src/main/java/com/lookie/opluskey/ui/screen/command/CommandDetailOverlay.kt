@@ -28,6 +28,7 @@ import com.lookie.opluskey.ui.dialog.FrostedDialog
 import com.lookie.opluskey.ui.dialog.dialogSideMargin
 import com.lookie.opluskey.ui.model.page.SUMMARY_REF_GAP
 import com.lookie.opluskey.ui.model.text.durationText
+import com.lookie.opluskey.ui.model.text.isTypingCommandPrefix
 import com.lookie.opluskey.ui.model.text.serialSummarySteps
 import com.lookie.opluskey.ui.model.text.stepIcon
 import com.lookie.opluskey.ui.state.command.CommandUiState
@@ -199,7 +200,10 @@ private fun SettingsPage.payloadBlockedReason(): String? =
 private fun SettingsPage.singlePayloadBlockedReason(): String? {
     val raw = commandDraft.draft.single
     if (raw.isBlank()) return I18n.get(Strings.COMMAND_CMD_HINT)
-    if (!Action.hasSupportedFormat(raw)) {
+    //  **只打了个前缀**（`keyevent:`）不算「格式不支持」：那是还没写完，说「必须以支持的格式开头」
+    //  等于自相矛盾 —— 它明明就是从支持的前缀开头的。判据与输入框底下那条红字共用一处
+    //  （`isTypingCommandPrefix`），否则一处不报了、点保存又被同一句拦住。
+    if (!Action.hasSupportedFormat(raw) && !isTypingCommandPrefix(raw)) {
         return I18n.get(Strings.COMMAND_FORMAT_REQUIRED)
     }
     // 写法合法之后，再看这段字**解析出来到底做不做事**：`shell:` / `cmd:` 这种只有前缀的

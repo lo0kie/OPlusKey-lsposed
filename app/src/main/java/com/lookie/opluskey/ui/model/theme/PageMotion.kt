@@ -165,10 +165,9 @@ internal val STEP_ROW_EXIT: ExitTransition =
  * @param icon 行首那颗图标 —— 六行六颗、互不相同（见 `PageIcons.Format*` 那一组）：
  *   这一列是「能写什么」的图例，光靠一列等宽的字扫下来分不出哪行是哪行
  * @param label 左列：能写的写法本身（`shell:<命令>` / `keyevent:<按键>` …）
- * @param desc 右列：这一句说明它干什么（`执行 shell 命令` …）
- * @param tip 「命令详情」弹窗里那句格式提示 —— 比 [label] 写得**更死**：卡片上地方小，
- *   只能摆一个笼统的 `<按键>`；弹窗里没这个限制，就把占位处该填什么写明白
- *   （`keyevent:<keycode>（数字）`）。拿它去纠正「写了个键名而不是数字」那一类错误。
+ * @param desc 右列：这一句说明它干什么、该填什么（`执行 shell 命令`、`模拟按键（keycode 数字）`…）。
+ *   括号里的补充（「数字」「广播 action 名」）原先是输入框底下那句格式提示的内容，现已并进这一列，
+ *   卡片一行就说清「后面该跟什么」，不再需要单独一句提示。
  * @param prefix 点这一行时往「命令」输入框里填的前缀（`shell:` / `keyevent:` …）；
  *   `null` = 这一行没有可填的前缀，整行不可点。
  */
@@ -176,7 +175,6 @@ internal data class CommandFormatLine(
     val icon: ImageVector,
     val label: String,
     val desc: String,
-    val tip: String,
     val prefix: String? = null,
 )
 

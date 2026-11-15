@@ -15,10 +15,10 @@ import org.junit.Test
 class SystemVarsTest {
     @Test
     fun everyKindThatSaysWhatItIsNowHasAVariableName() {
-        // 只有前台应用那一族说不清「此刻是什么」（取值是一组包名）；其余都该有名字 ——
-        // 有候选取值的那几档报「命中哪一档」，时间区间报此刻的时刻
+        // 只有「前台应用以外」说不清「此刻是什么」（取值是一组包名）；其余都该有名字 ——
+        // 「前台应用」报此刻那个应用的包名，有候选取值的那几档报「命中哪一档」，时间区间报此刻的时刻
         ConditionKind.entries.forEach { kind ->
-            if (kind.isAppFamily) {
+            if (kind == ConditionKind.APP_NOT) {
                 assertNull("${kind.id} 不该有变量名", kind.systemVarName)
             } else {
                 assertEquals("sys.${kind.id}", kind.systemVarName)
@@ -30,7 +30,7 @@ class SystemVarsTest {
     @Test
     fun kindListMatchesTheSceneConditionList() {
         assertEquals(ConditionKind.entries.filter { it.systemVarName != null }, SYSTEM_VAR_KINDS)
-        assertTrue("前台应用不该进这张表", ConditionKind.APP !in SYSTEM_VAR_KINDS)
+        assertTrue("前台应用该进这张表（值是此刻的包名）", ConditionKind.APP in SYSTEM_VAR_KINDS)
         assertTrue("前台应用以外不该进这张表", ConditionKind.APP_NOT !in SYSTEM_VAR_KINDS)
         assertTrue("时间区间该进这张表（值是此刻的时刻）", ConditionKind.TIME in SYSTEM_VAR_KINDS)
     }
@@ -41,7 +41,7 @@ class SystemVarsTest {
             assertEquals(kind, systemVarKind(kind.systemVarName.orEmpty()))
         }
         // 认不出的写法一律返回 null（调用方据此把原文留着）
-        listOf("ringer", "", "sys.", "sys.app", "sys.nosuch", "SYSTEM.ringer").forEach {
+        listOf("ringer", "", "sys.", "sys.app_not", "sys.nosuch", "SYSTEM.ringer").forEach {
             assertNull("「$it」不该认成一档状态", systemVarKind(it))
         }
     }
@@ -53,9 +53,12 @@ class SystemVarsTest {
         assertEquals(SystemVar(ConditionKind.RINGER, asText = true), systemVarOf("sys.ringer.text"))
         assertEquals("sys.ringer", ConditionKind.RINGER.systemVarName)
         assertEquals("\${sys.ringer.text}", ConditionKind.RINGER.systemVarTextRef)
+        // 「前台应用」两档都有：输出值是包名、`.text` 是桌面上那个应用名
+        assertEquals(SystemVar(ConditionKind.APP), systemVarOf("sys.app"))
+        assertEquals(SystemVar(ConditionKind.APP, asText = true), systemVarOf("sys.app.text"))
         // `.text` 不是档位名，也不许给「没有当前值」的档当后缀
         assertNull(systemVarOf("sys.text"))
-        assertNull(systemVarOf("sys.app.text"))
+        assertNull(systemVarOf("sys.app_not.text"))
         assertNull(systemVarOf("sys.nosuch.text"))
         // 「这是哪一档」不看形态（名单那边只关心档位）
         assertEquals(ConditionKind.RINGER, systemVarKind("sys.ringer.text"))

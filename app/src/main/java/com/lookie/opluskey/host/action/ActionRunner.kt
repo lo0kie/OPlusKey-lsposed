@@ -478,6 +478,13 @@ internal class ActionRunner(
         rawCommand: String,
         preferRoot: Boolean = true,
         /**
+         * 是否经 Shizuku 执行（`Command.viaShizuku`，只有单条命令有这一位）。
+         *
+         *  为真时**不看** [preferRoot]：命令转给模块进程用 Shizuku 跑（宿主 uid 没授权，
+         *  见 `ShizukuShellClient` 的注释）。
+         */
+        viaShizuku: Boolean = false,
+        /**
          * 「这一条跑完了」的回执 —— **只给多条命令的步骤间隔用**（`CustomCommandRunner` 要等这一步
          * 真的结束才排下一步，见 `CustomCommandRunner.runSteps`）。
          *
@@ -539,6 +546,9 @@ internal class ActionRunner(
             preferRoot = preferRoot,
             //  跑完（含起进程失败 / 被拒 / 超时）回执一次 —— 有间隔的多条命令靠它推进下一步
             onDone = settle,
+            //  Shizuku 那一路要 bind 模块进程的执行服务，需要宿主 Context
+            ctx = context,
+            viaShizuku = viaShizuku,
         )
     }
 

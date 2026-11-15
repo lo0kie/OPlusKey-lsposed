@@ -70,7 +70,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.FileX
 import io.github.lyxnx.compose.ui.tablericons.outline.Filter2X
 import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
 import io.github.lyxnx.compose.ui.tablericons.outline.Flag
-import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandClick
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFinger
@@ -104,7 +103,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Opacity
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
 import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
-import io.github.lyxnx.compose.ui.tablericons.outline.PencilCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Photo
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.Pin
@@ -134,6 +132,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Server
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
+import io.github.lyxnx.compose.ui.tablericons.outline.SortAscendingShapes
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber2
@@ -143,12 +142,12 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Sun
 import io.github.lyxnx.compose.ui.tablericons.outline.SunMoon
 import io.github.lyxnx.compose.ui.tablericons.outline.Table
 import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
+import io.github.lyxnx.compose.ui.tablericons.outline.TestPipe
 import io.github.lyxnx.compose.ui.tablericons.outline.TextSize
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Tooltip
 import io.github.lyxnx.compose.ui.tablericons.outline.Trash
 import io.github.lyxnx.compose.ui.tablericons.outline.UserScreen
-import io.github.lyxnx.compose.ui.tablericons.outline.UsersGroup
 import io.github.lyxnx.compose.ui.tablericons.outline.Versions
 import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
 import io.github.lyxnx.compose.ui.tablericons.outline.Window
@@ -327,6 +326,15 @@ internal object PageIcons {
     val MenuKeyAdd: ImageVector get() = TablerIcons.Outline.Plus
 
     /**
+     * 「添加常用命令」那一行的行首 —— `plus`（加号），与 [MenuKeyAdd] / [CommandAdd] 同字形。
+     *
+     *  这一行虽然点进去还有一页（行尾那颗箭头），字形仍取**加号**（用户口径）：它读起来是
+     *  「往这张清单里加一条」，与 [CommandCode] 那种「这一页是干什么的」不是一回事。
+     *  与另两个加号分开留名：三处的对象不同（按键 / 命令里的步骤 / 常用命令清单）。
+     */
+    val CommonCommandAdd: ImageVector get() = TablerIcons.Outline.Plus
+
+    /**
      * 首页「按键操作」卡那一行「按键列表」（指向按键列表页）—— `list-details`（一份带条目的清单）。
      *
      *  用户口径指定这一颗：那一行说的是「点进去看清单」（按键列表 + 组合按键），
@@ -411,10 +419,9 @@ internal object PageIcons {
     /**
      * 「反馈问题」菜单三行的字形 —— 菜单里三行都是「一个去处」，只有各自的字形能一眼分清。
      *
-     *  「群」没有品牌字形，用「一群人」（`users-group`）；另两支是品牌字形。三支各留一份名字。
+     *  **三支全是品牌字形**（QQ / Telegram / GitHub）：「QQ 群」那一档用的就是 `brand-qq`，
+     *  与「捐赠打赏」里那条 QQ 同一个字形 —— 同一个去处不该在两处画成两种记号。
      */
-    val FeedbackGroup: ImageVector get() = TablerIcons.Outline.UsersGroup
-
     val BrandTelegram: ImageVector get() = TablerIcons.Outline.BrandTelegram
 
     val BrandGithub: ImageVector get() = TablerIcons.Outline.BrandGithub
@@ -586,6 +593,14 @@ internal object PageIcons {
     val CommandRoot: ImageVector get() = TablerIcons.Outline.Hash
 
     /**
+     * 「以 Shizuku 执行」—— 行首那颗，**占位用的 `Dots`**。
+     *
+     *  这一档与 [CommandRoot] 是同一件事的另一种说法（换一条执行通道），本该挑一颗同族的字形；
+     *  先把位置占住，换成哪一颗等定下来再改这里一处即可（调用点只引这个名字）。
+     */
+    val CommandShizuku: ImageVector get() = TablerIcons.Outline.Dots
+
+    /**
      * 「系统场景」（条件执行）那条命令的类型图标 —— `adjustments-alt`（三根竖着的滑杆）。
      *
      *  与「多条命令」那族 `box-multiple-N` 区分开：那是一串盒子（按顺序走完），这是「按情境调」——
@@ -755,8 +770,8 @@ internal object PageIcons {
      */
     val FormatShortcut: ImageVector get() = TablerIcons.Outline.ExternalLink
 
-    /** 「自定义命令」卡片右上角 action 按钮 —— `Flask2`（锥形瓶），读作「把这条试跑一遍」。 */
-    val TestCommand: ImageVector get() = TablerIcons.Outline.Flask2
+    /** 「自定义命令」卡片右上角 action 按钮 —— `TestPipe`（导管），读作「把这条试跑一遍」。 */
+    val TestCommand: ImageVector get() = TablerIcons.Outline.TestPipe
 
     /** 步骤行尾的「上移」/「下移」—— 竖人字。 */
     val StepUp: ImageVector get() = TablerIcons.Outline.ChevronUp
@@ -767,12 +782,13 @@ internal object PageIcons {
     val CommandEdit: ImageVector get() = TablerIcons.Outline.Pencil
 
     /**
-     * 「调整步骤顺序」那颗 FAB 的铅笔 —— `PencilCog`（铅笔带齿轮）。
+     * 「编辑列表」那一行的字形 —— `SortAscendingShapes`（长短块 + 上下箭头）。
      *
      *  与 [CommandEdit] 分开：这一颗说的是「调这一条命令的**结构**」（挪步骤 / 删步骤），
-     *  菜单里那支铅笔说的是「改这条命令的内容」。同一个字形在同一个页面上读两种意思会混。
+     *  菜单里那支铅笔说的是「改这条命令的内容」。**别再用铅笔那一族**（早先是 `PencilCog`）：
+     *  铅笔 + 齿轮在一列菜单里读不出「排序」，还容易被看成一件事。
      */
-    val CommandEditCog: ImageVector get() = TablerIcons.Outline.PencilCog
+    val StepReorder: ImageVector get() = TablerIcons.Outline.SortAscendingShapes
 
     /** 「振动反馈」行的行首 —— `DeviceMobileVibration`（手机 + 两道声波）。 */
     val Vibrate: ImageVector get() = TablerIcons.Outline.DeviceMobileVibration

@@ -186,6 +186,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCog
+import io.github.lyxnx.compose.ui.tablericons.outline.SortAscendingShapes
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SparkleHighlight
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
@@ -198,6 +199,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.SunMoon
 import io.github.lyxnx.compose.ui.tablericons.outline.Switch3
 import io.github.lyxnx.compose.ui.tablericons.outline.Table
 import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
+import io.github.lyxnx.compose.ui.tablericons.outline.TestPipe
 import io.github.lyxnx.compose.ui.tablericons.outline.TextScanAi
 import io.github.lyxnx.compose.ui.tablericons.outline.TextSize
 import io.github.lyxnx.compose.ui.tablericons.outline.ThinkingLow
@@ -426,6 +428,7 @@ internal object FluidIcons {
             "settings2" to TablerIcons.Outline.Settings2,
             "settingscancel" to TablerIcons.Outline.SettingsCancel,
             "settingscog" to TablerIcons.Outline.SettingsCog,
+            "sortascendingshapes" to TablerIcons.Outline.SortAscendingShapes,
             "spacinghorizontal" to TablerIcons.Outline.SpacingHorizontal,
             "sparklehighlight" to TablerIcons.Outline.SparkleHighlight,
             "squarenumber1" to TablerIcons.Outline.SquareNumber1,
@@ -438,6 +441,7 @@ internal object FluidIcons {
             "switch3" to TablerIcons.Outline.Switch3,
             "table" to TablerIcons.Outline.Table,
             "terminal2" to TablerIcons.Outline.Terminal2,
+            "testpipe" to TablerIcons.Outline.TestPipe,
             "textscanai" to TablerIcons.Outline.TextScanAi,
             "textsize" to TablerIcons.Outline.TextSize,
             "thinkinglow" to TablerIcons.Outline.ThinkingLow,
