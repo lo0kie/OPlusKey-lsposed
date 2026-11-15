@@ -402,6 +402,13 @@ object Strings {
     /** 那一问答「不启用」之后的回执：这组组合保持停用（成员的键没开，开了也跑不起来）。 */
     const val KEYS_COMBO_NEEDS_KEYS = "keys.combo_needs_keys"
 
+    /**
+     * 按住组合启用时的同一条回执：**起点键没开「松手时触发」**，这一档保持停用。
+     *
+     *  与 [KEYS_COMBO_NEEDS_KEYS] 并列 —— 两条都是「先修好前置，再启用」，只是缺的东西不同。
+     */
+    const val KEYS_COMBO_NEEDS_FIRE = "keys.combo_needs_fire"
+
     /** 开关按钮的无障碍文案：这一下是**启用**。 */
     const val KEYS_ENABLE = "keys.enable"
 
@@ -556,9 +563,6 @@ object Strings {
     const val COMBO_MAX_KEYS_HOLD = "combo.max_keys_hold"
     const val COMBO_MIN_KEYS = "combo.min_keys"
 
-    /** 列表页那张设置卡的小标题。 */
-    const val COMBO_SETTINGS_SECTION = "combo.settings_section"
-
     /**
      * 「系统场景什么时候取」那一行 —— 标题 + 开关真假各一句。
      *
@@ -568,6 +572,16 @@ object Strings {
     const val COMBO_SCENE_ON_STARTER_TITLE = "combo.scene_on_starter_title"
     const val COMBO_SCENE_ON_STARTER_DESC_ON = "combo.scene_on_starter_desc_on"
     const val COMBO_SCENE_ON_STARTER_DESC_OFF = "combo.scene_on_starter_desc_off"
+
+    /**
+     * 「首键松手后仍执行长按」那一行 —— 标题 + 开关真假各一句。
+     *
+     *  只管**按住那两档**：等窗口那一档没有「先按住哪一颗」，也就没有「首键自己的长按」
+     *  （`ComboKey.starterKeepLong` 的说明）。
+     */
+    const val COMBO_STARTER_KEEP_LONG_TITLE = "combo.starter_keep_long_title"
+    const val COMBO_STARTER_KEEP_LONG_DESC_ON = "combo.starter_keep_long_desc_on"
+    const val COMBO_STARTER_KEEP_LONG_DESC_OFF = "combo.starter_keep_long_desc_off"
 
     /**
      * 「首键要先按住多久」那一行（滑杆标题 + 一句说明）—— **按住手势的下限**。

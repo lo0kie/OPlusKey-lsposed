@@ -10,16 +10,13 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GestureTrigger
-import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
-import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_OWN_SETTINGS
-import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.switchNotice
 import com.lookie.opluskey.ui.feedback.writeAndNotice
 import com.lookie.opluskey.ui.model.icon.PageIcons
@@ -30,15 +27,13 @@ import com.lookie.opluskey.ui.row.OwnField
 import com.lookie.opluskey.ui.row.OwnSettingsCard
 import com.lookie.opluskey.ui.row.OwnSettingsValues
 import com.lookie.opluskey.ui.row.SectionTitle
-import com.lookie.opluskey.ui.row.SliderRow
-import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.row.values
 import com.lookie.opluskey.ui.row.withField
 import com.lookie.opluskey.ui.row.withOwn
+import com.lookie.opluskey.ui.screen.combo.HoldComboCard
+import com.lookie.opluskey.ui.screen.combo.WaitComboCard
+import com.lookie.opluskey.ui.screen.combo.comboOwnParams
 import com.lookie.opluskey.ui.screen.combo.holdCombosStartedBy
-import com.lookie.opluskey.ui.screen.combo.setComboOwnHoldMin
-import com.lookie.opluskey.ui.screen.combo.setComboOwnWindow
-import com.lookie.opluskey.ui.screen.combo.updateCombo
 import com.lookie.opluskey.ui.screen.combo.waitCombosUsing
 import com.lookie.opluskey.ui.screen.settingsTargetLabel
 import com.lookie.opluskey.ui.state.page.SettingsTarget
@@ -125,26 +120,28 @@ internal fun SettingsPage.KeySettingsScreen(
         //  **排在总开关下面**（用户口径）：这两项也吃那颗「使用独立设置」——
         //  关着时跟随公共设置里那一份、这一页只把生效值摆出来并灰着。
         //  又多一道「有没有多击手势」：这一页管的是「这颗键的多击怎么判」，一档都没开时
-        //  没有可判的东西（判据见 `BindingSettingsCard`）。
+        //  没有可判的东西。卡片与公共设置页是同一份（`ClickDelayCard`），只是状态源换成这颗键。
         if (target is SettingsTarget.Key) {
             SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK, "单击"))
-            BindingSettingsCard(
-                keyId = target.id,
-                enabled = pageEnabled && !comboOnly,
-            )
+            ClickDelayCard(clickKeyParams(target.id, pageEnabled && !comboOnly))
         }
 
         //  —— 多击手势那两颗开关 ——
         //  **挪到页顶去了**（见 `KeySettingsScreen` 开头）：它们决定下面那张卡能管到几档 ——
         //  多击是「有没有这一档」，不是「这一档怎么工作」。留这一句只为说明它们为什么不在这张卡里。
 
-        //  —— 组合专属的两项 ——
+        //  —— 组合参数（两张卡，与公共设置页同一份）——
         //  它们**不在**上面那张卡里：那张卡装的是「那几项公共项的覆盖」，单键组合都有；
-        //  这两项只对组合成立（「两颗键各干各的」「两颗键等多久」单键没有对应物）。
+        //  这几项只对组合成立（「两颗键等多久」「按住下限」单键没有对应物）。
+        //  小标题由下面那个函数按触发方式给，与公共页逐字相同。
         //  条件只有一个：这一趟改的是一组组合 —— 这是数据差异，不是流程分叉。
         if (target is SettingsTarget.Combo) {
-            SectionTitle(I18n.get(Strings.COMBO_SETTINGS_SECTION, "组合按键设置"))
-            ComboOwnCard(target = target, cfg = cfg, enabled = pageEnabled, ownOn = owner.useOwnSettings)
+            ComboParamCards(
+                target = target,
+                cfg = cfg,
+                enabled = pageEnabled,
+                ownOn = owner.useOwnSettings,
+            )
         }
     }
 
@@ -393,28 +390,23 @@ private val COUNT3: Int = KeyConfig.DEFAULT_EXTRA_CLICKS.first()
 private val COUNT4: Int = KeyConfig.DEFAULT_EXTRA_CLICKS.last()
 
 /**
- * 「组合按键设置」那一族 —— 只在改的是**一组组合**时出现。
+ * 「组合参数」那两张卡 —— 只在改的是**一组组合**时出现。
  *
- *  这一档**怎么按出来**（等窗口 / 先按住第一颗 / 先按住第二颗）不在这张卡里：它是这一档的
- *  身份（`ComboKey.mode`），入口在「组合键」编辑页那颗 ⋮ 的「触发方式」一行。这里只剩
- *  那两种触发方式各自的参数，且**跟着当前那一种**显隐 —— 换方式之后不该看到另一条的参数。
+ *  **卡片本身与公共设置页是同一份**（`:combo` 包的 `WaitComboCard` / `HoldComboCard`），
+ *  连小标题也逐字相同；差别只有一个**状态源**：值读这一组的记录、写入落回这一组
+ *  （`comboOwnParams`）。所以这里不再逐行写文案 / 图标 / 区间，改一处两边一起变。
  *
- *  · **按键之间的等待**：这一组自己的一份数。它与公共页那一行是**同一个参数、两个落点** ——
- *    那个数同时管「算不算同时按下」与「第一颗键要等多久才回落单击」，三颗的组合与两颗的
- *    组合对它的要求本来就不一样，共用一个数只能互相将就。
- *    文案两处逐字相同（用户口径：不需要特判），滑杆打开就是这一组自己的值；没拖过就还等于
- *    公共那一档（`Config.comboWindowFor`：独立设置关着看公共，开着看这一组写过没有）。
- *    同样只在等窗口那一档出现。
- *  · **首键按住时长**：按住那两档的下限 —— 起点键要按满这么久、还没抬手，另一颗落下才算组合。
- *    只有按住那两档才有意义，等窗口那一档不出现。
- *  · **系统场景在首键按下时固定**：按住那两档的场景什么时候取（按下那一刻固定 / 凑成那一刻再取）。
- *    与上面那条同一组 —— 它们都是「先按住一颗再按另一颗」这条按法的参数，等窗口那一档不出现。
+ *  摆法也一样：按触发方式分两节两张卡。某一组只认一种触发方式（`ComboKey.mode` 是它的身份），
+ *  所以只摆出它自己那一种 —— 另一张全是它用不上的参数。
+ *
+ *  这一档**怎么按出来**（等窗口 / 先按住第一颗 / 先按住第二颗）不在这里：入口在「组合键」
+ *  编辑页那颗 ⋮ 的「触发方式」一行。
  *
  *  这一族都吃上面那颗总开关：关着时它们是**公共设置**那一份，改也改不动 —— 不用再给其中某一行
  *  单独加一个「要不要自己设」的开关，那个总开关就是唯一那道闸。
  */
 @Composable
-private fun SettingsPage.ComboOwnCard(
+private fun SettingsPage.ComboParamCards(
     target: SettingsTarget.Combo,
     cfg: Config,
     enabled: Boolean,
@@ -432,109 +424,15 @@ private fun SettingsPage.ComboOwnCard(
         } else {
             null
         }
-    //  两种触发方式是**互斥的**（`ComboKey.mode` 是这一档的身份），所以参数也按它分两组：
-    //  等窗口那一档看窗口那两个数，按住那两档只看首键按住时长。
-    val isWait = combo.isWait
-    CardList(
-        rows =
-            buildList {
-                //  **按键之间的等待**是窗口那条的参数（相邻两颗最多隔多久）——
-                //  换到按住那一档之后这个数不再有任何作用（成员键不再按它等）
-                add(
-                    CardRow.Custom(visible = isWait) { position ->
-                        SliderRow(
-                            position = position,
-                            spec =
-                                SliderSpec(
-                                    //  文案与公共页那一行**逐字相同**：同一个参数，两处只是改的对象不同
-                                    title = I18n.get(Strings.COMBO_WINDOW_TITLE, "按键之间的等待"),
-                                    summary = I18n.get(Strings.COMBO_WINDOW_DESC, "调大后，参与组合的按键等待更久"),
-                                    icon = PageIcons.ComboWait,
-                                    min = GlobalConfig.COMBO_WINDOW_MIN_MS,
-                                    max = GlobalConfig.COMBO_WINDOW_MAX_MS,
-                                    //  这一根滑杆显示的是**这一组自己存着**的那个数（没写过才退回公共）——
-                                    //  不是 `comboWindowFor` 那个「实际生效」值：取生效值的话，
-                                    //  拨一下上面那颗总开关它就从公共值跳到这一组自己的值，
-                                    //  看着像刚拖好的窗口被改了（与振动强度那一行同一条口径）。
-                                    value = cfg.comboStoredWindowFor(combo),
-                                    default = cfg.global.comboWindowMs,
-                                    step = 10,
-                                    enabled = rowsEnabled,
-                                    disabledHint = needOwnHint,
-                                    valueText = { "$it ms" },
-                                ),
-                        ) { v -> setComboOwnWindow(combo.id, v) }
-                    },
-                )
-                //  按住那两档的**下限**：首键要按满这么久、还没抬手，第二颗落下才算这一档组合。
-                //  只有那两档才有意义（等窗口那一档不读它，见 `Config.comboHoldMinFor`）。
-                add(
-                    CardRow.Custom(visible = !isWait) { position ->
-                        SliderRow(
-                            position = position,
-                            spec =
-                                SliderSpec(
-                                    //  文案与公共页那一行**逐字相同**：同一个参数，两处只是改的对象不同
-                                    title = I18n.get(Strings.COMBO_HOLD_MIN_TITLE, "首键按住时长"),
-                                    summary =
-                                        I18n.get(
-                                            Strings.COMBO_HOLD_MIN_DESC,
-                                            "先按住的那颗按满这么久、还没抬手，再按另一颗才算组合",
-                                        ),
-                                    icon = PageIcons.ComboHold,
-                                    min = GlobalConfig.COMBO_HOLD_MIN_MIN_MS,
-                                    max = GlobalConfig.COMBO_HOLD_MIN_MAX_MS,
-                                    //  显示这一组自己存着的数（没写过才退回公共）—— 口径与上面那根
-                                    //  「按键之间的等待」一致：不跟着总开关跳值。
-                                    value = cfg.comboStoredHoldMinFor(combo),
-                                    default = cfg.global.comboHoldMinMs,
-                                    step = 10,
-                                    enabled = rowsEnabled,
-                                    disabledHint = needOwnHint,
-                                    valueText = { "$it ms" },
-                                ),
-                        ) { v -> setComboOwnHoldMin(combo.id, v) }
-                    },
-                )
-                //  按住那两档的**系统场景什么时候取**：首键按下那一刻固定，还是凑成那一刻再取。
-                //  与「首键按住时长」同一组（同一条触发方式的参数），文案也与公共页那一行逐字相同。
-                add(
-                    CardRow.Switch(
-                        title = I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE, "系统场景在首键按下时固定"),
-                        summaryOn =
-                            I18n.get(
-                                Strings.COMBO_SCENE_ON_STARTER_DESC_ON,
-                                "首键按下那一刻就定下用哪块场景，按住期间换应用不改变动作",
-                            ),
-                        summaryOff =
-                            I18n.get(
-                                Strings.COMBO_SCENE_ON_STARTER_DESC_OFF,
-                                "组合凑成那一刻再取场景",
-                            ),
-                        icon = PageIcons.ScenePin,
-                        checked = cfg.comboSceneOnStarterFor(combo),
-                        enabled = rowsEnabled,
-                        visible = !isWait,
-                        disabledHint = needOwnHint,
-                    ) { on ->
-                        //  写下去就是「这一组自己的决定」，不再跟随公共设置（与上面那颗透传同一条）
-                        val ok =
-                            updateCombo(combo.id, "scene_on_starter=${if (on) 1 else 0}") {
-                                it.copy(sceneOnStarter = on)
-                            }
-                        if (ok) {
-                            hint(
-                                switchNotice(
-                                    I18n.get(Strings.COMBO_SCENE_ON_STARTER_TITLE, "系统场景在首键按下时固定"),
-                                    on,
-                                ),
-                                slot = HINT_SLOT_COMBO,
-                            )
-                        }
-                    },
-                )
-            },
-    )
+    val source = comboOwnParams(combo, rowsEnabled, needOwnHint)
+    //  两种触发方式是**互斥的**，所以只摆这一组自己那一张。
+    if (combo.isWait) {
+        SectionTitle(I18n.get(Strings.COMBO_SECTION_WAIT, "等待组合"))
+        WaitComboCard(source)
+    } else {
+        SectionTitle(I18n.get(Strings.COMBO_SECTION_HOLD, "按住组合"))
+        HoldComboCard(source)
+    }
 }
 
 /**

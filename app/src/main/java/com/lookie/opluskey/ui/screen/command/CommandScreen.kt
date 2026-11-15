@@ -44,6 +44,7 @@ import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.text.commandKindLabel
 import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.row.codePointLength
+import com.lookie.opluskey.ui.screen.configWritable
 import com.lookie.opluskey.ui.state.command.CommandListEditState
 import com.lookie.opluskey.ui.state.command.CommandUiState
 import com.lookie.opluskey.ui.state.page.CommandForm
@@ -201,7 +202,7 @@ internal fun SettingsPage.CommandScreen(
     //  没了 ⇒ 下次进这一页照样弹（用户要的「重置配置就要重新确认」就是这么来的）。
     //  `configReadOnly` 时不弹 —— 那时写盘会被拒，确认了也记不下（与首页那次同一口径）。
     LaunchedEffect(Unit) {
-        if (!configState.readOnly && !configState.config.value.commandDisclaimerAccepted) {
+        if (configWritable && !configState.config.value.commandDisclaimerAccepted) {
             XLog.w("自定义命令：还没确认过风险提示，弹窗（不确认就退出这一页）")
             ui.disclaimerPending = true
         }

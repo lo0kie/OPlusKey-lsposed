@@ -116,16 +116,12 @@ object ConfigStore {
         val f = sharedFile()
         // 注意：**不能**先判 `f.isFile`。只剩 `.bak` 时主文件不在，但配置还在 —— 那要交给
         //  [ModuleFiles.read] 走 `AtomicFile.openRead()` 还原，判成「首装」就会被默认值覆盖。
-        val modified = f.lastModified()
-        val length = f.length()
-        val inode = inodeOf(f)
-        cached?.let {
-            //  `inode != 0` 是**必要条件**：inode 取不到（主文件与 `.bak` 都不在、stat 失败）时三个
-            //  值一起是 0，而「只剩 `.bak` 被还原」那条路存下来的缓存条目**正好也是全 0** ——
-            //  只比三个数的话，之后配置被删掉会命中那条，把已经不存在的内容当成本次结果。
-            val sameFile = it.modified == modified && it.length == length && it.inode == inode
-            if (inode != 0L && sameFile) return it.result
-        }
+        //
+        //  指纹在**读盘之前**取：`read` 可能顺手把 `.bak` 还原成主文件，取在后面就不是
+        //  「这次读的是哪个版本」的指纹了。还原那一路取到的是全 0（当时主文件还不在），
+        //  与「文件不在」同值 —— [FileStamp.sameAs] 要求 inode 非 0，所以它永远不会被命中。
+        val stamp = fileStamp(f)
+        cached?.let { if (it.stamp.sameAs(stamp)) return it.result }
 
         val raw =
             when (val r = files().read(SLOT_CONFIG)) {
@@ -175,7 +171,7 @@ object ConfigStore {
             text?.let { ConfigCodec.parseOrNull(it) }?.let { Load.Ok(it) }
                 ?: recoverFromBackup()
                 ?: Load.Unreadable
-        cached = Cached(modified, length, inode, result)
+        cached = Cached(stamp, result)
         return result
     }
 
@@ -213,16 +209,15 @@ object ConfigStore {
     /**
      * 上一次读的结果与它对应的文件指纹。
      *
-     * 指纹是「修改时间 + 长度 + inode」三个字段，不合成一个数：合成会有碰撞的可能，分着比是精确的。
-     * 为什么还要带上 inode：写方是设置页 `:ui` 进程、读方是宿主主进程，**写方清缓存清不到读方**，
-     * 读方只能靠指纹自己发现「文件换了」——若新内容**长度恰好相同**、又落在同一个 mtime 粒度内，
-     * 只看（修改时间, 长度）就会把陈值当命中。写盘走的是 `AtomicFile`（同目录改名换文件），目标文件因此
-     * 每次都是**新 inode**，inode 必变，能天然区分出每一次写。
+     * 指纹本身是 [FileStamp]（修改时间 + 长度 + inode 三个字段，分着比是精确的，合成一个数会
+     * 有碰撞）。为什么必须带上 inode：写方是设置页 `:ui` 进程、读方是宿主主进程，
+     * **写方清缓存清不到读方**，读方只能靠指纹自己发现「文件换了」——若新内容**长度恰好相同**、
+     * 又落在同一个 mtime 粒度内，只看（修改时间, 长度）就会把陈值当命中。写盘走的是
+     * `AtomicFile`（同目录改名换文件），目标文件因此每次都是**新 inode**，inode 必变，
+     * 能天然区分出每一次写。
      */
     private class Cached(
-        val modified: Long,
-        val length: Long,
-        val inode: Long,
+        val stamp: FileStamp,
         val result: Load,
     )
 
@@ -286,38 +281,58 @@ object ConfigStore {
                 openReadable = true,
             )
         if (ok) {
-            val f = sharedFile()
-            val inode = inodeOf(f)
+            val stamp = fileStamp(sharedFile())
             //  指纹取不到（inode 0）时不记：那与「读不到」同值，下一次读照旧走盘，方向是安全的那一侧。
-            cached =
-                if (inode != 0L) {
-                    Cached(f.lastModified(), f.length(), inode, Load.Ok(config))
-                } else {
-                    null
-                }
+            cached = if (stamp.inode != 0L) Cached(stamp, Load.Ok(config)) else null
         }
         return ok
     }
 }
 
 /**
- * 取文件 inode（`android.system.Os.stat`，本地 syscall，很便宜）。
+ * 一份文件的读缓存指纹 —— 修改时间 / 长度 / inode，**一次 `stat` 取齐**。
  *
- *  文件已不在 / stat 失败时返回 0：那与「取不到」同值，最多让缓存多失效一次（多读一遍盘），
- *  不会把陈值当命中 —— 方向是安全的那一侧。
+ *  这三项原先在三处各写一遍（主配置 [ConfigStore]、命令库 `CommandLibrary`、变量表
+ *  `VariableStore`），每处都是 `File.lastModified()` + `File.length()` + 一次 `Os.stat`：
+ *  那是**三次**系统调用。而 `ConfigStore.read()` 在宿主进程的按键路径上每条按键要被问好几次
+ *  （执行、定键身份、报活各一次），三次变一次是这条路径上唯一还剩下的固定开销。
  *
- *  写成**顶层**函数而不是对象成员，而且是 `internal`：它是纯函数、不吃对象状态 ——
- *  而 [ConfigStore] 与 [CommandLibrary] **两处**都要按它算缓存指纹（同一场景：写方 `:ui` 进程、
- *  读方宿主主进程），各自写一份就会演进成两份不一样的实现。放 [ConfigStore] 当对象成员的话
- *  [CommandLibrary] 拿不到，而且 [ConfigStore] 的函数条数已经贴着 detekt `TooManyFunctions`
- *  那一档，再往里放一个就把闸口顶红。
+ *  `Os.stat` 的返回结构里本来就有这三项，所以收成这一处、一次取齐。三处共用一份实现也顺带
+ *  保证「什么算命中」只有一条判据 —— 原先三份各自演进过一次，其中一份没跟上 inode。
+ *
+ *  ## 精度
+ *
+ *  精度没有变：Android 上 `File.lastModified()` 本身就是把 `st_mtime`（秒）乘 1000 得来的，
+ *  原先那三项里本来就没有毫秒。判据也不靠时间粒度 —— 每次写盘都走 `AtomicFile`
+ *  （同目录改名换文件），文件因此每次都是**新 inode**，inode 变了就不算命中；
+ *  时间与长度只是同一道判据上的第二、三项。stat 失败时（文件不在 / 权限）三项全 0，
+ *  [sameAs] 要求 inode 非 0，于是永远不会被当成命中 —— 方向是「多读一遍盘」。
+ *
+ *  写成**顶层**类 + 函数而不是对象成员：纯函数、不吃对象状态，而 [ConfigStore] 的函数条数
+ *  已经贴着 detekt `TooManyFunctions` 那一档。
  */
-fun inodeOf(f: java.io.File): Long =
+internal class FileStamp(
+    val modified: Long,
+    val length: Long,
+    val inode: Long,
+) {
+    /**
+     * 与 [other] 是同一个文件的同一个版本吗。
+     *
+     *  `inode != 0L` 是**必要条件**：文件不在（主文件与 `.bak` 都没了）时三项一起是 0，而
+     *  「只剩 `.bak` 被还原」那条路存下来的指纹正好也是全 0 —— 只比三个数会把「已经不存在」
+     *  判成命中，把已经删掉的内容当成本次结果。
+     */
+    fun sameAs(other: FileStamp): Boolean = inode != 0L && inode == other.inode && modified == other.modified && length == other.length
+}
+
+/** 取一份文件的指纹（一次 stat）；失败给全 0 —— 见 [FileStamp.sameAs]。 */
+internal fun fileStamp(f: java.io.File): FileStamp =
     try {
-        android.system.Os
-            .stat(f.path)
-            .st_ino
+        val st = android.system.Os.stat(f.path)
+        FileStamp(st.st_mtime, st.st_size, st.st_ino)
     } catch (e: Throwable) {
-        XLog.d("取文件 inode 失败（缓存指纹退化为修改时间 + 长度）：${f.path} | ${e.message}")
-        0L
+        //  d：取不到是「文件还没写 / 已删」这类正常状态，按键路径上会反复走到
+        XLog.d { "取文件指纹失败（本次按未命中处理）：${f.path} | ${e.javaClass.simpleName}" }
+        FileStamp(0L, 0L, 0L)
     }

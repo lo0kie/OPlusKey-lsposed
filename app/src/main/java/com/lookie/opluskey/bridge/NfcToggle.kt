@@ -73,13 +73,11 @@ internal object NfcToggle {
      *
      *  只在**下发成功**时更新（见 [fire]）：被系统拒掉的那一下没生效，不能当成用户「已经要到了」
      *  记进来 —— 否则窗口内再按一下会按一个从未发生过的意图取反。
+     *
+     *  值与时刻收成一个对象（见 [TimedCache]）：只在 [INTENT_WINDOW_MS] 之内算数。
      */
     @Volatile
-    private var intent: Boolean? = null
-
-    /** [intent] 记下的时刻 —— 只在 [INTENT_WINDOW_MS] 之内算数。 */
-    @Volatile
-    private var intentAt = 0L
+    private var intentCache: TimedCache<Boolean>? = null
 
     /**
      * 切一下 NFC。
@@ -112,7 +110,8 @@ internal object NfcToggle {
 
     /** 目标状态：窗口内听用户上一次的表达，否则按 `getState` 取反。 */
     private fun desired(state: Int): Boolean {
-        val recent = intent?.takeIf { SystemClock.uptimeMillis() - intentAt < INTENT_WINDOW_MS }
+        val now = SystemClock.uptimeMillis()
+        val recent = intentCache?.takeIf { it.fresh(now, INTENT_WINDOW_MS) }?.value
         if (recent != null) return !recent
         return !(state == STATE_ON || state == STATE_TURNING_ON)
     }
@@ -137,10 +136,7 @@ internal object NfcToggle {
             }
         //  记在**下发之后**、且只记成功的：被拒的那一下没生效，窗口内再按应当按真实状态重算
         //  （还是同一个方向），而不是按一个没发生过的意图取反。
-        if (ok) {
-            intent = on
-            intentAt = SystemClock.uptimeMillis()
-        }
+        if (ok) intentCache = TimedCache(on, SystemClock.uptimeMillis())
         XLog.w("nfc：下发${label(on)} → $ok")
         return ok
     }

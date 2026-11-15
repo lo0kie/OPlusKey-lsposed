@@ -114,8 +114,16 @@ internal fun foldLineBreaks(raw: String): String {
     return raw
         .replace("\r\n", "\n")
         .replace('\r', '\n')
-        .replace(Regex("\n+"), " ")
+        .replace(NEWLINE_RUN, " ")
 }
+
+/**
+ * [foldLineBreaks] 里那段「一续串换行」—— **顶层常量**，不是内联 `Regex("…")`。
+ *
+ *  它服务的路径是**每次往输入框里贴东西 / 每次按键**（`sanitize` 是组合期的默认值），
+ *  内联写法等于每次都重新编译一遍这条正则。
+ */
+private val NEWLINE_RUN = Regex("\n+")
 
 /**
  * 按**码点**取前 [max] 个字符 —— 长度上限不能按 UTF-16 单元切。

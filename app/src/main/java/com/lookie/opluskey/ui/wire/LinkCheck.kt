@@ -110,7 +110,7 @@ internal val SettingsPage.configSideOk: Boolean
  *
  *  字段全是「已经从原始状态算好」的结论，没有副作用，也不持有 Compose 状态。
  */
-internal class LinkFacts(
+internal data class LinkFacts(
     /** 建页那次配置没读成功（整页只读）。 */
     val readOnly: Boolean,
     /** 模块总闸关着。 */
@@ -302,26 +302,43 @@ private const val BOOT_MATCH_EPSILON_MS = 5_000L
  *  所以「所有段都坏」时看到的就是真的那个样子（含整页只读、控件全灰）。
  */
 internal val SettingsPage.linkFacts: LinkFacts
-    get() {
-        //  `DEBUG_PROBE &&` 不是多余的：它是**编译期常量**，release 里这个分支连比较都不存在
-        //  （整套 `ALL_BROKEN_FACTS` 随之被裁掉）。少了它，这一段会在正式包里留着一个恒假判断。
-        if (DEBUG_PROBE && link.debugAllBroken) return ALL_BROKEN_FACTS
-        return LinkFacts(
-            readOnly = configState.readOnly,
-            masterOff = !configState.config.value.global.enabled,
-            hostUp = link.hostServiceUp,
-            inject = link.injectStatus,
-            configSideOk = configSideOk,
-            hostConfigReadable = link.hostConfigReadable,
-            hostEnabled = link.hostEnabled,
-            injectChecked = link.injectChecked,
-            installedAt = link.installedAt,
-            hostProcStart = link.hostProcStart,
-            injectEverAlive = link.injectEverAlive,
-            injectAliveBoot = link.injectAliveBoot,
-            bootNow = link.bootWall,
-        )
-    }
+    get() = linkFactsCache.value
+
+/**
+ * [linkFacts] 的计算本体 —— 只有 `SettingsPage.linkFactsCache` 那个 `derivedStateOf` 调它。
+ *
+ *  单独拆出来是因为 `linkFacts` 现在读的是缓存：把「算什么」与「什么时候算」分开之后，
+ *  `linkFacts` 那一行只剩一次 `.value`。
+ *
+ *  `configSideOk` 自己已经封了只读态与「在途」宽限（见那里的注释），所以这里不再重复判。
+ *
+ *  调试通道把 [HostLinkState.debugAllBroken] 打开时，这里整份换成 [ALL_BROKEN_FACTS]：
+ *  判据（`linkChecks` / `blockedReason` / `linkReady`）与渲染都不动，只是**换一份事实** ——
+ *  所以「所有段都坏」时看到的就是真的那个样子（含整页只读、控件全灰）。
+ */
+internal fun SettingsPage.computeLinkFacts(): LinkFacts {
+    //  `DEBUG_PROBE &&` 不是多余的：它是**编译期常量**，release 里这个分支连比较都不存在
+    //  （整套 `ALL_BROKEN_FACTS` 随之被裁掉）。少了它，这一段会在正式包里留着一个恒假判断。
+    if (DEBUG_PROBE && link.debugAllBroken) return ALL_BROKEN_FACTS
+    return LinkFacts(
+        readOnly = configState.readOnly,
+        masterOff = !configState.config.value.global.enabled,
+        hostUp = link.hostServiceUp,
+        inject = link.injectStatus,
+        configSideOk = configSideOk,
+        hostConfigReadable = link.hostConfigReadable,
+        hostEnabled = link.hostEnabled,
+        injectChecked = link.injectChecked,
+        installedAt = link.installedAt,
+        hostProcStart = link.hostProcStart,
+        //  「不知情」按**不指控作用域**算（`true`）—— 这一位只用来在提示里区分
+        //  「从没用过」与「用过、这会儿没起来」，判错方向会把用户赶去勾一个本来就勾着的作用域。
+        //  全项目只有这一处折叠，盘上/快照/运行时三层都保持 `Boolean?`。
+        injectEverAlive = link.injectEverAlive ?: true,
+        injectAliveBoot = link.injectAliveBoot,
+        bootNow = link.bootWall,
+    )
+}
 
 /**
  * 「所有段都坏」那份事实（**只给调试通道用**，见 [HostLinkState.debugAllBroken]）。

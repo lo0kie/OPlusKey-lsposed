@@ -1165,6 +1165,17 @@ data class GlobalConfig(
      *  取值一律走 `Config.comboSceneOnStarterFor`。
      */
     val comboSceneOnStarter: Boolean = DEFAULT_COMBO_SCENE_ON_STARTER,
+    /**
+     * 按住组合的**首键松手后，仍执行它自己的长按** —— 默认**关**（保持原设计）。
+     *
+     *  原设计是「一次按压只执行一个动作」：组合凑成时成员键的单键状态机被摘掉
+     *  （`ComboDetector.resetKey`），首键按多久都不会判出自己的长按。打开这一位之后，
+     *  **首键松手时**补派一次它自己的长按动作 —— 组合那一下照旧执行，等于一次按压两个动作。
+     *
+     *  每档可以另设一份（`ComboKey.starterKeepLong`，受那一档的「使用独立设置」管），
+     *  取值一律走 `Config.comboStarterKeepLongFor`。只在**按住**那两档上有意义。
+     */
+    val comboStarterKeepLong: Boolean = DEFAULT_COMBO_STARTER_KEEP_LONG,
 ) : OwnSettings {
     /**
      * 公共那份**永远是「用自己的」**：它自己就是那个「公共设置」。
@@ -1201,6 +1212,7 @@ data class GlobalConfig(
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
                 ConfigFields.F_COMBO_HOLD_MIN_MS to comboHoldMinMs,
                 ConfigFields.F_COMBO_SCENE_ON_STARTER to comboSceneOnStarter,
+                ConfigFields.F_COMBO_STARTER_KEEP_LONG to comboStarterKeepLong,
             ),
         )
 
@@ -1318,6 +1330,14 @@ data class GlobalConfig(
         const val DEFAULT_COMBO_SCENE_ON_STARTER = true
 
         /**
+         * [GlobalConfig.comboStarterKeepLong] 的出厂值 —— **关**：与这一位出现之前完全一致。
+         *
+         *  打开它等于「一次按压执行两个动作」（组合的 + 首键自己的长按），那是用户显式要的
+         *  行为，不该默认落到所有人头上。
+         */
+        const val DEFAULT_COMBO_STARTER_KEEP_LONG = false
+
+        /**
          * 「常用命令」最多几条 —— 20。
          *
          *  这一张表只放「一眼就想点的那几条」：它在绑定页占一整个网格，条目再多就变成
@@ -1368,6 +1388,7 @@ data class GlobalConfig(
                         .number(ConfigFields.F_COMBO_HOLD_MIN_MS)
                         .coerceIn(COMBO_HOLD_MIN_MIN_MS, COMBO_HOLD_MIN_MAX_MS),
                 comboSceneOnStarter = v.bool(ConfigFields.F_COMBO_SCENE_ON_STARTER),
+                comboStarterKeepLong = v.bool(ConfigFields.F_COMBO_STARTER_KEEP_LONG),
             )
     }
 }
@@ -1581,6 +1602,14 @@ data class Config(
      *  判定侧也不会为首键发那条通知）。
      */
     fun comboSceneOnStarterFor(combo: ComboKey): Boolean = comboField(combo, combo.sceneOnStarter, global.comboSceneOnStarter)
+
+    /**
+     * 这一组开了「**首键松手后仍执行它自己的长按**」吗 —— 规则与 [comboSceneOnStarterFor] 同一条：
+     * 独立设置关着就跟随公共，开着就是这一档自己那份；`null` = 这一档还没写过 ⇒ 仍跟随公共。
+     *
+     *  判定侧（`ComboDetector` 的 `starterKeepLong`）与界面都只走这一处。
+     */
+    fun comboStarterKeepLongFor(combo: ComboKey): Boolean = comboField(combo, combo.starterKeepLong, global.comboStarterKeepLong)
 
     /**
      * 这一组**自己存着**的「首键要先按住多久」（毫秒）—— 与 [comboStoredWindowFor] 同一条：

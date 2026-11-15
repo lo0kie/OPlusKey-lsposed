@@ -74,13 +74,12 @@ internal object AppCloneCatalog {
      *
      *  `@Volatile`：写它的是后台协程（[entries]），读它的是界面线程（[slotOf]）——
      *  没有它，界面可能一直看着「还没列出来」那份，逐行去重列用户表。
+     *
+     *  值与时刻收成一个对象（见 [TimedCache]）：两个独立的 `@Volatile` 字段要读两次，
+     *  中间被换掉就会读到「新表配旧时刻」。缓存**会过期**，理由见 [CACHE_TTL_MS]。
      */
     @Volatile
-    private var cachedUsers: List<Int>? = null
-
-    /** [cachedUsers] 是什么时候列的 —— 缓存**会过期**，理由见 [CACHE_TTL_MS]。 */
-    @Volatile
-    private var cachedAt: Long = 0L
+    private var usersCache: TimedCache<List<Int>>? = null
 
     /**
      * 用户表缓存的存活时长。
@@ -149,13 +148,11 @@ internal object AppCloneCatalog {
         //  （见 [CACHE_TTL_MS]：装 / 删分身都会让这张表变）。
         //  空表**不**缓存：那多半是这台机器没有分身 / 权限没给到（[users] 的合法结论），
         //  缓存住会让「后来才装的分身」永远看不到。
-        val cached = cachedUsers
-        if (cached != null && android.os.SystemClock.elapsedRealtime() - cachedAt < CACHE_TTL_MS) return cached
+        val now = android.os.SystemClock.elapsedRealtime()
+        val cached = usersCache
+        if (cached != null && cached.fresh(now, CACHE_TTL_MS)) return cached.value
         val sorted = users(context).sortedDescending()
-        if (sorted.isNotEmpty()) {
-            cachedUsers = sorted
-            cachedAt = android.os.SystemClock.elapsedRealtime()
-        }
+        if (sorted.isNotEmpty()) usersCache = TimedCache(sorted, now)
         return sorted
     }
 
@@ -181,10 +178,7 @@ internal object AppCloneCatalog {
         //  重列一次；已经记过「查无此人」的就不再重列（拼名字那条路是逐行调的）。
         val already = userId in unresolvedUsers
         val fresh = if (already) known else users(context).sortedDescending().ifEmpty { known }
-        if (fresh !== known) {
-            cachedUsers = fresh
-            cachedAt = android.os.SystemClock.elapsedRealtime()
-        }
+        if (fresh !== known) usersCache = TimedCache(fresh, android.os.SystemClock.elapsedRealtime())
         val idx = fresh.indexOf(userId)
         if (idx >= 0) {
             unresolvedUsers -= userId
@@ -224,7 +218,7 @@ internal object AppCloneCatalog {
                     //  每次刷新都白查一遍（槽号也还按它算）。作废 = 清掉这一份，下一问重新列；
                     //  「已确认查无此人」的备忘录也一起清（新装的分身可能正是那个 id）。
                     XLog.w("分身槽（user=$uid）的可启动列表拿不到，这一槽不列")
-                    cachedUsers = null
+                    usersCache = null
                     unresolvedUsers.clear()
                     return@flatMapIndexed emptyList()
                 }

@@ -327,7 +327,7 @@ private fun SettingsPage.toastRows(
                 if (show.colorOsApi) {
                     ownHint
                 } else {
-                    I18n.get(Strings.HOME_TOAST_FLUID_NEEDS_COLOROS, "需要开启「使用 ColorOS 接口」")
+                    I18n.get(Strings.HOME_TOAST_FLUID_NEEDS_COLOROS, "需要开启 [使用 ColorOS 接口]")
                 },
             visible = show.toastOnRun,
         ) {
@@ -401,13 +401,20 @@ private fun SettingsPage.OwnTemplateDialog(
 /** 与公共页那一档同一个上限（一整句话，三个占位符摆上就二十来个字符了）。 */
 private const val OWN_TEMPLATE_MAX = 60
 
-/** 把这份值落到一颗键上 —— 六个字段同名同义，两处 `copy` 只是表不同。 */
+/**
+ * 把这份值落到一颗键上 —— 字段同名同义，两处 `copy` 只是表不同。
+ *
+ *  **这里必须把 [OwnSettings] 的每一位都抄到**：漏一位的表现不是报错，而是「那一行拨了
+ * 不动」—— 值算对了、也交回来了，写盘时被丢掉，重组后又读回旧值（`vibrateOnNone`
+ * 就这么漏过一次）。
+ */
 internal fun KeyConfig.withOwn(values: OwnSettingsValues): KeyConfig =
     copy(
         useOwnSettings = values.useOwnSettings,
         colorOsApi = values.colorOsApi,
         vibrate = values.vibrate,
         vibrateStrength = values.vibrateStrength,
+        vibrateOnNone = values.vibrateOnNone,
         toastOnRun = values.toastOnRun,
         toastFluid = values.toastFluid,
         toastTemplate = values.toastTemplate,
@@ -421,6 +428,7 @@ internal fun ComboKey.withOwn(values: OwnSettingsValues): ComboKey =
         colorOsApi = values.colorOsApi,
         vibrate = values.vibrate,
         vibrateStrength = values.vibrateStrength,
+        vibrateOnNone = values.vibrateOnNone,
         toastOnRun = values.toastOnRun,
         toastFluid = values.toastFluid,
         toastTemplate = values.toastTemplate,

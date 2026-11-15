@@ -233,6 +233,12 @@ object ConfigFields {
     const val COMBO_HOLD_MIN_MS_EXTRA = "combo_hold_min_ms"
 
     /**
+     * 按住组合的首键**松手后仍执行它自己的长按** —— 判定在注入侧（`ComboDetector.onUp`
+     * 那一支要读它决定补不补派），所以**必须走广播**：注入侧读不到配置文件，只吃广播。
+     */
+    const val COMBO_STARTER_KEEP_LONG_EXTRA = "combo_starter_keep_long"
+
+    /**
      * **模块总闸**（首页「启用按键绑定」那一行）—— 与 [ENABLED_EXTRA] 是两件事，别混：
      *
      *  · 本项：整个模块接管不接管（关掉 ⇒ 一颗键都不接管，页面整片灰）；
@@ -681,6 +687,20 @@ object ConfigFields {
     val F_COMBO_SCENE_ON_STARTER = Field(null, Kind.Bool(GlobalConfig.DEFAULT_COMBO_SCENE_ON_STARTER))
 
     /**
+     * 按住组合的首键**松手后仍执行它自己的长按**（`GlobalConfig.comboStarterKeepLong`）。
+     *
+     *  **走广播**（[COMBO_STARTER_KEEP_LONG_EXTRA]）：判据在注入侧 —— `ComboDetector.onUp`
+     *  收尾时要读这一位决定补不补派，而注入侧读不到配置文件、只吃广播。
+     *
+     *  这一位原先是 `Field(null, …)`，理由写的是「抬手本身已经在注入侧判完了，走广播只是
+     *  让改动晚一拍生效」—— 那句把因果说反了：**正因为判据在注入侧，才非走广播不可**。
+     *  漏了它之后的表现是：设置页写得进去、界面也显示已开启，但注入侧拿到的永远是默认
+     *  `false`，开关拨了没有任何效果，连配置指纹都不变（指纹按 extras 算，这一位不在其中）。
+     */
+    val F_COMBO_STARTER_KEEP_LONG =
+        Field(COMBO_STARTER_KEEP_LONG_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_STARTER_KEEP_LONG))
+
+    /**
      * 页面缩放（百分比）—— 同样只有落盘那一列。上下限就是滑杆两端（[GlobalConfig.PAGE_SCALE_MIN]
      * ~ [GlobalConfig.PAGE_SCALE_MAX]）：手改文件写进 10 或 900 会被这一层钳回来。
      */
@@ -744,6 +764,7 @@ object ConfigFields {
             F_COMBO_WINDOW_MS,
             F_COMBO_HOLD_MIN_MS,
             F_COMBO_SCENE_ON_STARTER,
+            F_COMBO_STARTER_KEEP_LONG,
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
             F_ICON_TINT_SEED,

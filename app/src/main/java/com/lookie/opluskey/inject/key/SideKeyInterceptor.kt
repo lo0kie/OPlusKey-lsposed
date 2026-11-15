@@ -62,6 +62,11 @@ internal class SideKeyInterceptor(
     /** **某一档组合刚凑成** —— 关掉「首键按下固定」时，场景按这一刻定。 */
     private val onComboFormed: (ComboKey) -> Unit,
     /**
+     * **首键松手时补派它自己的长按** —— 只在那一档开了「首键松手仍执行长按」时调
+     * （见 `ComboDetector.onStarterLong`）。转给宿主的手势是那颗键的 `long`。
+     */
+    private val onStarterLong: (KeyId) -> Unit,
+    /**
      * 「屏幕黑着的话，这段时间里别让 CPU 睡」（熄屏排双击窗口时用，见 `KeyHooks.holdAwake`）。
      *
      *  熄屏时判定器要靠它把双击窗口那一段顶住 —— 见 `GestureDetector` 类注释。
@@ -145,7 +150,16 @@ internal class SideKeyInterceptor(
                 val key = ConfigChannel.config.key(id)
                 !key.comboOnly && !key.longFireOnRelease && now - at >= key.longPressMs
             },
-        )
+        ).apply {
+            //  「首键松手仍执行它自己的长按」—— 判据在 `Config.comboStarterKeepLongFor` 一处
+            //  （独立设置关着就看公共那份），派发交给 `KeyHooks` 那条单键通道。
+            //  走属性而不是构造参数：这是可选功能，见 `ComboDetector.starterKeepLong`。
+            starterKeepLong =
+                ComboDetector.StarterKeepLong(
+                    enabled = { c -> ConfigChannel.config.comboStarterKeepLongFor(c) },
+                    fire = onStarterLong,
+                )
+        }
 
     /**
      * 已经报过「这个码不认识」的键码 —— 每个码只报**一次** W，之后退回 `d`。
@@ -500,7 +514,9 @@ internal class SideKeyInterceptor(
             if (unclaimedLogged.add(code)) {
                 XLog.w("按键（$point）：keyCode=$code 不在认领白名单，放行给系统（这颗码只报这一次）")
             } else {
-                XLog.d("按键（$point）：不认识的 keyCode=$code，放行给系统")
+                //  惰性：这一行**每条未认领的按键**都走一遍（PM 兜底那条收所有按键），release 里
+                //  整段被编译期消灭，字符串不该在调用点先拼出来
+                XLog.d { "按键（$point）：不认识的 keyCode=$code，放行给系统" }
             }
             return
         }
@@ -511,7 +527,7 @@ internal class SideKeyInterceptor(
             // 抬手也记一条（`d`，只在 log 包里看得到）：**没认领的键只记按下**会漏掉一类关键证据
             //  ——「按下与抬手的码不同」正是这颗键长按换了个码上报的形状，而按下的那一行看不出来。
             //  同时它也让「这颗键根本不发抬手」变得可见（按住不放也永远等不到 UP）。
-            XLog.d("按键（$point）：keyCode=${keyEvent.keyCode} 未认领键的抬手（放行给系统）")
+            XLog.d { "按键（$point）：keyCode=${keyEvent.keyCode} 未认领键的抬手（放行给系统）" }
         }
     }
 

@@ -70,8 +70,8 @@ internal fun SettingsPage.applyPageLoad(snapshot: PageLoadSnapshot) {
     val baseline = snapshot.linkBaseline
     link.installedAt = baseline.installedAt
     link.bootWall = ProcClock.bootWall()
-    link.injectEverAlive = baseline.injectEverAlive
-    link.injectAliveBoot = baseline.injectAliveBoot
+    //  「曾经回过话」与「那次是哪一轮开机」是一笔账，一起灌（见 `HostLinkState.seedAlive`）
+    link.seedAlive(ever = baseline.injectEverAlive, boot = baseline.injectAliveBoot)
 
     // 语言档跟着配置走。放这里而不是 `installI18nBridge()` 那一步：那一步只装订阅、不读配置，
     //  而配置现在是异步读回来的 —— 读回来之后立刻换档，首帧文案才是用户选的那个语言。

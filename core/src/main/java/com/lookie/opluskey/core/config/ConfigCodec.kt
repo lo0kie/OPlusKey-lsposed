@@ -206,7 +206,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 66
+    const val VERSION = 67
 
     /**
      * 「提示走流体云」由「可选增强」变成「默认落点」的那一版 —— 迁移只看「文件是不是比它旧」。

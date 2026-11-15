@@ -128,9 +128,12 @@ private fun textOf(
  */
 private fun plainVersionOf(tag: String): String {
     val body = tag.removePrefix("v").removePrefix("V")
-    val stripped = body.replaceFirst(Regex("^[0-9]+-(?=[0-9]+[.])"), "")
+    val stripped = body.replaceFirst(TAG_PREFIX, "")
     return stripped.ifEmpty { body }
 }
+
+/** [plainVersionOf] 要剥掉的「`<纯数字>-` 前缀」—— 编译一次，不放在函数体里。 */
+private val TAG_PREFIX = Regex("^[0-9]+-(?=[0-9]+[.])")
 
 /**
  * 线上版本 [latest] 是不是比手上的 [current] 新。

@@ -306,8 +306,8 @@ internal object FireReleaseOffAsk {
  * 拨「松手时触发」的**唯一入口**（单键那一页把它接在开关上）。
  *
  *  关掉时先看这颗键是不是某些按住档的起点：不是就直接写；是就先问一句（[FireReleaseOffAsk]），
- *  确认后**同一次落盘**关掉这一位、并把这些组合退回「等窗口」—— 留着它们只会是一个永远
- *  不成立的档（动作还在，换回等窗口照样能用）。
+ *  确认后**同一次落盘**关掉这一位、并把这些组合**停用** —— 留着它们只会是一个永远不成立的档
+ *  （改成等窗口等于替用户换了一套触发方式，那件事该由他自己在组合页做）。
  */
 internal fun SettingsPage.setFireOnRelease(
     key: KeyId,
@@ -330,9 +330,9 @@ internal fun SettingsPage.setFireOnRelease(
 }
 
 /**
- * 落盘那一位（必要时把以它为起点的组合退回等窗口）。
+ * 落盘那一位（必要时把以它为起点的按住档停用）。
  *
- *  @param resetStarters 关掉「松手时触发」时把**以这颗键为起点**的按住档改成等窗口
+ *  @param resetStarters 关掉「松手时触发」时把**以这颗键为起点**的按住档停用
  */
 private fun SettingsPage.writeFireOnRelease(
     key: KeyId,
@@ -345,7 +345,7 @@ private fun SettingsPage.writeFireOnRelease(
             cfg.combos
         } else {
             cfg.combos.map { combo ->
-                if (combo.isHold && combo.starterKey == key.id) combo.copy(mode = ComboKey.MODE_WAIT) else combo
+                if (combo.isHold && combo.starterKey == key.id) combo.copy(enabled = false) else combo
             }
         }
     val next =
@@ -355,7 +355,7 @@ private fun SettingsPage.writeFireOnRelease(
         )
     val what =
         if (resetStarters) {
-            "long_fire_on_release=0 mode=wait_of=${key.id}"
+            "long_fire_on_release=0 disable_of=${key.id}"
         } else {
             "long_fire_on_release=${if (on) 1 else 0}:${key.id}"
         }
@@ -446,12 +446,12 @@ internal fun SettingsPage.ComboStarterBlockedDialog() {
                     if (ComboStarterBlocked.reason == ComboStarterBlocked.Reason.WAIT_MEMBER) {
                         I18n.get(
                             Strings.COMBO_MEMBER_BLOCKED_BODY,
-                            "%s 只能作按住组合的后续成员，无法加入等待组合。",
+                            "%s 开着 [只参与非首键的按住组合]，单键手势归系统；而等待组合的成员按下后要先等一个窗口，系统动作也跟着延后。",
                         )
                     } else {
                         I18n.get(
                             Strings.COMBO_STARTER_BLOCKED_BODY,
-                            "%s 只能作按住组合的后续成员，无法用它作为按住手势的起点。",
+                            "%s 开着 [只参与非首键的按住组合]，这颗键的 [松手时触发] 改不了；而按住组合的起点要先按住到点、再松手。",
                         )
                     },
                 names = listOf(label),
@@ -632,8 +632,8 @@ internal fun SettingsPage.FireReleaseOffDialog() {
     ConfirmDialog(
         show = live,
         title = I18n.get(Strings.BINDING_FIRE_OFF_TITLE, "关掉 [松手时触发] 会让按住手势失效"),
-        //  **动作项报个数**（用户口径「关闭并改回等窗口 → 禁用 N 个组合」）：这一步真正发生的是
-        //  那几档按住组合被退回等窗口，数目比「改回等窗口」这个动词更直接。
+        //  **动作项报个数**：这一步真正发生的是那几档按住组合被停用（不换触发方式），
+        //  数目比「停用」这个动词更直接。
         action = I18n.format(Strings.BINDING_FIRE_OFF_ACTION, shownCombos.size),
         positiveDanger = true,
         onDismiss = { FireReleaseOffAsk.clear() },
@@ -662,7 +662,7 @@ internal fun SettingsPage.FireReleaseOffDialog() {
                     }
                 }
                 EmphasisText(
-                    text = I18n.get(Strings.BINDING_FIRE_OFF_TAIL, "继续会同时移除这几种按住顺序。"),
+                    text = I18n.get(Strings.BINDING_FIRE_OFF_TAIL, "继续会同时停用这几档按住组合。"),
                     textAlign = TextAlign.Start,
                 )
             }

@@ -271,22 +271,13 @@ object CommandLibrary {
      * 这条语义成立。本进程自己的写盘（[save]）另外主动失效。
      */
     fun loadCached(): List<Command> {
-        val f = ConfigStore.commandFile()
-        val modified = f.lastModified()
-        val length = f.length()
-        val inode = inodeOf(f)
-        cache?.let {
-            //  `inode != 0` 是必要条件，与 [ConfigStore.load] 同一口径：inode 取不到时三个值
-            //  一起是 0，而「只剩 `.bak` 被还原」那条路存下来的条目也正好全 0 —— 只比三个数的话，
-            //  之后文件被删掉会命中那条，把已经不存在的内容当成本次结果。
-            val sameFile = it.modified == modified && it.length == length && it.inode == inode
-            if (inode != 0L && sameFile) return it.commands
-        }
+        val stamp = fileStamp(ConfigStore.commandFile())
+        cache?.let { if (it.stamp.sameAs(stamp)) return it.commands }
         //  **只缓存 Load.Ok**：读不懂（半截文件 / IO 抖动）塌成的空表一旦按指纹记下来，
         //  指纹不变就一直命中 —— 一次抖动被记成「命令库为空」，要等到下次写盘才恢复。
         val state = loadState()
         return if (state is Load.Ok) {
-            cache = Cached(modified, length, inode, state.commands)
+            cache = Cached(stamp, state.commands)
             state.commands
         } else {
             cache = null
@@ -318,30 +309,27 @@ object CommandLibrary {
         //  刚写下去的这一份就是盘上的全部内容 ⇒ 按新文件的指纹直接记进缓存。写完立刻要读它两位
         //  （广播 payload 的 `longIsSerial`、页面那份本地指纹）否则会在调用线程上把整份文件
         //  重读并重解析一遍 —— 那两条路都在主线程上。指纹取不到（inode 0）时不记，下一次读照旧走盘。
-        val f = ConfigStore.commandFile()
-        val inode = inodeOf(f)
-        if (inode != 0L) cache = Cached(f.lastModified(), f.length(), inode, commands)
+        val stamp = fileStamp(ConfigStore.commandFile())
+        if (stamp.inode != 0L) cache = Cached(stamp, commands)
         return true
     }
 
     /**
      * 执行侧的缓存：上一次读的结果与它对应的文件指纹。
      *
-     *  指纹是「修改时间 + 长度 + inode」三个字段，分着比、不合成一个数（合成会有碰撞的可能）。
-     *  为什么必须带上 inode：与 [ConfigStore.Cached] **同一个场景** —— 写方是设置页 `:ui` 进程、
-     *  读方是宿主主进程，**写方清缓存清不到读方**，读方只能靠指纹自己发现「文件换了」。
+     *  指纹本身是 [FileStamp]（修改时间 + 长度 + inode，分着比、不合成一个数）：
+     *  与 [ConfigStore] 是**同一个场景** —— 写方是设置页 `:ui` 进程、读方是宿主主进程，
+     *  **写方清缓存清不到读方**，读方只能靠指纹自己发现「文件换了」。
      *  若新内容**长度恰好相同**、又落在同一个 mtime 粒度内，只看（修改时间, 长度）就会把陈值
      *  当命中，于是宿主永久读旧表 —— 而日志完全自洽，看不出问题。
      *  写盘走的是 `AtomicFile`（同目录改名换文件）（[ModuleFiles.write]），目标文件因此每次都是
      *  **新 inode**，inode 必变，能天然区分出每一次写。
      *
-     *  取法统一走 [inodeOf]（在 [ConfigStore] 那份里）：两份指纹各自实现过一次，
-     *  结果是这一份没跟上，别再分叉。
+     *  指纹的取法与判定统一在 [fileStamp] / [FileStamp.sameAs] 一处：这两份指纹各自实现过一次，
+     *  结果是其中一份没跟上 inode。
      */
     private class Cached(
-        val modified: Long,
-        val length: Long,
-        val inode: Long,
+        val stamp: FileStamp,
         val commands: List<Command>,
     )
 

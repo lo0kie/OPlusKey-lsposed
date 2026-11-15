@@ -82,7 +82,7 @@ internal object TouchAdapter {
                 }
             }
         } catch (e: Throwable) {
-            XLog.d("触摸适配：这条 MotionEvent 转不了（${e.javaClass.simpleName}: ${e.message}）")
+            XLog.d { "触摸适配：这条 MotionEvent 转不了（${e.javaClass.simpleName}: ${e.message}）" }
             null
         }
 }

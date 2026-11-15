@@ -71,6 +71,13 @@ internal object OriginalLaunch {
             //  `InMemoryDexFile[...]`），默认的 `Class.forName(name)` 会当场 ClassNotFoundException。
             val cls = Class.forName(LAUNCH_CONTROLLER, false, context.classLoader)
             val controller = controllerOf(cls)
+            //  「type 认不出」时宿主那条路会**连界面都不起**：`d#m` 第一件事就是 `d#k(context, type)`
+            //  取动画实现，取不到只打一行 `e` 日志就 `return`。我们不能把它当「已交出」——
+            //  那样用户看到的是「按了没反应」（界面也没起来），比没有动画更糟。
+            if (implMissing(cls, controller, context)) {
+                XLog.w("打开应用：原版链路认不出 type=$TYPE_OPEN_APP（取不到动画实现），改由模块自己起")
+                return false
+            }
             cls
                 .getDeclaredMethod(
                     "m",
@@ -89,18 +96,80 @@ internal object OriginalLaunch {
         }
 
     /**
-     * 原版那个控制器实例 —— 优先用宿主自己的单例（静态字段里存着一个 `d`），没有才新建。
+     * `d#k(Context, int)` 这一趟拿不到实现吗 —— `true` = 确定拿不到（调用方别再转交）。
      *
-     *  用单例的理由：`d` 自己实现着 animator 的生命周期回调（`a()` / `b()` / `c(float)` / `d()`），
-     *  新造一个虽然也不影响启动，但那条链路上任何一处按实例做记账的地方都会看不到它。
+     *  拿不准（方法改名 / 反射失败）时返回 `false`，照旧转交：这一档只用来挡「宿主自己会静默
+     *  返回、界面都不起」那一种，不能因为探不到就把整条原版动画关掉。
+     */
+    private fun implMissing(
+        cls: Class<*>,
+        controller: Any,
+        context: Context,
+    ): Boolean =
+        runCatching {
+            cls
+                .getDeclaredMethod("k", Context::class.java, Int::class.javaPrimitiveType)
+                .apply { isAccessible = true }
+                .invoke(controller, context, TYPE_OPEN_APP) == null
+        }.getOrDefault(false)
+
+    /**
+     * 原版那个控制器实例 —— **必须是宿主自己那一份**，不能自己新造一个。
+     *
+     *  `d` 存着 COE 扫光的状态：启动前 `d#m` → `d#n` → `d#l` 把 `mCoeAnimName` 与
+     *  `COESysEffect` 写进去；**转场真正开播时读的却是伴生对象那个懒单例** ——
+     *  `ActivityTransitionAnimator$a#w` 里写着 `d$a#b()` → `d#i()`（取 `mCoeAnimName`）→ `playAnim`。
+     *
+     *  自己 `new` 一个的话，`l` 把状态写到了新实例上，回调读的是另一个（它自己懒建的）实例，
+     *  `d#i` 当场抛 `UninitializedPropertyAccessException: lateinit property mCoeAnimName has not
+     *  been initialized`。那一枪跑在**宿主主线程**的 `Handler` 上，宿进程直接崩 —— 用户看到的是
+     *  「没有动画」，接着「所有按键都没反应」（2026-11-15 真机，PLK110 / ColorOS 17.0.0，日志里
+     *  `FATAL EXCEPTION: main … d.i … ActivityTransitionAnimator$a.w`）。
+     *
+     *  `f` 那个静态字段因此是「全世界只有一份」的那个开关：为 null 说明宿主自己还没建过，
+     *  这时必须走它自己的懒入口（建好并写回字段），而不是在旁边再造一份。
      */
     private fun controllerOf(cls: Class<*>): Any {
-        cls.declaredFields
-            .firstOrNull { Modifier.isStatic(it.modifiers) && it.type == cls }
-            ?.let { field ->
-                field.isAccessible = true
-                field.get(null)?.let { return it }
+        staticField(cls)?.let { field ->
+            field.isAccessible = true
+            runCatching { field.get(null) }.getOrNull()?.let { return it }
+        }
+        viaCompanion(cls)?.let {
+            XLog.w("打开应用：控制器取自宿主自己的单例（转场回调读的就是它）")
+            return it
+        }
+        //  兜底（换 ROM / 入口改名）：自己建一份，但**写回**那个静态字段 —— 回调与我们配的
+        //  是同一份这件事不能靠运气，写不进去就当这次转交失败（宁可退回自己起界面，也不崩宿主）。
+        val created = cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+        val field = staticField(cls) ?: return created
+        field.isAccessible = true
+        runCatching { field.set(null, created) }
+            .onFailure {
+                XLog.w("控制器写回静态字段失败（转场会把配置读成未初始化）：${it.javaClass.simpleName}")
             }
-        return cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+        return created
     }
+
+    /** `d` 上那个「存着单例」的静态字段（类型就是 `d` 自己）。 */
+    private fun staticField(cls: Class<*>): java.lang.reflect.Field? =
+        cls.declaredFields.firstOrNull { Modifier.isStatic(it.modifiers) && it.type == cls }
+
+    /**
+     * 走宿主自己的懒单例入口 —— 伴生对象上那个「无参、返回 `d`」的方法（`d$a#b()`）。
+     *
+     *  不写死方法名：R8 每版都重排短名，而形状（静态字段里那个伴生对象 + 它上面唯一的无参工厂）
+     *  是稳定的；找不到就返回 `null` 交给 [controllerOf] 的兜底，不硬猜。
+     */
+    private fun viaCompanion(cls: Class<*>): Any? =
+        cls.declaredFields
+            .filter { Modifier.isStatic(it.modifiers) && it.type != cls }
+            .firstNotNullOfOrNull { field ->
+                field.isAccessible = true
+                val companion = runCatching { field.get(null) }.getOrNull() ?: return@firstNotNullOfOrNull null
+                val factory =
+                    companion.javaClass.methods.firstOrNull {
+                        it.parameterCount == 0 && it.returnType == cls
+                    } ?: return@firstNotNullOfOrNull null
+                runCatching { factory.invoke(companion) }.getOrNull()
+            }
 }

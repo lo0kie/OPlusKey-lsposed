@@ -172,6 +172,23 @@ data class ComboKey(
      *  取值一律走 `Config.comboSceneOnStarterFor`（独立设置关着就看公共那份）。
      */
     val sceneOnStarter: Boolean? = null,
+    /**
+     * 这一档开了「**首键松手后仍执行它自己的长按**」吗 —— `true` = 不丢弃。
+     *
+     *  原本的设计：组合凑成时成员键的单键状态机被摘掉（`ComboDetector.resetKey`），
+     *  于是首键按多久都不会判出自己的长按 —— 一次按压只执行一个动作（组合的）。
+     *  打开这一位之后，**首键松手时**补派一次它自己的长按动作（组合那一下照旧执行）。
+     *
+     *  **只补首键**：按住组合的模型是「首键一直按着、成员按一下就松」，成员自己有单键状态机、
+     *  自己会判长按 —— 不需要谁替它补。首键则因为组合凑成时状态机被摘掉，那一次长按丢了。
+     *
+     *  只在**按住**那两档上有意义：等窗口那一档没有「首键按住」这回事，界面也不给这一行。
+     *
+     *  `null` = 还没写过 ⇒ 跟随公共设置（`GlobalConfig.comboStarterKeepLong`）：
+     *  布尔没有第三个值，靠 `null` 表达「跟随」。
+     *  取值一律走 `Config.comboStarterKeepLongFor`。
+     */
+    val starterKeepLong: Boolean? = null,
 ) : OwnSettings,
     LongPressParams {
     /** 这一档现在算不算数 —— 关掉了、或成员不足两键（配置文件被手改坏）都不算。 */

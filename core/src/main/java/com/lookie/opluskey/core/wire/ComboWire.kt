@@ -123,6 +123,16 @@ object ComboWire {
          *  宿主又照常执行场景，于是原生动作与模块动作各来一次。
          */
         val scenes: List<WireScene> = emptyList(),
+        /**
+         * **首键松手后仍执行它自己的长按**（`ComboKey.starterKeepLong`，`null` = 跟随公共设置）。
+         *
+         *  判定在注入侧（`ComboDetector.keepStarterLong` 收尾时读它决定补不补派）——
+         *  不带这一项，那一档在判定侧永远是 `null` ⇒ 只跟公共值，界面在这里单独拨的一份
+         *  等于没拨（真机症状：「开了独立设置、也拨了这一行，还是不补」）。
+         *
+         *  三态必须原样带过去：`null` 是「跟随公共」，不是 `false`。
+         */
+        val starterKeepLong: Boolean? = null,
     )
 
     /**
@@ -270,6 +280,7 @@ object ComboWire {
             mode = combo.mode,
             holdMinMs = combo.holdMinMs,
             scenes = combo.scenes.map { WireScene.of(it) },
+            starterKeepLong = combo.starterKeepLong,
         )
 
     /**
@@ -307,6 +318,8 @@ object ComboWire {
             holdMinMs = if (holdMinMs <= 0) ComboKey.HOLD_MIN_FOLLOW_GLOBAL else clampHoldMin(holdMinMs),
             //  场景表：注入侧只读「非空与否」，但整块带过来才能让两边看到的是同一张表
             scenes = scenes.mapNotNull { it.toScene() },
+            //  三态原样带：`null` = 跟随公共设置（见 `WireCombo` 里那段的说明）
+            starterKeepLong = starterKeepLong,
         )
     }
 

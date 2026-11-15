@@ -66,6 +66,6 @@
   （如 `1.1.0-beta.1`）会被自动标成 prerelease、不抢 latest。
 - **tag 推上去就不再移动**：`git tag -f` + 强推会让历史版本指向漂移。打错了删远端 tag 重打
   （`git push origin :refs/tags/<tag>`），并把那两条 Release 一并处理。
-- 当前基线（2026-11-12）：`versionName = 1.4.2`、`versionCode = 16`（见 `app/build.gradle.kts`）。
+- 当前基线（2026-11-15）：`versionName = 1.5.0`、`versionCode = 17`（见 `app/build.gradle.kts`）。
   历史：第一个进仓库的版本是 `1.0.0`（tag `3-1.0.0`），`versionCode` 取 3 —— 1 / 2 已被历史包
   （手动发的 `0.1.0`、本地出的 `0.2.0`）占用。此后每涨一次版本，两边各多一条 Release、一一对应。

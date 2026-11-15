@@ -119,9 +119,15 @@ internal class AppLauncher(
         //  **转交之前也得挂 SKIP_CHOOSER**：这条路不经过 [AppLaunchAsUser.start]，而
         //  「装了分身的应用在主用户下启动」同样会被 ColorOS 问「用哪一份」—— 选择器一盖上，
         //  原版那套转场直接被截断（用户口径「会弹分身选择器」）。
+        //
+        //  **顺序**：先做那份包裹副本、再往上挂 flag。oplus flags 存在 intent 的哪一格
+        //  （extras 里的 IntentExt，还是副本构造不抄的那个字段）决定它能不能跟着副本走 ——
+        //  [stockLaunchIntent] 在「组件 + 缺 LAUNCHER」那两档会复制一个新 Intent。
+        //  挂在**交给 `d.m` 的那个对象**上就没有这个疑问，也省掉一次「标记丢没丢」的判断。
         if (action.stockAnim && userId == 0) {
-            AppLaunchAsUser.markSkipChooser(intent)
-            if (OriginalLaunch.launch(ctx, stockLaunchIntent(intent))) return
+            val stock = stockLaunchIntent(intent)
+            AppLaunchAsUser.markSkipChooser(stock)
+            if (OriginalLaunch.launch(ctx, stock)) return
         }
         try {
             // 主用户与分身**都走** ATMS 的 `startActivityAsUser`：只有这条路能在下发前统一给
@@ -1031,14 +1037,21 @@ internal class ShortcutThenMinimize(
 // 厂商预设那几档（`stock:`）的启动 intent —— 与上面那套「怎么起」无关，这里只回答「发什么」。
 
 /**
- * 交给原版启动链路的那份 intent —— 组件目标要补上「桌面启动」那一对标记。
+ * 交给原版启动链路的那份 intent —— 缺「桌面启动」那一对标记的组件目标要补齐。
  *
- *  `app:包名/类名`（「应用组件」那一档）的 intent 是 `Intent().setClassName(…)` 现拼的，
- *  没有 `ACTION_MAIN`，也没有 `CATEGORY_LAUNCHER`。原版那条链路（[OriginalLaunch]）按这两个
- *  认「这是一次桌面启动」来挑转场实现 —— 都没有的时候它只给系统默认动画（用户口径
- *  「组件没有这个动画」）。
+ *  原版那条链路（[OriginalLaunch]）按 `ACTION_MAIN` + `CATEGORY_LAUNCHER` 认「这是一次桌面启动」
+ *  来挑转场实现（`docs/device/actions/launch.md` 四十八）；**缺一个它就只给系统默认动画**
+ *  —— 用户口径是「有些应用没有这个动画」。两种 intent 会缺：
+ *
+ *  1. `app:包名/类名`（「应用组件」那一档）：`Intent().setClassName(…)` 现拼的，两个都没有；
+ *  2. `app:包名` 里**桌面图标被停用 / 只有 `MAIN` 入口**的那些应用：`AppEntry.resolve` 前两层
+ *     （`getLaunchIntentForPackage` / leanback）都拿不到入口，第三层给的是
+ *     `Intent(ACTION_MAIN).setComponent(…)` —— 有 `MAIN`、没有 `CATEGORY_LAUNCHER`。
+ *     只按「`action == null`」判的话，这一档永远补不到，表现正是「部分应用没有动画」
+ *     （第三层那条注释里点名的那种应用 —— 图标藏起来、包里另有 `MAIN` 界面）。
  *
  *  两个都必须给：只给 `ACTION_MAIN` 时 ROM 仍认不出「从桌面起」，观感与不加一样。
+ *  `action` 已经是别的东西（不是 `MAIN`）时不动它 —— 那不是「打开应用」那一族的 intent。
  *
  *  **只加在这一份副本上**：兜底那条路（[AppLaunchAsUser.start]）用的还是原 intent ——
  *  补了 `CATEGORY_LAUNCHER` 的 intent 拿去起一个没声明这个 category 的组件，可能解析失败。
@@ -1049,15 +1062,16 @@ internal class ShortcutThenMinimize(
  *  全都不动了** —— 那两样是原版 provider 那条入口的配套，不是这条转场的前置条件。
  *  这条链路只认「一次桌面启动」这两个标记，多给反而把它带偏。
  */
-internal fun stockLaunchIntent(intent: Intent): Intent =
-    if (intent.component != null && intent.action == null) {
-        Intent(intent).apply {
-            action = Intent.ACTION_MAIN
-            addCategory(Intent.CATEGORY_LAUNCHER)
-        }
-    } else {
-        intent
+internal fun stockLaunchIntent(intent: Intent): Intent {
+    val desktopLaunch = intent.action == null || intent.action == Intent.ACTION_MAIN
+    if (intent.component == null || !desktopLaunch || intent.hasCategory(Intent.CATEGORY_LAUNCHER)) {
+        return intent
     }
+    return Intent(intent).apply {
+        if (action == null) action = Intent.ACTION_MAIN
+        addCategory(Intent.CATEGORY_LAUNCHER)
+    }
+}
 
 /**
  * 「快捷方式没发出去」→ 提示里报哪一档（`appshortcut:` 的两条起法共用）。

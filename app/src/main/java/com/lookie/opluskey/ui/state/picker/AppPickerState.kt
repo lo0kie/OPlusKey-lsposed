@@ -227,17 +227,38 @@ internal class AppPickerState {
     val includesUnopenable: Boolean get() = stopApp || showUnopenable.value
 
     /**
+     * 这一趟「为谁挑」—— **一个不可变值**，不是十三个各自可写的标记。
+     *
+     *  原来这组是十三个独立的 `var`（`gesture` / `comboId` / `forStep` / `replaceStep` /
+     *  `forRelease` / `releaseComboId` / `releaseChain` / `forCommonCommand` / `replaceCommonToken` /
+     *  `branchTarget` / `branchConditionIndex` / `branchKind` / `sceneAt`），而「这一趟为谁挑」
+     *  本来是**一个**事实：六个入口各抄一遍「复位其它十二个 + 设自己」的十来行，`clearTarget`
+     *  再抄一遍，`takePickTarget` 里还要逐个取走再清空。
+     *
+     *  那套写法的代价是实测出来的：`openForGesture` 曾经漏清 `forRelease`，于是网格里挑中的
+     *  应用被写进 `longRelease`（松手格），而这一档的绑定一个字没变 —— 从代码上看不出来，
+     *  因为「漏了哪一行」和「有哪几行」长得一样。
+     *
+     *  收成一个 sealed 类型之后，`intent = PickIntent.Xxx(...)` 一次赋值就是全部状态：
+     *  不存在「只设了一半」，也不需要谁记得复位。下面那批 `val ... get()` 是给调用点的兼容层
+     *  （判据与读写点一行都不用改）。
+     *
+     *  **`stop` 不在里面**：它是 Compose 状态（`stopAppState`），驱动列表过滤与空态，
+     *  与「为谁挑」的落点正交（`openForStopApp` 就是「给手势挑 + 停应用」两条独立的账）。
+     */
+    private var intent: PickIntent? = null
+
+    /**
      * 进这一页时对应的**手势**（`null` = 没在挑应用，或者不是给手势挑的）。
      *
      *  用途：挑中应用时知道该写哪个手势。不能靠 pager 的当前页 —— 那一页不属于 pager。
      *  从「添加命令」浮层的「选择应用」进来时它是 `null`（挑中的应用是**一步**、不绑手势）——
-     *  给多条命令加一步却没挑，本来就该什么都不发生。与 [replaceStep] 同生共死。
+     *  给多条命令加一步却没挑，本来就该什么都不发生。
      *
      *  类型是**触发条件**而不是那个三值枚举：网格排到第 4、5 页时（三击 / 四击）这一趟也要
      *  原样记下来，退回枚举会把那两个档位的挑应用写成「没绑手势」。
      */
-    var gesture: GestureTrigger? = null
-        private set
+    val gesture: GestureTrigger? get() = (intent as? PickIntent.Gesture)?.trigger
 
     /**
      * 这一趟是给**哪一档组合键**挑（`null` = 给一颗键挑）。
@@ -246,12 +267,10 @@ internal class AppPickerState {
      *  （`ui/screen/binding/BindingTarget`），只记两个原始值；组装成目标由调用方做
      *  （见 `PageEntryWrite.onAppPicked`）。组合那一档也要手势 —— 它也有短按 / 长按。
      */
-    var comboId: String? = null
-        private set
+    val comboId: String? get() = (intent as? PickIntent.Gesture)?.comboId
 
     /** 这次是给「多条命令」加一步（挑中的包名走 `addStep`，不写手势绑定）。 */
-    var forStep = false
-        private set
+    val forStep: Boolean get() = intent is PickIntent.Step
 
     /**
      * 这次是给**长按卡的「松手执行额外动作」**挑动作（挑中的写进这颗键的 `longRelease`）。
@@ -259,16 +278,13 @@ internal class AppPickerState {
      *  与 [forStep] 同一档性质（都是「往某个动作字段里写一条」），但落点不同：
      *  那不是命令库里的步骤，而是这一颗键自己的一个字段。
      */
-    var forRelease = false
-        private set
+    val forRelease: Boolean get() = intent is PickIntent.Release
 
     /** 松手那一趟是给哪一档组合键挑（`null` = 给当前这一颗键，见 [forRelease]）。 */
-    var releaseComboId: String? = null
-        private set
+    val releaseComboId: String? get() = (intent as? PickIntent.Release)?.comboId
 
     /** 松手那一趟写的是**「单击后长按」那一档**的松手格（见 `PickTarget.Release.chain`）。 */
-    var releaseChain: Boolean = false
-        private set
+    val releaseChain: Boolean get() = (intent as? PickIntent.Release)?.chain == true
 
     /**
      * 这一趟是给**「常用命令」那张清单**挑一条动作（挑中的应用 / 结束应用落成清单里的一条）。
@@ -277,8 +293,7 @@ internal class AppPickerState {
      *  的一个字段，这边是一张清单。挑完**自己退页**，清单由 `PageEntryWrite.writeToken` 写
      *  （见 `PickTarget.CommonCommand`）。
      */
-    var forCommonCommand = false
-        private set
+    val forCommonCommand: Boolean get() = intent is PickIntent.CommonCommand
 
     /**
      * 这一趟挑中的应用**换掉清单里哪一条**（`null` = 追加一条新的）。
@@ -286,17 +301,16 @@ internal class AppPickerState {
      *  与 [replaceStep] 同一个读法：同一张抽屉既负责「加一条」也负责「换一条」，两者的差别只有
      *  落点 —— 留着上一次的值会把「修改」写成「又多一条」。
      */
-    var replaceCommonToken: String? = null
-        private set
+    val replaceCommonToken: String? get() = (intent as? PickIntent.CommonCommand)?.replaceToken
 
     /**
      * 这次是给「条件执行」的某一支挑**条件应用**：`>= 0` = 改第几支，[NEW_BRANCH] = 新加一支。
-     * [NOT_FOR_BRANCH] = 不是在给分叉挑。与 [forStep] 一样同生共死。
+     * [NOT_FOR_BRANCH] = 不是在给分叉挑。
      *
      *  只服务**条件**（挑包名）。场景的某一档要执行什么应用不走这条路 ——
      *  那一档在「场景动作」页的网格里挑（`BindingTarget.Scene`，与网格同一套）。
      */
-    var branchTarget: Int = NOT_FOR_BRANCH
+    val branchTarget: Int get() = (intent as? PickIntent.Branch)?.index ?: NOT_FOR_BRANCH
 
     /**
      * 这一趟挑的应用要写进**那一块里的第几条条件**：`>= 0` = 换那一条，`-1` = 追加一条。
@@ -305,8 +319,7 @@ internal class AppPickerState {
      *  不能再靠 `appConditionIndex` 猜：用户在「再加一条条件」里选的应用，是**新增**一条，
      *  而原来那套「这块已有前台应用就换它、没有就换第 0 条」会把别人的条件覆盖掉。
      */
-    var branchConditionIndex: Int = -1
-        private set
+    val branchConditionIndex: Int get() = (intent as? PickIntent.Branch)?.conditionIndex ?: -1
 
     /**
      * 这一趟挑的包名要写成**哪一档**条件（[ConditionKind.APP] / [ConditionKind.APP_NOT]）。
@@ -316,8 +329,7 @@ internal class AppPickerState {
      *  「前台应用以外」那一行进来的这一趟会照 [ConditionKind.APP] 写，用户点的负面条件被悄悄
      *  改成正面那一档，而页面上一个字都不会变。
      */
-    var branchKind: ConditionKind = ConditionKind.APP
-        private set
+    val branchKind: ConditionKind get() = (intent as? PickIntent.Branch)?.kind ?: ConditionKind.APP
 
     /**
      * 这一趟挑的应用要写进**场景表里第几块**的那一档（`-1` = 不是给场景挑）。
@@ -329,14 +341,16 @@ internal class AppPickerState {
      *  **不并进 [branchTarget]**：那一位是「条件执行页里第几**条规则**」，写的是**条件包名**；
      *  这一位写的是**某一档的动作**，落点与写法都不同，合成一个就得再记「现在写哪半个」。
      */
-    var sceneAt: Int = NOT_FOR_SCENE
-        private set
+    val sceneAt: Int
+        get() =
+            when (val current = intent) {
+                is PickIntent.Gesture -> current.sceneAt
+                is PickIntent.Release -> current.sceneAt
+                else -> NOT_FOR_SCENE
+            }
 
-    /**
-     * 这次进这一页是**替换多条命令的第几步**。`-1` = 追加为一步。与 [forStep] 同生共死。
-     */
-    var replaceStep = -1
-        private set
+    /** 这次进这一页是**替换多条命令的第几步**。`-1` = 追加为一步。 */
+    val replaceStep: Int get() = (intent as? PickIntent.Step)?.replaceIndex ?: -1
 
     /**
      * 挑完应用（或中途返回）回到来源页时，那支底部抽屉该按哪个来处**重新打开**；`null` = 不用开。
@@ -367,12 +381,12 @@ internal class AppPickerState {
      */
     val appOnly: Boolean get() = branchTarget != NOT_FOR_BRANCH || stopApp
 
-    // —— 「这趟为谁挑」那一组标记的三个改法 ——
+    // —— 六条入口 ——
     //
-    //  三个字段同生共死（`forStep` 一起写着 `replaceStep` 才有意义，`gesture` 只归网格那条入口），
-    //  所以入口也只留这三个：原来「进页那个手势」「加一步 / 换一步」「挑完 / 没挑就退」这四种场合
-    //  各自就地赋三个字段，散在**六个地方** —— 少清一个就留下半个状态（`forStep=false` 却带着
-    //  上一次的 `gesture`），而从代码上看不出来（见 `docs/architecture/decoupling.md` 判据 3）。
+    //  每条只做一件事：把 [intent] 换成本趟那一个值。原来这六处各抄一遍「复位其它十二个 +
+    //  设自己」，`openForGesture` 曾漏清 `forRelease` —— 网格里挑中的应用被写进松手格，
+    //  而这一档的绑定一个字没变，从代码上看不出来（见 `docs/architecture/decoupling.md` 判据 3）。
+    //  `stopAppState` 是另一笔账（列表过滤用），所以每条入口自己设它。
 
     /**
      * 网格那条入口：给 [g] 这一档挑应用（挑中的写成 `app:` / `window:` 绑给这个手势）。
@@ -386,31 +400,15 @@ internal class AppPickerState {
         comboId: String? = null,
         sceneAt: Int = NOT_FOR_SCENE,
     ) {
-        gesture = g
-        this.comboId = comboId
-        this.sceneAt = sceneAt
-        forStep = false
-        replaceStep = -1
-        branchTarget = NOT_FOR_BRANCH
-        branchConditionIndex = -1
-        branchKind = ConditionKind.APP
+        intent = PickIntent.Gesture(g, comboId, sceneAt)
         stopAppState.value = false
-        //  这两位的清场纪律与 `openForStep` / `openForRelease` 一样，以前只有这一支漏了：
-        //  上一趟「松手执行额外动作」留下的 `forRelease` 会让 `takePickTarget` 优先返回
-        //  `Release`，于是网格里挑中的应用被写进 `longRelease`，而这一档的绑定没变。
-        forRelease = false
-        releaseComboId = null
-        releaseChain = false
-        forCommonCommand = false
-        replaceCommonToken = null
     }
 
     /**
      * 「结束应用」那一格的入口：给 [g] 这一档挑应用，挑中的写成 `proc:stop:包名`。
      *
      *  与 [openForGesture] 只差 [stopApp] 这一位 —— 落盘那一步按它换 token（见
-     *  `PageEntryWrite.onAppPicked`），其余「为谁挑」的账完全一样，所以两处各写一遍清场纪律
-     *  不如共用 [openForGesture] 再来一支。
+     *  `PageEntryWrite.onAppPicked`），其余「为谁挑」的账完全一样。
      */
     fun openForStopApp(
         g: GestureTrigger,
@@ -423,12 +421,10 @@ internal class AppPickerState {
 
     /**
      * 「松手执行额外动作」那一趟：挑中的应用 / 组件 / 快捷方式写进这一档的**松手格** ——
-     * 单键 / 组合写自己的 `longRelease`，场景块写**草稿里那一块**（见 `PickTarget.Release`）。
+     * 单键 / 组合写自己的 `longRelease`，场景块写**草稿里那一块**（见 [PickTarget.Release]）。
      *
-     *  清场纪律与 [openForStep] 完全一样（那几位互斥，留着上一次的值会让写回落到别人头上）。
-     *
-     *  @param combo 非空 = 这一趟是给那一档组合键挑
-     *  @param sceneAt 非负 = 这一趟是给**场景表里第几块**挑 —— 与 `combo` 互斥，由草稿自己记着
+     * @param combo 非空 = 这一趟是给那一档组合键挑
+     * @param sceneAt 非负 = 这一趟是给**场景表里第几块**挑 —— 与 `combo` 互斥，由草稿自己记着
      */
     fun openForRelease(
         stop: Boolean = false,
@@ -436,20 +432,8 @@ internal class AppPickerState {
         sceneAt: Int = NOT_FOR_SCENE,
         chain: Boolean = false,
     ) {
-        gesture = null
-        comboId = null
-        this.sceneAt = sceneAt
-        releaseComboId = combo
-        releaseChain = chain
-        forStep = false
-        replaceStep = -1
-        branchTarget = NOT_FOR_BRANCH
-        branchConditionIndex = -1
-        branchKind = ConditionKind.APP
+        intent = PickIntent.Release(combo, sceneAt, chain)
         stopAppState.value = stop
-        forRelease = true
-        forCommonCommand = false
-        replaceCommonToken = null
     }
 
     /**
@@ -457,7 +441,6 @@ internal class AppPickerState {
      *
      *  与 [openForRelease] 同一个形状（挑法、清单、二级页、小窗全都一样），差别只有落点：
      *  那边写某个键的一个字段，这边写 `global.commonCommands`（见 `PageEntryWrite.writeToken`）。
-     *  清场纪律照抄那一支 —— 这几位的账互斥，留着上一次的值会让写回落到别人头上。
      *
      *  @param stop `true` = 这一趟是「结束应用」（写 `proc:stop:包名`）
      *  @param replaceToken 非空 = **换掉清单里的这一条**（行菜单的「修改」那一趟）；
@@ -467,20 +450,8 @@ internal class AppPickerState {
         stop: Boolean = false,
         replaceToken: String? = null,
     ) {
-        gesture = null
-        comboId = null
-        sceneAt = NOT_FOR_SCENE
-        forStep = false
-        replaceStep = -1
-        branchTarget = NOT_FOR_BRANCH
-        branchConditionIndex = -1
-        branchKind = ConditionKind.APP
+        intent = PickIntent.CommonCommand(replaceToken)
         stopAppState.value = stop
-        forRelease = false
-        releaseComboId = null
-        releaseChain = false
-        forCommonCommand = true
-        replaceCommonToken = replaceToken
     }
 
     /**
@@ -492,18 +463,8 @@ internal class AppPickerState {
         replaceIndex: Int,
         stop: Boolean = false,
     ) {
-        gesture = null
-        comboId = null
-        sceneAt = NOT_FOR_SCENE
-        forStep = true
-        replaceStep = replaceIndex
-        branchTarget = NOT_FOR_BRANCH
-        branchConditionIndex = -1
-        branchKind = ConditionKind.APP
+        intent = PickIntent.Step(replaceIndex)
         stopAppState.value = stop
-        forRelease = false
-        forCommonCommand = false
-        replaceCommonToken = null
     }
 
     /**
@@ -520,37 +481,15 @@ internal class AppPickerState {
         conditionIndex: Int = -1,
         kind: ConditionKind = ConditionKind.APP,
     ) {
-        gesture = null
-        comboId = null
-        sceneAt = NOT_FOR_SCENE
-        forStep = false
-        replaceStep = -1
-        branchTarget = index
-        //  挑条件那一趟不写条件槽位以外的标记，留着上一趟的值只会在下一次挑选时误导
-        branchConditionIndex = conditionIndex
-        branchKind = kind
+        intent = PickIntent.Branch(index, conditionIndex, kind)
         //  条件只认包名：既没有「结束应用」那一档，也没有「松手额外动作」
         stopAppState.value = false
-        forRelease = false
-        forCommonCommand = false
-        replaceCommonToken = null
     }
 
     /** 这趟「为谁挑」整个作废 —— 挑完了、写失败留在原地、或干脆没挑就退出来。 */
     fun clearTarget() {
-        gesture = null
-        comboId = null
-        sceneAt = NOT_FOR_SCENE
-        forStep = false
-        replaceStep = -1
-        branchTarget = NOT_FOR_BRANCH
-        branchConditionIndex = -1
-        branchKind = ConditionKind.APP
+        intent = null
         stopAppState.value = false
-        forRelease = false
-        releaseComboId = null
-        forCommonCommand = false
-        replaceCommonToken = null
         // 本地选中与草稿一并作废：这一趟挑应用的账到此为止
         pending.value = null
         pickedApps.value = emptySet()
@@ -591,46 +530,35 @@ internal class AppPickerState {
     /**
      * 这一趟挑完了 —— 返回「挑中的东西写到哪儿」，标记一并收掉；`null` = 不是这两条路（写手势绑定）。
      *
-     *  三档合成一个出口：它们互斥、判据又在同一个「为谁挑」组里，分三个方法时调用方得先自己
-     *  判一次谁有效再去取 —— 那一步正是「两个字段都可能非空」的漏洞来源。
+     *  四档合成一个出口：它们互斥（[intent] 只能是一种），分四个方法时调用方得先自己判一次
+     *  谁有效再去取 —— 那一步正是「两个字段都可能非空」的漏洞来源。
+     *
+     *  [PickIntent.Gesture] 那一档**不在这里消费**：它不是「写到别处」，而是「写手势绑定」，
+     *  挑中之后由调用方读 [gesture] / [comboId] / [sceneAt] 自己落盘，所以原样留着。
      */
     fun takePickTarget(): PickTarget? =
-        when {
-            branchTarget != NOT_FOR_BRANCH -> {
-                val index = branchTarget
-                branchTarget = NOT_FOR_BRANCH
-                PickTarget.Branch(index)
+        when (val current = intent) {
+            is PickIntent.Branch -> {
+                intent = null
+                PickTarget.Branch(current.index)
             }
 
-            forStep -> {
-                forStep = false
-                val index = replaceStep
-                replaceStep = -1
-                PickTarget.Step(index)
+            is PickIntent.Step -> {
+                intent = null
+                PickTarget.Step(current.replaceIndex)
             }
 
-            forRelease -> {
-                forRelease = false
-                val combo = releaseComboId
-                releaseComboId = null
-                //  「哪一块」与「哪一档组合」同生共死：留着上一次的值，下一趟「打开应用」会把
-                //  动作写进一块用户根本没在编的场景块
-                val at = sceneAt
-                sceneAt = NOT_FOR_SCENE
-                val chain = releaseChain
-                releaseChain = false
-                PickTarget.Release(combo, at, chain)
+            is PickIntent.Release -> {
+                intent = null
+                PickTarget.Release(current.comboId, current.sceneAt, current.chain)
             }
 
-            forCommonCommand -> {
-                forCommonCommand = false
-                //  「换哪一条」与「加一条」同生共死：这一趟是修改时才带走那个 token
-                val replace = replaceCommonToken
-                replaceCommonToken = null
-                PickTarget.CommonCommand(replace)
+            is PickIntent.CommonCommand -> {
+                intent = null
+                PickTarget.CommonCommand(current.replaceToken)
             }
 
-            else -> {
+            is PickIntent.Gesture, null -> {
                 null
             }
         }
@@ -888,6 +816,77 @@ internal data class PickedDetail(
                 Action.App(target, stockAnim = stockAnim).token
             }
         }
+}
+
+/**
+ * 这一趟「为谁挑」—— 见 [AppPickerState.intent]。
+ *
+ *  五个子类就是五条入口，各带自己那几样原始值。赋一个新值就等于把上一趟整个换掉，
+ *  所以「复位」这件事不再由六个入口各抄一遍。
+ */
+internal sealed interface PickIntent {
+    /**
+     * 网格那条入口：给某一档手势挑（挑中的写成 `app:` / `window:` 绑给这个手势）。
+     *
+     * @param comboId 非空 = 这一趟是给**那一档组合键**挑（[trigger] 是它的短按 / 长按）
+     * @param sceneAt 非负 = 这一趟是给**场景表里第几块**挑（[trigger] 是那一块里的哪一档）——
+     *   与 [comboId] 互斥：一块要么属于某颗键、要么属于某档组合键，由草稿自己记着
+     */
+    class Gesture(
+        val trigger: GestureTrigger,
+        val comboId: String?,
+        val sceneAt: Int,
+    ) : PickIntent
+
+    /**
+     * 「松手执行额外动作」那一趟：挑中的应用 / 组件 / 快捷方式写进这一档的**松手格** ——
+     * 单键 / 组合写自己的 `longRelease`，场景块写**草稿里那一块**（见 [PickTarget.Release]）。
+     *
+     * @param comboId 非空 = 这一趟是给那一档组合键挑
+     * @param sceneAt 非负 = 这一趟是给**场景表里第几块**挑 —— 与 [comboId] 互斥
+     * @param chain 写的是**「单击后长按」那一档**的松手格（`KeyConfig.clickThenLongRelease`）
+     */
+    class Release(
+        val comboId: String?,
+        val sceneAt: Int,
+        val chain: Boolean,
+    ) : PickIntent
+
+    /**
+     * 「常用命令」那条入口：给那张清单挑一条动作 —— 挑中的应用 / 结束应用落成清单里的一条。
+     *
+     *  与 [Release] 同一档性质（都是「把挑中的这一条写到某个地方」），只是落点不同：
+     *  那边是某个键的一个字段，这边是 `global.commonCommands` 那张表。
+     *
+     * @param replaceToken 非空 = **换掉清单里的这一条**（行菜单的「修改」那一趟）；
+     *   `null` = 追加一条新的（右下角那颗加号）
+     */
+    class CommonCommand(
+        val replaceToken: String?,
+    ) : PickIntent
+
+    /**
+     * 「添加命令」那条入口：给多条命令**加一步**（[replaceIndex] `< 0`）或换掉第 [replaceIndex] 步。
+     */
+    class Step(
+        val replaceIndex: Int,
+    ) : PickIntent
+
+    /**
+     * 「条件执行」那条入口：给第 [index] 块挑**条件应用**。
+     *
+     *  条件与动作的落点不同（条件存包名、动作存 token），所以**不需要**再记「这一趟写哪半个」：
+     *  动作那一侧走「场景动作」页的网格（`BindingTarget.Scene`），与这张页面无关。
+     *
+     * @param conditionIndex `>= 0` = 换那一条条件，`-1` = 追加一条
+     * @param kind 写回**哪一档**（[ConditionKind.APP] / [ConditionKind.APP_NOT]）—— 两档的流程
+     *   一模一样，只有写回去的那一位不同
+     */
+    class Branch(
+        val index: Int,
+        val conditionIndex: Int,
+        val kind: ConditionKind,
+    ) : PickIntent
 }
 
 /** 这一趟挑中的应用写到哪儿去 —— 见 [AppPickerState.takePickTarget]。 */

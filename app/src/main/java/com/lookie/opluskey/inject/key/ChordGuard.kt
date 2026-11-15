@@ -114,7 +114,9 @@ internal fun swallowValueOf(
             else -> Reflect.zeroOf(type)
         }
     //  一次按压一条：这一行同时是「回填成什么」的唯一凭据（返回类型对不上时先看这里）。
-    XLog.d("$label：按返回类型 $type 回填 $value")
+    //  惰性：它在**每一次被吞下的按键**上都走一遍，release 里整段被编译期消灭 ——
+    //  `$value` 是任意对象，串在调用点先拼出来的话每条按键都要白调一次 `toString`。
+    XLog.d { "$label：按返回类型 $type 回填 $value" }
     return value
 }
 

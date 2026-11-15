@@ -109,7 +109,7 @@ internal fun SettingsPage.BindingGroups(
 
         //  **单击那三行不在这条页面上**（用户口径「单击的设置都移到独立设置里」）：
         //  判定时机 / 单击延迟 / 忽视无操作双击手势一起挪进了 `Screen.KEY_SETTINGS`
-        //  （见 `KeySettingsScreen` 里那张 `BindingSettingsCard`）。
+        //  （见 `KeySettingsScreen` 里那张 `ClickDelayCard`）。
         //  原先它按「单键的单击档」摆在这里，于是同一个参数有两处入口 —— 一处能改、一处改的是
         //  「这颗键」，进哪一页看到的东西取决于刚才是怎么点进来的。
 

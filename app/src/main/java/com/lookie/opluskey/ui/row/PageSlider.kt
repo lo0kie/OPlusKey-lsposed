@@ -16,6 +16,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -25,9 +27,12 @@ import com.lookie.opluskey.ui.dialog.NameDialog
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.model.page.ROW_START_ICON_GAP
+import com.lookie.opluskey.ui.model.page.SLIDER_EDGE_BLEED
 import com.lookie.opluskey.ui.model.page.SLIDER_ICON_INSET
 import com.lookie.opluskey.ui.model.page.SLIDER_INSIDE_MARGIN
 import com.lookie.opluskey.ui.model.page.SLIDER_ROW_TAP_TRACK
+import com.lookie.opluskey.ui.model.page.SLIDER_TOP_TUCK
+import com.lookie.opluskey.ui.model.page.SLIDER_TRACK_HEIGHT
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.CardListPosition
@@ -308,7 +313,14 @@ private fun SliderTrack(
             Modifier
                 .fillMaxWidth()
                 // 行首图标把滑杆也挤开（见 [SLIDER_ICON_INSET]）
-                .padding(start = SLIDER_ICON_INSET),
+                .padding(start = SLIDER_ICON_INSET)
+                // 库的轨道两端各内缩 `height × 0.2`（见 [SLIDER_EDGE_BLEED]）—— 补掉这一截，
+                // 可见轨道才与上面的标题 / 摘要同一个左右边界。挂在 padding **之后**：
+                // 量到的是「已经让开图标」的那条宽度，撑出去的部分压在行内边距上。
+                .sliderEdgeBleed(SLIDER_EDGE_BLEED)
+                // 库在 `bottomAction` 之前固定 8dp 间隔，轨道压到 18dp 之后那一段显得空
+                // （见 [SLIDER_TOP_TUCK]）：布局高度减 2dp、绘制上移 2dp。
+                .sliderTopTuck(SLIDER_TOP_TUCK),
         // 不给调用方那份时只标出厂默认值一个点（毫秒那几档要的就是这个）
         keyPoints = spec.keyPoints ?: listOf(spec.default.toFloat()),
         onValueChange = onValueChange,
@@ -396,9 +408,11 @@ internal fun TrackSlider(
         showKeyPoints = keyPoints != null,
         keyPoints = keyPoints.orEmpty(),
         magnetThreshold = 0f,
-        // 与库默认同值，显式写出来是因为「点轨道跳值」要按它们算几何 ——
-        // 账在 [SLIDER_TAP_ZONE] / [SLIDER_SIDE_INSET] 的注释里
-        height = SliderDefaults.MinHeight,
+        // 轨道静止高度（[SLIDER_TRACK_HEIGHT]，16dp）—— 显式写出来是因为「点轨道跳值」
+        // 与行高都按它算账（见 [SLIDER_TAP_ZONE] / [SLIDER_EDGE_BLEED]）。
+        //  注意：库这边叫 `height`，调的是**轨道带子**（轨道粗细、滑块半径都按它等比），
+        //  不是整行高度。
+        height = SLIDER_TRACK_HEIGHT,
         // 库那一档关掉：`SliderHapticState.handleStepHaptic` 是**二选一** —— `keyPoints` 非空
         //  就整条切到「只在关键点上振一次」，为空才按「跨一档振一次」。默认的圆点只有一个，
         //  开着它就等于拖动全程只在拖回默认值时振。圆点要留，于是触觉由调用方自己给
@@ -407,6 +421,57 @@ internal fun TrackSlider(
         onValueChangeFinished = onValueChangeFinished,
     )
 }
+
+/**
+ * 把绘制宽度往两边各撑 [inset]，父布局仍按原宽度排版 —— 只让轨道两端的圆头压到行内边距上。
+ *
+ *  为什么需要它：库的 `Slider` 把 `Modifier.fillMaxWidth().height(height)` 交给画轨道的 Canvas，
+ *  而那个 Canvas 里两端各让出 `height × 0.7`（私有的 `TrackCapInsetRatio`）、圆头再回吐
+ *  `height / 2`，净缩进 `height × 0.2`。滑杆节点本身是按行内边距摆的（左边界与标题同一个 x），
+ *  于是可见轨道比文字窄两截 —— 一列滑杆行叠起来看，左边那根明显靠右、右边比摘要早收。
+ *
+ *  撑出去的是**绘制**宽度：`layout` 报给父节点的仍是原宽、摆放偏 `-inset`，
+ *  于是 Canvas 的坐标系两端各多出 [inset] 可用，圆头正好落在原边界上。
+ *  触摸几何不受影响 —— `tapSliderToSeek` 挂在行节点上、按 [SLIDER_ROW_TAP_TRACK] 算，
+ *  补完之后它算的轨道两端与可见轨道重合（原来差的就是这一截）。
+ */
+private fun Modifier.sliderEdgeBleed(inset: Dp): Modifier =
+    layout { measurable, constraints ->
+        if (!constraints.hasBoundedWidth) {
+            //  宽度不受限（例如被放进可横滚的容器）时不撑：没有「边界」可对齐，撑了只会溢出
+            val placeable = measurable.measure(constraints)
+            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        } else {
+            val extra = inset.roundToPx()
+            val placeable =
+                measurable.measure(
+                    constraints.copy(
+                        minWidth = constraints.maxWidth + extra * 2,
+                        maxWidth = constraints.maxWidth + extra * 2,
+                    ),
+                )
+            layout(constraints.maxWidth, placeable.height) { placeable.place(-extra, 0) }
+        }
+    }
+
+/**
+ * 把滑杆的**布局高度**减 [inset]、绘制上移 [inset] —— 只吃掉它上面那截间隔。
+ *
+ *  库在 `BasicComponent` 的 `bottomAction` 前固定摆了一个 `Spacer(8.dp)`，没有参数可调；
+ *  轨道压到 [SLIDER_TRACK_HEIGHT] 之后，那 8dp 相对变宽，看着像滑杆上方空了一块。
+ *  这里报给父节点的高度比实际矮 [inset]、摆放上偏同样的量：视觉间隔回到 6dp。
+ *  轨道**底边**不动（仍贴着行内边距），顶边跟着矮下去 —— [SLIDER_TAP_ZONE] 按这个算。
+ *
+ *  绘制会探出自身布局边界上方 [inset] —— 父级（`BasicComponent` 的 Column）不裁剪，
+ *  那一点落在原来那 8dp 间隔里，不会压到上面的摘要。
+ */
+private fun Modifier.sliderTopTuck(inset: Dp): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        //  不能收到负高度（极端约束下 `height - tuck` 会变负，`layout` 会抛）
+        val tuck = inset.roundToPx().coerceIn(0, placeable.height)
+        layout(placeable.width, placeable.height - tuck) { placeable.place(0, -tuck) }
+    }
 
 /**
  * 轨道上那个刻度点的**不透明度**（颜色取 `onSurface`，见 [SliderTrack] 里 `trackTick` 的说明）。

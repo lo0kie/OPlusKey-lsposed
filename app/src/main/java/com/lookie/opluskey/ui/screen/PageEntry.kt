@@ -296,8 +296,37 @@ internal fun SettingsPage.keyEnabled(id: KeyId): Boolean =
  *
  *  首页与「按键设置」都要它：两处各写一遍时，加一条闸门（比如以后只读再加一档）就得记得改两处，
  *  漏一处的那一页会「看起来能改、点了被拦」。
+ *
+ *  **它是最严的那一档**，下面两个是它的两个「少一项」变体 —— 三个判据合起来只有这三份，
+ *  各自为什么少一项都写在各自的 KDoc 里（原先五处各拼一遍、没有一处写理由）。
  */
 internal fun SettingsPage.pageWritable(): Boolean = configState.config.value.global.enabled && linkReady && !configState.readOnly
+
+/**
+ * 「链路就绪、且这次配置读得出来」—— **不吃主开关**。
+ *
+ *  给「主开关关着也必须点得动」的入口用：首页 `⋮` 菜单里那几行、「重置配置」那一行、
+ *  首页那张激活卡片上那颗开关。主开关关着是**用户的意图状态**，把它算进闸里就等于
+ *  「关掉之后再也开不回来」—— 那颗开关自己就是靠这一位活着的。
+ *
+ *  `!configState.readOnly` 这一条是被真机逼出来的：只读态下刚进页时链路还没报到 ⇒ 入口是死的；
+ *  等注入侧回包一到、`linkReady` 变 true，它就自己活过来，用户当场点了三下（每次都被 `write` 拒掉）。
+ *  **「点了没反应」比「一开始就灰着」更难读**。
+ */
+internal val SettingsPage.linkSettled: Boolean
+    get() = linkReady && !configState.readOnly
+
+/**
+ * 「配置这份文件写得回去」—— **只看建页那次读成功没有**，不看主开关、也不看链路。
+ *
+ *  给「与链路无关的读写」用：导入 / 导出配置（导出只读盘、导入只写盘，都不经注入侧），
+ *  以及「免责声明还没接受」那道弹窗（它要写回 `config`，只读时写了也会被拒）。
+ *
+ *  只读态下 `configState.config.value` 是**默认值 + 空命令表** —— 那时导出来是一份「默认配置」
+ *  还报「已导出」，比直接失败更误导（见 `ConfigTransfer` 里那条分支）。
+ */
+internal val SettingsPage.configWritable: Boolean
+    get() = !configState.readOnly
 
 /**
  * 「选择应用」页 —— 两个入口共用（挑中的东西写到哪儿去由 `picker` 那一组标记决定）。

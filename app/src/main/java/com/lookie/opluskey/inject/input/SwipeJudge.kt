@@ -97,7 +97,7 @@ internal class SwipeJudge(
             abort("按下时就有 ${event.pointers} 根手指")
             return
         }
-        track?.let { XLog.d("滑动判定：上一段没有抬手就来了新的按下，前一段作废") }
+        track?.let { XLog.d { "滑动判定：上一段没有抬手就来了新的按下，前一段作废" } }
         track =
             Track(
                 pointerId = event.pointerId,
@@ -138,7 +138,7 @@ internal class SwipeJudge(
         //  抬手的不是这一段的主指针 ⇒ 作废：拿别人的终点算时长，等于把两段轨迹拼成一条
         val samePointer = event.pointerId == t.pointerId
         if (!samePointer) {
-            XLog.d("滑动判定：抬手的指针 ${event.pointerId} 与按下的 ${t.pointerId} 不同，这一段作废")
+            XLog.d { "滑动判定：抬手的指针 ${event.pointerId} 与按下的 ${t.pointerId} 不同，这一段作废" }
         }
         val duration = event.atMs - t.startAt
         val dx = t.peakX - t.startX
@@ -158,7 +158,7 @@ internal class SwipeJudge(
     }
 
     private fun abort(reason: String) {
-        if (track != null) XLog.d("滑动判定：这一段作废 —— $reason")
+        if (track != null) XLog.d { "滑动判定：这一段作废 —— $reason" }
         track = null
     }
 

@@ -484,7 +484,7 @@ internal object ConfigArrivalLog {
         //  「这一档要几颗、窗口多大、长按阈值多少」——「按了没反应」时对得上按法就是配置问题，
         //  对不上才是判定问题，两者靠它分开。
         XLog.guard("组合判定计划") {
-            fresh.comboPlans().forEach { XLog.d("组合计划：$it") }
+            fresh.comboPlans().forEach { plan -> XLog.d { "组合计划：$plan" } }
         }
     }
 
@@ -496,7 +496,7 @@ internal object ConfigArrivalLog {
      */
     fun plans(fresh: Config) {
         XLog.guard("判定计划") {
-            fresh.allKeys.forEach { id -> XLog.d("判定计划：${id.id} → ${fresh.key(id).gesturePlan()}") }
+            fresh.allKeys.forEach { id -> XLog.d { "判定计划：${id.id} → ${fresh.key(id).gesturePlan()}" } }
         }
     }
 }

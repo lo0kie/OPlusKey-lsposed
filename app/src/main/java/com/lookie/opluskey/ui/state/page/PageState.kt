@@ -219,10 +219,23 @@ private val JOIN_WITH_SPACE = listOf("&&", "||", "|", ";", ":", "=", "(")
  * 用 Compose 的 `mutableStateOf` / `mutableStateListOf` 存，所以表单是「边输边存」的：
  * push 到「添加命令」那一级再回来，名称 / 类型 / 已经挑好的步骤都还在。
  *
- *  下面这些字段都是**当前这一页**的快捷方式：`kind` 是 pager 停在哪一页的镜像，读写都落到对应
- *  那一份表单上。调用点因此一行都不用改，而两页的内容、编辑态与校验互不影响。
+ *  下面这些字段都是**当前这一页**的快捷方式：`kind` 指出「现在该用哪一份表单」，读写都落到
+ *  对应那一份上。调用点因此一行都不用改，而两页的内容、编辑态与校验互不影响。
  */
 internal class CommandDraft {
+    /**
+     * 「这一页**该**停在哪一档」—— 进页时 `PageContent` 按它把 pager 滚到对应页
+     * （`scrollToPage(CommandKind.FORM_TABS.indexOf(kind))`），用户滑页时 `CommandTabSync`
+     * 那条 `snapshotFlow` 再把它改回来。
+     *
+     *  **所以它有两个方向的写者，但语义只有一个**：「用户想要看哪一档」。
+     *   · 意图侧（`load` / `reset` / 调试通道）先写它，进页那一下再据此跳页；
+     *   · 镜像侧（滑页）写它，让 [form] 跟着换成另一份。
+     *
+     *  别把这两个方向当成「两个权威」：**没有任何一处代码直接改 pager 的当前页** ——
+     *  跳页永远是 `PageContent` 读这一位之后做的。原先 [form] 的注释写「只由 snapshotFlow
+     *  单向同步」，那是错的（`load` 必须在这里先写，否则载入一条多条命令后 pager 会停在单条页）。
+     */
     var kind by mutableStateOf(CommandKind.SINGLE)
 
     /** 单条那一页的表单。 */
@@ -231,7 +244,7 @@ internal class CommandDraft {
     /** 多条那一页的表单。 */
     val serialForm = CommandForm(CommandKind.SERIAL)
 
-    /** 当前这一页那一份（`kind` 由 `CommandScreen` 那条 `snapshotFlow` 单向同步）。 */
+    /** 当前这一页那一份 —— [kind] 指向谁就是谁（两个写者见 [kind] 的注释）。 */
     val form: CommandForm
         get() = formOf(kind)
 
@@ -317,7 +330,12 @@ internal class CommandDraft {
         serialForm.reset()
     }
 
-    /** 把已保存的 [cmd] 灌进**它自己那一页**的表单，进入编辑态。 */
+    /**
+     * 把已保存的 [cmd] 灌进**它自己那一页**的表单，进入编辑态。
+     *
+     *  [kind] 在这里也要写：它是「进页时 pager 该停哪一页」的输入（见那里的注释）——
+     *  只灌表单不写它，载入一条多条命令之后 pager 会停在单条页。
+     */
     fun load(cmd: Command) {
         kind = cmd.kind
         form.load(cmd)

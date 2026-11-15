@@ -101,6 +101,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer2
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerShare
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
 import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber1
@@ -971,6 +972,15 @@ internal object PageIcons {
      *  这颗说的是**到点先别动**）。
      */
     val LongFireOnRelease: ImageVector get() = TablerIcons.Outline.PointerPause
+
+    /**
+     * 「按住组合：首键松手后仍执行长按」那一行 —— `pointer-share`（光标 + 一支分出去的箭头）。
+     *
+     *  读作「这一次按压被两件事共享」：组合动作照常走，首键自己的长按也不丢。
+     *  与 [LongRelease]（`pointer-up`，松手执行额外动作）分开：那一行管「抬手时再走一个动作」，
+     *  这一行管「组合已经走完之后，这颗键的长按还留不留」—— 同一颗字形会把两种「松手」读成同一件事。
+     */
+    val ComboKeepLong: ImageVector get() = TablerIcons.Outline.PointerShare
 
     /** 「命令间隔时长」—— `clock-play`（钟 + 播放：等这么久再走下一步）。 */
     val DelayStep: ImageVector get() = TablerIcons.Outline.ClockPlay

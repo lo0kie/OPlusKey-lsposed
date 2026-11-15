@@ -1,6 +1,6 @@
 """性能审计 —— 把「常见性能问题」变成可 grep 的判据。
 
-三道闸，前两道是**硬判据**（有命中就红），第三道只报数（趋势线，不判定）：
+五道闸，前四道是**硬判据**（有命中就红），第五道只报数（趋势线，不判定）：
 
 1. 主线程阻塞：界面层里那些会做 IO / 跨进程查询 / 等锁的调用，**不许**出现在主线程路径上
    （必须包在 `withContext(Dispatchers.IO)` 之类的后台段里）。
@@ -9,6 +9,13 @@
 3. 组合期重算：`@Composable` 函数体里对状态做 `filter / map / sortedBy / toList / buildList`，
    且该函数里没有 `remember` —— 每帧重组都重算。这一档**只报数**：很多是「行表按状态派生」
    的正常写法，强行 remember 反而会拿旧状态。
+4. 文件指纹单一实现：读缓存按「修改时间 + 长度 + inode」命中，`Os.stat` 的返回结构里本来就有
+   这三项 —— 一次 stat 取齐。三处各写一遍（主配置 / 命令库 / 变量表）时每处都是三次系统调用，
+   而 `ConfigStore.read()` 在宿主按键路径上每条按键要被问好几次。判据：`lastModified()` /
+   `Os.stat` 只许出现在 `core/config/ConfigStore.kt` 的 `fileStamp` 里。
+5. 详细日志必须惰性：`XLog.d` 的 `String` 重载在 release 下**函数体被折掉、实参照算**
+   （`VERBOSE_LOG` 是编译期常量，只有 lambda 版本能把拼串一起消掉）。注入侧与按键热路径上
+   一律用 `XLog.d { … }`，否则每条事件都白拼一串字符串。
 
 用法（仓库根目录）：`python3 tools/audit-perf.py`；`--report` 只打印明细，不因第 3 类失败。
 """
@@ -80,6 +87,27 @@ HOT_ALLOW = {
 # ── 判据 3：组合期重算（只报数）───────────────────────────────────────────────
 RECALC = re.compile(r'\.(filter|map|mapNotNull|sortedBy|sortedWith|groupBy|associate|toList)\s*[{<(]|buildList\s*\{')
 COMPOSABLE = re.compile(r'@Composable')
+
+# ── 判据 4：文件指纹单一实现 ─────────────────────────────────────────────────
+# 「修改时间 + 长度 + inode」这套指纹只许有一份实现（一次 stat 取齐三项），其余调用点一律
+# 走 `fileStamp` / `FileStamp.sameAs`。判据落在「谁直接碰了这几个系统调用」上。
+STAMP_FILE = 'core/src/main/java/com/lookie/opluskey/core/config/ConfigStore.kt'
+STAMP_CALLS = re.compile(r'\.lastModified\s*\(\s*\)|\bOs\s*\.\s*stat\s*\(')
+
+# ── 判据 5：详细日志必须惰性 ─────────────────────────────────────────────────
+# `XLog.d("…$…")` / `XLog.i("…")`：`String` 重载在 release 下只折掉函数体，实参照样求值。
+# 注入侧整棵树都算热路径（它跑在 system_server 与桌面进程里），另外再加上那份热路径清单。
+LAZY_LOG = re.compile(r'\bXLog\s*\.\s*[di]\s*\(\s*"')
+# 正则只许在**顶层常量**里编译一次（`private val X = Regex(…)`）；写在表达式里就是每次重编。
+REGEX_CALL = re.compile(r'\bRegex\s*\(')
+REGEX_DECL = re.compile(r'^\s*(private\s+|internal\s+)?val\s+\w+[^=]*=\s*Regex\s*\(')
+# 声明换行写（`private val X =` 换行再 `Regex(…)`）也算顶层常量：判据看的是「上一行是不是
+#  以 `=` 收尾的属性声明」，而不是同一行里有没有 `val`。
+REGEX_DECL_HEAD = re.compile(r'^\s*(private\s+|internal\s+)?val\s+\w+[^=]*=\s*$')
+SCAN_ROOTS = [
+    ('core/src/main/java', None),
+    ('app/src/main/java', None),
+]
 
 
 def read(path):
@@ -183,6 +211,78 @@ def scan_recalc():
     return sites
 
 
+def scan_stamp():
+    """判据 4：指纹只许在 [STAMP_FILE] 里取。"""
+    global SCANNED
+    hits = []
+    for root, _ in SCAN_ROOTS:
+        for dirpath, _, files in os.walk(root):
+            for f in sorted(files):
+                if not f.endswith('.kt'):
+                    continue
+                SCANNED += 1
+                p = os.path.join(dirpath, f).replace(os.sep, '/')
+                if p == STAMP_FILE:
+                    continue
+                for i, line in enumerate(read(p).split('\n')):
+                    if line.lstrip().startswith(('//', '*', '/*')):
+                        continue
+                    if STAMP_CALLS.search(line):
+                        hits.append((p, i + 1, '指纹自己算', line.strip()[:90]))
+    return hits
+
+
+def scan_lazy_log():
+    """判据 5：注入侧与热路径清单里的详细日志必须是 lambda 版。"""
+    hits = []
+    for dirpath, _, files in os.walk(INJECT_ROOT):
+        for f in sorted(files):
+            if not f.endswith('.kt'):
+                continue
+            p = os.path.join(dirpath, f)
+            for i, line in enumerate(read(p).split('\n')):
+                if line.lstrip().startswith(('//', '*', '/*')):
+                    continue
+                if LAZY_LOG.search(line):
+                    hits.append((p, i + 1, '急求值日志', line.strip()[:90]))
+    for rel in HOT_FILES:
+        p = os.path.join('app/src/main/java/com/lookie/opluskey', rel)
+        if not os.path.exists(p):
+            continue
+        for i, line in enumerate(read(p).split('\n')):
+            if line.lstrip().startswith(('//', '*', '/*')):
+                continue
+            if LAZY_LOG.search(line):
+                hits.append((p, i + 1, '急求值日志', line.strip()[:90]))
+    return hits
+
+
+def scan_regex():
+    """判据 5 的第二半：正则只许在顶层 `val` 里编译一次。"""
+    global SCANNED
+    hits = []
+    for root, _ in SCAN_ROOTS:
+        for dirpath, _, files in os.walk(root):
+            for f in sorted(files):
+                if not f.endswith('.kt'):
+                    continue
+                p = os.path.join(dirpath, f)
+                lines = read(p).split('\n')
+                for i, line in enumerate(lines):
+                    if line.lstrip().startswith(('//', '*', '/*')):
+                        continue
+                    if not REGEX_CALL.search(line):
+                        continue
+                    if REGEX_DECL.search(line):
+                        continue
+                    # 声明换行写的形态：往上第一行非空行是 `val X =`
+                    prev = next((l for l in reversed(lines[:i]) if l.strip()), '')
+                    if REGEX_DECL_HEAD.search(prev):
+                        continue
+                    hits.append((p, i + 1, '现场编译正则', line.strip()[:90]))
+    return hits
+
+
 def main():
     report_only = '--report' in sys.argv
     fail = 0
@@ -205,6 +305,27 @@ def main():
     print(f'[3] 组合期重算（趋势线，不判定）：{len(recalc)} 处')
     for p, line, name, count in recalc:
         print(f'    {p}:{line}  {count} 式  {name}')
+
+    stamp = scan_stamp()
+    print(f'[4] 文件指纹单一实现（硬判据）：{len(stamp)} 处')
+    for p, line, label, snippet in stamp:
+        print(f'    {p}:{line}  {label}  —— {snippet}')
+    if stamp:
+        fail = 1
+
+    lazy = scan_lazy_log()
+    print(f'[5] 详细日志惰性（硬判据）：{len(lazy)} 处')
+    for p, line, label, snippet in lazy:
+        print(f'    {p}:{line}  {label}  —— {snippet}')
+    if lazy:
+        fail = 1
+
+    regex = scan_regex()
+    print(f'[6] 正则只编译一次（硬判据）：{len(regex)} 处')
+    for p, line, label, snippet in regex:
+        print(f'    {p}:{line}  {label}  —— {snippet}')
+    if regex:
+        fail = 1
 
     if fail and not report_only:
         print('\n性能审计未通过 —— 上面的硬判据要就地改掉，别往基线里加。')

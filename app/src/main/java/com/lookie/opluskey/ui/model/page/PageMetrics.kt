@@ -8,7 +8,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import io.github.suqi8.coui.kmp.basic.SliderDefaults
 
 // 尺寸 / 边距 / 行数 / 触达区（拆分后剩下的一档）。 —— 从 PageConst.kt 拆出（同包搬迁，调用点不变）。
 
@@ -96,11 +95,55 @@ internal val SLIDER_INSIDE_MARGIN =
         vertical = SLIDER_BOTTOM_INSET,
     )
 
+/**
+ * 滑杆轨道静止时的高度 —— 同时是 `Slider` 自己的布局高度。
+ *
+ *  库的默认是 `SliderDefaults.MinHeight`（20dp）—— 这里压到 18dp：轨道粗细、滑块半径
+ *  （`height × 0.3`，20dp 时 6dp、18dp 时 5.4dp）与整行高度一起小一档。
+ *  库对这个参数**没有下限校验**（`MinHeight` 只是默认值，`Slider` 里只 require 了 `steps`
+ *  与 `valueRange`），18dp 合法。
+ *
+ *  **改这一处要连着看三处账**：本文件的 [SLIDER_TAP_ZONE]、[SLIDER_EDGE_BLEED]，
+ *  以及弹窗那根滑杆的命中带（`PercentDialog` 的 `DIALOG_TAP_TRACK`）。
+ */
+internal val SLIDER_TRACK_HEIGHT = 18.dp
+
+/**
+ * 滑杆往上收的距离 —— 吃掉库在 `bottomAction` 之前那 8dp 间隔里的一截。
+ *
+ *  库在 `BasicComponent` 的 `bottomAction` 前固定摆了一个 `Spacer(8.dp)`，改不了；
+ *  轨道从 20dp 压到 18dp 之后，那 8dp 相对变宽，看着像「滑杆上面空了一块」。
+ *  这一档把滑杆的**布局高度减 2dp、绘制上移 2dp**（见 `PageSlider.kt` 的 `sliderTopTuck`），
+ *  视觉间隔就回到 6dp，与压高度之前「8dp 间隔 + 20dp 轨道」的比例一致。
+ *  轨道**底边**位置不变（仍贴着行内边距），顶边跟着下移 2dp —— [SLIDER_TAP_ZONE] 按这个算。
+ */
+internal val SLIDER_TOP_TUCK = 2.dp
+
+/**
+ * 轨道两端各要往外补的距离 —— 让**可见轨道**的两端落在标题 / 摘要的左右边界上。
+ *
+ *  库画水平轨道时两端各让出 `height × 0.7`（私有的 `TrackCapInsetRatio` = 放大倍数 1.4 / 2），
+ *  圆头再回吐 `height / 2`，净缩进就是 `height × 0.2`。滑杆节点本身按行内边距摆
+ *  （左边界与标题文字同一个 x），于是可见轨道比文字窄这两截 —— 一列滑杆行叠起来，
+ *  左边那根明显比标题靠右、右边比摘要早收，看着就是「没对齐」。
+ *
+ *  只补绘制宽度（见 `PageSlider.kt` 的 `sliderEdgeBleed`），触摸几何不动：`tapSliderToSeek` 按行节点算，
+ *  补完之后它算出的轨道两端正好与可见轨道重合。
+ */
+internal val SLIDER_EDGE_BLEED = SLIDER_TRACK_HEIGHT * 0.2f
+
 /** 卡片组首尾行在 `BasicComponent` 里额外补的上下边距（`coui_list_card_head_or_tail_padding`）。 */
 private val CARD_EDGE_PADDING = 2.dp
 
-/** 「点轨道跳值」认作滑杆的那条带子的高度。 */
-internal val SLIDER_TAP_ZONE = SliderDefaults.MinHeight + SLIDER_BOTTOM_INSET + CARD_EDGE_PADDING
+/**
+ * 「点轨道跳值」认作滑杆的那条带子的高度。
+ *
+ *  轨道底边贴着行内边距（[SLIDER_BOTTOM_INSET]），往上数 [SLIDER_TRACK_HEIGHT] 就是轨道顶；
+ *  再加 [CARD_EDGE_PADDING] 那一点余量。上移（[SLIDER_TOP_TUCK]）不进这一笔 ——
+ *  它抬的是绘制、底边没动，轨道顶本来就跟着矮了 2dp，带子同步缩 2dp 正好。
+ */
+internal val SLIDER_TAP_ZONE =
+    SLIDER_TRACK_HEIGHT + SLIDER_BOTTOM_INSET + CARD_EDGE_PADDING
 
 /**
  * 「点轨道跳值」要的那条轨道几何 —— 手势节点边缘到轨道两端让出多少，以及贴着底边多高一条算滑杆。

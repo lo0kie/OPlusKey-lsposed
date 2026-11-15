@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.foundation.ScrollState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +40,7 @@ import com.lookie.opluskey.ui.state.signal.BandHeight
 import com.lookie.opluskey.ui.state.signal.BandHeights
 import com.lookie.opluskey.ui.state.signal.HintCenter
 import com.lookie.opluskey.ui.wire.clearAppLabelCache
+import com.lookie.opluskey.ui.wire.computeLinkFacts
 import io.github.suqi8.coui.kmp.nav.core.NavBackStack
 import io.github.suqi8.coui.kmp.nav.core.navBackStackOf
 
@@ -885,6 +887,19 @@ internal class SettingsPage(
      * 「链路 / 报活」那几项结论（宿主在不在、注入侧回没回包）—— 见 [HostLinkState]。
      */
     internal val link = HostLinkState
+
+    /**
+     * [com.lookie.opluskey.ui.wire.linkFacts] 的派生缓存。
+     *
+     *  为什么要缓存：那份结论读十来个状态（只读位、主开关、宿主报活、注入侧回包、四个时间戳……），
+     *  而它被整页总闸（`pageWritable`）、首页那条常驻提示、「运行状态」三处读 —— 直接当 getter
+     *  用的话，每次读都要重算并新建一个对象，等于**任一链路信号变一下就整页重画**。
+     *
+     *  包成 `derivedStateOf` 之后：输入变了才重算，重算后与旧值比较（[LinkFacts] 是 data class，
+     *  按字段比）—— 结论没变就不通知下游。`hostLastActionAt` 这种「只进日志」的字段动了，
+     *  页面不会跟着重画。
+     */
+    internal val linkFactsCache = derivedStateOf { computeLinkFacts() }
 
     /**
      * 页面上那两条提示条（常驻结论 + 操作回执）—— 见 [HintCenter]。

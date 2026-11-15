@@ -87,16 +87,20 @@ internal class HintQueue(
     var items by mutableStateOf<List<HintItem>>(emptyList())
         private set
 
-    /** 每条的到期计时（按 [HintItem.id]）。 */
-    private val timers = mutableMapOf<Long, Job>()
-
     /**
-     * 每条的**到期时刻**（`elapsedRealtime`）—— 与 [timers] 一一对应。
+     * 每条的计时（按 [HintItem.id]）—— 协程与**到期时刻**打包在一起。
      *
-     *  为什么要单独记：跑马灯（文字比胶囊宽）滚动的那几秒里不能到点收，[extend] 要把到期
-     *  往后推。只拿 `timers` 是推不出来的 —— 协程里那个 `delay` 的剩余量读不到。
+     *  为什么两样要一起：跑马灯（文字比胶囊宽）滚动的那几秒里不能到点收，[extend] 要把到期
+     *  往后推；而只拿 `Job` 是推不出来的（协程里 `delay` 的剩余量读不到）。原先这两样是
+     *  两张按 id 对齐的 map，改一处忘另一处就是「协程还在跑、到期时刻已经没了」——
+     *  现在一个 entry 一个 id，删/改都只有一条路。
      */
-    private val deadlines = mutableMapOf<Long, Long>()
+    private class Timer(
+        val job: Job,
+        val deadline: Long,
+    )
+
+    private val timers = mutableMapOf<Long, Timer>()
 
     private var nextId = 0L
 
@@ -154,9 +158,8 @@ internal class HintQueue(
 
     /** 全收（关页时用）—— 这里**不等动画**：页面都要拆了，没人看得到那 100ms。 */
     fun clear() {
-        timers.values.forEach { it.cancel() }
+        timers.values.forEach { it.job.cancel() }
         timers.clear()
-        deadlines.clear()
         items = emptyList()
     }
 
@@ -173,13 +176,16 @@ internal class HintQueue(
     ) {
         val hold = holdMs ?: this.holdMs
         if (hold <= 0) return
-        timers.remove(id)?.cancel()
-        deadlines[id] = SystemClock.elapsedRealtime() + hold
+        timers.remove(id)?.job?.cancel()
         timers[id] =
-            scope.launch {
-                delay(hold)
-                retire(id)
-            }
+            Timer(
+                deadline = SystemClock.elapsedRealtime() + hold,
+                job =
+                    scope.launch {
+                        delay(hold)
+                        retire(id)
+                    },
+            )
     }
 
     /**
@@ -200,16 +206,19 @@ internal class HintQueue(
     ) {
         if (extraMs <= 0) return
         if (items.none { it.id == id && !it.exiting }) return
-        val until = deadlines[id] ?: return
+        val until = timers[id]?.deadline ?: return
         val left = until - SystemClock.elapsedRealtime() + extraMs
         if (left <= 0) return
-        timers.remove(id)?.cancel()
-        deadlines[id] = SystemClock.elapsedRealtime() + left
+        timers.remove(id)?.job?.cancel()
         timers[id] =
-            scope.launch {
-                delay(left)
-                retire(id)
-            }
+            Timer(
+                deadline = SystemClock.elapsedRealtime() + left,
+                job =
+                    scope.launch {
+                        delay(left)
+                        retire(id)
+                    },
+            )
     }
 
     /** 把某个语义位上的提示**提前收掉**（播退场，不硬切）。 */
@@ -248,8 +257,7 @@ internal class HintQueue(
      */
     private fun retire(id: Long) {
         if (items.none { it.id == id && !it.exiting }) return
-        timers.remove(id)?.cancel()
-        deadlines.remove(id)
+        timers.remove(id)?.job?.cancel()
         items = items.map { if (it.id == id) it.copy(exiting = true) else it }
         scheduleRemoval(id)
     }
@@ -271,15 +279,11 @@ internal class HintQueue(
         pruneTimers()
     }
 
-    /** 计时表里已经没有的 id，把它们那些协程收掉。 */
+    /** 计时表里已经没有的 id，把它们那些协程收掉（[items] 是权威，计时表跟着它走）。 */
     private fun pruneTimers() {
         val alive = items.mapTo(HashSet()) { it.id }
         val dead = timers.keys.filterNot { it in alive }
-        dead.forEach {
-            timers.remove(it)?.cancel()
-            deadlines.remove(it)
-        }
-        deadlines.keys.retainAll(alive)
+        dead.forEach { timers.remove(it)?.job?.cancel() }
     }
 }
 

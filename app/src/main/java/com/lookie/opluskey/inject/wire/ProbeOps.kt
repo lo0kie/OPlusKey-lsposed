@@ -141,7 +141,7 @@ internal fun ProbeChannel.cornerOn(
         try {
             tx.close()
         } catch (e: Throwable) {
-            XLog.d("关闭 Transaction 失败（已忽略）：${e.javaClass.simpleName}")
+            XLog.d { "关闭 Transaction 失败（已忽略）：${e.javaClass.simpleName}" }
         }
     }
 }

@@ -26,7 +26,7 @@ import com.lookie.opluskey.ui.model.text.themeTitle
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.PagePalette
 import com.lookie.opluskey.ui.screen.home.openUrl
-import com.lookie.opluskey.ui.wire.linkReady
+import com.lookie.opluskey.ui.screen.linkSettled
 import com.lookie.opluskey.ui.write.setLanguage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -263,7 +263,8 @@ private fun SettingsPage.profileManageRows(
     //  「重置配置」原来挂在首页 `⋮` 菜单上（那会儿叫「清空配置」），闸还是同一个：链路没通、
     //  或这次配置读不出来时不放出来点 —— 只读态下点它，正好会把「读不懂的那份」当成用户的意图覆盖掉
     //  （见 `resetCurrentProfile`）。
-    val canReset = linkReady && !configState.readOnly
+    //  主开关关着也要能点（重置之后要能重开）—— 见 `linkSettled`
+    val canReset = linkSettled
     //  默认配置是升级时落下的退路，**不许改名、不许删除**（用户口径）。这两行直接灰掉并说明，
     //  而不是点了再被拒 —— 拦在门口比事后报错省一轮。
     //  **判据取列表里那一项的身份**（`Item.isDefault`，按 id），不按名字形态：两份都「名字空 +

@@ -239,6 +239,20 @@ internal class ComboDetector(
     private val longPressPassed: (KeyId, Long, Long) -> Boolean = { _, _, _ -> false },
 ) {
     /**
+     * 「**首键松手后仍执行它自己的长按**」那一档 —— 判据与派发两半，`null` = 这一档没接。
+     *
+     *  原设计是一次按压只执行一个动作：组合凑成时成员键的单键状态机被摘掉（[resetKey]），
+     *  首键按多久都判不出自己的长按。开着这一位之后，首键松手时补派一次它自己的长按
+     *  （见 [onUp]）—— 组合那一下照旧执行，等于一次按压两个动作。
+     *
+     *  **放在类体里而不是构造参数**：它是**可选**的（不接就是不启用这个功能），而构造参数
+     *  那张清单已经贴着 detekt 的 `LongParameterList` 上限 —— 那张清单回答的是「这个判定器
+     *  必须知道什么」，这一位不在其中。装配方在构造之后 `apply { }` 一次（见 `KeyHooks`）。
+     */
+    @Volatile
+    var starterKeepLong: StarterKeepLong? = null
+
+    /**
      * 一次 DOWN 的处理结果 —— 调用方据此决定「吞掉 / 延迟喂 / 立刻喂」。
      */
     enum class Down {
@@ -291,6 +305,21 @@ internal class ComboDetector(
     /** 正在进行的组合；`null` = 没有。 */
     @Volatile
     private var combo: Combo? = null
+
+    /**
+     * 「首键那次按压自己的长按**还欠着**」—— 组合已经收尾、首键却还按着，等它抬手时补派。
+     *
+     *  为什么需要跨组合存：按住组合的模型是**首键一直按着、成员按一下就松**。成员松手那一刻
+     *  组合就收尾了（`combo = null`），而首键还要过一会儿才抬手 —— 等它抬手时已经找不到
+     *  是哪一组、开没开这一档了。所以在收尾那一刻把「欠着的那颗首键」记下来。
+     *
+     *  **只记首键，不记成员**：成员的按下 / 抬手走的是它自己的单键状态机（组合只摘掉
+     *  `resetKey` 那一刻已经排上的长按枪，成员自己再按一次照样判长按）。
+     *
+     *  写它的只有组合收尾那一支，读它的只有 [onUp] 开头；[reset] 一并清。
+     */
+    @Volatile
+    private var starterKeepPending: KeyId? = null
 
     /**
      * 这颗键此刻是不是**某一组组合的成员** —— 拦截层据此决定「压着的那一下要不要补发原生事件」。
@@ -641,6 +670,18 @@ internal class ComboDetector(
         short: Boolean = true,
     ): Boolean {
         down.remove(id)
+        //  组合已经收尾、首键这才抬手 ⇒ 补派它自己那次长按（见 [starterKeepPending]）。
+        //  **放在 `consumed` 判断之前**：首键在组合凑成时被记进了 `consumed`，但它此刻的抬手
+        //  要先把这笔欠账还上，再按「被组合接管」吞掉。
+        //  取消（`short = false`）只清账不派发 —— 与组合收尾那条同一口径。
+        val pending = starterKeepPending
+        if (pending != null && pending.id == id.id) {
+            starterKeepPending = null
+            if (short) {
+                XLog.w("组合键：首键 ${id.label} 松手，补派它自己的长按（组合已收尾）")
+                starterKeepLong?.fire(id)
+            }
+        }
         if (id !in consumed) return false
         consumed.remove(id)
         val c = combo
@@ -668,7 +709,7 @@ internal class ComboDetector(
             if (short && !c.longFired) {
                 XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 短按（先松开 ${id.label}）")
                 fire(c, GestureTrigger.Click(1), repeat = false)
-            } else if (short && c.longFired) {
+            } else if (short) {
                 //  长按已经判出来过：这一下按那颗键自己的「松手」两档收尾（与单键同一条口径）——
                 //  · 松手才触发：到点只标了状态，动作放到这一下执行一次；
                 //  · 松手执行额外动作：按住期间已经执行过，这一下再补一条。
@@ -684,11 +725,84 @@ internal class ComboDetector(
                     fire(c, GestureTrigger.Release, repeat = false)
                 }
             }
+            //  「首键松手后仍执行它自己的长按」（`ComboKey.starterKeepLong`）——
+            //  组合凑成时首键的长按枪被摘掉了（`resetKey`），原设计这一下是丢弃的。
+            //
+            //  **不论这一组有没有判过长按**（用户口径）：按住组合的常规按法是「首键一直按着、
+            //  成员点一下就走」，那时 `longFired` 永远是 `false` —— 它挂在「长按已判出」那一支上
+            //  等于这个开关从没生效过（真机反馈：「拨了没效果」）。
+            //  取消（`short = false`）仍不补：那一下不算数。
+            if (short) keepStarterLong(c, id)
             cancelShots(c)
             combo = null
         }
         // 组合的另一颗键可能还按着 —— 它的抬手同样要吞（`consumed` 里还留着它）
         return true
+    }
+
+    /**
+     * 「首键松手后仍执行它自己的长按」—— 组合收尾时结算这一笔。
+     *
+     *  **不论松手顺序**（用户口径）：成员键想怎么按都可以，只要首键抬手就补一次它自己的
+     *  长按。成员不用补 —— 它们有自己的单键状态机、自己会判长按。
+     *  两条路径覆盖两种先后：
+     *   · 松手的就是首键（首键先抬手）⇒ 当场补，见 [StarterKeepLong.fire]；
+     *   · 首键还按着（典型：成员先松，这一组当场收尾）⇒ 记进 [starterKeepPending]，
+     *     等首键抬手时在 [onUp] 开头补 —— 那时 `combo` 已经没了，只能靠这笔账。
+     *
+     *  **与 `longFired` 无关**：按住组合的常规按法是「首键按住、成员一点即走」，这一组
+     *  从来等不到长按阈值（成员一松就收尾，长按枪被 [cancelShots] 撤掉）。早先它只挂在
+     *  「长按已判出」那一支上，于是这个开关在真机上恒不生效。
+     *
+     * @param released 这一次抬手的是哪颗键
+     */
+    private fun keepStarterLong(
+        c: Combo,
+        released: KeyId,
+    ) {
+        //  四个出口各留一行：这一位是「拨了没效果」唯一抓得住的地方 —— 没有它，
+        //  「开关关着」「没接上」「认不出首键」「首键已经不在按着」在这条链路上长得一模一样。
+        val keep = starterKeepLong
+        if (keep == null) {
+            XLog.w("组合键：${c.key.id} 首键长按这一档没接上（装配处没设 starterKeepLong）⇒ 不补")
+            return
+        }
+        if (!keep.enabled(c.key)) {
+            //  正常配置状态（这一位默认就是关），压到 d：开着的人在判定日志里看到的那两行
+            //  才是判据，关着的人不该被每按一次刷一行 W。
+            XLog.d {
+                "组合键：${c.key.id} 的「首键松手后仍执行长按」是关的" +
+                    "（独立设置=${c.key.useOwnSettings}，这一档写过=${c.key.starterKeepLong}）⇒ 不补"
+            }
+            return
+        }
+        //  窗口那一档没有首键（`starterKey` 恒为 null）⇒ 这一位对它不成立
+        val starter = c.key.starterKey?.let { s -> c.keys.firstOrNull { it.id == s } }
+        if (starter == null) {
+            XLog.w(
+                "组合键：${c.key.id} 认不出首键（starterKey=${c.key.starterKey}，" +
+                    "成员=${c.keys.joinToString { it.id }}）⇒ 不补",
+            )
+            return
+        }
+        if (starter.id == released.id) {
+            XLog.w(
+                "组合键：${c.keys.joinToString(" + ") { it.label }} 首键 ${released.label} 松手，" +
+                    "仍执行它自己的长按",
+            )
+            keep.fire(starter)
+        } else if (down.containsKey(starter)) {
+            XLog.w(
+                "组合键：${c.keys.joinToString(" + ") { it.label }} ${released.label} 松手收尾，" +
+                    "首键 ${starter.label} 还按着 ⇒ 它抬手时补派自己的长按",
+            )
+            starterKeepPending = starter
+        } else {
+            XLog.w(
+                "组合键：${c.keys.joinToString(" + ") { it.label }} ${released.label} 松手时" +
+                    "首键 ${starter.label} 已经不在按着的表里 ⇒ 没人可补（它的抬手先到了？）",
+            )
+        }
     }
 
     /**
@@ -702,6 +816,8 @@ internal class ComboDetector(
             cancelShots(it)
         }
         combo = null
+        //  这一笔欠账跟着配置一起作废：关掉主开关 / 改了配置之后，那颗键的抬手不该再派旧动作
+        starterKeepPending = null
         down.clear()
         recent.clear()
         consumed.clear()
@@ -830,6 +946,19 @@ internal class ComboDetector(
             XLog.w("组合键派发失败（已忽略）：${e.javaClass.simpleName}", e)
         }
     }
+
+    /**
+     * 「首键松手后仍执行它自己的长按」那一档的两个回调 —— 见构造参数里的同名项。
+     *
+     *  判据在装配方（`Config.comboStarterKeepLongFor`：独立设置关着就看公共那份），
+     *  派发也在装配方（转给宿主，走与普通长按同一条 `forward`）。
+     */
+    internal class StarterKeepLong(
+        /** 这一档开了吗。 */
+        val enabled: (ComboKey) -> Boolean,
+        /** 补派首键自己的长按。 */
+        val fire: (KeyId) -> Unit,
+    )
 
     /**
      * 一次**凑成**：哪一档、真要算成员的那几颗、以及「从最早那一颗到这一下」隔了多久（只进日志）。

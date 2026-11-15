@@ -49,13 +49,14 @@ internal class PageLoadSnapshot(
  * @param installedAt 盘上那份模块包的更新时间（`PackageInfo.lastUpdateTime`，wall clock）。
  *   与某一侧进程的启动时刻一比就知道它加载的是不是盘上这份。0 = 读不到（宿主没有查包可见性之类），
  *   此时**不判**这一档，宁可不说也不乱说。
- * @param injectEverAlive 系统那一侧**曾经**回过话没有（只增不减，见 [UiState]）
+ * @param injectEverAlive 系统那一侧**曾经**回过话没有（只增不减，见 [UiState]）；
+ *   **`null` = 不知情** —— 这一层原样往上传，折叠成布尔在 `LinkFacts` 那一处
  * @param injectAliveBoot 上一次回话时的那轮开机（0 = 从没回话）——
  *   用来把「装好等重启」与「本轮刚才还在、现在不回」分开
  */
 internal class LinkBaseline(
     val installedAt: Long,
-    val injectEverAlive: Boolean,
+    val injectEverAlive: Boolean?,
     val injectAliveBoot: Long,
 )
 
@@ -109,14 +110,14 @@ internal fun readPageLoadSnapshot(context: Context): PageLoadSnapshot =
                 UiPrefs(
                     showSystemApps = prefs?.showSystemApps ?: false,
                     showUnopenable = prefs?.showUnopenable ?: false,
-                    injectEverAlive = prefs?.injectEverAlive ?: true,
+                    injectEverAlive = prefs?.injectEverAlive,
                     injectAliveBoot = prefs?.injectAliveBoot ?: 0L,
                     skipUpdateVersion = prefs?.skipUpdateVersion,
                 ),
             linkBaseline =
                 LinkBaseline(
                     installedAt = 0L,
-                    injectEverAlive = prefs?.injectEverAlive ?: true,
+                    injectEverAlive = prefs?.injectEverAlive,
                     injectAliveBoot = prefs?.injectAliveBoot ?: 0L,
                 ),
         )

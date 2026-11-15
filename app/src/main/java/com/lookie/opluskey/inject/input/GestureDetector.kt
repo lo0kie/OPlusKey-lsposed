@@ -331,7 +331,7 @@ internal class GestureDetector(
                     "${id.label}：$pendingClicks 击（窗口已过期、那一枪没跑到，当场补）"
                 },
             )
-            dispatch(id, GestureTrigger.Click(pendingClicks), config, repeat = false)
+            fireClicks(id, config, pendingClicks)
         }
 
         p.sawFirstRelease = false
@@ -445,7 +445,7 @@ internal class GestureDetector(
                 val fired = p.clicks.coerceAtLeast(1).coerceAtMost(config.judgeCap)
                 reset(id)
                 XLog.w(if (fired == 1) "${id.label}：单击（窗口已结束）" else "${id.label}：$fired 击（窗口已结束）")
-                dispatch(id, GestureTrigger.Click(fired), config, repeat = false)
+                fireClicks(id, config, fired)
                 return
             }
             //  首击抬手：从这里起算一个完整窗口
@@ -496,8 +496,9 @@ internal class GestureDetector(
      * 连击链收尾（`doubleFired` 那一支）：抬手这一刻才派发 —— 双击就是这条链的 n=2，
      * 判在按下那一刻、派发在抬手（理由见 `onKeyDownLocked` 里 `doubleFired` 那一段）。
      *
-     *  **交付出去的就是数到的击数**：双击无动作时那两下什么都不做 —— 这是配置的直接结果
-     *  （不想要它就关掉「启用双击」，那时判定只数到一击，两下各算一次单击）。
+     *  **`doubleFired` 这个名字比它的含义窄**：它表示「连击链已经收线、抬手时按数到的击数派发」，
+     *  不一定是双击 —— 「单击后长按」把 [Config.judgeCap] 抬到 2 时，**只按了两下、什么长按都没做**
+     *  的正常单击连击也走这一支。所以这一层不能假设「到这里就一定是双击」。
      */
     private fun fireChainResult(
         id: KeyId,
@@ -507,7 +508,39 @@ internal class GestureDetector(
         val firedClicks = p.clicks
         p.doubleFired = false
         reset(id)
-        dispatch(id, GestureTrigger.Click(firedClicks), config, repeat = false)
+        fireClicks(id, config, firedClicks)
+    }
+
+    /**
+     * 按**数到的击数**派发一次单击连击 —— 双击那一档关着时，两击拆成两次单击。
+     *
+     * ## 为什么必须拆
+     *
+     *  双击关着时 `KeyConfig.actionOf(Click(2))` 恒回 `Action.None`（那一档在执行侧就是
+     *  无操作）。而「单击后长按」开着会把 `judgeCap` 抬到 2、连击链必须数到第 2 击才收线 ——
+     *  于是**两下轻点必然被判成 `Click(2)`**：动作是无操作 → 执行侧只剩「无操作时振动」那次
+     *  回执，用户看到的是「按两下什么都没发生，还振了一下」。
+     *
+     *  早先那版靠 `doubleFallsBackToSingles` 判据兜这件事，`1c4f833` 删掉它时给的替代说法是
+     *  「想两下各算一次单击就关掉『启用双击』」—— 那句只在双击是**链尾**时成立：一旦
+     *  「单击后长按」（以后还有三击 / 四击）把链拉长，关掉双击并不能让第二下当场判单击。
+     *  所以判据落在这里：**双击这一档关着 ⇒ 两击就是两次单击**，与链有多长无关。
+     *
+     *  只拆 2 击：双击是唯一「关掉之后就没有对应档位」的击数；3 击 / 4 击关着时
+     *  `judgeCap` 根本数不到那一档，走不到这里。
+     */
+    private fun fireClicks(
+        id: KeyId,
+        config: KeyConfig,
+        clicks: Int,
+    ) {
+        if (clicks == 2 && !config.doubleClickOn) {
+            XLog.w("${id.label}：两击按两次单击派发（双击这一档关着）")
+            dispatch(id, GestureTrigger.Click(1), config, repeat = false)
+            dispatch(id, GestureTrigger.Click(1), config, repeat = false)
+            return
+        }
+        dispatch(id, GestureTrigger.Click(clicks), config, repeat = false)
     }
 
     /**
@@ -855,7 +888,7 @@ internal class GestureDetector(
                     }
                     if (fire > 0) {
                         XLog.w(if (fire == 1) "${id.label}：单击" else "${id.label}：$fire 击")
-                        dispatch(id, GestureTrigger.Click(fire), config, repeat = false)
+                        fireClicks(id, config, fire)
                     }
                 } catch (e: Throwable) {
                     // 计时器跑在 system_server 主线程上，抛出去就是整机崩

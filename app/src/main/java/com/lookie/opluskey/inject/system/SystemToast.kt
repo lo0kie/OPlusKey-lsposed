@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import com.lookie.opluskey.bridge.TimedCache
 import com.lookie.opluskey.core.log.XLog
 
 /**
@@ -28,8 +29,8 @@ internal object SystemToast {
     /** 同一句话在这个间隔内不重复弹（长按连发时同一条命令会连着报同一句）。 */
     private const val DEDUP_MS = 1000L
 
-    private var lastText: String? = null
-    private var lastAt = 0L
+    //  值与时刻收成一个对象（见 [TimedCache]）：判重与判过期读的是同一份
+    private var lastToast: TimedCache<String>? = null
 
     /** 请注入侧弹一条提示；任何一环失败都只记日志。 */
     fun show(
@@ -41,9 +42,8 @@ internal object SystemToast {
             try {
                 val ctx = context(loader) ?: return@post
                 val now = android.os.SystemClock.elapsedRealtime()
-                if (text == lastText && now - lastAt < DEDUP_MS) return@post
-                lastText = text
-                lastAt = now
+                if (lastToast?.let { it.value == text && it.fresh(now, DEDUP_MS) } == true) return@post
+                lastToast = TimedCache(text, now)
                 // 每次**新建**一条、也不 cancel 上一条：同一个实例再 show 会按 token 就地更新
                 //  队列里那一条（框架的 `indexOfToastLocked`），连按时就只剩「一条一直在变」——
                 //  用户要的是每按一下都完整弹一条，所以让它们排队。配额这边免了（见类注释），

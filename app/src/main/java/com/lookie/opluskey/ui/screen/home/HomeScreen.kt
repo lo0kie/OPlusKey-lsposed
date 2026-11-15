@@ -124,8 +124,9 @@ internal fun SettingsPage.HomeLinkSelfCheck() {
             // 同一趟宿主进程只问一次（判据见 `HostLinkState.needsLinkCheck`）：
             //  宿主没换过进程，问出来的必然是同一份结论，而一趟最多 QUERY_ROUNDS 轮广播。
             if (s == Screen.SHORTCUTS && link.needsLinkCheck()) {
+                //  结论（跑完没有 / 宿主是哪个进程 / 退避到什么时候）由这一趟自己一次写完，
+                //  见 `HostLinkState.markCheckPassed` / `markCheckSilent`。
                 queryLinkOnce()
-                link.checkedHostStart = link.hostProcStart
             }
         }
     }
@@ -158,8 +159,7 @@ private suspend fun SettingsPage.queryLinkOnce() {
         if (hostAnswered && injectAnswered) {
             // 两端都答了 ⇒ 这一趟自检结束（提示可以按真结论说话了，见 `injectChecked`）。
             //  问通了就清掉退避：这一趟的结论可以一直用到宿主换进程。
-            link.injectChecked = true
-            link.silentRetryAt = 0L
+            link.markCheckPassed(link.hostProcStart)
             return
         }
         if (round > 0) XLog.w("链路自检第 ${round + 1} 轮仍未齐（宿主=$hostAnswered 注入=$injectAnswered）")
@@ -169,13 +169,15 @@ private suspend fun SettingsPage.queryLinkOnce() {
     //  现在两端同一套判据：单轮漏答不算数，全程没答才判它没起来 / 没加载。
     //  问满所有轮也结束：此时「没回音」才是结论 —— `blockedReason` 正是靠这一位
     //  把「还在问」与「问了没人答」分开的。
-    link.injectChecked = true
-    if (!hostEverAnswered) link.hostServiceUp = false
-    if (!injectEverAnswered) link.injectStatus = null
     //  **问空了不算「问过」到底**：注入侧自己恢复（借到 Context、uid 晚到）并不换宿主进程，
     //  若就此不再问，首页会一直灰着，只能杀 `:ui` 进程或重启。所以记一个退避时刻 ——
     //  过 [LINK_SILENT_RETRY_MS] 之后回首页会再问一趟（判据见 `HostLinkState.needsLinkCheck`）。
-    link.silentRetryAt = SystemClock.elapsedRealtime() + LINK_SILENT_RETRY_MS
+    link.markCheckSilent(
+        hostStart = link.hostProcStart,
+        retryAt = SystemClock.elapsedRealtime() + LINK_SILENT_RETRY_MS,
+    )
+    if (!hostEverAnswered) link.hostServiceUp = false
+    if (!injectEverAnswered) link.injectStatus = null
     XLog.w(
         "链路自检问了 $QUERY_ROUNDS 轮都没问齐，" +
             "改在 ${LINK_SILENT_RETRY_MS / 1000} 秒后回首页时再问（详见 [更多选项 → 运行状态]）",

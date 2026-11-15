@@ -23,10 +23,10 @@ import com.lookie.opluskey.core.present.ClockCatalog
 import com.lookie.opluskey.core.present.actionDetail
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.model.page.SLIDER_TRACK_HEIGHT
 import com.lookie.opluskey.ui.model.page.SliderTapTrack
 import com.lookie.opluskey.ui.row.TrackSlider
 import com.lookie.opluskey.ui.row.tapSliderToSeek
-import io.github.suqi8.coui.kmp.basic.SliderDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.roundToInt
@@ -47,7 +47,7 @@ private val DIALOG_TAP_TRACK =
     SliderTapTrack(
         startInset = 0.dp,
         endInset = 0.dp,
-        zone = SliderDefaults.MinHeight,
+        zone = SLIDER_TRACK_HEIGHT,
     )
 
 /**

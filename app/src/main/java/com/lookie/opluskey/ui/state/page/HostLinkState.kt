@@ -48,6 +48,46 @@ internal const val LINK_SILENT_RETRY_MS = 30_000L
  */
 internal object HostLinkState {
     /**
+     * 「一趟自检的结论」—— 三样必须一起对：跑完没有、跑的时候宿主是哪个进程、问空了之后什么时候
+     * 才允许再问（见 [needsLinkCheck]）。
+     *
+     *  收成一个不可变值，是为了让「问通了」与「问空了」各自只有**一次**赋值：
+     *  原先这三个字段散在 `injectChecked` / `checkedHostStart` / `silentRetryAt` 三处，
+     *  由调用方按顺序写两三次 —— 少写一处就得到「跑完了、但宿主进程记的是 0」这种半截账。
+     */
+    private class CheckLedger(
+        val done: Boolean,
+        val hostStart: Long,
+        val retryAt: Long,
+    )
+
+    /**
+     * 「上一次注入侧回话」那一笔账 —— 两个值一起才有意义（见 [noteInjectAlive]）。
+     */
+    private class AliveMark(
+        /** `null` = 不知情（盘上那份没读出来 / 没有这个键）—— 见 [injectEverAlive]。 */
+        val ever: Boolean?,
+        val boot: Long,
+    )
+
+    /**
+     * 「我们自己刚写下去的配置还在路上」—— 指纹与时刻一起才有意义（见 [configPending]）。
+     */
+    private class PendingConfig(
+        val tag: String,
+        val since: Long,
+    )
+
+    /** 自检结论那一笔（见 [CheckLedger]）。 */
+    private var ledger by mutableStateOf(CheckLedger(done = false, hostStart = 0L, retryAt = 0L))
+
+    /** 「上一次注入侧回话」那一笔（见 [AliveMark]）。 */
+    private var aliveMark by mutableStateOf(AliveMark(ever = null, boot = 0L))
+
+    /** 「在途的那一份配置」那一笔（见 [PendingConfig]），`null` = 没有在途的写入。 */
+    private var pendingConfig by mutableStateOf<PendingConfig?>(null)
+
+    /**
      * 宿主侧的模块有没有在跑 —— 也就是**执行侧有没有在工作**。
      *
      *  初值取 `true`：首帧还没查，先按「正常」画。首页那个 `LaunchedEffect` 组合完立刻查一次，
@@ -87,7 +127,7 @@ internal object HostLinkState {
      *  **只置 true、不再回 false**：自检每回到首页都会重跑，但「曾经问通过」这件事不会变；
      *  回 false 会让重新进首页时那几秒又把结论收起来。
      */
-    var injectChecked by mutableStateOf(false)
+    val injectChecked: Boolean get() = ledger.done
 
     /**
      * 上一次自检**跑完**时，宿主进程的启动时刻（[hostProcStart]）。
@@ -99,11 +139,11 @@ internal object HostLinkState {
      *
      *  宿主换了进程（重启 / 被杀后重起）⇒ [hostProcStart] 变 ⇒ 自动重问一次。
      */
-    var checkedHostStart by mutableLongStateOf(0L)
+    val checkedHostStart: Long get() = ledger.hostStart
 
     /**
      * 上一趟**问空了**之后，最早什么时候允许再问一次（[SystemClock.elapsedRealtime] 口径，
-     * `0` = 不限）。判据见 [needsLinkCheck]。
+     * `0` = 不限）。判据见 [needsLinkCheck]，值在 [CheckLedger.retryAt] 里。
      *
      *  为什么需要它：问满所有轮都没人答时，`injectChecked` 会置 true（那是**结论**：
      *  「问了没人答」），于是 `needsLinkCheck` 只剩「宿主换没换进程」一条 —— 而注入侧
@@ -111,10 +151,27 @@ internal object HostLinkState {
      *  只能杀掉 `:ui` 进程或重启手机。这一位把「问空」与「问通」分开：问空的那一趟
      *  过 [LINK_SILENT_RETRY_MS] 之后允许再问一次，问通的那一趟清零、照旧不问。
      *
-     *  不用 Compose 状态：它只该在「回到首页」那个时机被读，变化本身不必驱动重组 ——
-     *  真让它驱动重组，就会变成「到期那一帧自己重问」，与「不刷广播」的初衷相反。
+     *  **并进 [CheckLedger] 不增加重组**：写它的两个时机（[markCheckPassed] /
+     *  [markCheckSilent]）本来就要改 `done`，而那一位是 Compose 状态；`needsLinkCheck()`
+     *  只在 `snapshotFlow { screen }` 的协程里被调用、不在组合期读，所以这一位变也不会
+     *  「到期那一帧自己重问」。
      */
-    var silentRetryAt: Long = 0L
+    fun markCheckPassed(hostStart: Long) {
+        ledger = CheckLedger(done = true, hostStart = hostStart, retryAt = 0L)
+    }
+
+    /**
+     * 这一趟自检**问空了**（问满所有轮都没人答）—— 结论先记下，过 [LINK_SILENT_RETRY_MS]
+     * 之后回首页允许再问一次（判据见 [needsLinkCheck]）。
+     *
+     * @param retryAt 最早什么时候允许再问（`elapsedRealtime` 口径）
+     */
+    fun markCheckSilent(
+        hostStart: Long,
+        retryAt: Long,
+    ) {
+        ledger = CheckLedger(done = true, hostStart = hostStart, retryAt = retryAt)
+    }
 
     /**
      * 「已经说过的那条提醒」（[noticeReason] 的返回值）—— 进程级，跨页面组合的生死。
@@ -142,11 +199,13 @@ internal object HostLinkState {
      *  一条报活足以把「问过」判成「没问过」。`startWall` 那边已取整到秒，这里再加一档容差兜底。
      */
     fun needsLinkCheck(): Boolean {
-        if (!injectChecked) return true
-        if (!sameProcess(checkedHostStart, hostProcStart)) return true
-        // 上一趟问空了：退避窗口过去之后允许再问一次（判据见 `silentRetryAt`）。
-        val retryAt = silentRetryAt
-        return retryAt != 0L && SystemClock.elapsedRealtime() >= retryAt
+        //  一次读进局部变量：三样来自**同一份**结论（分三次读的话，中途被 [markCheckPassed]
+        //  换掉就会得到「done 是新的、hostStart 是旧的」这种半截账）。
+        val current = ledger
+        if (!current.done) return true
+        if (!sameProcess(current.hostStart, hostProcStart)) return true
+        // 上一趟问空了：退避窗口过去之后允许再问一次（判据见 [markCheckSilent]）。
+        return current.retryAt != 0L && SystemClock.elapsedRealtime() >= current.retryAt
     }
 
     /**
@@ -193,10 +252,23 @@ internal object HostLinkState {
      *  它是「从没用过」与「用过、这次没起来」之间唯一的区别；没有它，界面只能把这两种
      *  现象糊成同一句话。
      */
-    var injectEverAlive by mutableStateOf(false)
+    val injectEverAlive: Boolean? get() = aliveMark.ever
 
     /** 上一次回话时的那轮开机（秒级 wall clock，0 = 从没回话）—— 用来判「那次是不是此刻这轮」。 */
-    var injectAliveBoot by mutableLongStateOf(0L)
+    val injectAliveBoot: Long get() = aliveMark.boot
+
+    /**
+     * 建页那次把盘上读到的两值灌进来（见 `ui/chrome/PageLoad.kt` 的 `applyPageLoad`）。
+     *
+     *  与 [noteInjectAlive] 分开：那边是「刚刚收到回包」这件**事**（要顺带落盘），
+     *  这边只是「把已经记着的东西读进内存」。
+     */
+    fun seedAlive(
+        ever: Boolean?,
+        boot: Long,
+    ) {
+        aliveMark = AliveMark(ever = ever, boot = boot)
+    }
 
     /** 本轮开机的指纹（`ProcClock.bootWall()`）—— 建页那一刻取一次即可。 */
     var bootWall by mutableLongStateOf(0L)
@@ -214,9 +286,8 @@ internal object HostLinkState {
         bootNow: Long,
         write: (Long) -> Boolean,
     ) {
-        if (injectEverAlive && injectAliveBoot == bootNow) return
-        injectEverAlive = true
-        injectAliveBoot = bootNow
+        if (aliveMark.ever == true && aliveMark.boot == bootNow) return
+        aliveMark = AliveMark(ever = true, boot = bootNow)
         write(bootNow)
     }
 
@@ -226,12 +297,10 @@ internal object HostLinkState {
      *  从「写盘成功」到「注入侧回包」之间，本地指纹已经换了、注入侧手上还是旧的 ——
      *  这一段两边**必然**对不上，见 [configPending]。
      */
-    var pendingConfigTag by mutableStateOf<String?>(null)
-        private set
+    val pendingConfigTag: String? get() = pendingConfig?.tag
 
     /** 上面那一份写下去的时刻（`SystemClock.uptimeMillis()`），0 = 没有在途的写入。 */
-    var pendingConfigSince by mutableLongStateOf(0L)
-        private set
+    val pendingConfigSince: Long get() = pendingConfig?.since ?: 0L
 
     /**
      * 宽限到期那一刻的收尾任务 —— 见 [markConfigPending]。
@@ -244,15 +313,13 @@ internal object HostLinkState {
 
     /** 记下「[tag] 这一份刚写下去、注入侧还没回包」。 */
     fun markConfigPending(tag: String) {
-        pendingConfigTag = tag
-        pendingConfigSince = SystemClock.uptimeMillis()
+        pendingConfig = PendingConfig(tag = tag, since = SystemClock.uptimeMillis())
         schedulePendingExpiry()
     }
 
     /** 结束「在途」—— 回包对上了，或宽限到期。 */
     fun clearConfigPending() {
-        pendingConfigTag = null
-        pendingConfigSince = 0L
+        pendingConfig = null
         pendingExpiry?.let { mainHandler.removeCallbacks(it) }
         pendingExpiry = null
     }
@@ -274,8 +341,9 @@ internal object HostLinkState {
         val task =
             Runnable {
                 pendingExpiry = null
-                val since = pendingConfigSince
-                if (since > 0 && SystemClock.uptimeMillis() - since >= CONFIG_IN_FLIGHT_GRACE_MS) {
+                //  期间可能又写了新的一份（它自己会排新的到期），所以到期时再核一遍时间窗
+                val current = pendingConfig ?: return@Runnable
+                if (SystemClock.uptimeMillis() - current.since >= CONFIG_IN_FLIGHT_GRACE_MS) {
                     clearConfigPending()
                 }
             }
@@ -290,8 +358,9 @@ internal object HostLinkState {
      *  之间它们**必然**不相等。不把这一段认成「在途」的话，每拨一个开关都会有一两帧被判成
      *  「设置没送到」—— 整页控件跟着打灰、底部提示被换掉再换回来，看到的就是全页文字闪一下。
      */
-    fun configPending(tag: String): Boolean =
-        pendingConfigTag == tag &&
-            pendingConfigSince > 0 &&
-            SystemClock.uptimeMillis() - pendingConfigSince < CONFIG_IN_FLIGHT_GRACE_MS
+    fun configPending(tag: String): Boolean {
+        val current = pendingConfig ?: return false
+        return current.tag == tag &&
+            SystemClock.uptimeMillis() - current.since < CONFIG_IN_FLIGHT_GRACE_MS
+    }
 }

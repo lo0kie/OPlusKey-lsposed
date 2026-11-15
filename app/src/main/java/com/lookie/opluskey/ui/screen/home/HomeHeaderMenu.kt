@@ -25,6 +25,7 @@ import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.dialog.MenuEntry
 import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.screen.linkSettled
 import com.lookie.opluskey.ui.style.EmphasisText
 import com.lookie.opluskey.ui.wire.linkReady
 import com.lookie.opluskey.ui.write.resetModule
@@ -77,7 +78,8 @@ internal fun SettingsPage.HomeHeaderMenu() {
     var open by remember { mutableStateOf(false) }
     // 两层的「页面离开收起」各自登记：⋮ 菜单由 MenuPopup 管，确认弹窗由 ConfirmDialog 管（都不是本函数登记）
     val preciseClick = rememberPreciseClickState()
-    val rowsEnabled = linkReady && !configState.readOnly
+    //  主开关关着也要能点（「开回来」就在这几行里）—— 见 `linkSettled`
+    val rowsEnabled = linkSettled
 
     //  两行副标题都要**现取**：宿主运行时长读 `link.hostProcStart`（宿主报活时带过来的墙钟时刻），
     //  日志缓冲要跨进程收一次（几百毫秒）。两样都在打开菜单那一刻异步算，绝不进组合期。

@@ -710,6 +710,12 @@ internal data class ComboDto(
      */
     val sceneOnStarter: Boolean? = null,
     /**
+     * 这一档自己的「首键松手后仍执行它自己的长按」；`null` = 跟随公共设置。
+     *
+     *  老文件没有这一项 ⇒ `null` ⇒ 行为与这一位出现之前完全一致，不需要迁移。
+     */
+    val starterKeepLong: Boolean? = null,
+    /**
      * **老的「一条规则一个手势」那一列** —— 只读，读到就迁移（见 [mergeScenes]）；与单键那份同型。
      */
     val rules: List<StateRuleDto> = emptyList(),
@@ -843,6 +849,7 @@ internal data class ComboDto(
                     clamp(ConfigFields.F_COMBO_HOLD_MIN_MS, holdMinMs)
                 },
             sceneOnStarter = sceneOnStarter,
+            starterKeepLong = starterKeepLong,
         )
     }
 
@@ -862,6 +869,7 @@ internal data class ComboDto(
                 longReleaseOn = combo.longReleaseOn,
                 longRelease = combo.longRelease.token,
                 sceneOnStarter = combo.sceneOnStarter,
+                starterKeepLong = combo.starterKeepLong,
                 scenes = combo.scenes.map { SceneRuleDto.of(it) },
                 useOwnSettings = combo.useOwnSettings,
                 colorOsApi = combo.colorOsApi,
@@ -952,6 +960,14 @@ internal data class GlobalDto(
     val comboHoldMinMs: Int = GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS,
     /** 按住那两档的场景在什么时候定下来（见 `GlobalConfig.comboSceneOnStarter`）—— 只落盘。 */
     val comboSceneOnStarter: Boolean = GlobalConfig.DEFAULT_COMBO_SCENE_ON_STARTER,
+    /**
+     * 按住组合的首键松手后仍执行它自己的长按（见 `GlobalConfig.comboStarterKeepLong`）。
+     *
+     *  **两列都走**：落盘这一份之外还进配置广播（`ConfigFields.F_COMBO_STARTER_KEEP_LONG`
+     *  有 extra 名）—— 判定在注入侧，它读不到配置文件。
+     */
+    @SerialName("combo_starter_keep_long")
+    val comboStarterKeepLong: Boolean = GlobalConfig.DEFAULT_COMBO_STARTER_KEEP_LONG,
     /** 随机图标配色的种子（`0` = 关）—— 老文件没有这一项，退回默认（关）。 */
     @SerialName("icon_tint_seed")
     val iconTintSeed: Int = GlobalConfig.DEFAULT_ICON_TINT_SEED,
@@ -989,6 +1005,7 @@ internal data class GlobalDto(
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
                 ConfigFields.F_COMBO_HOLD_MIN_MS to comboHoldMinMs,
                 ConfigFields.F_COMBO_SCENE_ON_STARTER to comboSceneOnStarter,
+                ConfigFields.F_COMBO_STARTER_KEEP_LONG to comboStarterKeepLong,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
                 //  公共设置里的「单击」三项：老文件缺项按默认读（见各自字段的 KDoc）
@@ -1019,6 +1036,7 @@ internal data class GlobalDto(
                 comboWindowMs = g.comboWindowMs,
                 comboHoldMinMs = g.comboHoldMinMs,
                 comboSceneOnStarter = g.comboSceneOnStarter,
+                comboStarterKeepLong = g.comboStarterKeepLong,
                 iconTintSeed = g.iconTintSeed,
                 showCommonCommands = g.showCommonCommands,
                 //  公共设置里的「单击」三项（v65 起是活字段，不再是 `null`）

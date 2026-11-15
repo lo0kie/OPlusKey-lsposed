@@ -28,14 +28,14 @@ internal const val DONOR_ANONYMOUS = "***"
  *  可以带两位小数，换算在 [readDonors] 里做）。
  *
  *  [at] 是**只记录、不上屏**的那一位：给维护者看「这笔是什么时候到的」。页面不显示它，
- *  也**不**拿它排序 —— 顺序仍以文件里数组的先后为准。
+ *  但**显示顺序按它排** —— 最早的在上（见 [sortedByTime]）。
  */
 internal data class Donor(
     /** 上屏用的名字 —— **一定非空**：匿名在 [readDonors] 那一层就已经换成了 [DONOR_ANONYMOUS]。 */
     val name: String,
     /** 金额，单位**分**（`520` = ¥5.20）。 */
     val amountCents: Long,
-    /** 到账时间 —— 文件里那串原样保留（`2026-10-17 19:36`），只记录、不上屏。 */
+    /** 到账时间 —— 文件里那串原样保留（`2026-10-17 19:36`），只记录、不上屏，但决定显示顺序。 */
     val at: String = "",
 ) {
     /**
@@ -50,13 +50,15 @@ internal data class Donor(
 
 /**
  * 「捐赠列表」页的**原始数据** —— 源文件是 `core/seal/donors.json`，
- * 一行一个名字 + 一笔金额（+ 一笔到账时间），**顺序即显示顺序**。
+ * 一行一个名字 + 一笔金额（+ 一笔到账时间）。**页面按 `at` 升序显示**（最早的在上），
+ *  文件里数组的先后不影响；没写 `at` 的那几条排在最后。
  *
  *  数据与呈现分家：这里只负责「有哪些人给了多少」，**排成什么样**（两列、格子居中、分隔线、
  *  表头那些）在页面里，见 `ui/screen/DonateListScreen`。
  *
- *  要加人就往那份文件里加行 —— 一行一个 `{ "name": …, "amount": …, "at": … }`，顺序即显示顺序。
- *  `amount` 写**元**（可带两位小数，如 `5.20`），`at` 只作记录、不上屏；
+ *  要加人就往那份文件里加行 —— 一行一个 `{ "name": …, "amount": …, "at": … }`，加在哪一段都行
+ *  （顺序由 `at` 排出来，见 [sortedByTime]）。
+ *  `amount` 写**元**（可带两位小数，如 `5.20`），`at` 不上屏、但决定顺序；
  *  匿名的行 `name` 写 `null`（省略也行），表格里显示成 [DONOR_ANONYMOUS]。
  *  写成什么样由旁边那份 `donors.schema.json` 定（编辑器照它给提示与报错），加行前先看它。
  *  空数组 `[]` 是合法状态 —— 页面走「还没有捐赠记录」那一档。
@@ -89,7 +91,20 @@ private var cache: List<Donor>? = null
  *  没过，后者可能是瞬时状态），把它当成「名单是空的」缓存下来的话，这一次进入页面之后
  *  就再也不会重读了 —— 表现是「某次之后捐赠名单一直是空的」。
  */
-internal fun donors(context: Context): List<Donor> = cache ?: (readDonors(context)?.also { cache = it } ?: emptyList())
+internal fun donors(context: Context): List<Donor> = cache ?: (readDonors(context)?.let(::sortedByTime)?.also { cache = it } ?: emptyList())
+
+/**
+ * 名单的显示顺序 —— **按到账时间升序**（最早的在上）。
+ *
+ *  `at` 是 `YYYY-MM-DD HH:mm`，定长且高位在前 ⇒ **字典序就是时间序**，不必解析成时间对象，
+ *  也就没有时区 / 本地化那一堆事。
+ *
+ *  没写 `at` 的那几条（空串）**排在最后**：空串字典序最小，直接比会跑到最上面去 ——
+ *  它们是「时间没记」，不是「很早」。
+ *
+ *  稳定排序：同一分钟里的几条保持文件里的先后。
+ */
+private fun sortedByTime(rows: List<Donor>): List<Donor> = rows.sortedWith(compareBy({ it.at.isEmpty() }, { it.at }))
 
 /**
  * 取出一个字段的文本；缺项 / 不是标量 / 是 JSON `null` 都算空串。

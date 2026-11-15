@@ -14,6 +14,7 @@ import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.ui.PendingImport
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.text.UNKNOWN_CONFIG_FORMAT
+import com.lookie.opluskey.ui.screen.configWritable
 import com.lookie.opluskey.ui.write.dedupeByName
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
@@ -300,7 +301,7 @@ internal object ConfigTransfer {
         //  **只读态例外**：那时 `configState.config.value` 是默认值 + 空命令表（建页那次没读成功），
         //  导出来是一份「默认配置」还报「已导出」—— 那种情况走下面那条从盘上读的路，
         //  读得出来就导盘上那份，读不懂就明确失败。
-        if (slot == ConfigProfiles.CURRENT_SLOT && !page.configState.readOnly) {
+        if (slot == ConfigProfiles.CURRENT_SLOT && page.configWritable) {
             openConfigExport(activity, page.configState.config.value, page.configState.commands.value)
             return
         }

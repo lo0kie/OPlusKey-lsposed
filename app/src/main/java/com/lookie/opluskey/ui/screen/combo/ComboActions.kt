@@ -471,7 +471,20 @@ private fun SettingsPage.comboEnableAllowed(
             .filterNot { cfg.key(it).enabled }
             .map { it.id }
             .toSet()
-    if (dead.isEmpty()) return true
+    if (dead.isEmpty()) {
+        //  **按住那一档还要求起点键开着「松手时触发」**（与添加那一道同一个判据）：不开的话这一档
+        //  永远不成立 —— 停用之后又在这里打开，只会得到一份「看着启用、按了没反应」的配置。
+        val starter = combo.starterKey?.let(cfg::keyIdOf)
+        if (starter != null && !cfg.key(starter).longFireOnRelease) {
+            XLog.w("组合键：${combo.id} 的起点 ${starter.label} 没开「松手时触发」，不启用（$label）")
+            hint(
+                I18n.get(Strings.KEYS_COMBO_NEEDS_FIRE, "起点键没开 [松手时触发]，这组也停用"),
+                slot = HINT_SLOT_COMBO,
+            )
+            return false
+        }
+        return true
+    }
     KeysAsk.ask(
         KeysAsk.Kind.ENABLE,
         keys = emptySet(),

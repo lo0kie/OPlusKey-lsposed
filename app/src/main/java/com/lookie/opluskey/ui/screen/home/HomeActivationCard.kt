@@ -44,6 +44,7 @@ import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT
 import com.lookie.opluskey.ui.model.theme.isDarkScheme
+import com.lookie.opluskey.ui.screen.linkSettled
 import com.lookie.opluskey.ui.state.host.UpdateState
 import com.lookie.opluskey.ui.style.LocalAppTheme
 import com.lookie.opluskey.ui.wire.blockedReason
@@ -493,7 +494,7 @@ internal fun SettingsPage.HomeActivationCard(ui: HomeUiState) {
  *  **「点了没反应」比「一开始就灰着」更难读**。
  */
 private val SettingsPage.activationToggleable: Boolean
-    get() = linkReady && !configState.readOnly
+    get() = linkSettled
 
 /**
  * 这一块除了「状态大字 + 版本」还要说的三件事 —— 合成一个类型是为了让

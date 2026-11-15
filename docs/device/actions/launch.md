@@ -449,3 +449,45 @@ START 行带 `oflg=0x800`、**不带** `android_action_key_launch_type`。
 对齐前后都要看的一件事：**同一条路在「应用已经在最近任务里」时本来就没有可见转场** ——
 `LAUNCH_SINGLE_TOP`（应用在前台）与「任务已存在」这两种都只把窗口提到前面，动画画的是已经画好的
 窗口。真机验证必须先回桌面（或先切到别的应用）再按，否则会把「没有可动的东西」误判成「动画没播」。
+
+## 四十九、控制器必须是宿主自己那一份（2026-11-15 / PLK110 / ColorOS 17.0.0）
+
+**症状**：`app:a:` 打开应用 —— 没有动画，紧接着**宿主主进程崩**（`com.oplus.gesture` 死掉），
+之后**所有按键都没反应**（模块的手势执行全在那个进程里）。
+
+**堆栈**（`logcat`，主线程）：
+
+```
+FATAL EXCEPTION: main
+kotlin.UninitializedPropertyAccessException: lateinit property mCoeAnimName has not been initialized
+    at com.oplus.gesture.remote.transition.d.i(SourceFile:6)
+    at com.oplus.gesture.remote.transition.ActivityTransitionAnimator$a.w(SourceFile:227)
+    at … ActivityTransitionAnimator$Runner.D / ua.j.run / Handler.handleCallback / Looper.loop
+```
+
+**机制**（`dexdump` 逐句对出来的）：
+
+- `d` 只有一个单例：静态字段 `f`，由伴生对象 `d$a#b()` 懒建并写回（双检锁）。
+- 启动前 `d#m` → `d#n` → `d#l` 把 COE 状态写在**被调用的那个实例**上：
+  `l` 里 `this.b = new COESysEffect(context)`、`this.c = iRemoteAnim.a()`（`c` 就是 `mCoeAnimName`）。
+- 转场开播时，`ActivityTransitionAnimator$a#w` **不认传进去的 `this`**，它自己走
+  `d$a#b()` 取单例 → `d#j()`（`COESysEffect`）→ `d#i()`（`mCoeAnimName`）→ `playAnim`。
+
+所以「自己 `new` 一份 `d` 去调 `m`」= 两套状态：`l` 配在被丢掉的那份上，回调读的是懒建的那份，
+`i()` 的 `lateinit` 当场抛。`f` 为 null（宿主自己还没用过这条路）时**必然**走到这一步。
+
+**改法**：控制器一律按宿主自己的取法拿 —— 静态字段里有就用，没有就走 `d$a#b()`（建好并写回字段）；
+两条都摸不到（换 ROM / 改名）时才自己建一份，**并写回静态字段**。
+
+**复核路径**：
+
+```
+python tools/dexdump.py <classes.dex> method 'com.oplus.gesture.remote.transition.d$a' b   # 伴生：懒单例
+python tools/dexdump.py <classes.dex> method com.oplus.gesture.remote.transition.d l   # 写 COE 状态
+python tools/dexdump.py <classes.dex> method com.oplus.gesture.remote.transition.d i   # 读 mCoeAnimName
+python tools/dexdump.py <classes.dex> method 'com.oplus.gesture.remote.transition.ActivityTransitionAnimator$a' w
+```
+
+**判据行（改好之后）**：`打开应用：控制器取自宿主自己的单例（转场回调读的就是它）` 只在该进程
+**第一次**转交时出现一条（之后静态字段里已经有了），跟着 `VFX:COESysEffect: playAnim: anim_left` 与
+`ActivityTransitionAnimator: startAnimation: coe play anim`；`logcat` 里不应再有上面那条 FATAL。

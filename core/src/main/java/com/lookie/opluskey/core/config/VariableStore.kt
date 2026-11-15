@@ -108,15 +108,9 @@ object VariableStore {
      */
     fun load(): Load {
         val f = ConfigStore.files().file(ConfigStore.SLOT_VARS)
-        val modified = f.lastModified()
-        val length = f.length()
-        val inode = inodeOf(f)
-        cache?.let {
-            //  `inode != 0` 是必要条件：主文件与 `.bak` 都不在时三个值一起是 0，只比三个数会把
-            //  「已经不存在」判成命中（与 `ConfigStore.Cached` 同一条）
-            val sameFile = it.modified == modified && it.length == length && it.inode == inode
-            if (inode != 0L && sameFile) return it.result
-        }
+        //  指纹在**读盘之前**取（理由见 `ConfigStore.load`）：`read` 可能顺手把 `.bak` 还原成主文件。
+        val stamp = fileStamp(f)
+        cache?.let { if (it.stamp.sameAs(stamp)) return it.result }
         val result =
             when (val r = ConfigStore.files().read(ConfigStore.SLOT_VARS)) {
                 ModuleFiles.Load.Absent -> {
@@ -140,7 +134,7 @@ object VariableStore {
                     text?.let(::decode)?.let { Load.Ok(it) } ?: Load.Unreadable
                 }
             }
-        cache = Cached(modified, length, inode, result)
+        cache = Cached(stamp, result)
         return result
     }
 
@@ -394,11 +388,9 @@ object VariableStore {
                 },
             ) + "\n"
 
-    /** 指纹缓存 —— 与 `ConfigStore.Cached` 同一个口径（修改时间 + 长度 + inode）。 */
+    /** 指纹缓存 —— 与 `ConfigStore.Cached` 同一个口径（指纹取法与判定见 `FileStamp`）。 */
     private class Cached(
-        val modified: Long,
-        val length: Long,
-        val inode: Long,
+        val stamp: FileStamp,
         val result: Load,
     )
 

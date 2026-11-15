@@ -246,7 +246,7 @@ internal class GestureForwarder(
             ctx.unbindService(wakeConnection)
         } catch (e: Throwable) {
             // 已经自己断了（进程被杀 / 服务被停）⇒ 这次 unbound 必然抛，忽略
-            XLog.d("解绑宿主服务失败（若它已断开就无所谓）：${e.message}")
+            XLog.d { "解绑宿主服务失败（若它已断开就无所谓）：${e.message}" }
         }
     }
 
@@ -265,7 +265,7 @@ internal class GestureForwarder(
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
-                XLog.d("唤醒宿主：绑定断开 ${name?.className}")
+                XLog.d { "唤醒宿主：绑定断开 ${name?.className}" }
             }
         }
 
@@ -362,7 +362,7 @@ internal class GestureForwarder(
                     XLog.guard("发送侧键手势广播 $phase") {
                         ctx.sendBroadcast(intent)
                         if (retry) {
-                            XLog.d("侧键手势已补发：$phase（(1) 被丢掉时才需要它）")
+                            XLog.d { "侧键手势已补发：$phase（(1) 被丢掉时才需要它）" }
                         } else {
                             XLog.w("已把侧键手势转给宿主：$phase${if (repeat) "（连续触发）" else ""}")
                         }

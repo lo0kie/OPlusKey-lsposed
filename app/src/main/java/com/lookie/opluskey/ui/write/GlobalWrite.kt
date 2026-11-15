@@ -150,6 +150,23 @@ internal fun SettingsPage.setComboSceneOnStarter(on: Boolean) {
 }
 
 /**
+ * 切「首键松手后仍执行长按」**公共那一档** —— 同一参数还有每组的落点
+ * （`ComboKey.starterKeepLong`，见 `Config.comboStarterKeepLongFor`：独立设置开着时那一组自己说了算）。
+ *
+ *  回执位与其它组合项一致（`HINT_SLOT_COMBO`）。
+ */
+internal fun SettingsPage.setComboStarterKeepLong(on: Boolean) {
+    val cfg = configState.config.value
+    writeAndNotice(
+        cfg.copy(global = cfg.global.copy(comboStarterKeepLong = on)),
+        "combo_starter_keep_long=${if (on) 1 else 0}",
+        slot = HINT_SLOT_COMBO,
+    ) {
+        switchNotice(I18n.get(Strings.COMBO_STARTER_KEEP_LONG_TITLE, "首键松手后仍执行长按"), on)
+    }
+}
+
+/**
  * 写「首键要先按住多久」（毫秒）**公共那一档** —— 按住手势的下限。
  *
  *  判定在注入侧（`ComboDetector` 的 `holdMinFor`），所以走通用写入通道：落盘 + 广播 + 重问注入侧。

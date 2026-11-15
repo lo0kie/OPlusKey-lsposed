@@ -453,6 +453,16 @@ internal object GestureExec {
         syncLanguage(config)
         val (keyLabel, gestureLabel) = comboParts(combo, trigger, config)
         val subject = "$keyLabel - $gestureLabel"
+        //  **无操作时振动**：这一档什么都没配，但用户确实按了 —— 与单键那一支同一个判据
+        //  （`OwnSettings.vibrateOnNone`）、同一个理由：没有这一位时，「这一档没绑」与
+        //  「模块没生效」在手上完全一样。这条路原先直接往下走 `comboShouldVibrate`，
+        //  而它要求 `action.isBound` ⇒ 组合上按了永远没有反馈。
+        //  连续触发的重复不再补振：那是同一次按压（与单键那一条同口径）。
+        if (!action.isBound) {
+            XLog.w("$subject：这一档是无操作，不执行")
+            if (!repeat) haptic(config, combo, force = true)
+            return
+        }
         val log =
             "$subject${if (repeat) "（连续触发）" else ""} → ${XLog.redactToken(action.token)}（宿主进程执行）"
         //  一次按住会来几十条，重复那条压到 d（release 裁掉），免得把判据行淹掉。

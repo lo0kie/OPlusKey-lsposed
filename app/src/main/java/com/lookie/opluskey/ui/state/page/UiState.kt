@@ -60,7 +60,7 @@ internal object UiState {
         return UiPrefs(
             showSystemApps = map[KEY_SHOW_SYSTEM_APPS]?.toBooleanStrictOrNull() ?: false,
             showUnopenable = map[KEY_SHOW_UNOPENABLE]?.toBooleanStrictOrNull() ?: false,
-            injectEverAlive = map[KEY_INJECT_EVER_ALIVE]?.toBooleanStrictOrNull() ?: false,
+            injectEverAlive = map[KEY_INJECT_EVER_ALIVE]?.toBooleanStrictOrNull(),
             injectAliveBoot = map[KEY_INJECT_ALIVE_BOOT]?.toLongOrNull() ?: 0L,
             skipUpdateVersion = map[KEY_SKIP_UPDATE_VERSION]?.takeIf { it.isNotBlank() },
         )
@@ -223,13 +223,15 @@ private fun parsePrefs(text: String): MutableMap<String, String> {
  * 界面状态的一次读全（见 [UiState.readPrefs]）。
  *
  * @param showUnopenable 「选择应用」页（只有「打开应用」那一趟）是否列出拉不起来的应用
- * @param injectEverAlive 系统那一侧**曾经**回过话（只增不减）
+ * @param injectEverAlive 系统那一侧**曾经**回过话（只增不减）；**`null` = 不知情**
+ *   （文件里没这个键、或这份文件根本没读出来）—— 与 `false`（明确知道没回过话）不是一件事，
+ *   见 `LinkFacts.injectEverAlive` 那一处唯一的折叠点
  * @param injectAliveBoot 上一次回话时的那轮开机（`ProcClock.bootWall()`，0 = 从没回话）
  */
 internal class UiPrefs(
     val showSystemApps: Boolean,
     val showUnopenable: Boolean,
-    val injectEverAlive: Boolean,
+    val injectEverAlive: Boolean?,
     val injectAliveBoot: Long,
     /** 「不再提示」过的那个版本号（`null` = 没勾过）。见 [UiState.writeSkipUpdateVersion]。 */
     val skipUpdateVersion: String?,

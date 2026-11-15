@@ -9,6 +9,7 @@ import android.os.PowerManager
 import com.lookie.opluskey.bridge.FlexibleWindowBridge
 import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.bridge.StatusBarBridge
+import com.lookie.opluskey.bridge.TimedCache
 import com.lookie.opluskey.bridge.hookGuarded
 import com.lookie.opluskey.bridge.inject.SystemContext
 import com.lookie.opluskey.core.DEBUG_PROBE
@@ -168,6 +169,15 @@ internal object KeyHooks {
                 //  关掉「首键按下固定」时按「成员键按下」（组合凑成）那一刻定 —— 两条都发，
                 //  用哪一份由宿主按配置决定（注入侧不读那个开关：它只在落盘那一列）。
                 onComboFormed = { combo -> forwarder.forwardComboScene(combo.id, "formed") },
+                //  首键松手仍执行它自己的长按：补派一条**单键**的 `long` —— 组合那一下已经在
+                //  `onCombo` 里派发过，这里是第二下（只有那一档显式打开才会走到）。
+                //  走 `forward` 而不是另开一条通道：宿主那边按「键 + 手势」查动作，与普通长按
+                //  完全同一条路，不该有第二种派发方式。
+                onStarterLong = { id ->
+                    noteGesture()
+                    XLog.w("组合首键松手：补派 ${id.label} 自己的长按")
+                    forwarder.forward(id, GestureTrigger.LongPress, repeat = false)
+                },
             )
         // 主开关翻到「不接管」时撤销已排下的手势（长按枪 / 双击窗 / 连发任务）。
         //  撤销只能由「收到配置广播」触发，不能挂在拦截点那条 early return 上（按住不放时
@@ -707,23 +717,23 @@ internal object BroadcastSender {
     }
 
     /**
-     * 宿主包的 uid 缓存（-1 = 还没解析到；失败不缓存，下一轮广播重取）。
+     * 宿主包的 uid 缓存（`null` = 还没解析到；失败不缓存，下一轮广播重取）。
      *
      *  **带保质期**：卸载重装 / 换签名重装都会换 uid，而这里缓存的是「上一次解析出来的数」。
      *  缓存不过期的话，换包之后所有功能广播都会被 [isFromHost] 判成伪造、fail-closed 丢掉，
      *  表现是「模块装好了、日志里一条动作都没有」，而唯一出路是整机重启 —— 那不是用户会想到的事。
      *  过期的代价只是每 [HOST_UID_TTL_MS] 一次 `getPackageUid`（而且只在自家通道的广播上才走到）。
+     *
+     *  值与时刻收成一个对象（见 [TimedCache]）：两个独立的 `@Volatile` 字段要读两次，
+     *  中间被换掉就会读到「新 uid 配旧时刻」，把一份刚取到的缓存判成过期。
      */
     @Volatile
-    private var cachedHostUid: Int = -1
-
-    @Volatile
-    private var cachedHostUidAt: Long = 0L
+    private var hostUidCache: TimedCache<Int>? = null
 
     private fun hostUid(loader: ClassLoader?): Int {
         val now = android.os.SystemClock.elapsedRealtime()
-        val cached = cachedHostUid
-        if (cached != -1 && now - cachedHostUidAt <= HOST_UID_TTL_MS) return cached
+        val cached = hostUidCache
+        if (cached != null && cached.fresh(now, HOST_UID_TTL_MS)) return cached.value
         val uid =
             try {
                 val ctx = SystemContext.get(loader ?: return -1) ?: return -1
@@ -733,13 +743,12 @@ internal object BroadcastSender {
                 -1
             }
         if (uid > 0) {
-            if (cached > 0 && cached != uid) {
-                XLog.w("宿主 uid 变了（$cached → $uid）—— 换过包，按新 uid 认")
-            } else if (cached == -1) {
+            if (cached != null && cached.value != uid) {
+                XLog.w("宿主 uid 变了（${cached.value} → $uid）—— 换过包，按新 uid 认")
+            } else if (cached == null) {
                 XLog.w("宿主 uid = $uid（广播来源校验用）")
             }
-            cachedHostUid = uid
-            cachedHostUidAt = now
+            hostUidCache = TimedCache(uid, now)
         }
         return uid
     }
