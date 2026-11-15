@@ -362,7 +362,7 @@ dependencies {
     // 更新说明的 Markdown：**只引解析器**，渲染自己按弹窗的色板与字号画
     //  （`ui/MarkdownText.kt`）。不引整套渲染器：那是 CommonMark 全套 + 图片加载，
     //  而这里要的只是「把 `## 标题`、`- 条目`、`**粗体**` 翻成 AnnotatedString」。
-    implementation("org.jetbrains:markdown:0.7.9")
+    implementation("org.jetbrains:markdown:0.7.18")
 
     // Xposed API：运行时由 LSPosed 提供
     compileOnly("io.github.libxposed:api:102.0.0")
@@ -386,8 +386,8 @@ dependencies {
     //  Haze 的做法不一样：`hazeSource` 记下 `positionInRoot` 与 `positionOnScreen` **两套**坐标，
     //  并在每帧 `OnPreDrawListener` 里重算；源与效果不在同一个 window 时（浮层菜单就在宿主
     //  `COUIPopupHost` 里）由 `HazePositionStrategy.Auto` 自动升级成屏幕坐标。
-    implementation("dev.chrisbanes.haze:haze:2.0.1")
-    implementation("dev.chrisbanes.haze:haze-blur:2.0.1")
+    implementation("dev.chrisbanes.haze:haze:2.1.0")
+    implementation("dev.chrisbanes.haze:haze-blur:2.1.0")
     // 页面栈：NavDisplay + 连续深度转场，与 coui-ui 同版本，零依赖 androidx.navigation。
     // 栈用 navBackStackOf（纯内存、不要求 @Serializable）—— 页面进程死了本来也不该恢复栈。
     implementation("io.github.suqi8.coui.kmp:coui-nav-android:1.1.0")
@@ -402,7 +402,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.0")
     implementation("androidx.savedstate:savedstate-ktx:1.3.0")
     // COUI 浮层菜单依赖 LocalNavigationEventDispatcherOwner（页面自建根 dispatcher）
-    implementation("androidx.navigationevent:navigationevent-compose:1.1.2")
+    implementation("androidx.navigationevent:navigationevent-compose:1.2.0")
 
     // androidx 只出现在 `ui/`：`:core` 里一个 androidx import 都没有（`tools/audit-arch.py`
     //  把这条当判据在 CI 里核）。`ui/` 在 system_server 里从不执行（KeyModule 只在设置页那个
