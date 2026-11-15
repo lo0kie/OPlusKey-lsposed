@@ -219,8 +219,6 @@ private fun SettingsPage.comboOnlyRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.BINDING_COMBO_ONLY),
-        summaryOn = I18n.get(Strings.BINDING_COMBO_ONLY_ON),
-        summaryOff = I18n.get(Strings.BINDING_COMBO_ONLY_OFF),
         icon = PageIcons.ComboOnly,
         checked = key.comboOnly,
         enabled = enabled,
@@ -276,8 +274,6 @@ private fun SettingsPage.clickThenLongRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.SETTING_CLICK_THEN_LONG),
-        summaryOn = I18n.get(Strings.SETTING_CLICK_THEN_LONG_ON),
-        summaryOff = I18n.get(Strings.SETTING_CLICK_THEN_LONG_OFF),
         icon = PageIcons.gestureIcon(GestureTrigger.ClickThenLong),
         checked = key.clickThenLongOn,
         enabled = enabled,
@@ -309,8 +305,6 @@ private fun SettingsPage.doubleClickOnRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.SETTING_CLICK2),
-        summaryOn = I18n.get(Strings.SETTING_CLICK2_ON),
-        summaryOff = I18n.get(Strings.SETTING_CLICK2_OFF),
         //  字形与三击 / 四击同一个来源（`gestureIcon`）：这两行说的就是「要不要多出这一档」。
         icon = PageIcons.gestureIcon(GestureTrigger.Click(2)),
         checked = key.doubleClickOn,
@@ -344,16 +338,6 @@ private fun SettingsPage.extraClickRow(
             when (count) {
                 COUNT3 -> I18n.get(Strings.SETTING_CLICK3)
                 else -> I18n.get(Strings.SETTING_CLICK4)
-            },
-        summaryOn =
-            when (count) {
-                COUNT3 -> I18n.get(Strings.SETTING_CLICK3_ON)
-                else -> I18n.get(Strings.SETTING_CLICK4_ON)
-            },
-        summaryOff =
-            when (count) {
-                COUNT3 -> I18n.get(Strings.SETTING_CLICK3_OFF)
-                else -> I18n.get(Strings.SETTING_CLICK4_OFF)
             },
         //  字形直接用那一档自己的（`gestureIcon` 里第 3 击起与双击共用两根手指）：
         //  这两行说的就是「要不要多出这一档」，不必新起只此一处的图标。

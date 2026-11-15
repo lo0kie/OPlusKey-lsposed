@@ -434,8 +434,7 @@ private fun deriveCombos(fresh: Config): ComboDerived {
     return ComboDerived(members, all, windows, starters)
 }
 
-// 配置到达时那三行**判据级日志** —— 从 `ConfigChannel` 分出来一支：那边已经贴着 detekt 的
-// `TooManyFunctions` 上限，而这三支确实是一件事（「这一份配置长什么样」的投影），
+// 配置到达时那三行**判据级日志** —— 三支是一件事（「这一份配置长什么样」的投影），
 // 且都只读 `Config`、不碰通道的任何状态。
 
 /**

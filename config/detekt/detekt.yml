@@ -85,11 +85,15 @@ complexity:
   TooManyFunctions:
     # 这条按**文件**计，于是它逼出的动作是「另起一个文件」，而不是更好的组织。
     #  而本项目同时有 `InvalidPackageDeclaration`（目录必须与包名一致），搬家要连带改全仓 import。
-    #  40 = 现有最大那个（`ActionCatalog` 36 个函数，一张动作表）之上留一档。
-    thresholdInFiles: 40
-    thresholdInClasses: 40
-    thresholdInObjects: 40
-    thresholdInInterfaces: 40
+    #
+    #  40 那一档确实逼出过一批**机械拆分**（`ServiceCalls` / `ProbeCall` / `MiniWindowVerify` /
+    #  `ComboOnlyNative` / `PageEntryWrite` 都是「为了把数压下去」拆出去的，文件头自己写着理由）。
+    #  那几份已经并回原处，而合并后最大的那个正好在 40 上 —— 再加一个函数就要重新拆一次。
+    #  所以抬到 60：一个主题的**完整方法集**装得下（含它那几件簿记），仍能拦住「什么都往里塞」。
+    thresholdInFiles: 60
+    thresholdInClasses: 60
+    thresholdInObjects: 60
+    thresholdInInterfaces: 60
 
   CyclomaticComplexMethod:
     # 30：`Action.parse`(28) / `ActionRunner.dispatch`(26) 这类**分派表**要能过 ——

@@ -1,5 +1,7 @@
 package com.lookie.opluskey.core.model
 
+import com.lookie.opluskey.core.log.XLog
+
 /**
  * 配置字段的**广播侧声明表** —— 一个逻辑字段在广播里的名字、类型、默认值与取值范围只在这里写全。
  *
@@ -912,3 +914,242 @@ object ConfigFields {
             "^(?:" + Regex.escape(KeyId.PLUS.id) + "|" + Regex.escape(KeyId.CUSTOM_ID_PREFIX) + "\\d+)_(.+)$",
         )
 }
+
+// 「按键清单」的增删改 —— 与 `Config` 那批**只读取值**的方法分开放。
+//
+//  为什么不写在 `Config` 类里：那几个方法让类的方法数撞上 detekt 的 `TooManyFunctions`
+//  （上限 11，而 `Config` 已经 8 个）。拆成扩展函数既守住闸门，也把「怎么改一份配置」
+//  与「怎么读一份配置」分成两屏看。
+
+/**
+ * 下一个可用的自定义键 id —— **现有最大序号 + 1**。
+ *
+ *  不回收「中间」的号：删掉第 2 颗再收一颗，拿到的仍是最大 + 1，不会撞上还活着的 id。
+ *  **但删掉最大的那颗之后，下一个会重新用上它** —— 配置里没有「历史最高号」这一位，
+ *  所以这里额外把**组合成员引用到的 id** 也算进「used」：那些引用还活在 `combos` 里，
+ *  复用同一个 id 会让旧组合突然指向新收的这颗键。
+ */
+fun Config.nextCustomKeyId(): String {
+    //  **三份数据都要扫**：`customKeys` 是「有哪些键」，`keys` 里还可能留着已从清单摘掉的条目
+    //  （见 `ConfigActions` 那段说明），`combos` 里还留着旧组合的成员 id。
+    //  只扫前者时，新分配的 id 会撞上那条还活着的条目，`withCustomKey` 直接把它覆盖掉。
+    val ids = customKeys.map { it.id } + keys.keys.map { it.id } + combos.flatMap { it.keys }
+    val used = ids.mapNotNull { it.removePrefix(KeyId.CUSTOM_ID_PREFIX).toIntOrNull() }
+    return KeyId.customId((used.maxOrNull() ?: 0) + 1)
+}
+
+/**
+ * 收下一颗自定义键 —— 同时建好它的绑定，并**直接打开接管**。
+ *
+ *  两处一起写是必须的：`customKeys` 是「有哪些键」，`keys` 是「每颗键的绑定」。
+ *  只写前者会让 `key(id)` 退回默认值而界面看着像「刚收的键绑定丢了」；
+ *  只写后者则这颗键根本不会被广播出去（`allKeys` 不含它）⇒ 注入侧永远认领不到。
+ *
+ * ## 为什么 `enabled` 直接给 `true`
+ *
+ *  `KeyConfig.defaultFor` 对**自定义键**给 `enabled = false`（"装上模块不改变行为" 是默认值，
+ *  见它的注释）。自定义键不能照搬：那颗键**没有独立的总开关**，页面闸门就是它自己的
+ *  `enabled` —— 默认关着的话，用户刚收完键，绑定页是整片灰的、一个动作都选不了，
+ *  而他又没有别的地方能把它打开（死锁）。
+ *
+ *  「按下想添加的按键」这个动作本身就是用户的明确意愿，收集即接管。
+ *  三档绑定此时都是 `Action.None`（按下什么都不做），与侧键「开着但还没配」同一个表现。
+ */
+fun Config.withCustomKey(key: KeyId): Config =
+    copy(
+        keys = keys + (key to KeyConfig.defaultFor(key).copy(enabled = true)),
+        // 先摘掉同 id 的旧条目再追加：`customKeys + key` 会留下两条同 id 的，
+        //  之后「删一颗」只删掉一条、另一条还活着（清单与 keys 就此对不上）。
+        customKeys = customKeys.filterNot { it.id == key.id } + key,
+    )
+
+/**
+ * 删掉一颗键（只对自定义键有意义）；三处一起摘，理由同 [withCustomKey]。
+ *
+ * ## 为什么连组合一起摘
+ *
+ *  组合的成员存的是**键 id**（`ComboKey.keys`）。只摘 `keys` 与 `customKeys` 的话，含这颗键的
+ *  那几档会留下一个指向不存在键的 id —— 执行侧按 id 找键，找不到就是**静默失效**：那一档永远
+ *  凑不成，而界面上还画得好好的。
+ *
+ *  界面那条删除路径已经先反查过、有组合就拦下来弹「无法删除」（见 `combosUsing`），所以正常
+ *  使用不会走到「删掉的键还在组合里」。这一句是给**将来别的调用点**兜底的：函数自己保证
+ *  不留下死引用，而不是把「调用前必须先反查」这条契约留在注释里靠人记。
+ */
+fun Config.withoutKey(id: String): Config {
+    val target = keyIdOf(id) ?: return this
+    // 内置键**不给删**：删掉 `plus` 等于把侧键整条从 keys 里抹掉，读回来退回默认配置，
+    //  而界面上只是「删了一颗键」——静默丢配置。删键只对收集来的键有意义。
+    if (!target.isCustom) return this
+    return copy(
+        keys = keys - target,
+        customKeys = customKeys.filterNot { it.id == target.id },
+        //  连带摘掉含它的组合：它们已经不可能凑成了
+        combos = combos.filterNot { target.id in it.keys },
+    )
+}
+
+/**
+ * 给某一颗自定义键改名。
+ *
+ *  **身份仍是 id**，这里只换显示名 —— 所以绑定不会丢（`KeyId` 按 id 判等）。
+ *  但 `keys` 里那一条也得换成新对象：`KeyConfig.id` 是**属性**，留在旧对象上会让
+ *  「从配置取名字」的调用点（`pick` 里的 `key.id.label`、日志里的键名）一直显示旧名。
+ *
+ *  内置键不允许改名（`customKeys` 里找不到就原样返回）。
+ */
+fun Config.withKeyName(
+    id: String,
+    name: String,
+): Config {
+    val trimmed = name.trim()
+    if (trimmed.isEmpty()) return this
+    val index = customKeys.indexOfFirst { it.id == id }
+    if (index < 0) return this
+    val old = customKeys[index]
+    if (old.label == trimmed) return this
+    //  **重名不接**：名字是用户认键的唯一线索（绑定页、组合成员、提示全按它念），
+    //  两颗同名的键在界面上分不出谁是谁 —— 与「新建」那条查重同一个口径。
+    if (customKeys.any { it.id != id && it.label == trimmed }) {
+        XLog.w("按键改名：已经有一颗叫「$trimmed」了，忽略（id=$id）")
+        return this
+    }
+    val renamed = old.copyName(trimmed)
+    val renamedKeys =
+        keys.entries.associate { (k, v) ->
+            if (k.id == id) renamed to v.copy(id = renamed) else k to v
+        }
+    return copy(
+        keys = renamedKeys,
+        customKeys = customKeys.toMutableList().also { it[index] = renamed },
+    )
+}
+
+/**
+ * 配置里**每一处能放动作**的位置 —— 全项目唯一的遍历点。
+ *
+ * ## 为什么必须有这一处
+ *
+ *  「一条命令被改名 / 被删掉」时，配置里所有指向它的 `cmd:<名字>` 都得跟着挪或清。
+ *  能放动作的地方分布在两种条目里：
+ *
+ *  · 每颗键的三档手势（`single` / `double` / `long`）与两格松手（`longRelease`）；
+ *  · 每颗键「单击后长按」那一档（主档 `clickThenLong` 与它自己的松手 `clickThenLongRelease`）；
+ *  · 每颗键的额外连击（`extraClicks`，第 3 击起，见 [KeyConfig.actionOf]）；
+ *  · 每颗键的系统场景（`scenes[]` 的动作表 + 松手两格）；
+ *  · 每个组合键的三档（`single` / `long` / `longRelease`，组合没有双击）；
+ *  · 每个组合键的系统场景（同上）。
+ *
+ *  这几处**先后被漏过四次**（删命令只清三格 → 补上场景 → 组合键那两档又漏 → 额外连击与
+ *  组合场景又漏），因为每个调用点都自己写一遍 `copy(single = …, double = …, long = …, scenes = …)`。
+ *  只要遍历散在调用点上，「下次多一处动作位」就必然再漏一次 —— 所以收成这几个函数：
+ *  **加新的动作位只改这个文件**，改名的路径、删命令的路径、删变量的反查都不必再动。
+ *  「松手执行额外动作」那两格（`longRelease`）就是这样漏进来一次：加字段时这个文件没跟着改，
+ *  改名之后那两格里留着指向旧名的 `cmd:`，删变量的反查也数不到它们。
+ *
+ * ## 遍历的是 `keys` 全表，不是 `allKeys`
+ *
+ *  `allKeys` = 内置键 + `customKeys` 清单；而 `keys` 里可能还留着**已从清单删掉**的自定义键
+ *  条目（`customKeys` 与 `keys` 是两份数据）。残留条目本身不会被执行侧认领（`keysByCode`
+ *  只按 `allKeys` 建表），但它上面的引用照样要清 —— 重新加回这颗键时就不会带出一条悬空的
+ *  `cmd:`。只看 `allKeys` 会让这部分引用留在文件里。
+ *
+ * @param transform 逐个动作换一份；返回同一个实例表示这一处不动
+ */
+fun Config.mapActions(transform: (Action) -> Action): Config =
+    copy(
+        keys =
+            keys.mapValues { (_, key) ->
+                key.copy(
+                    single = transform(key.single),
+                    double = transform(key.double),
+                    long = transform(key.long),
+                    longRelease = transform(key.longRelease),
+                    //  「单击后长按」那一档的主档与松手各一格：少这两行，改名之后这两处留着
+                    //  指向旧名的 `cmd:`，删命令时 `bindsToken` 也数不到它们（库删了、引用留着）。
+                    clickThenLong = transform(key.clickThenLong),
+                    clickThenLongRelease = transform(key.clickThenLongRelease),
+                    extraClicks = key.extraClicks.mapValues { transform(it.value) },
+                    scenes = key.scenes.map { it.mapActions(transform) },
+                )
+            },
+        combos =
+            combos.map { combo ->
+                combo.copy(
+                    single = transform(combo.single),
+                    long = transform(combo.long),
+                    longRelease = transform(combo.longRelease),
+                    scenes = combo.scenes.map { it.mapActions(transform) },
+                )
+            },
+        //  **「常用命令」也是动作位**：它存的是一条条指向动作的快捷方式（`CommonCommand.token`
+        //  是 token 原文，不是 `Action`）。不一起走的话，改名之后清单里那一条仍指着旧名 ——
+        //  点下去 NOT_FOUND，而界面上看不出任何悬空（与「五处动作位」漏掉时同一种形状）。
+        global =
+            global.copy(
+                commonCommands =
+                    global.commonCommands.map { row ->
+                        val action = Action.parse(row.token)
+                        val mapped = if (action is Action.None) action else transform(action)
+                        //  认不出的写法、以及换成「无操作」的那一档都**不动这一行**：
+                        //  `none` 不是清单能存的东西（加不进来），删命令那条路自己会把指向它的
+                        //  条目整条摘掉（见 `clearCommandBindings`）。
+                        if (mapped is Action.None) row else row.copy(token = mapped.token)
+                    },
+            ),
+    )
+
+/**
+ * 配置里**所有**动作的 token（顺序无关，可能有重复）—— 与 [mapActions] 同一份清单。
+ *
+ *  删除变量前的反查（`VariableRefs`）用它，免得那一边再抄一份「六处」的清单：
+ *  抄一份的下场是「删命令认得组合规则、删变量不认得」，而两边都自称是唯一的遍历点。
+ */
+fun Config.actionTokens(): List<String> =
+    buildList {
+        keys.values.forEach { key ->
+            add(key.single.token)
+            add(key.double.token)
+            add(key.long.token)
+            add(key.longRelease.token)
+            add(key.clickThenLong.token)
+            add(key.clickThenLongRelease.token)
+            key.extraClicks.values.forEach { add(it.token) }
+            key.scenes.forEach { it.actionTokens().forEach(::add) }
+        }
+        combos.forEach { combo ->
+            add(combo.single.token)
+            add(combo.long.token)
+            add(combo.longRelease.token)
+            combo.scenes.forEach { it.actionTokens().forEach(::add) }
+        }
+        //  「常用命令」那几条同样是动作位（见 [mapActions]）：删变量前的反查要能看进去，
+        //  否则一条写着 `${变量}` 的常用命令不会被算成引用，删变量时它就成了悬空的那一处。
+        global.commonCommands.forEach { add(it.token) }
+    }
+
+/**
+ * 配置里**还有没有**任何一处绑着 [token]（`cmd:<名字>`）—— 与 [mapActions] 同一份清单。
+ *
+ *  用途：删命令时先清引用、再删库；库没删成要把引用写回去。判「有没有清过」与「要不要回滚」
+ *  都得问这一个问题，两处若各写一遍，就会各自漏掉不同的动作位。
+ */
+fun Config.bindsToken(token: String): Boolean = actionTokens().any { it == token }
+
+/**
+ * 一块场景里的**全部动作位** —— 「换动作」与「列出动作」两条路共用，免得一处改了这里、另一处漏了那里。
+ *
+ *  档位是个**表**（`SceneRule.actions`）而不是三个固定字段：表里有什么就改什么，
+ *  多一档 / 少一档都不用来改这段。**表之外**还有两格独立字段（松手 `release` 与
+ *  「单击后长按」的松手 `chainRelease`）—— 它们不在表里，所以必须在这里各列一次：
+ *  漏了 `chainRelease` 就等于「改名对那一格不生效、删命令时看不见它还引用着」。
+ */
+private fun SceneRule.mapActions(transform: (Action) -> Action): SceneRule =
+    copy(
+        actions = actions.mapValues { transform(it.value) },
+        release = transform(release),
+        chainRelease = transform(chainRelease),
+    )
+
+/** 一块场景里**写过**的那几格动作的 token（没配的档不算）。 */
+private fun SceneRule.actionTokens(): List<String> = (actions.values + release + chainRelease).filter { it.isBound }.map { it.token }

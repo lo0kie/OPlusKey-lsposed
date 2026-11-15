@@ -1,9 +1,14 @@
 package com.lookie.opluskey.core.seal
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.SystemClock
+import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.log.XLog
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
+import java.security.MessageDigest
+import java.util.zip.ZipFile
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -224,4 +229,160 @@ enum class Verdict {
 
     /** 判不出来（读不到本包签名）。 */
     UNKNOWN,
+}
+
+/**
+ * 「按包名问自己要一份资产」—— 两条路，按可靠性排。
+ *
+ *  1. `getResourcesForApplication`：模块自己那几个进程走这条；
+ *  2. **把模块 APK 当 zip 读**：宿主**主**进程只能走这条。
+ *
+ *  第二条是必需的：LSPosed 只把模块 **dex** 注进宿主进程，模块 APK 本身不在那个类加载器的资源
+ *  路径上（同一条账见 `core/i18n/DictionaryLoader`）。
+ *
+ *  两条都不能用 `context.assets` —— 那是**宿主** APK 的资源，读出来的是别人的东西。
+ */
+internal object SealAssets {
+    /** 读一份资产；读不到返回 `null`，并留一句 `w`（与「文件本来就不该在」分得开）。 */
+    fun bytes(
+        context: Context,
+        name: String,
+    ): ByteArray? =
+        fromResources(context, name)
+            ?: fromApkZip(context, name)
+            ?: missing(name)
+
+    private fun fromResources(
+        context: Context,
+        name: String,
+    ): ByteArray? =
+        try {
+            context.packageManager
+                .getResourcesForApplication(ModuleInfo.PACKAGE)
+                .assets
+                .open(name)
+                .use { it.readBytes() }
+        } catch (e: Throwable) {
+            XLog.d("按资源读 $name 未成：${e.javaClass.simpleName}")
+            null
+        }
+
+    private fun fromApkZip(
+        context: Context,
+        name: String,
+    ): ByteArray? =
+        try {
+            val apk =
+                context.packageManager
+                    .getApplicationInfo(ModuleInfo.PACKAGE, PackageManager.ApplicationInfoFlags.of(0))
+                    .sourceDir ?: return null
+            ZipFile(apk).use { zip ->
+                // APK zip 里的路径带 `assets/` 前缀，而调用方传的是相对 assets 根的路径
+                // （`sealed.bin` / `donate/alipay.webp`）—— 不补这一层，这条兜底路径恒返回 null。
+                val entryName = if (name.startsWith("assets/")) name else "assets/$name"
+                val entry = zip.getEntry(entryName) ?: return null
+                zip.getInputStream(entry).use { it.readBytes() }
+            }
+        } catch (e: Throwable) {
+            XLog.d("按 zip 读 $name 未成：${e.javaClass.simpleName}")
+            null
+        }
+
+    private fun missing(name: String): Nothing? {
+        XLog.w("模块资产读不到（退成兜底形态）：$name")
+        return null
+    }
+}
+
+/**
+ * 本包**签名证书**的那点事 —— 封存层的全部依据都在这里。
+ *
+ *  取的是 `PackageInfo.signingInfo.apkContentsSigners` 的原始 DER，与构建期从 keystore 里读出来的
+ *  `Certificate.encoded` **是同一串字节**（`core/build.gradle.kts` 的 `SealReleaseAssets` 那边按它
+ *  派生密钥）。两边必须逐字节一致，否则官方包也解不开自己的密文。
+ *
+ *  只判一次、结果缓存：一个进程里签名不会变，而 `getPackageInfo` 要跨进程问 PMS。
+ */
+internal object SealCertificate {
+    private const val DIGEST = "SHA-256"
+
+    /** 取到的那串（进程内缓存）；`null` = 还没取过。 */
+    @Volatile
+    private var cached: ByteArray? = null
+
+    /**
+     * 上一次取失败的**单调时刻**（`SystemClock.elapsedRealtime()`；`0` = 没失败过）——
+     * 与「还没取过」必须分开，否则每次判都要重问一遍 PMS。
+     *
+     *  **只能用单调时钟**：过期判据是「`now - failedAt < RETRY_MS`」，用 wall clock 时一次校时回拨
+     *  （NTP / 用户改时间）会让 `failedAt` 跑到未来，这个窗口就一直命中 —— 签名闸长期不重试，
+     *  注入侧整条不接管，而且看起来像「那台机器永远拿不到签名」。
+     *
+     *  **但不许永久粘住**：`PackageManager` 一时拿不到（开机早期、包刚更新完）与「这台机器永远
+     *  拿不到」是两件事。永久记住前者会让签名闸一直判不出口令、注入侧整条不接管，直到进程重启。
+     *  口径与 `Reflect` 那边负命中的过期窗口一致。
+     */
+    @Volatile
+    private var failedAt = 0L
+
+    /** 失败之后多久再试一次。 */
+    private const val RETRY_MS = 30_000L
+
+    /** 本包签名证书的 SHA-256 原始摘要；取不到返回 `null`。 */
+    fun sha256(context: Context): ByteArray? {
+        cached?.let { return it }
+        val now = SystemClock.elapsedRealtime()
+        if (failedAt != 0L && now - failedAt < RETRY_MS) return null
+        val bytes = read(context)
+        if (bytes == null) {
+            failedAt = now
+        } else {
+            cached = bytes
+            failedAt = 0L
+        }
+        return bytes
+    }
+
+    /**
+     * 本包签名是不是 `pin` 那一份 —— `null` = **判不出来**（不是「不是」）。
+     *
+     *  比较的是小写十六进制串；`pin` 为空（debug 那一侧）不该走到这里，真走到了也只会得到 `false`，
+     *  由调用方按「没开闸」处理。
+     */
+    fun matches(
+        context: Context,
+        pin: String,
+    ): Boolean? = sha256(context)?.hex()?.equals(pin, ignoreCase = true)
+
+    /** `AA:BB:…` 形式（与 `keytool -list -v` 同一写法），给「关于」页对账用。 */
+    fun fingerprint(context: Context): String? = sha256(context)?.joinToString(":") { it.toHexPair().uppercase() }
+
+    /**
+     * 自己拼十六进制，不用 `String.format("%02x", …)` —— 后者吃系统区域设置，
+     *  在阿拉伯语这类环境里会写出另一套数字（与 `ConfigCodec.md5Hex` 同一条口径）。
+     */
+    private fun ByteArray.hex(): String {
+        val out = StringBuilder(size * 2)
+        for (b in this) out.append(b.toHexPair())
+        return out.toString()
+    }
+
+    private fun Byte.toHexPair(): String {
+        val v = toInt() and 0xFF
+        return "${HEX[v ushr 4]}${HEX[v and 0x0F]}"
+    }
+
+    private const val HEX = "0123456789abcdef"
+
+    private fun read(context: Context): ByteArray? =
+        try {
+            val flags = PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
+            val info = context.packageManager.getPackageInfo(ModuleInfo.PACKAGE, flags)
+            info.signingInfo?.apkContentsSigners?.firstOrNull()?.toByteArray()?.let {
+                MessageDigest.getInstance(DIGEST).digest(it)
+            }
+        } catch (e: Throwable) {
+            XLog.w("读本包签名失败：${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
 }

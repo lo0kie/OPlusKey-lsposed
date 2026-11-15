@@ -1,41 +1,84 @@
 package com.lookie.opluskey.ui.screen
 
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.CommonCommand
+import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
+import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.LongPressEdit
+import com.lookie.opluskey.core.model.appKeyOf
+import com.lookie.opluskey.core.model.trigger
+import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.LocalHeaderBoxHeight
 import com.lookie.opluskey.ui.chrome.headerReady
+import com.lookie.opluskey.ui.chrome.loadPageState
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.tickNow
 import com.lookie.opluskey.ui.screen.about.AboutScreen
 import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
 import com.lookie.opluskey.ui.screen.binding.BindingPagerScreen
 import com.lookie.opluskey.ui.screen.binding.KeySettingsScreen
+import com.lookie.opluskey.ui.screen.binding.comboGestureSlots
+import com.lookie.opluskey.ui.screen.binding.pickToken
 import com.lookie.opluskey.ui.screen.combo.KeysScreen
 import com.lookie.opluskey.ui.screen.command.BranchScreen
+import com.lookie.opluskey.ui.screen.command.COMMAND_PAGE_COUNT
 import com.lookie.opluskey.ui.screen.command.CommandScreen
+import com.lookie.opluskey.ui.screen.command.branchDraftNow
+import com.lookie.opluskey.ui.screen.command.sceneGesturePages
+import com.lookie.opluskey.ui.screen.command.writeBranchCondition
 import com.lookie.opluskey.ui.screen.common.CommonCommandsScreen
 import com.lookie.opluskey.ui.screen.donate.DonateListScreen
 import com.lookie.opluskey.ui.screen.general.GeneralScreen
 import com.lookie.opluskey.ui.screen.home.HomeScreen
+import com.lookie.opluskey.ui.screen.variables.VarManageState
 import com.lookie.opluskey.ui.screen.variables.VariableScreen
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.state.host.installI18nBridge
+import com.lookie.opluskey.ui.state.picker.AppPickerState
+import com.lookie.opluskey.ui.state.picker.PickTarget
+import com.lookie.opluskey.ui.state.picker.PickedDetail
 import com.lookie.opluskey.ui.state.signal.BandHeight
+import com.lookie.opluskey.ui.style.pageBackgroundColor
+import com.lookie.opluskey.ui.style.systemNight
+import com.lookie.opluskey.ui.wire.appNameOf
 import com.lookie.opluskey.ui.wire.linkReady
 import com.lookie.opluskey.ui.write.BindingTarget
+import com.lookie.opluskey.ui.write.addStep
+import com.lookie.opluskey.ui.write.replaceStep
+import com.lookie.opluskey.ui.write.write
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
@@ -43,6 +86,7 @@ import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.rememberTopAppBarState
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.delay
 
 /**
  * 一页 —— 每页**各持一份**的那些东西（滚动行为、磨砂取样状态），加上三块浮在内容之上的东西
@@ -454,3 +498,629 @@ internal fun SettingsPage.openAppPickerForStopApp(target: BindingTarget) {
     appPickerUi.beginVisit(appPickerSelectedTarget(), shortcutId = null)
     navTo(Screen.APP_PICKER)
 }
+
+/**
+ * 页面级的三个横向分页器 —— 一路传下去的那个包。
+ *
+ *  为什么打包：这些都建在 `PageContent` 那一层（页面级，不随页重建），而用它们的是
+ *  两棵树 —— 内容（`PageBody`）与顶栏（`PageTopBar` 底下那条分段控件）。原来两个 pager
+ *  是各自一个参数，加第三个（组合键的短按 / 长按）时每个签名都要多一格；
+ *  打成一个包之后，将来再多一个分页器只改这里与创建点。
+ *
+ *  各管一页，**不共用**：
+ *  · [gestures] —— 「按键绑定」页的几档手势（单击 / 双击 / 长按，打开多击才多出三击 / 四击，
+ *    清单见 `GestureTrigger.slotsOn`）；
+ *  · [commands] —— 「自定义命令」页的类型那一排；
+ *  · [combos] —— 「组合键」编辑页的短按 / 长按（长按只在不分顺序时才存在，见 `comboGestureSlots`）；
+ *  · [scenes] —— 「场景动作」页的几档（组合键的场景块只有短按 / 长按两档）。
+ *
+ *  带子底下那三页（按键绑定 / 组合键 / 场景动作）**共用一份页面实现**
+ *  （`BindingPagerScreen`），但各持一条分页器 —— 见 [PagePagers.gesturesOf]。
+ *
+ *  **「系统场景」页没有分页器**：翻转之后一张表里每块自带三档（见 `SceneRule`），
+ *  页面不再按手势分页，原来那条 `branches` 分页器跟着手势维度一起删掉了。
+ */
+internal class PagePagers(
+    val gestures: PagerState,
+    val commands: PagerState,
+    /** 「组合键」那一页短按 / 长按的分页器 —— 与 [gestures] 同一把尺子，各持一份位置。 */
+    val combos: PagerState,
+    /** 「场景动作」页的手势分页器 —— 页数跟着 `sceneGesturePages()` 走（键三档、组合两档）。 */
+    val scenes: PagerState,
+) {
+    /**
+     * 「一档手势一屏」那三页各用哪一条分页器。
+     *
+     *  **不共用一个实例**：这三页可能同时在栈里（按键绑定 → 系统场景 → 场景动作），
+     *  各自要记住自己停在哪一档；共用一条会在转场时被邻居拽走。
+     */
+    fun gesturesOf(s: Screen): PagerState =
+        when (s) {
+            Screen.COMBO_EDIT -> combos
+            Screen.SCENE_BINDING -> scenes
+            else -> gestures
+        }
+}
+
+/**
+ * 几个分页器一次建好 —— 建在页面级（`PageContent`），不随页重建。
+ */
+@Composable
+internal fun SettingsPage.rememberPagePagers(): PagePagers {
+    //  按键绑定页那几档**跟着在编那颗键的开关走**（`GestureTrigger.slotsOn`）：
+    //  三击 / 四击没打开就只排三页 —— 页数不再是常量，开关一拨页数当场变。
+    val gestures = rememberPagerState(pageCount = { bindingSlotCount() })
+    val commands = rememberPagerState(pageCount = { COMMAND_PAGE_COUNT })
+    //  组合键那一页**一档一页，档数不是常量**：长按只在「不分顺序」时存在
+    //  （`ComboKey.hasLong`）—— 与页里摆什么同一个来源（`comboGestureSlots`），
+    //  各读一份就会演出「带子只剩一档、分页器还是两页」。
+    val combos = rememberPagerState(pageCount = { comboGestureSlots().size })
+    //  页数**会缩小**：先在「不分顺序」那一档停在长按页，退出去再进一档按顺序触发的组合，
+    //  位置还留在第 2 页而页数只剩 1 —— 带子与内容两处都夹过一道（读出来是对的），
+    //  但分页器自己停在越界的那一页时，横向那一屏是空的。所以一换页数就把位置收回来。
+    //  `pageCount` 由 `rememberPagerState` 每次重组回写，这里读它等于「页数一变就跑一次」。
+    LaunchedEffect(combos.pageCount) {
+        val last = combos.pageCount - 1
+        if (last >= 0 && combos.currentPage > last) combos.scrollToPage(last)
+    }
+    //  场景动作页的档数**跟当前那张表走**：一颗键三档、一组组合两档（见 `sceneGesturePages`）。
+    //  读的是 `branchDraft.comboId` 这个页面级状态 —— 换了一份表，页数当场跟着变。
+    val scenes = rememberPagerState(pageCount = { sceneGesturePages().size })
+    //  **这个包本身也要 remember**：`PagePagers` 是普通类（按引用相等），每次重组新建一个实例
+    //  就等于「分页器包换了」—— 凡是拿它当 `remember` 键的地方（路由 DSL 那一份）都会跟着重建，
+    //  而库那边的路由表是按 lambda 引用记的 ⇒ 整页内容被销毁重建。包里的四个分页器本来就是
+    //  `remember` 出来的，这个包只是把它们捆在一起，理应与它们同寿命。
+    return remember(gestures, commands, combos, scenes) {
+        PagePagers(gestures = gestures, commands = commands, combos = combos, scenes = scenes)
+    }
+}
+
+/**
+ * 「按键绑定」页现在排**几页** —— 在编那颗键的三档还是五档。
+ *
+ *  与 `bindingTargetsOf` 同一份清单（`GestureTrigger.slotsOn`）：页数与页里摆什么必须同一个判据，
+ *  否则会出现「页数还是五、第四页拿到 `null` 目标」。
+ */
+private fun SettingsPage.bindingSlotCount(): Int {
+    val cfg = configState.config.value
+    val key = cfg.key(KeyWatchState.editing(cfg))
+    return GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn, key.doubleClickOn).size
+}
+
+// 「挑中的东西怎么落到配置里」—— 与 `PageEntry.kt` 分开：那边是**铺页面**（每页一份滚动行为、
+// 顶栏与浮层），这里是「写回」三颗（拼好的 token 写哪儿去 / 应用页那颗 FAB / 界面页确认）。
+// 两族改的理由不同，且合在一起时那个文件已经贴着 `TooManyFunctions` 的阈值。
+
+/**
+ * 把一个**已经拼好的 token** 写成本次挑应用的取值 —— **不负责退页**。
+ *
+ *  两页（应用 / 界面）最后都落到这里：应用那页拼 `app:` / `window:`，界面那页还可能拼
+ *  `appshortcut:`。拼 token 的地方只剩调用点，这一层只管「写到哪儿去」。
+ *
+ * @return true = 写下去了；false = 没地方写（手势那条入口没记下来）或被拦
+ *   （链路未就绪 / 写盘失败）。调用方据此决定留在原地。
+ */
+internal fun SettingsPage.writeToken(
+    token: String,
+    appName: String?,
+): Boolean {
+    // 「写到哪儿去」只有一处分派：分叉的条件 / 分叉某一支要执行的应用 / 多条命令的某一步 /
+    //   手势绑定。
+    return when (val target = picker.takePickTarget()) {
+        is PickTarget.Branch -> {
+            // 条件这一趟**可能多选**：整组包名在 `picker.pickedApps` 里（`takePickTarget()` 不动它，
+            //  `clearTarget()` 才清）。空集合说明状态被谁提前清了 —— 退回 token 里那一个包名。
+            val pkgs =
+                picker.pickedApps.value
+                    .toList()
+                    .ifEmpty { listOf(appKeyOf(Action.parse(token).appTarget.orEmpty())) }
+            // `takePickTarget()` 是**一次性消费**：写失败了得把「为谁挑」放回去，否则这一页
+            //  立刻退化成「普通挑应用」—— 点一行会去挑界面、按确定还会写到手势绑定上。
+            //  **连条件槽位一起放回**：从「条件 2」那一行进来的这一趟，重挑时必须还写那一条；
+            //  只传 index 会让 branchConditionIndex 退回 -1，落到 `old.appConditionIndex(kind)`
+            //  或追加，把同一块里另一条条件覆盖掉。**档位（正 / 反）也一起放回** —— 少了它，
+            //  写失败重挑一次就悄悄变成「前台应用」。
+            if (!writeBranchCondition(pkgs, target.index)) {
+                picker.openForBranch(target.index, picker.branchConditionIndex, picker.branchKind)
+                false
+            } else {
+                true
+            }
+        }
+
+        // 「松手执行额外动作」：写这一档的松手格，然后自己退页（与分支那两条同一条纪律 ——
+        //  调用方拿到 true 就不要再补一次 `goBack()`）。写哪儿见 [writeReleaseTo]。
+        is PickTarget.Release -> {
+            if (writeReleaseTo(target, Action.parse(token))) {
+                popBackStack()
+                true
+            } else {
+                //  写失败：把「为谁挑」**原样**放回去，留在这一页（否则这一页会退化成普通挑应用）。
+                //  四位都要放回：少了 `chain`，「单击后长按」那一格的松手动作会落进长按的松手槽；
+                //  少了 `stop`，「结束应用」那一趟重挑一次就变成「打开应用」。
+                picker.openForRelease(
+                    stop = picker.stopApp,
+                    combo = target.comboId,
+                    sceneAt = target.sceneAt,
+                    chain = target.chain,
+                )
+                false
+            }
+        }
+
+        // 「加一步 / 换一步」：`addStep()` / `replaceStep()` 自己会把页面切回「自定义命令」
+        // （那才是这次挑应用的来处），所以这条路上调用方**不再退页**。
+        //  真加进去了才算写成功：满员时 `addStep` 只 toast、不发车，这里若照样返回 true，
+        //  调用方会当作「已落盘」直接 return，刚挑的应用就凭空消失。
+        is PickTarget.Step -> {
+            if (target.index >= 0) replaceStep(target.index, token) else addStep(token)
+        }
+
+        // 「常用命令」那张清单：挑中的应用 / 结束应用追加成一条、或换掉「修改」那一趟指的那一条，
+        //  然后自己退页（同 [PickTarget.Release] 的纪律 —— 调用方拿到 true 就不要再补一次 `goBack()`）。
+        is PickTarget.CommonCommand -> {
+            writeCommonCommand(Action.parse(token), target.replaceToken)
+        }
+
+        // 写的是**进这一页时那个手势**（见 picker.gesture），不是 pager 的当前页
+        // —— 这一页不属于 pager。
+        null -> {
+            val g =
+                picker.gesture ?: run {
+                    //  **别静默返回**：正常路径由 [openAppPickerForGesture] 先记下手势，但经
+                    //  调试通道直接 `navTo(APP_PICKER)` 时没有那一步 —— 那时这一页的确认会
+                    //  一声不响地什么都不做（用户看到的就是「FAB 点了没反应」）。
+                    XLog.w("选择应用：这一趟没有目标手势（gesture=null），确认无效 —— 请从「按键绑定」页那一格进来")
+                    return false
+                }
+            // 写回**进这一页时那一格**：场景动作页（`picker.sceneAt` 非负）写那一块的这一档，
+            //  组合键那一页（`picker.comboId` 非空）写它那一档，否则写当前在编辑的那颗键。
+            //  判据只有这两处 —— 不按「当前在哪一页」判：退场动画期间栈顶可能已经变了，
+            //  按页面判会把动作写到上一页那颗键上。三选一那一支见 [pickTargetOf]。
+            pickToken(
+                token,
+                pickTargetOf(
+                    gesture = g,
+                    sceneAt = picker.sceneAt,
+                    comboId = picker.comboId,
+                    scene = { BindingTarget.Scene(branchDraftNow(), picker.sceneAt, g, branchDraft.comboId) },
+                    key = BindingTarget.Key(KeyWatchState.editing(configState.config.value), g),
+                ),
+                appName,
+            )
+        }
+    }
+}
+
+/**
+ * 「写回哪一格」的三选一 —— 判据只有 [sceneAt] / [comboId] 两处（见 `writeToken` 里那段说明）。
+ *
+ *  单独一支：那一位是**落点表的分派器**，每多一个落点必然多一个分支，把三选一的判定
+ *  也摊在里面会搅成一团。这里不碰页面状态
+ *  （[scene] / [key] 由调用点现算，用 lambda 只为在走不到时不算 [key]）。
+ */
+private fun pickTargetOf(
+    gesture: GestureTrigger,
+    sceneAt: Int,
+    comboId: String?,
+    scene: () -> BindingTarget,
+    key: BindingTarget,
+): BindingTarget {
+    val combo = comboId?.let { BindingTarget.Combo(it, gesture) }
+    return when {
+        sceneAt >= 0 -> scene()
+        combo != null -> combo
+        else -> key
+    }
+}
+
+/**
+ * 「选择应用」页点 FAB —— 把**当前选中**的那一条写下去。
+ *
+ *  **这是整趟挑应用唯一的落盘点**：二级页点确认只写 [AppPickerState.draft]（草稿），
+ *  到这一颗才真正写配置。所以 token 优先取草稿 —— 有草稿说明用户刚在二级页挑过，
+ *  照它写 `app:包名/类名` / `appshortcut:`；没有草稿才是「就绑这个应用」（`app:包名`）。
+ *
+ *  写成了才退页：被拦（链路未就绪）或写盘失败时留在原地，
+ *  否则用户挑的东西看起来像存好了，其实一个字节都没写。
+ */
+internal fun SettingsPage.onAppPicked(
+    picked: PickedDetail,
+    window: Boolean,
+) {
+    tickNow()
+    // `forStep` 必须在写之前读：`writeToken` 里那个 `takePickTarget()` 会把它清掉
+    val forStep = picker.forStep
+    // 分叉那两条路同理（条件 / 那一支要执行的应用），而且它们**自己会退页**
+    //  （见 `writeBranchCondition`）—— 这里不能再补一次
+    //  `goBack()`，否则一次退两层、还会把「放弃未保存的命令」弹出来。
+    val forBranch = picker.forBranch
+    // 「松手执行额外动作」那一趟同样自己退页（`PickTarget.Release` 分支里 `popBackStack()`），
+    //  这里再补一次 `goBack()` 会一次退两层、直接回到首页。
+    val forRelease = picker.forRelease
+    // 「常用命令」那一趟同理（见 `PickTarget.CommonCommand`）。
+    val forCommonCommand = picker.forCommonCommand
+    // 「应用控制」→ 结束那一趟：写的是 `proc:stop:包名`（不挑界面、也没有小窗）
+    val stopApp = picker.stopApp
+    // 刚在「选择界面」页确认过就照那一条写（`app:包名/类名` / `appshortcut:`）；
+    // 没确认过就照 `pending` 这一份写 —— 它带着快捷方式的 id，不能退化成 `app:包名/id`。
+    //  给「条件执行」挑的那一趟**没有二级页**（不挑界面），所以那边一律按 `pending` 写：
+    //  草稿里若留着上一趟的 `包名/类名`，照它写会把条件弄成「某个界面」，而条件只认包名。
+    //  给**分支动作**挑的那一趟不在此列 —— 它与网格同一套（草稿 + 小窗都算数）。
+    val forCondition = picker.branchTarget != AppPickerState.NOT_FOR_BRANCH
+    //  「以小窗口打开」与「使用原版动画」是同一格的两种起法（互斥）：`window` 由调用点带货
+    //  （「不支持小窗」那张窗会强制传 false，不走页面状态，所以这里读参数而不是再读一遍），
+    //  `stockAnim` 只有页面状态这一个来源。
+    val stockAnim = picker.stockAnim.value
+    val token =
+        when {
+            stopApp -> Action.Process(AppTarget.pkg(picked.target)).token
+            forCondition -> picked.token(window = false)
+            else -> picker.draft?.token(window, stockAnim) ?: picked.token(window, stockAnim)
+        }
+    // 名字与绑定**同一次写盘**（`Config.appNames`）—— 分两次写要多落一次盘 + 一次广播，
+    //  而中间那一下读到的配置只有新绑定、没有名字，顶栏会当场闪一下包名。
+    //  快捷方式带的是它自己的名字（「扫一扫」），其余按目标现取应用名。
+    val name = picker.draft?.label ?: picked.label ?: appNameOf(picked.target)
+    //  **这一笔账在写之前清**：`writeToken` 里那两条分支路径会当场 `popBackStack()` 退回来源页，
+    //  来源页的 effect 立刻读 `resumeSheetAt` 把抽屉支起来 —— 写成功后再清已经晚了一帧，
+    //  真机上就是「点了确认、抽屉照样弹出来」（用户口径）。
+    //  没写成的极小概率（配置只读 / 链路未就绪）会少一次「回来支抽屉」，那也比每次确认都弹好。
+    picker.cancelResume()
+    if (!writeToken(token, name)) {
+        XLog.w("选择应用：${picked.target} 没写进绑定，留在本页（不 goBack）")
+        return
+    }
+    //  「这几趟自己会退页」合成一位：它们本来就是同一件事（这个 `writeToken` 自己
+    //  `popBackStack` 了，调用方别再补 `goBack()`）。
+    val popsItself = forBranch || forRelease || forCommonCommand
+    if (forStep || popsItself) return
+    picker.clearTarget()
+    //  「以小窗口打开」/「使用原版动画」也**已经随这一条写下去了**，所以把进页那一刻的基线挪到当下：
+    //  不挪的话，`goBack()` 的 `hasUnconfirmedPick` 仍在拿这两个开关与进页基线比（草稿刚被
+    //  `clearTarget` 清掉，只剩这一条还能为真）—— 用户拨过开关、再点确认，写盘成功了却当场
+    //  弹一张「放弃这次选择」。
+    picker.markWindowTogglesBaseline()
+    goBack()
+}
+
+/**
+ * 「松手执行额外动作」写到这一档 —— 三种落点只差「写给谁」，判据在 [pick] 里。
+ *
+ *  · 场景块（`sceneAt >= 0`）：写**草稿里那一块**，与这一页的三档动作同一个规矩（点「确认」才落盘）；
+ *  · 其他：写那颗键 / 那一档组合键的 `longRelease`，当场落盘。
+ *
+ *  之前这里只有后面那一支（`writeLongReleaseTo`），于是从「场景动作」页进来挑的应用被写进了
+ *  **整颗键**的松手格，草稿里那一格还是空的 —— 返回后那一行照样显示「无操作」。
+ *
+ *  @return 写下去没有（场景块那一支返回「那一块还在不在」；另一支返回「链路未就绪 / 写盘失败」）
+ */
+private fun SettingsPage.writeReleaseTo(
+    pick: PickTarget.Release,
+    action: Action,
+): Boolean {
+    //  「单击后长按」那一档的松手格自成一路（`clickThenLongRelease`）：挑法、清单、回填
+    //  与长按的松手共用，只有落点不同 —— 所以只在落点这里分一次
+    if (pick.chain) {
+        //  场景块走草稿（与 `writeReleaseTo` 的长按那一支同一条纪律：这一页只改草稿）
+        if (pick.sceneAt >= 0) {
+            val block = BindingTarget.Scene(branchDraftNow(), pick.sceneAt, GestureTrigger.ClickThenLong, pick.comboId)
+            val ok = block.bindChainRelease(action = action)
+            XLog.w("额外动作：${block.what} ← ${action.token}（草稿）${if (ok) "" else "（那一块已不在草稿里）"}")
+            return ok
+        }
+        val cfg = configState.config.value
+        val id = KeyWatchState.editing(cfg)
+        val key = cfg.key(id)
+        val ok =
+            write(
+                cfg.copy(keys = cfg.keys + (id to key.copy(clickThenLongRelease = action))),
+                "click_then_long_release key=${id.id}",
+            ) != CommandsSave.Failed
+        XLog.w("额外动作：单击后长按松手 ← ${action.token}（${if (ok) "已落盘" else "没写进去"}）")
+        return ok
+    }
+    if (pick.sceneAt >= 0) {
+        val block = BindingTarget.Scene(branchDraftNow(), pick.sceneAt, Gesture.LONG.trigger(), pick.comboId)
+        val ok = block.bindRelease(action = action)
+        XLog.w("额外动作：${block.what} ← ${action.token}（草稿）${if (ok) "" else "（那一块已不在草稿里）"}")
+        return ok
+    }
+    return writeLongReleaseTo(pick.comboId, action)
+}
+
+/**
+ * 「松手执行额外动作」写到这一颗键 / 这一档组合 —— 两档**只差写到哪张表**，判据在 `BindingTarget` 里。
+ *
+ *  之前这里是 `if (comboId != null) writeComboLongRelease(…) else writeLongRelease(…)`：
+ *  两个函数、两张表各写一遍同一件事。现在两条路合成一条，都走 `withLongPress`。
+ *
+ *  @param comboId 这一趟绑的是哪一档组合键（`null` = 当前在编辑的那颗键）
+ *  @return 写下去没有（`false` = 链路未就绪 / 写盘失败）
+ */
+private fun SettingsPage.writeLongReleaseTo(
+    comboId: String?,
+    action: Action,
+): Boolean {
+    val cfg = configState.config.value
+    val target =
+        if (comboId != null) {
+            BindingTarget.Combo(comboId, Gesture.LONG.trigger())
+        } else {
+            BindingTarget.Key(KeyWatchState.editing(cfg), Gesture.LONG.trigger())
+        }
+    val ok =
+        write(target.withLongPress(cfg, LongPressEdit(release = action)), "${target.what}:long_release") !=
+            CommandsSave.Failed
+    XLog.w("额外动作：${target.what} ← ${action.token}（${if (ok) "已落盘" else "没写进去"}）")
+    return ok
+}
+
+/**
+ * 往「常用命令」那张清单里**追加一条**（见 [PickTarget.CommonCommand]）。
+ *
+ *  与抽屉里那一支同一个口径：已经在清单里就**不重复收录**，但这一趟仍然算成功 —— 用户点的是
+ *  「把它加进来」，它本来就在里面，结果与期待一致（再报一句「已经有了」只会让人以为没生效）。
+ *
+ *  整份写回（`setCommonCommands` 同一套）：这张表本来就小，按 token 打补丁要额外处理中间态。
+ *
+ * @return 写下去没有（`false` = 这条动作根本不能执行 / 链路未就绪 / 写盘失败）
+ */
+internal fun SettingsPage.addCommonCommand(action: Action): Boolean {
+    //  入口格那种「标记」写法（`appctl:open`）不是能执行的动作，读盘那一道也会把它丢掉
+    if (action is Action.None) return false
+    val cfg = configState.config.value
+    val list = cfg.global.commonCommands
+    if (list.any { it.token == action.token }) return true
+    //  已经有这条就先进了上面那一支（「本来就在里面」不算新增）：上限只拦**真的多一条**。
+    if (list.size >= GlobalConfig.MAX_COMMON_COMMANDS) {
+        XLog.w("常用命令：已到上限（${GlobalConfig.MAX_COMMON_COMMANDS} 个），拒绝添加 ${action.token}")
+        hint(I18n.format(Strings.COMMON_COMMANDS_LIMIT, GlobalConfig.MAX_COMMON_COMMANDS))
+        return false
+    }
+    val ok =
+        write(
+            cfg.copy(global = cfg.global.copy(commonCommands = list + CommonCommand(token = action.token))),
+            "common_commands=add",
+        ) != CommandsSave.Failed
+    XLog.w("常用命令：← ${action.token}（${if (ok) "已落盘" else "没写进去"}）")
+    return ok
+}
+
+/**
+ * 把「常用命令」清单里的某一条**换成另一个动作**（行菜单的「修改」→ 抽屉 → 挑一条）。
+ *
+ *  与 [addCommonCommand] 分开：那边是**多一条**（还要吃上限），这边是**换这一条**（条数不变）。
+ *  名字 / 图标 / 固定位都留着 —— 改的是它指向什么，不是用户给它起的名字与挑的脸。
+ *
+ *  **不许撞上清单里已有的另一条**：`token` 是这张表的身份（改名 / 换图标都按它找行），
+ *  两条同一个 token 会一起被改。撞上了就当作「已经是这一条」，不写、也不报错
+ *  （与添加那条「本来就在里面就算成功」同一口径）。
+ *
+ * @param from 被换掉的那一条的 token
+ * @return 写下去没有（`false` = 这条动作根本不能执行 / 链路未就绪 / 写盘失败）
+ */
+internal fun SettingsPage.replaceCommonCommand(
+    from: String,
+    action: Action,
+): Boolean {
+    //  入口格那种「标记」写法不是能执行的动作，读盘那一道也会把它丢掉
+    if (action is Action.None) return false
+    val cfg = configState.config.value
+    val list = cfg.global.commonCommands
+    if (action.token == from) return true
+    if (list.any { it.token == action.token }) return true
+    val ok =
+        write(
+            cfg.copy(
+                global =
+                    cfg.global.copy(
+                        commonCommands = list.map { row -> if (row.token == from) row.copy(token = action.token) else row },
+                    ),
+            ),
+            "common_commands=replace",
+        ) != CommandsSave.Failed
+    XLog.w("常用命令：$from → ${action.token}（${if (ok) "已落盘" else "没写进去"}）")
+    return ok
+}
+
+/**
+ * 「常用命令」那一趟：追加进清单（[replaceToken] 非空时是换掉那一条），成功就自己退页
+ * （见 [PickTarget.CommonCommand]）。
+ *
+ *  为什么单独一支：`writeToken` 那个 `when` 已经把落点分派摊开了，把「写 + 退页 + 写失败
+ *  放回目标」再摊在那里会搅成一团；而这三种结局本来就该在一处读。
+ *
+ * @param replaceToken 非空 = 换掉清单里的这一条（「修改」那一趟）
+ * @return 写下去了没有（`false` = 没地方写 / 这条动作不能执行 / 写盘失败，调用方留在原地）
+ */
+private fun SettingsPage.writeCommonCommand(
+    action: Action,
+    replaceToken: String? = null,
+): Boolean {
+    val ok = if (replaceToken != null) replaceCommonCommand(replaceToken, action) else addCommonCommand(action)
+    if (ok) {
+        popBackStack()
+        return true
+    }
+    //  写失败：把「为谁挑」放回去，否则这一页会退化成普通挑应用（点一行就绑到手势上）
+    picker.openForCommonCommand(picker.stopApp, replaceToken)
+    return false
+}
+
+/**
+ * 「选择界面」页点确认 —— **只记草稿，不写配置**。
+ *
+ *  这一页是「挑」，落盘在上一级（「选择应用」页那颗 FAB）。所以这里做两件事：
+ *   · 把挑中的那一条存进 [AppPickerState.draft]（连同「以小窗口打开」那一档，等提交时再拼 token）；
+ *   · 退回一级页，并把那一页的选中也挪过来 —— 行尾图标要立刻显示成「一块屏」。
+ *
+ *  用户在这之后按返回走人，配置一个字节都不会动（草稿随这一趟结束一起作废，
+ *  见 [AppPickerState.clearTarget]）。
+ */
+internal fun SettingsPage.onDraftPicked(
+    target: String,
+    shortcutId: String?,
+    label: String?,
+) {
+    tickNow()
+    val detail = PickedDetail(target, shortcutId, label)
+    // 「这一条吃不到原版动画」不在这里判：开关该不该拨回关要到**上一级那颗 FAB** 才说得准
+    //  （那一处与小窗共用一份判据，见 `AppConfirmFab.blockedToggleOf`）。
+    // 草稿与「选中位」装同一份：行尾靠它的 shortcutId 画 table-shortcut，FAB 靠它取目标
+    picker.draft = detail
+    appPickerUi.pending = detail
+    goBack()
+}
+
+/**
+ * 网格里点「自定义变量」那一格 → 进「自定义变量」列表页（**为这一格**挑一步）。
+ *
+ *  与 `openAppPickerForTarget` 一样先记下「为谁挑」，但**不碰挑应用那几笔账**
+ *  （搜索词 / 小窗口 / 列表选中复位）—— 那些只属于那一页。
+ *
+ *  变量只有**那一个页面**：两趟入口的区别只写进 `VarManageState.enter`（这一趟是「挑一步」），
+ *  点列表里的一颗才会弹那张操作窗，挑完落成一步。
+ */
+internal fun SettingsPage.openVarOpsForTarget(target: BindingTarget) {
+    picker.openForGesture(target.gesture, (target as? BindingTarget.Combo)?.id, sceneAt = target.sceneAt)
+    VarManageState.enter(VarManageState.Mode.Step)
+    navTo(Screen.VARIABLES)
+}
+
+/**
+ * 「添加 / 选择命令」抽屉里点「自定义变量」那一行 → 进同一页，挑完**落成一步**
+ * （[replaceIndex] `< 0` = 追加一步，否则换掉那一步）。
+ */
+internal fun SettingsPage.openVarOpsForStep(replaceIndex: Int) {
+    picker.openForStep(replaceIndex)
+    VarManageState.enter(VarManageState.Mode.Step)
+    navTo(Screen.VARIABLES)
+}
+
+// 建页 → 首帧，以及把页面 View 交出去。
+//
+// 「等数据到位」与「画整棵树」拆成两档（[Page] / [PageContent]）是有原因的：
+//  建页要读的三份文件（配置 / 命令库 / 界面偏好）现在在组合期、IO 线程上读（见 [loadPageState]），
+//  读回来之前页面状态里全是**默认值**（主开关关、三个手势全是无操作、命令库空）。
+//  这一档必须**整棵页面树都不组合**，不能只把内容藏起来：
+//   · 藏起来（alpha=0 / size=0）仍然会组合 —— 副作用照跑（链路自检接收器、调试通道、
+//     换页收浮窗），而且首帧会先按默认值画出「模块未开」的界面、几十毫秒后再翻成真值，
+//     用户看到的是开关自己弹一下；
+//   · 整棵不组合时，等的那几毫秒露出来的是 [PageSplash] 那一屏底色 —— 与 `ComposeView`
+//     自己刷的底色是同一个值（见 [createView]），所以中间那一帧看不出来。
+
+@Composable
+internal fun SettingsPage.Page() {
+    // 键是 Unit：整页只跑一次。`loaded` 翻 true 会重跑本函数，但这里不会重启。
+    //  载入失败不能把宿主 `:ui` 进程带走（在组合协程里抛出去就是未捕获异常）：兜住并留一行 w，
+    //  页面会停在启动底色上，排查时看得到这句话。
+    LaunchedEffect(Unit) {
+        //  **失败重试一次**：读盘 / 反混淆偶发失败（正好撞上另一个进程在写）时，一次就放弃会把
+        //  整页永久停在启动底色上 —— 用户看到的是「点进来一片空白」，只能杀进程再来。
+        //  两次都不成才留那一行错误日志（界面仍然只有底色，但没有比让它卡死更糟的选择）。
+        repeat(LOAD_ATTEMPTS) { attempt ->
+            try {
+                loadPageState()
+                return@LaunchedEffect
+            } catch (e: Throwable) {
+                //  载入失败不能把宿主 `:ui` 进程带走（组合协程里的未捕获异常会直接崩）。
+                if (attempt == LOAD_ATTEMPTS - 1) {
+                    XLog.w("载入页面状态失败（已重试，页面停在启动底色）：${e.javaClass.simpleName}", e)
+                } else {
+                    XLog.w("载入页面状态失败，重试一次：${e.javaClass.simpleName}")
+                    delay(LOAD_RETRY_MS)
+                }
+            }
+        }
+    }
+    // 系统栏顶边在**首帧是 0**（注入进来的 ComposeView 还没收到 insets），而顶栏与内容的顶部
+    //  让位都按它算 ⇒ 那一帧内容整体偏上约 40dp，下一帧才落回（真机录屏：让位 107dp → 165dp）。
+    //  所以这一帧先只铺底色（与页面底色同值，看不出来），等 inset 到了再画整棵树。
+    //  兜底：某些全屏 / 无状态栏场景它恒为 0，不能因此一直不画 —— 150ms 后无论如何都画。
+    val barTop = with(LocalDensity.current) { WindowInsets.systemBars.getTop(this).toDp() }
+    var insetsReady by remember { mutableStateOf(false) }
+    var forced by remember { mutableStateOf(false) }
+    SideEffect {
+        if (barTop > 0.dp) insetsReady = true
+    }
+    LaunchedEffect(Unit) {
+        delay(150)
+        forced = true
+    }
+    if (configState.loaded && (insetsReady || forced)) {
+        PageContent()
+    } else {
+        PageSplash()
+    }
+}
+
+/** 读盘还没回来时铺的那一屏 —— 与 `ComposeView` 的底色同值，见 [Page] 的注释。 */
+@Composable
+private fun SettingsPage.PageSplash() {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color(pageBackgroundColor)),
+    )
+}
+
+/**
+ * 把模块页面建出来交给 hook 侧塞进宿主的容器里。
+ *
+ * 这里**一次读盘都不做** —— 建页要的三份文件（配置 / 命令库 / 界面偏好）归 [loadPageState]，
+ * 由 [Page] 在组合期放到 IO 线程上读。这个方法只做三件不碰盘的事：装字典订阅、定深浅、
+ * 把 `ComposeView` 与它需要的 owner 搭起来。
+ */
+internal fun SettingsPage.createView(): View? {
+    // 先把字典订阅装上：配置里的语言档不在这一步读（现在是异步的），
+    //  读回来之后由 `applyPageLoad` 换 `I18n.currentLanguage`（见 `ui/chrome/PageLoad.kt`）。
+    //  订阅必须早于那次换档 —— 晚装的话，换档发生在界面层那份状态接上之前，
+    //  首帧就会停在上一个语言的文案上。字典本体在 core（普通 Map），订阅这一半必须在界面层
+    //  —— 见 `ui/state/host/I18nBridge.kt`。
+    installI18nBridge()
+    // 深浅是 binder 读一次系统全局配置（不是读盘），首帧底色与 [PageSplash] 都要它，留在同步路径上。
+    chrome.dark = systemNight()
+
+    val view =
+        ComposeView(context).apply {
+            // 首帧之前先把底色铺成页面底色，避免「先黑一下再画出来」
+            setBackgroundColor(pageBackgroundColor or 0xFF000000.toInt())
+            // 当前有焦点的 View** —— 手机是触摸模式，一个没打开 `isFocusableInTouchMode`
+            // 的 View 拿不到 Android 焦点，事件就永远到不了 Compose（Compose 的按键处理挂在
+            // `AndroidComposeView.dispatchKeyEvent` 上，见 `ActionTile` 的注释）。
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setContent { Page() }
+        }
+    viewTree.rootView = view
+
+    // 自建 owner（宿主那棵树一个都没有）并先挂到自己身上；
+    // 祖先链由 hook 侧在 `container.addView` **之后**回调 [PageViewTree.attachOwnersUpward] 挂。
+    //
+    //  宿主三件套齐全时 [PageViewTree.ownOwners] 返回 null —— **绝不能用占位实例去挂**：`attachOne`
+    //  是「只挂不覆盖」，此刻 `view` 还没进树（`parent == null`），占位实例会被钉在
+    //  `ComposeView` 自身上，之后 `attachOwnersUpward` 换不掉它，Compose 于是拿到那份
+    //  停在 `INITIALIZED` 的 lifecycle ⇒ 页面一片空白。挂了 null 就让 Compose 沿
+    //  parent 链自己去宿主那棵树上找（那正是它该走的路）。
+    val own =
+        viewTree.ownOwners(
+            activity as? androidx.lifecycle.LifecycleOwner,
+            activity as? androidx.lifecycle.ViewModelStoreOwner,
+            activity as? androidx.savedstate.SavedStateRegistryOwner,
+        )
+    viewTree.pendingOwners = own
+    if (own != null) viewTree.attachOne(view, own)
+
+    XLog.w(
+        "设置页用 COUI（Compose）渲染：night=${chrome.dark}" +
+            " surface=#${Integer.toHexString(pageBackgroundColor)}",
+    )
+    return view
+}
+
+/** 建页读盘最多试几次（见 [Page] 里那段重试）。 */
+private const val LOAD_ATTEMPTS = 2
+
+/** 两次读盘之间等多久 —— 另一个进程正好在写盘时，让它先写完。 */
+private const val LOAD_RETRY_MS = 250L

@@ -21,6 +21,19 @@ if [ ! -d "$CLONE/.git" ]; then
 fi
 cd "$CLONE"
 
+#  **硬闸：这里必须真的是那个克隆自己的仓库根。**
+#
+#  `.temp/` 就在**本仓库**里面，而 `git` 会一路向上找 `.git` —— 克隆目录一旦不是独立仓库
+#  （`.git` 被删过、克隆半途失败留下半棵树），下面那句 `git reset --hard HEAD` 会落到
+#  **本仓库**上，把工作区里未提交的改动整份抹掉；`git clean` 那一句则因为目录不存在而静默。
+#  `set -e` 挡不住它：那两条命令本身都执行成功。
+CLONE_TOP="$(git rev-parse --show-toplevel 2>/dev/null || echo '')"
+ROOT_TOP="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || echo '')"
+if [ -z "$CLONE_TOP" ] || [ "$CLONE_TOP" = "$ROOT_TOP" ]; then
+  echo "拒绝执行：$CLONE 不是独立仓库（git 会落到 $ROOT_TOP）—— 先删掉它再跑" >&2
+  exit 1
+fi
+
 # 先把工作区还原到干净的 tag 上。
 #
 #   补丁是**顺序叠加**的：同一份文件若被两份补丁先后改过，「反向能打上」这个判据就不成立

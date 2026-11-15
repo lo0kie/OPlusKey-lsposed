@@ -1,9 +1,19 @@
 package com.lookie.opluskey.core.config
 
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ComboKey
+import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.Variable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 import java.security.MessageDigest
 
 /**
@@ -378,4 +388,330 @@ object ConfigCodec {
         }
         return out.toString()
     }
+}
+
+/**
+ * **每份配置自己的变量表** —— 与 [ConfigProfiles] / [ProfileCommands] 共用同一套槽号。
+ *
+ * ```
+ * opluskey_config.conf  + opluskey_commands.conf  + opluskey_vars.conf    ← 当前生效的配置
+ * opluskey_config-2.conf + opluskey_commands-2.conf + opluskey_vars-2.conf  ← 第 2 份
+ * ```
+ *
+ * ## 为什么变量也要跟着走
+ *
+ *  变量是**配置的一部分**：一套绑定里「计数」加到 3、另一套里它是 0，本来就是两套东西。
+ *  只有一份变量表的话，切换配置只换了绑定、没换它们读写的那些值 —— 切过去那套绑定接着用
+ *  上一套的计数，看着像「配置没切干净」。所以「一份配置」= 主配置 + 命令库 + 变量表，三者一起动。
+ *
+ * ## 与命令库同一套做法
+ *
+ *  复制 / 对调 / 删除都只搬**磁盘原文**（外皮一起搬）：这几个动作与「值是什么」无关，
+ *  过一遍解析只多两种失败可能。那套规矩（读不懂 ≠ 没有 / 第二步失败要还原 / 老配置只搬当前）
+ *  收在 [ProfileSlotFile] 一处，与命令库共用同一份实现 —— 两个文件各写一遍时判据会漂，
+ *  而漂出来的坏法只在「刚好有一份文件读不懂」时出现。
+ *
+ * ## 老配置没有自己的变量表怎么办
+ *
+ *  加这一层之前建的配置只有 `config-N` / `commands-N`。目标槽空着时 [swap] 把**当前这份**变量表
+ *  存过去、当前那份不动（等于「记住切走前的样子」）—— 于是老配置切走再切回来，变量原样还在，
+ *  不会因为升级就把用户的计数抹成空表。**新建的空白配置**走 [save] 落一份空表，所以它是真的空
+ *  （与命令库那条「空白配置 = 空命令库」同一个口径）。
+ */
+object ProfileVars {
+    /**
+     * 变量表这一层：槽名前缀 = 当前生效那份的槽名。
+     *
+     *  `openReadable = false` 与 [VariableStore.save] 同一个口径：只有宿主这一侧（`:ui` 与宿主
+     *  主进程，同 uid）读写变量，注入侧不碰它（它只吃配置广播）。
+     */
+    private val file = ProfileSlotFile(ConfigStore.SLOT_VARS, openReadable = false)
+
+    /**
+     * 某份配置对应的变量表槽名。
+     *
+     *  映射就是「把 `config` 换成 `vars`」：`config` → `vars`、`config-2` → `vars-2` ——
+     *  槽号因此在三层之间天然对得上，不需要另一张对照表。
+     */
+    fun slotOf(configSlot: String): String = file.slotOf(configSlot)
+
+    /**
+     * 切换配置时的变量表对调 —— 对称于 [ConfigProfiles.switchTo] 对主配置做的那件事。
+     *
+     * @return 对调是否成功（目标配置没有自己的变量表时，「存过去」成功就算成功）
+     * @see ProfileSlotFile.swap 顺序与还原那两条规矩的唯一实现
+     */
+    fun swap(configSlot: String): Boolean = file.swap(configSlot, "变量表")
+
+    /**
+     * 给 [configSlot] 落一份变量表（新建的空白配置落空表用）。
+     *
+     * 「空白配置 = 没有变量」：不落这一份的话，切换时目标槽空着会被当成老配置，
+     * 于是新配置一上来就继承了上一套的计数 —— 那正是不对的。
+     */
+    fun save(
+        configSlot: String,
+        vars: List<Variable>,
+    ): Boolean = VariableStore.save(vars, slotOf(configSlot))
+
+    /** 删掉某份配置的变量表（连 `.bak` / `.new` 一起，走 [ModuleFiles.delete]）。 */
+    fun delete(configSlot: String): Boolean = file.delete(configSlot)
+}
+
+/**
+ * **老文件（v58 以前）那一档组合**的触发方式与它当年用的那对动作槽。
+ *
+ * @param mode 由那两条开关 + 加过的按住顺序推出来的触发方式（[ComboKey.MODE_WAIT] 及以上）
+ * @param single 短按该落到哪一个动作（老模型里按住那两档另有 A / B 两套槽）
+ * @param long 长按同理
+ */
+internal class LegacyComboSlot(
+    val mode: Int,
+    val single: Action,
+    val long: Action,
+)
+
+/**
+ * 老文件的组合键怎么读成「一种触发方式 + 一对动作槽」—— **只在 [ComboDto.toCombo] 调一次**。
+ *
+ * 为什么单独一页：这套推演只服务「从老版本升上来的那一份文件」，而它读的七个字段
+ * （`windowOn` / `holdOn` / `holdOrders` / `singleA` / `longA` / `singleB` / `longB`）在
+ * v58 之后**写回恒为 `null` / 空表**。等确认没人再从老版本升上来，连同那一页一起删即可 ——
+ * 留在 [ComboDto.toCombo] 里的话，新文件的正常解析会一直夹在这段历史里。
+ *
+ * 字段本身暂时不能删：`ignoreUnknownKeys` 会把不认识的键直接丢掉，字段一删，老文件里那几位
+ * 就再也读不到，「用户配过按住手势」这件事会静默变成「这一档只是等窗口」
+ * （见 [ComboDto.windowOn] 的说明）。
+ *
+ * ## 推演顺序
+ *
+ * 1. 认窗口（`windowOn` 缺省或为真）⇒ [ComboKey.MODE_WAIT]。窗口那条从组合键第一天起就有、
+ *    而且是默认开，所以「没写过这一位」与「写过 true」同解；
+ * 2. 不认窗口、也没认按住 ⇒ 那一档本来永远不成立，落到窗口那条（至少能编辑）；
+ * 3. 只认按住 ⇒ 看加过哪一种顺序：只有「先按住第二颗」才推成 [ComboKey.MODE_HOLD_SECOND]，
+ *    其余（含两种都加过）取 [ComboKey.MODE_HOLD]。**后者要由调用方把键序反过来** —— 现在
+ *    「先按住哪一颗」由 `keys` 第一位表达，不再有第二个模式位（见 `ComboDto.toCombo`）。
+ *    老模型里两种并存的组合只能留一种，另一种得再建一档。
+ *
+ * @return `null` = 新文件（[ComboDto.mode] 有值），调用点照常读 `single` / `long`
+ */
+internal fun ComboDto.legacySlot(): LegacyComboSlot? {
+    //  新文件：不用迁移，调用点照常读通用那两位
+    if (mode != null) return null
+    return built()
+}
+
+/** 老文件那一档的推演 —— 与 [legacySlot] 同一条规则，只是不必再判 `mode` 有没有值。 */
+private fun ComboDto.built(): LegacyComboSlot {
+    val resolved =
+        when {
+            //  认窗口 ⇒ 窗口那条（`null` / `true` 同解）
+            windowOn != false -> ComboKey.MODE_WAIT
+
+            //  两条都关着的那一档本来永远不成立，落到窗口那条
+            holdOn != true -> ComboKey.MODE_WAIT
+
+            //  只加了「先按住第二颗」
+            ComboKey.MODE_HOLD_SECOND in holdOrders && ComboKey.MODE_HOLD !in holdOrders -> ComboKey.MODE_HOLD_SECOND
+
+            //  加过第一颗（含两种都加过）
+            ComboKey.MODE_HOLD in holdOrders -> ComboKey.MODE_HOLD
+
+            else -> ComboKey.MODE_WAIT
+        }
+    if (resolved == ComboKey.MODE_WAIT) {
+        //  窗口那一档当年就用通用那两位，不必从 A / B 槽搬
+        return LegacyComboSlot(ComboKey.MODE_WAIT, Action.parse(single), Action.parse(long))
+    }
+    val first = resolved == ComboKey.MODE_HOLD
+    return LegacyComboSlot(
+        resolved,
+        Action.parse(if (first) singleA else singleB),
+        Action.parse(if (first) longA else longB),
+    )
+}
+
+/**
+ * 「导入配置 / 导出配置」的文件格式与解析，全项目只有这一处。
+ *
+ * 磁盘上是**混淆过的**（[FileObfuscation]，魔数 [MAGIC]）：首行是魔数，之后是正文经两层变换
+ * （异或 + Base64，再按一张替身字母表换写）压成的一行。为什么这么做、怎么手动解开，
+ * 见 `FileObfuscation` 的类注释。
+ *
+ * 解开之后是一层 **JSON 信封**，里面套两份**现成的**序列化结果 —— 不另造文本格式：
+ *
+ *     {
+ *       "version": 1,
+ *       "config":   { … [ConfigCodec] 那一份 … },
+ *       "commands": { … [CommandLibrary] 那一份 … }
+ *     }
+ *
+ * 这样两段各自沿用**原有编解码器**：键名、默认值、容错口径与文件里那份完全一致，
+ * 不存在「导入解析与运行解析两把尺子」。配置那段里的 `md5`（[ConfigCodec]）跟着一起进来、
+ * 也由 `ConfigCodec.parseOrNull` 校验。
+ *
+ * 注意：**主开关状态与「已确认」不随文件走** —— 导出的那份把这两样一律写成「关 / 未确认」，
+ * 导入时这里再归零一次（文件可能被人手改过）。它们是「这台机器上你本人的决定」，一份配置文件不该
+ * 替别人做这个决定，也不该让人靠导入绕开「启用之前先确认」那一步。
+ *
+ * 但**本机已经确认过**的那两位不会被一次导入抹掉：`ConfigTransfer.applyImportedConfig` 在写盘前
+ * 把它们换回本机此刻的值（用户口径「已经是确认免责协议就不需要再清除这个状态了」）。
+ * 这里仍然输出 false —— 文件本身不该带走「别人已确认」这件事。
+ *
+ * 但**逐键的开关不在此列**：导出与导入一律把它们写成开着（见 [withShareableKeys]）——
+ * 否则导回来的键全是关的，而那几个开关藏在 ⋮ 菜单里，用户不会想到去那儿找。
+ *
+ * 注意：**导入是全量校验**：整份文件（混淆层 + 信封 + 版本 + 两段）都过关才落盘，任何一处不过就一个字节都不写
+ * —— 半份配置比没导入更难收拾（见 [parse]）。
+ *
+ * 注意：**界面状态（`UiState`）不进这个包**：它不是用户配置，落在自己那份文件里（见 `UiState` 的类注释；
+ * 导出它等于把「这台机器上怎么看列表」这种本地偏好带到别的机器上）。
+ */
+object ConfigBundle {
+    /** 信封版本 —— 目前只有 1；将来若真要改结构，靠它认旧文件（版本对不上直接拒收）。 */
+    private const val VERSION = 1
+
+    /**
+     * 导出 / 导入文件的首行：固定前缀 + 信封版本。
+     *
+     * 一物两用：认得出「这是本模块导出的文件」（挡住随手挑个文件就导入），
+     * 也是 [parse] 找解混淆入口的钥匙。
+     */
+    private const val MAGIC = "OPlusKey-Config-$VERSION"
+
+    // 信封自己的三个键。与 `CommandLibrary.LIB_VERSION` / `ConfigCodec.VERSION` **同字面量
+    //  不同义**（信封版本 / 命令库版本 / 主配置版本各一个），所以名字带 `ENVELOPE` 区分。
+    private const val ENVELOPE_VERSION = "version"
+    private const val ENVELOPE_CONFIG = "config"
+    private const val ENVELOPE_COMMANDS = "commands"
+
+    /** 信封的编解码器 —— 与另外两处同一个口径（缩进两格、只写给出的字段）。 */
+    private val bundleJson =
+        Json {
+            prettyPrint = true
+            prettyPrintIndent = "  "
+        }
+
+    /** 解析结果 —— **两段都一定有值**（少一段就当整份不过关，见 [parse]）。 */
+    data class Parsed(
+        val config: Config,
+        val commands: List<Command>,
+    )
+
+    /** 把主配置 + 命令库合成一份导出文本：先拼 JSON 信封，再套一层外皮（[FileObfuscation]）。 */
+    fun export(
+        config: Config,
+        commands: List<Command>,
+    ): String =
+        try {
+            // 落进文件的那份：主开关写关、确认记录写未确认（理由见类注释）——
+            //  在**写出去之前**就剥掉，别人拿到手再怎么改也改不出「一导入就是已启用」。
+            val shareable =
+                config.withShareableKeys().copy(
+                    disclaimerAccepted = false,
+                    commandDisclaimerAccepted = false,
+                )
+            val json =
+                bundleJson.encodeToString(
+                    JsonObject.serializer(),
+                    buildJsonObject {
+                        put(ENVELOPE_VERSION, VERSION)
+                        // 两份序列化结果都是 JSON 文本，原样嵌进来（不再拆一遍字段，避免两处维护同一份键名）
+                        put(ENVELOPE_CONFIG, bundleJson.parseToJsonElement(ConfigCodec.serialize(shareable)))
+                        put(ENVELOPE_COMMANDS, bundleJson.parseToJsonElement(CommandLibrary.serialize(commands)))
+                    },
+                )
+            FileObfuscation.wrap(MAGIC, json)
+        } catch (e: Throwable) {
+            // 序列化失败是「模块自己的问题」，不该让页面崩；调用方拿到空串会按「导出失败」处理
+            XLog.w("导出配置：合成失败：${e.message}")
+            ""
+        }
+
+    /**
+     * 解析并**全量校验**导入的文本。
+     *
+     * 注意：**只有整份都过关才返回 [Parsed]**：认得出信封、版本认识、主配置与命令库两段都解析成功
+     * —— 任何一条不过就返回 `null`，调用方据此**一个字节都不写**。
+     * 半份配置比没导入更难收拾：绑定指向不存在的命令、开关与动作对不上，用户还以为导进去了。
+     *
+     * @return 全部通过时返回 [Parsed]；否则 `null`（调用方只报一句「未知的配置格式，请检查后重试」，
+     *   具体哪一段不过关看日志）。
+     */
+    fun parse(text: String): Parsed? {
+        // 先过外皮：**认不出魔数就拒** —— 否则「随手挑个 JSON 文件来导入」会一路过到底
+        val json = FileObfuscation.unwrap(MAGIC, text) ?: return null
+        val root =
+            try {
+                bundleJson.parseToJsonElement(json).jsonObject
+            } catch (e: Throwable) {
+                XLog.w("导入配置：解开之后不是 JSON：${e.message}")
+                return null
+            }
+        // 版本先认：信封结构将来变了，旧版程序读新版文件是「不知道自己在读什么」，一律拒
+        val version = (root[ENVELOPE_VERSION] as? JsonPrimitive)?.intOrNull ?: 0
+        if (version != VERSION) {
+            XLog.w("导入配置：信封版本 $version ≠ 本版 $VERSION，拒收")
+            return null
+        }
+
+        //  `as? JsonObject` 而不是 `.jsonObject`：后者在「这一段不是对象」（手改过的导入文件
+        //  把 config 写成字符串 / 数组）时抛 IllegalArgumentException，而本函数的约定是
+        //  「任何一条不过就返回 null、调用方一个字节都不写」—— 异常漏到调用方就破坏了这个约定。
+        val configObj = root[ENVELOPE_CONFIG] as? JsonObject
+        if (configObj == null) {
+            XLog.w("导入配置：没有 $ENVELOPE_CONFIG 段")
+            return null
+        }
+        val config = ConfigCodec.parseOrNull(configObj.toString())
+        if (config == null) {
+            XLog.w("导入配置：主配置那段读不懂")
+            return null
+        }
+
+        val commandsObj = root[ENVELOPE_COMMANDS] as? JsonObject
+        if (commandsObj == null) {
+            XLog.w("导入配置：没有 $ENVELOPE_COMMANDS 段")
+            return null
+        }
+        // 用 parseOrNull：**空表是合法值**（用户的命令库本来就可以是空的），
+        // 只有「读不懂」才是 null —— 不能把读不懂当成空表拿去覆盖
+        val commands = CommandLibrary.parseOrNull(commandsObj.toString())
+        if (commands == null) {
+            XLog.w("导入配置：命令库那段读不懂（有条目认不出）")
+            return null
+        }
+
+        // 导入进来的那份**不接受**主开关状态与「已确认」：我们导出的文件本来就不带，
+        //  但这份文件也可能被人手改过 —— 所以在这里再强制归零一次。导入之后必须自己去开、
+        //  自己再确认一遍（那一步会弹风险提示，见 `ui/screen/HomeScreen`）。
+        //  自定义键那几颗相反：它们没有独立开关，一律置开（见 [withShareableKeys]）。
+        return Parsed(
+            config.withShareableKeys().copy(
+                disclaimerAccepted = false,
+                commandDisclaimerAccepted = false,
+            ),
+            commands,
+        )
+    }
+
+    /**
+     * 导出 / 导入时对开关的处理 —— **只关总闸，每一颗键一律开着**。
+     *
+     *  总闸现在是一位**独立字段**（`GlobalConfig.enabled`），不再是「侧键那份 `enabled`」：
+     *  拆开之前它俩共用一个位，于是这里只能按「自定义键留着、侧键那一位写关」来凑出「别替我
+     *  打开模块」的意思 —— 代价是导出的文件里侧键那颗看着是「停用」的。
+     *
+     * ## 为什么每一颗键都要一律开
+     *
+     *  文件可能被人手改过（外层混淆只是防误开，不是防篡改）。逐键的 `enabled` 原值是 `false`
+     *  的话，导进来就是一堆看得见、用不了的键（早先对自定义键就踩过：导回来的键全是关的、
+     *  绑定页整片灰，而界面上没有开关能打开它们）。强制开才不会把用户卡死在这一格；
+     *  真要停用哪一颗，导入之后再从 ⋮ 菜单里关就是了。
+     */
+    private fun Config.withShareableKeys(): Config =
+        copy(
+            global = global.copy(enabled = false),
+            keys = keys.mapValues { (_, key) -> key.copy(enabled = true) },
+        )
 }

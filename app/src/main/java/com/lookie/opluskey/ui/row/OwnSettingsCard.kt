@@ -163,10 +163,6 @@ private fun SettingsPage.useOwnRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.SETTING_USE_OWN),
-        //  「等」字是刻意的：组合在这一档上还多几项（按键之间的等待 / 首键按住时长 / 场景时机），
-        //  一句只列三项会让「想单独调这一组的窗口」的人以为跟这颗开关无关。
-        summaryOn = I18n.get(Strings.SETTING_USE_OWN_ON),
-        summaryOff = I18n.get(Strings.SETTING_USE_OWN_OFF),
         //  与「启用按键绑定」那一行同一颗图标：两者都是「这一个开关决定下面那一组算不算数」
         icon = PageIcons.MasterSwitch,
         checked = owner.useOwnSettings,

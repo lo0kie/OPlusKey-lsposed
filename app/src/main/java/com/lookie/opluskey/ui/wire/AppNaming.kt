@@ -1,23 +1,42 @@
 package com.lookie.opluskey.ui.wire
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalViewConfiguration
 import com.lookie.opluskey.bridge.AppCloneCatalog
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.resolveAppName
 import com.lookie.opluskey.core.model.resolveTargetName
 import com.lookie.opluskey.core.present.appTargetLabel
+import com.lookie.opluskey.core.wire.ModuleWire
+import com.lookie.opluskey.core.wire.NetReply
+import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.target.cloneLabel
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.abs
 
 /**
  * 一个绑定目标该显示的名字 —— 网格小字 / 顶栏「已选择」/ 步骤名都走它。
@@ -208,4 +227,239 @@ internal fun SettingsPage.boundAppName(
             }
     }
     return label
+}
+
+/**
+ * 注册一个**同包内部**的广播接收器，失败只记一行、返回 `false`。
+ *
+ * ## 它替掉的是四份同一段代码
+ *
+ *  网络代取（`NetBridge`）、导出日志（`LogPull`）、链路自检（`PageContent`）、收集按键
+ *  （`CollectKeyDialog`）原先各写一遍
+ *  `runCatching { registerReceiver(receiver, IntentFilter(action), RECEIVER_NOT_EXPORTED) }`。
+ *  真正要紧的是第三参数：**它是不导出**（普通 App 发同名广播进不来，`system_server` 仍可达）——
+ *  一处抄漏就是一个外部可注入的入口，而它藏在一段一眼扫过去的注册代码里。
+ *
+ * ## 它不管什么
+ *
+ *  **注销仍归调用方**：那件事和生命周期绑在一起（组合期 `onDispose`、挂起函数 `finally`、
+ *  或者「没注册上就不用注销」），四处的时机各不相同，收进来只会变成一个带开关的通用件。
+ *
+ * @param what 出问题的是哪一环（原样进日志；有「后果」的调用点自己带上，别让它只说「失败」）
+ * @param receiver 要挂上去的接收器
+ * @param actions 只收这几类广播
+ * @return 注册成功没有 —— 失败已经打过日志，调用方只决定「这一趟还做不做」
+ */
+internal fun Context.registerLocalReceiver(
+    what: String,
+    receiver: BroadcastReceiver,
+    vararg actions: String,
+): Boolean {
+    val filter = IntentFilter().apply { actions.forEach(::addAction) }
+    return runCatching {
+        registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    }.onFailure {
+        XLog.w("$what：注册接收器失败（已忽略）：${it.javaClass.simpleName}", it)
+    }.isSuccess
+}
+
+// 页面 → 注入侧「替我取一个 URL」的一问一答。
+//
+// 为什么不能自己发：宿主的清单里没有 `INTERNET`，而界面代码跑在**宿主进程**（真机实证
+// `SecurityException`）。能出网的是 system_server 那一侧（`inject/NetChannel`，见
+// `docs/device/lsposed.md` 四十一）。协议那一头在 `ModuleWire.ACTION_NET_REQUEST`。
+
+/**
+ * 请注入侧取一次 [url] 的正文，最多等 [timeoutMs]。
+ *
+ *  一问一答靠 [ModuleWire.EXTRA_NET_ID] 配对：同一刻可能有别的代取在跑，回包只认自己那一号。
+ *
+ *  **收不到就返回 `null`**（不是抛异常）：检查更新是「有就提示、没有就算」的事，
+ *  超时、广播发不出去、接收器注册失败在这个调用点全都归成「这次没查到」——
+ *  调用方只关心「有没有结论」，不关心断在哪一环（每种断法都有一行 W 日志）。
+ *
+ *  跑在调用方的协程里（IO 不做 IO 阻塞：真正的网络在注入侧那条后台线程上），
+ *  所以这里只等回包，**不占主线程**。
+ */
+internal suspend fun SettingsPage.fetchText(
+    url: String,
+    timeoutMs: Long = ModuleWire.NET_TIMEOUT_MS.toLong(),
+): NetReply? {
+    val id = NEXT_NET_ID.incrementAndGet()
+    val reply = CompletableDeferred<NetReply>()
+    val receiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                c: Context?,
+                intent: Intent?,
+            ) {
+                if (intent == null || intent.action != ModuleWire.ACTION_NET_RESULT) return
+                if (intent.getLongExtra(ModuleWire.EXTRA_NET_ID, -1L) != id) return
+                reply.complete(
+                    NetReply(
+                        status = intent.getIntExtra(ModuleWire.EXTRA_NET_STATUS, 0),
+                        body = intent.getStringExtra(ModuleWire.EXTRA_NET_BODY).orEmpty(),
+                        error = intent.getStringExtra(ModuleWire.EXTRA_NET_ERROR).orEmpty(),
+                    ),
+                )
+            }
+        }
+    val registered = context.registerLocalReceiver("网络代取（这一趟作罢）", receiver, ModuleWire.ACTION_NET_RESULT)
+    if (!registered) return null
+    try {
+        val sent =
+            PageWire.send(
+                context,
+                HostApp.PACKAGE,
+                Intent(ModuleWire.ACTION_NET_REQUEST).apply {
+                    putExtra(ModuleWire.EXTRA_NET_ID, id)
+                    putExtra(ModuleWire.EXTRA_NET_URL, url)
+                },
+            )
+        if (!sent) {
+            XLog.w("网络代取：广播发不出去（这一趟作罢）")
+            return null
+        }
+        val result = withTimeoutOrNull(timeoutMs) { reply.await() }
+        if (result == null) {
+            XLog.w("网络代取：等回包超时 ${timeoutMs}ms（id=$id）")
+        } else {
+            XLog.w(
+                "网络代取：id=$id status=${result.status} 长度=${result.body.length}" +
+                    if (result.error.isEmpty()) "" else " 错误=${result.error}",
+            )
+        }
+        return result
+    } finally {
+        runCatching { context.unregisterReceiver(receiver) }
+    }
+}
+
+/** 这一趟的编号 —— 进程内自增即可（配对只用它，不跨进程存）。 */
+private val NEXT_NET_ID = AtomicLong(0)
+
+/**
+ * 一段手势的「位移账本」。
+ *
+ *  用来抓「滑动被当成一次点击」这种偶发现场：行的点击是在**抬指那一刻**派发的，判「这是滑动还是
+ * 点一下」的只有各处组件自己那点逻辑，出问题时日志里只剩一个结果（某一行被点了 / 某个菜单开了），
+ * 看不出那一下其实滑了多远、列表跟着动没有。这里把按下→抬起的**竖直位移 / 峰值 / 移动次数 / 用时**
+ * 与列表内容有没有跟着移位一并记下，抬指时打一行，点击那一行再打一行 —— 两行配起来就是判据。
+ *
+ *  注意：**它不只是「记数」** —— 浮层那处真的按 [isDrag] 决定要不要派发行点击
+ *  （`ui/dialog/MenuPopup.kt` 里 `MenuRow` 的「滑动不许选中」那道闸）。所以：
+ *   · 它**必须**在 release 里也照常工作（不是纯诊断件，别想用构建类型把它关掉）；
+ *   · 判断用的 `peak` / `slop` 在每次 [onDown] 归零 —— 读之前必须先经过一次 [onDown]。
+ *
+ *  [label] 只进日志前缀，用来分清是哪一块（浮层列表 / 步骤卡 / 添加命令那一行）。
+ */
+@Stable
+internal class GestureProbe(
+    private val label: String,
+) {
+    private var downAtMs = 0L
+    private var downY = 0f
+    private var lastY = 0f
+    private var peak = 0f
+    private var moves = 0
+    private var slop = 0f
+    private var contentY = 0f
+    private var contentYAtDown = 0f
+
+    fun onDown(
+        y: Float,
+        slopPx: Float,
+    ) {
+        downAtMs = android.os.SystemClock.uptimeMillis()
+        downY = y
+        lastY = y
+        peak = 0f
+        moves = 0
+        slop = slopPx
+        contentYAtDown = contentY
+    }
+
+    fun onMove(y: Float) {
+        moves++
+        lastY = y
+        peak = maxOf(peak, abs(y - downY))
+    }
+
+    /**
+     * 记一下某一行在窗口里的位置 —— 它是列表的「有没有滚」探针：位置变了就是滚了。
+     *
+     *  挂在一行的**内容**上（列表内层），不能挂在列表外面那一圈：滚的是内层，
+     *  外圈那层不会动（浮层窗口自己也不动）。
+     */
+    fun onContentPosition(y: Float) {
+        contentY = y
+    }
+
+    /**
+     * 账本归零 —— 浮层重新打开时清掉上一次的基线（见 `MenuPopup`）。
+     *
+     *  账本对象是 `remember` 的、**跨浮层开合不重建**：上一次留在
+     *  `contentY` / `contentYAtDown` 里的位置是上一个面板的，不归零的话下一次的
+     *  「列表内容移位」就是从错误基线算出来的 —— `isDrag()` 不受影响（[onDown] 会把
+     *  `peak` 归零），但这行日志是排查时的判据，还是得对。
+     */
+    fun reset() {
+        downAtMs = 0L
+        downY = 0f
+        lastY = 0f
+        peak = 0f
+        moves = 0
+        contentY = 0f
+        contentYAtDown = 0f
+    }
+
+    /** 这一段该算滑动（位移越过阈值），不是点一下。 */
+    fun isDrag(): Boolean = peak > slop
+
+    /** 一句话账本，供抬指那行与点击那行共用。 */
+    fun describe(): String {
+        val scrolled = (contentY - contentYAtDown).toInt()
+        return "位移 ${(lastY - downY).toInt()}px / 峰值 ${peak.toInt()}px（阈值 ${slop.toInt()}px），" +
+            "移动 $moves 次，用时 ${android.os.SystemClock.uptimeMillis() - downAtMs}ms" +
+            (if (scrolled != 0) "，列表内容移位 ${scrolled}px" else "，列表没动")
+    }
+
+    fun logPrefix(): String = "$label："
+}
+
+/** 建一份账本；[label] 进日志前缀。 */
+@Composable
+internal fun rememberGestureProbe(label: String): GestureProbe = remember(label) { GestureProbe(label) }
+
+/**
+ * 挂账本：读这一段手势的位移（`PointerEventPass.Initial`，抢在任何消费之前）。
+ *
+ *  **不消费任何事件**（`requireUnconsumed = false` 且不调 `consume`）—— 滚动、点击、拖动全照旧，
+ *  这一层只记账；抬指时若位移越过阈值就打一行「这一段是滑动」。
+ */
+@Composable
+internal fun Modifier.gestureProbe(probe: GestureProbe): Modifier {
+    val slop = LocalViewConfiguration.current.touchSlop
+    return pointerInput(probe, slop) {
+        awaitPointerEventScope {
+            while (true) {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                probe.onDown(down.position.y, slop)
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    probe.onMove(change.position.y)
+                    if (change.changedToUpIgnoreConsumed()) break
+                    if (!change.pressed) break
+                }
+                if (probe.isDrag()) {
+                    // 注意：用 `d` 而不是 `w`：这一段是**每一次滑动**都会打
+                    //  一行，而它只是诊断用的账本、不是判据 —— 用 `w` 会让 release 包里每次滑动
+                    //  都刷一行（反向问题：刷屏）。`d` 在 release 被编译期消除，debug 里照样看得见。
+                    //  账本本身**必须保留**：`MenuRow` 的「滑动不许选中」那道闸要读 `isDrag()`。
+                    XLog.d("${probe.logPrefix()}这一段是滑动 —— ${probe.describe()}")
+                }
+            }
+        }
+    }
 }

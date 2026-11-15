@@ -2,6 +2,7 @@ package com.lookie.opluskey.inject.input
 
 import android.os.Handler
 import android.os.SystemClock
+import android.view.MotionEvent
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
@@ -241,4 +242,159 @@ internal class HeldPresses(
          */
         var longShot: Runnable? = null
     }
+}
+
+/**
+ * 判定层吃的**唯一一种输入** —— 按键与触摸都先归一到这上面。
+ *
+ *  为什么先归一：判定器（相位 / 组合 / 滑动）本可以各自直接吃 `KeyEvent` 或 `MotionEvent`，
+ *  但那样「这事件算不算我管的、时间戳怎么取」就得在**每个采集点**各写一份，而采集点只会越来越
+ *  多（策略回调、输入事件、将来的触摸源），判定器却只有一份。归一之后采集点的职责只剩
+ *  「原样转成 [RawInput]」，判定的全部前提（时间基准、手指数、是不是主指针）都在这一层说清。
+ *
+ *  时间基准（[atMs]）由**采集点**给，判定只比较同一条流内的差值：按键那一路用的是
+ *  `SystemClock.elapsedRealtime()`（含深睡，见 `GestureDetector` 里那段真机记录：熄屏深睡时
+ *  `uptimeMillis()` 不走，跨睡眠的双击窗口会判错）；触摸那一路用事件自己的 `eventTime`
+ *  （同一段轨迹里的时长才是准的，合成事件的自检也靠它）。
+ *
+ *  本阶段只**铺路**：触摸事件暂时没有采集点（系统进程里那个入口还没在真机上确认），
+ *  判定结果也不派发任何动作。接入时按「一个采集点 = 一个把原始事件转成 [RawInput] 的适配器」加。
+ */
+internal sealed interface RawInput {
+    /** 事件发生的时刻 —— 基准见类注释，判定只用同一条流内的差值。 */
+    val atMs: Long
+
+    /** 一颗键按下。 */
+    data class KeyDown(
+        val keyCode: Int,
+        override val atMs: Long,
+    ) : RawInput
+
+    /** 一颗键抬起。 */
+    data class KeyUp(
+        val keyCode: Int,
+        override val atMs: Long,
+    ) : RawInput
+
+    /**
+     * 一根手指按下。
+     *
+     * [pointers] 是**这一刻**屏上的手指数。滑动只认单指，多指由判定器作废（见 [SwipeJudge]），
+     * 所以采集点要**原样带上手指数**，不能自己先筛掉 —— 筛在采集点就等于「谁来定义什么算单指」
+     * 又散回各处。
+     */
+    data class TouchDown(
+        val pointerId: Int,
+        val x: Float,
+        val y: Float,
+        val pointers: Int,
+        override val atMs: Long,
+    ) : RawInput
+
+    /** 一根手指移动（高频：真机 60~120 条/秒）。 */
+    data class TouchMove(
+        val pointerId: Int,
+        val x: Float,
+        val y: Float,
+        val pointers: Int,
+        override val atMs: Long,
+    ) : RawInput
+
+    /** 一根手指抬起 —— 这一段的结论在它这里算。 */
+    data class TouchUp(
+        val pointerId: Int,
+        val x: Float,
+        val y: Float,
+        val pointers: Int,
+        override val atMs: Long,
+    ) : RawInput
+
+    /** 这一段被系统收走了（来电、手势导航抢走、窗口切换）—— 判定器要立刻丢掉手上的轨迹。 */
+    data class TouchCancel(
+        override val atMs: Long,
+    ) : RawInput
+}
+
+/**
+ * 把一条 `MotionEvent` 转成 [RawInput] —— 触摸那一路的**唯一**适配点。
+ *
+ *  职责只有「翻译」：不改坐标、不做节流、不判断是不是该管的那根手指。多指、指针对不上、
+ *  超时这些判据统统在 [SwipeJudge] 里，两边各写一半的话，换判定器就得回来改适配器。
+ *
+ *  用到的全是公开 API（`MotionEvent` 是框架公开类型，不是宿主的私有类），所以注入侧可以直接编译。
+ *
+ * ## 时间戳取 `event.eventTime`
+ *
+ *  不是 `elapsedRealtime()`：滑动判定要的是**这一条轨迹里**的时长，事件自带的时间戳最准；
+ *  拿起来那一刻的时间做差，在高频 MOVE 上虽然也近似，但自检（合成事件，见 `probe` 的 `touch`）
+ *  就跑不出时长来。跨睡眠的窗口判定不在这里 —— 那是按键那一路的事（`GestureDetector`）。
+ *
+ * ## 接入时必须注意的两件事
+ *
+ *  1. **MOVE 是高频**：真机 60~120 条/秒。适配本身极轻（一次装箱），但**不要在适配器里打日志**，
+ *     一次滑动就能把 W 级日志刷满。要判据就打在判定结论那一行（一条滑动一条）。
+ *  2. **回调线程**：这个函数必须在**采集点自己的线程**上被调，且 [SwipeJudge] 也只在同一条线程上
+ *     被喂（见它的「线程」那一节）。别在这里 `post` 到主线程 —— 那样时间戳还在，顺序却会乱。
+ */
+internal object TouchAdapter {
+    /**
+     * 转一条；认不出的动作（`ACTION_HOVER_*` 之类）返回 `null`。
+     *
+     *  注入侧纪律：任何一环抛异常都只能记一行日志（`d` 级），绝不许顺着采集点的回调抛回去。
+     */
+    fun toRaw(event: MotionEvent): RawInput? =
+        try {
+            val at = event.eventTime
+            val pointers = event.pointerCount
+            when (event.actionMasked) {
+                //  第一根手指按下：主指针就是 index 0
+                MotionEvent.ACTION_DOWN -> {
+                    RawInput.TouchDown(event.getPointerId(0), event.getX(0), event.getY(0), pointers, at)
+                }
+
+                //  又一根手指按下：把**新按下那根**报上去，手指数 > 1 让判定器自己作废这一段
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    RawInput.TouchDown(
+                        event.getPointerId(event.actionIndex),
+                        event.getX(event.actionIndex),
+                        event.getY(event.actionIndex),
+                        pointers,
+                        at,
+                    )
+                }
+
+                //  移动只取 index 0：单指时它就是唯一那根；多指时这一段本来就作废，取谁都不影响结论
+                MotionEvent.ACTION_MOVE -> {
+                    RawInput.TouchMove(event.getPointerId(0), event.getX(0), event.getY(0), pointers, at)
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    RawInput.TouchUp(event.getPointerId(0), event.getX(0), event.getY(0), pointers, at)
+                }
+
+                //  抬起的是**非主指针**：同样报成 TouchUp，靠 pointerId 对不上让判定器作废
+                MotionEvent.ACTION_POINTER_UP -> {
+                    RawInput.TouchUp(
+                        event.getPointerId(event.actionIndex),
+                        event.getX(event.actionIndex),
+                        event.getY(event.actionIndex),
+                        pointers,
+                        at,
+                    )
+                }
+
+                //  这一段被系统收走（来电 / 手势导航抢走 / 窗口切换）：**必须**报上去，
+                //  否则判定器会一直挂着一段永远等不到抬手的轨迹。
+                MotionEvent.ACTION_CANCEL -> {
+                    RawInput.TouchCancel(at)
+                }
+
+                else -> {
+                    null
+                }
+            }
+        } catch (e: Throwable) {
+            XLog.d { "触摸适配：这条 MotionEvent 转不了（${e.javaClass.simpleName}: ${e.message}）" }
+            null
+        }
 }

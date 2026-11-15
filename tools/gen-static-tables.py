@@ -299,12 +299,53 @@ def render_commands() -> str:
     return "\n".join(out)
 
 
+#  两张生成物里**允许出现**的顶层声明 —— 整份文件重写，多出来的都是别人的代码。
+#
+#  加这一道闸的来路：2026-11-16 有一次合并把 `ClockCatalog` / `CommonCommands` 等几份并进了
+#  `CommonCommandsTable.kt`，跑一次生成器就把它们连内容一起抹掉了 —— 编译当场崩，而生成器
+#  自己报的是「已重写」，看起来一切正常。生成物是**单写者**：谁往里塞东西，谁就会被下一次
+#  生成吃掉。所以这里宁可拒绝执行，也不写。
+EXPECTED_DECLS = {
+    STRINGS: {"Strings"},
+    COMMANDS_OUT: {"COMMON_COMMAND_ENTRIES"},
+}
+
+#  顶格声明（行首无空白）：生成物里的成员都在对象 / 列表里面，缩进着，不会误伤。
+TOP_LEVEL = re.compile(
+    r"^(?:public |internal |private |protected )?(?:const )?"
+    r"(?:val|var|fun|class|object|interface|typealias)\s+(\w+)",
+    re.M,
+)
+
+
+def foreign_decls(path: Path, allowed: set[str]) -> list[str]:
+    """这份文件里除了生成物自己，还有哪些顶层声明（空表 = 干净 / 文件还不存在）。"""
+    if not path.exists():
+        return []
+    text = read_source(path)[0]
+    code = "\n".join(line for line in text.split("\n") if not line.lstrip().startswith(("//", "*", "/*")))
+    return sorted({name for name in TOP_LEVEL.findall(code) if name not in allowed})
+
+
 def main(argv: list[str]) -> int:
     check = "--check" in argv
     if not check and len(argv) > 1:
         sys.exit(f"用法：{Path(sys.argv[0]).name} [--check]")
 
     targets = [(STRINGS, render_strings()), (COMMANDS_OUT, render_commands())]
+
+    #  **先查「有没有别人的代码」再谈覆盖**：两张表都是整份重写，混进去的声明会被静默抹掉。
+    dirty = [(path, foreign_decls(path, EXPECTED_DECLS[path])) for path, _ in targets]
+    dirty = [(path, extra) for path, extra in dirty if extra]
+    if dirty:
+        print("[拒绝] 生成物里有不是它自己的顶层声明 —— 整份重写会把它们抹掉：", file=sys.stderr)
+        for path, extra in dirty:
+            print(f"  - {path.relative_to(REPO)}：{', '.join(extra)}", file=sys.stderr)
+        print(
+            "  改法：把那些声明挪到别的文件（生成物是单写者，不能当合并落点 / 存放处）。",
+            file=sys.stderr,
+        )
+        return 1
 
     stale: list[Path] = []
     for path, content in targets:

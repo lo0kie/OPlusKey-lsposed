@@ -6,25 +6,39 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
+import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.target.DonateTarget
 import com.lookie.opluskey.ui.model.theme.HOST_ALIVE_TIMEOUT_MS
 import com.lookie.opluskey.ui.model.theme.QUERY_ROUNDS
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.screen.pageWritable
+import com.lookie.opluskey.ui.screen.variables.openVariablesForManage
 import com.lookie.opluskey.ui.state.page.LINK_SILENT_RETRY_MS
+import io.github.lyxnx.compose.ui.tablericons.TablerIcons
+import io.github.lyxnx.compose.ui.tablericons.outline.Variable
+import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import kotlinx.coroutines.delay
 
 // 首页 —— 三张卡 + 两条「进页就跑一次」的副作用。
@@ -236,4 +250,143 @@ internal fun SettingsPage.unwrapActivity(from: android.content.Context?): androi
         cur = base
     }
     return null
+}
+
+/**
+ * 首页那几样**一口气开一个**的东西 —— 两次确认 + 捐赠那个菜单与收款码窗口。
+ *
+ *  收成一个对象而不是几个 `remember { }`：它们分散在「卡片之间」与「页面末尾」两处，
+ *  摊开时「这个位是谁置的」得来回看；而且菜单与窗口要共用「选了哪个去处」这一份结论
+ *  （`donateTarget`），分开写很容易写成两份。
+ *
+ */
+internal class HomeUiState {
+    /**
+     * 「启用按键绑定」要的那次确认：true = 弹窗开着，**此时还没写盘**（点了确认才写）。
+     *  只在「打开」这一侧要；关闭直接写。
+     *
+     *  它只服务首页那个主开关（**模块总闸**）—— ⋮ 菜单里「停用这颗键」是逐键开关，
+     *  不进这道闸（拆开之后两者是两件事）。
+     */
+    var disclaimerPending by mutableStateOf(false)
+
+    /**
+     * 免责声明**确认之后**接着弹的那一个「温馨提醒」（模块免费、认准官方正版）。
+     *
+     *  与上面那次确认分开两个开关：这一条**不写盘、不拦任何操作**，两个按钮都只是关掉它；
+     *  合成一个开关会让「关掉它」和「没确认免责声明」变成同一件事，总闸就跟着被卡住了。
+     */
+    var freeNoticePending by mutableStateOf(false)
+
+    /** 「捐赠打赏」那一行的锚点 —— 菜单的落点由它给。 */
+    val donateClick = PreciseClickState()
+
+    var showDonateMenu by mutableStateOf(false)
+
+    /** 选中的捐赠去处（非 `null` = 收款码窗口开着）。 */
+    var donateTarget by mutableStateOf<DonateTarget?>(null)
+}
+
+// 首页那两张卡片 —— 从 `HomeScreen.kt` 拆出来。
+//
+// `HomeScreen` 原来是一个 434 行的函数：状态、链路自检、提示条、三张卡、两个确认窗、
+// 一个菜单全平铺在一起。按**一张卡**切开之后，页面只剩「铺顺序 + 那两条 effect」，
+// 卡里的人只管自己那几行。
+
+/**
+ * 「其他」那张卡 —— 自定义命令 / 自定义变量 / 更多选项 / 捐赠打赏。
+ *
+ *  「公共设置」（原「模块设置」）**不在这一卡里**：它跟「按键怎么工作」有关，已挪进上面的
+ *  「按键操作」卡（见 `HomeKeyOpsCard`）。
+ *
+ *  **闸门不是一刀切**（用户口径「更多行不跟随总闸禁用」，而这几行改配置的跟随）：
+ *   · 「自定义命令」「自定义变量」是这一页里**会改配置**的那两行（存命令 / 建改变量），它们吃整页
+ *     总闸（[pageEnabled]）—— 与「按键」卡里那几颗键同一档：别的都灰着、这两行还能点进去改，就是个漏洞；
+ *   · 「更多选项」是进那一页的**唯一入口**，而那一页里有「运行状态」—— 链路没齐 / 配置只读 /
+ *     主开关关着时，用户正需要进去看断在哪一段（机型清单不参与任何禁用，见 AGENTS.md 一、13）；
+ *   · 打赏与模块启没启用无关，整页禁用时它照样该能点。
+ */
+@Composable
+internal fun SettingsPage.HomeOtherCard(
+    pageEnabled: Boolean,
+    ui: HomeUiState,
+) {
+    CardList(
+        rows =
+            listOf(
+                // 「自定义命令」：这一卡的第一行。它进的是命令库那一页 ——
+                //  名称格、单条 / 多条两栏、「已保存的命令」都在那边。
+                //  标题与那一页顶栏**同名**（与「按键设置」「更多选项」同一条口径：点的那一行
+                //  与进去之后看到的标题是同一句话）。
+                //  这一行会写配置（存命令），所以吃整页总闸。
+                CardRow.Item(
+                    title = I18n.get(Strings.ACTION_CUSTOM_COMMAND),
+                    icon = PageIcons.CommandCode,
+                    enabled = pageEnabled,
+                    arrow = true,
+                    onClick = { openCommandsPage() },
+                ),
+                // 「自定义变量」：与「自定义命令」并排 —— 两者是同一类东西（用户自己定义、之后
+                //  在命令里用），摆在一起比塞进「更多选项」更好找。
+                //  这一页只有变量的清单与新建，不吃整页总闸以外的东西：建 / 改变量要写盘，
+                //  所以与上面两行同一档（`pageEnabled`）。
+                //  **入口临时收起来**（[ActionCatalog.SHOW_VARIABLES]，用户口径「UI 入口先藏、功能不动」）：
+                //  走行的 `visible`，连它下面那条细线一起藏，不留孤零零一条线。
+                CardRow.Item(
+                    title = I18n.get(Strings.TOOL_VARIABLES),
+                    summary = I18n.get(Strings.HOME_VARIABLES_DESC),
+                    icon = TablerIcons.Outline.Variable,
+                    enabled = pageEnabled,
+                    arrow = true,
+                    visible = ActionCatalog.SHOW_VARIABLES,
+                    //  这一趟是**管数据**：点列表里的一颗会弹「编辑 / 删除 + 当场改值」那张窗
+                    onClick = { openVariablesForManage() },
+                ),
+                CardRow.Item(
+                    title = I18n.get(Strings.MORE_OPTIONS_TITLE),
+                    // 副标题只报这一页有什么，不交代机制（「一起改短」）
+                    summary = I18n.get(Strings.HOME_MORE_OPTIONS_SUMMARY),
+                    icon = PageIcons.MoreOptions,
+                    //  行尾**不挂红点**：有新版这件事由首页顶上那块「模块状态」说（见 `HomeActivationCard`），
+                    //  同一条信息在一页里出现两处，读起来像两件事
+                    arrow = true,
+                    onClick = { navTo(Screen.ABOUT) },
+                ),
+                // 「捐赠打赏」：点开一层菜单（三个去处），选中一个再弹**居中**的收款码窗口；
+                //  菜单最后那一项（「捐赠列表」）才是名单页本身，表格字形在那一项上
+                //  （[PageIcons.DonateList]），这一行仍是原来那颗心（[PageIcons.Donate]）。
+                //  与「更多选项」并排在这一张卡里 —— 两行都是「偶尔才点一次」的去处。
+                //  行尾给选择器字形（读作「点了要选点什么」），不是进下一页的箭头，与「语言」那一行同一套。
+                CardRow.Item(
+                    title = I18n.get(Strings.HOME_DONATE),
+                    summary = I18n.get(Strings.HOME_DONATE_SUMMARY),
+                    icon = PageIcons.Donate,
+                    // 菜单的落点由这一行记下的触点给（`MenuPopup` 的 `preciseClick`）。
+                    //  少了它，锚点永远是空的 ⇒ 菜单退回库的默认位置，读起来就是「没有跟随手指」。
+                    modifier = Modifier.preciseClickAnchor(ui.donateClick),
+                    trailing = { RowEndIcon(PageIcons.Selector) },
+                    onClick = {
+                        ui.showDonateMenu = true
+                    },
+                ),
+            ),
+    )
+}
+
+/**
+ * 进「自定义命令」页 —— 这是**新建**的入口，与「按键绑定」页那颗 FAB 同一条规矩：
+ * 先把草稿清干净再进（`goBack` 只在草稿脏时才 reset，「点开一条看一眼、原样返回」那种
+ * 不脏的退页不会清 `editingName`，留着的话下次进来表单还挂着「修改」）。编辑已有命令那条路
+ * 走的是「已保存的命令」卡片，不经过这里。
+ *
+ *  清的是**当前这一页**（`draft.kind`）：两页是两个独立会话，另一页的草稿不动 ——
+ *  整页归零只在出栈时发生（`CommandDraftState.discard`）。
+ */
+private fun SettingsPage.openCommandsPage() {
+    commandDraft.draft.reset()
+    //  首页这个入口落**「命令列表」**那一页（用户口径）：从首页来多半是「看看都有哪些命令 /
+    //  改一条已经存在的」，而不是「现在就要新建一条」—— 新建在那一页右下角那颗 FAB 上，
+    //  点一下就进表单。与「按键绑定」页那条「已保存的命令」入口同一个落点（见 `SavedCommandsTitle`）。
+    commandDraft.openListPage = true
+    navTo(Screen.COMMANDS)
 }

@@ -3,16 +3,24 @@ package com.lookie.opluskey.ui.write
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.GlobalConfig
+import com.lookie.opluskey.core.model.KeyConfig
+import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.switchNotice
 import com.lookie.opluskey.ui.feedback.switchToNotice
 import com.lookie.opluskey.ui.feedback.writeAndNotice
 import com.lookie.opluskey.ui.model.text.languageLabel
 import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.state.picker.AppPickerState
 import kotlin.random.Random
 
 // 「全局开关」这一族：一颗开关一个入口，全部落到 `global.*` 上。
@@ -452,4 +460,177 @@ internal fun SettingsPage.setCommonCommands(list: List<CommonCommand>) {
         cfg.copy(global = cfg.global.copy(commonCommands = list)),
         "common_commands=${list.size}",
     ) { I18n.get(Strings.COMMON_COMMANDS_SAVED) }
+}
+
+// 「**这一颗键**的参数」这一族 —— 与 `ui/write/ConfigWrite.kt`（全局开关 + 唯一的写入口 [write]）
+// 分开：两者改的不是同一段配置（`keys[id]` 对 `global`），错放会让「这一项属于谁」看不出来。
+//
+// 长按阈值 / 触发间隔那几档是滑杆，各自在 `LongRepeatCard` 里直接调 [write]，不在这里再包一层。
+//
+// **回执的位一律 [HINT_SLOT_BINDING]**：这一族只在「按键设置」页被调用（那一页的三张卡），
+// 回执共用一条消息（理由见 [HINT_SLOT_BINDING] 的注释）。
+
+/**
+ * 改**这一颗键**的一个开关：取配置 → 取键 → 应用 [transform] → 走 [writeAndNotice]。
+ *
+ *  这一族两个函数的差别只有「改哪个字段 / 日志写什么 / 回执主语是什么」—— 形状收在这里一处。
+ *  回执的位固定 [HINT_SLOT_BINDING]（这一族只在「按键绑定」页被调用，那一页共用一条消息）。
+ *
+ *  **改哪一颗由调用方给**（`keyId`）：原先在这里现取 `KeyWatchState.editing`，那是「按键绑定页
+ *  当前选中的那颗」—— 这一族现在也从独立设置页被调用，那一份状态不再代表那一页在改谁。
+ *
+ * @param on 回执要说的目标状态（`switchNotice` 的第二个参数）
+ */
+internal fun SettingsPage.toggleKeyParam(
+    keyId: KeyId,
+    what: String,
+    title: String,
+    on: Boolean,
+    transform: (KeyConfig) -> KeyConfig,
+) {
+    val cfg = configState.config.value
+    writeAndNotice(
+        cfg.copy(keys = cfg.keys + (keyId to transform(cfg.key(keyId)))),
+        "$what key=${keyId.id}",
+        slot = HINT_SLOT_BINDING,
+    ) { switchNotice(title, on) }
+}
+
+/**
+ * 写「固定窗口起点」那一颗 —— 落的是 [KeyConfig.waitMultiWindow]（**反面**）。
+ *
+ *  判定侧的行为见 `inject/input/GestureDetector.onKeyDownLocked`：`waitMultiWindow = false`
+ *  时从首次按下只等一个窗口、窗口内数到的多击算一次触发；`true` 时每一击之后都重新等一个
+ *  完整窗口、按实际击数判。
+ *
+ *  **取反只在界面那一行做**（`waitMultiWindowRow` 的 `checked = !key.waitMultiWindow`）：
+ *  这里收到的已经是存储值，回执却要说界面上那颗的状态 —— 所以传给 `toggleKeyParam` 的是
+ *  `!waitMultiWindow`，别照抄。
+ */
+internal fun SettingsPage.setWaitMultiWindow(
+    keyId: KeyId,
+    waitMultiWindow: Boolean,
+) {
+    toggleKeyParam(
+        keyId,
+        "wait_multi_window=${if (waitMultiWindow) 1 else 0}",
+        I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW),
+        !waitMultiWindow,
+    ) { it.copy(waitMultiWindow = waitMultiWindow) }
+}
+
+// 「多条命令」那几步的增删改 —— 只动页面状态（草稿里的步骤、导航、「选应用」那一档），一行像素都不画。
+//  放在 `ui` 根而不是 `ui/state`：`ui/state` 只装**状态对象**（谁的字段、谁能写），
+//  这些是「对状态做的动作」，要读页面导航与草稿两个域，所以与 `PageText` / `PageFeedback` 同级。
+//  这样 `screen/*` 与浮层都能直接调它，不必反过来依赖具体屏（见 `docs/architecture/decoupling.md` 动作 4）。
+
+/**
+ * 多条命令加一步（从「添加命令」浮层的「选择应用」挑完回来时调）。
+ *
+ * @return true = 真的加进去了；false = 满员被拒（已 toast）。调用方据此决定要不要退页 ——
+ *   把「没加」当「加了」会让刚挑的应用凭空消失，用户一条提示都看不到。
+ */
+internal fun SettingsPage.addStep(token: String): Boolean {
+    // 界面那一层的闸在别处：「添加命令」那颗按钮满员时自己置灰（`enabled = !stepsFull`），
+    //  两个调用点也被它挡着。这里是**兜底** —— 越过界面直接调本函数时不能把步数顶过头。
+    if (commandDraft.draft.steps.size >= Command.MAX_STEPS) {
+        XLog.w("多条命令：已达上限 ${Command.MAX_STEPS} 步，拒绝再加 → $token")
+        hint(I18n.format(Strings.TOAST_COMMAND_STEP_FULL, Command.MAX_STEPS), slot = HINT_SLOT_COMMAND)
+        return false
+    }
+    commandDraft.draft.steps.add(token)
+    XLog.w("多条命令：加第 ${commandDraft.draft.steps.size} 步 → $token")
+    navTo(Screen.COMMANDS)
+    return true
+}
+
+/**
+ * 多条命令把第 [index] 步换成 [token] —— 点已添加的那一行弹出的选择菜单里挑完时调。
+ *
+ * @return true = 换成了；false = 那一步已经不在（已 toast 并退回命令页）
+ */
+internal fun SettingsPage.replaceStep(
+    index: Int,
+    token: String,
+): Boolean {
+    if (index !in commandDraft.draft.steps.indices) {
+        // 越界不能静默 return：调用方已经 tick / 关了菜单，用户看不到任何反应也无从判断。
+        XLog.w("多条命令：第 ${index + 1} 步不存在（当前 ${commandDraft.draft.steps.size} 步），换步已忽略")
+        hint(I18n.get(Strings.TOAST_COMMAND_STEP_MISSING), slot = HINT_SLOT_COMMAND)
+        navTo(Screen.COMMANDS)
+        return false
+    }
+    commandDraft.draft.steps[index] = token
+    XLog.w("多条命令：第 ${index + 1} 步换成 $token")
+    navTo(Screen.COMMANDS)
+    return true
+}
+
+/**
+ * 从「添加命令」浮层（或点已添加那一步弹出的同一张选择菜单）进「打开应用」页 ——
+ * 挑中的应用作为一步写进当前多条命令：[replaceIndex] < 0 时追加，`>= 0` 时把那一步换成它。
+ *
+ * 与网格那条入口的区别只有两处：不记手势（[AppPickerState.gesture] = null），以及调用点在
+ * 「自定义命令」页上 —— 压进栈之后「打开应用」下面那一页就是「自定义命令」，返回自然退到它。
+ */
+internal fun SettingsPage.openAppPickerForStep(
+    replaceIndex: Int = -1,
+    stop: Boolean = false,
+) {
+    XLog.w("添加命令：进「打开应用」页挑一步（替换行=$replaceIndex，结束=$stop）")
+    picker.openForStep(replaceIndex, stop)
+    // 搜索词清空：它是页面级状态，不随页面出栈注销 —— 留着的话下次进来就是一份被过滤过的列表。
+    picker.filter.value = ""
+    // 「以小窗口打开」按**这次要编辑的那一步**重算（不落盘、不跨次记忆，见 [AppPickerState.smallWindow]；
+    // 另一条入口在 SettingsPage 的「打开应用」格）
+    resetSmallWindowForPicker()
+    // 进页唯一复位点：点过的行回到当前绑定，定位 / 拦人窗 / 刷新指示器归零（清单不清）
+    appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())
+    navTo(Screen.APP_PICKER)
+}
+
+/**
+ * 「常用命令」页那层抽屉里点「打开应用 / 结束应用」—— 进「打开应用」页挑一条，
+ * 挑中的**追加成清单里的一条**，或**换掉行菜单「修改」那一趟指的那一条**
+ * （落点见 `PickTarget.CommonCommand`）。
+ *
+ *  与另外两条入口同一套进页复位（搜索词清空、小窗开关重算、`beginVisit`）：这一页的挑法本来就
+ *  只有一份，差别只在「挑完写到哪儿」。
+ *
+ *  @param stop `true` = 「结束应用」（写 `proc:stop:包名`，不挑界面、也没有小窗）
+ *  @param replaceToken 非空 = 换掉清单里的这一条（「修改」那一趟）；`null` = 追加一条
+ */
+internal fun SettingsPage.openAppPickerForCommonCommand(
+    stop: Boolean = false,
+    replaceToken: String? = null,
+) {
+    XLog.w("常用命令：进「打开应用」页挑一条（结束=$stop，换=${replaceToken ?: "否"}）")
+    picker.openForCommonCommand(stop, replaceToken)
+    picker.filter.value = ""
+    resetSmallWindowForPicker()
+    appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())
+    navTo(Screen.APP_PICKER)
+}
+
+/**
+ * 长按卡「松手执行额外动作」那一行进「打开应用」页 —— 挑中的应用 / 组件 / 快捷方式写进这一档的
+ * 松手格（落点见 `PickTarget.Release`：单键 / 组合是自己的 `longRelease`，场景块是草稿里那一块）。
+ *
+ *  与 [openAppPickerForStep] 同一套进页复位：搜索词清空、小窗开关按当前那一条重算。
+ *  「以小窗口打开」在这一趟是**真生效**的（`window:` 是合法的额外动作）。
+ *
+ *  @param sceneAt 非负 = 这一趟是给**场景表里第几块**挑（「场景动作」页那一趟，见 `BindingTarget.Scene`）
+ */
+internal fun SettingsPage.openAppPickerForRelease(
+    stop: Boolean = false,
+    combo: String? = null,
+    sceneAt: Int = AppPickerState.NOT_FOR_SCENE,
+    chain: Boolean = false,
+) {
+    XLog.w("额外动作：进「打开应用」页挑一条（结束=$stop，组合=$combo，场景块=$sceneAt，单击后长按=$chain）")
+    picker.openForRelease(stop, combo, sceneAt, chain)
+    picker.filter.value = ""
+    resetSmallWindowForPicker()
+    appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())
+    navTo(Screen.APP_PICKER)
 }

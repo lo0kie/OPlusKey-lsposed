@@ -1,6 +1,8 @@
 package com.lookie.opluskey.host.action.shell
 
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.host.ProcessController
 import com.lookie.opluskey.host.action.CommandFailure
 import java.util.concurrent.Future
 import java.util.concurrent.LinkedBlockingQueue
@@ -616,3 +618,104 @@ private class ShellSinks(
     val onTip: (String) -> Unit,
     val onLine: ((String) -> Unit)?,
 )
+
+// shell 执行的**并发与线程寿命**参数 —— 与 `ui/model/PageMetrics` 同一类东西
+//  （性能参数集中处），但**不能放在那边**：`PageMetrics` 在 `ui/`，而 `host/` 不许依赖 `ui/`
+//  （`docs/architecture/decoupling.md` 动作 1、2，`tools/audit-coupling.py` 会当场报错）。
+//  同包里已有先例：`MiniWindowFacts.kt` 也是把一族的常量从执行类里拎出来单独放。
+
+/**
+ * 同时挂着的 shell 子进程上限 —— **全机**（不是每进程，见 `ShellRunner.acquireSlot`）。
+ *
+ * 长按连续触发最密 100ms 一条，不设限会堆上百个进程 / 线程。槽位本身由 `FileLock` 跨进程守，
+ * 所以这个数说的是「两个宿主进程加起来最多几条」，不是「每条最多几个」。
+ *
+ * `ShellRunner` 的**两条线程池上限也跟着它走**：池里多出来的线程没有槽位可用，
+ * 两个数必须一起改，否则要么白占线程、要么池先被占满（见那边的 KDoc）。
+ */
+internal const val SHELL_MAX_CONCURRENT = 3
+
+/**
+ * 在跑的之外还能**排队**几条 —— 超出即拒（[CommandFailure.OVERLOADED]）。
+ *
+ *  取 4：一条命令最长 10 秒（`SHELL_TIMEOUT_MS`），3 条并发 + 4 条排队 ≈ 最坏 20 秒内清空，
+ *  正好是「用户还记得刚才按过」的边界。再大就变成「过了一会儿手机自己动了」。
+ *
+ *  无界队列试过：长按连发 100ms 一条时，队列净增 30 倍，动作排到几十秒后才执行，而且执行前
+ *  不再做任何过期判断 —— 那不是延迟，是错乱。
+ */
+internal const val SHELL_QUEUE_MAX = 4
+
+/**
+ * 池内空闲线程多久回收（秒）。
+ *
+ * 按键是低频动作（连发最密 100ms 一条），池不该常驻：60 秒没有活就让它退出，
+ * 下次按键再按需创建。取 60 而不是几秒，是为了让「连按几下然后停一会儿再按」
+ * 这一串落在同一个池里，不至于每段间隔都重建一轮线程。
+ */
+internal const val SHELL_THREAD_IDLE_SECONDS = 60L
+
+/**
+ * 「申请一次 root 授权」—— 「以 root 执行」那个开关**打开的那一刻**由界面调。
+ *
+ *  为什么要有它：`su` 的授权是 root 管理器在**第一次执行**时弹的，而一条命令要等到用户真去按侧键
+ *  才会被执行 —— 于是授权框出现在用户看不到前因后果的时刻（按一下侧键，屏幕上多一个陌生的框）。
+ *  在开关上先跑一次，授权就发生在「他刚刚说过这条要 root」的那一刻。
+ *
+ *  **与真执行走同一条链路**（[ShellRunner.exec]）：解释器、并发槽位、失败分档全同一套 ——
+ *  这里说「拿到了」，按侧键时也一定拿得到；这里报没授权，按下去也是同一句提示。
+ *
+ *  成功怎么认：不新开回调通道，就用命令自己的回执（[ShellRunner.TIP_PREFIX]，`shell:` 动作本来
+ *  就靠它报结果）。所以探测命令是 `id -u && echo 'tip: …'` —— `&&` 保证 `id -u` 没跑成时那行提示
+ *  根本不出现，于是「有回执」= 「`su` 起来且真的拿到了 uid 0」。
+ */
+internal object RootGrant {
+    /**
+     * 申请一次；结果经 [onResult] 回（**后台线程**）。
+     *
+     * @param onResult `null` = 已拿到 root；否则是这次失败的分档（`SHELL_NO_ROOT` 就是没授权），
+     *   文案交给调用方 —— 界面报的是它自己那一页的提示条，不是宿主进程的 Toast。
+     */
+    fun request(onResult: (CommandFailure?) -> Unit) {
+        XLog.w("申请 root：以 su 跑一次探测命令（$PROBE）")
+        ShellRunner.exec(
+            command = PROBE,
+            onFailure = { onResult(it) },
+            onTip = { onResult(null) },
+        )
+    }
+
+    /**
+     * 探测命令：`id -u` 的输出**必须正好是 `0`** 才算拿到 root，后面那行 `echo` 是成功回执
+     * （见类注释）。
+     *
+     *  **不能只写 `id -u && echo …`**：`id -u` 对任何身份都成功（普通应用打自己的 uid、shell 打
+     * 2000 也一样返回 0 退出），`&&` 只判退出码 —— 于是「su 没给 root、只是起了个普通 shell」
+     *  这一档也会报「已拿到 root」，而真按下去时命令照样没有 root。
+     *  用 `grep -qx 0` 判输出本身，既不看退出码也不依赖引号嵌套。
+     */
+    private val PROBE = "id -u | grep -qx 0 && echo '${ShellRunner.TIP_PREFIX} root-granted'"
+}
+
+/**
+ * `proc:stop:包名` 的执行器 —— 把「结束应用」那一格挑出来的应用做成按键动作。
+ *
+ *  真正的命令拼装与成败判据在 [ProcessController.perform]。这一层只做两件事：把 [Action.Process]
+ *  交给它，失败时按项目统一那套报出去。
+ *
+ *  **异步**：`perform` 立刻返回，结果在 ShellRunner 的池上回调 —— 本函数跑在宿主主线程的
+ *  按键回调里，阻塞就把宿主的 UI 卡住了。失败提示由 [onFailure] 走既有的 Toast 通道。
+ */
+internal object ProcessAction {
+    fun run(
+        act: Action.Process,
+        onFailure: (CommandFailure) -> Unit,
+    ) {
+        ProcessController.perform(act.pkg) { failure ->
+            //  判据级：这条是「动作到底有没有落到系统上」的唯一凭证，用 w。
+            //  带具体失败档：没 root / 权限不够 / 命令没跑成，各报各的，不再糊成一句「没成功」。
+            XLog.w("proc：${act.token} ${failure?.let { "没成功（${it.name}）" } ?: "已执行"}")
+            if (failure != null) onFailure(failure)
+        }
+    }
+}

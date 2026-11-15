@@ -1,10 +1,18 @@
 package com.lookie.opluskey.inject.system
 
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ShortcutInfo
+import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
+import com.lookie.opluskey.bridge.TimedCache
 import com.lookie.opluskey.bridge.inject.SystemContext
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
+import com.lookie.opluskey.core.reflect.ActivityThreadCompat
+import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 
@@ -342,3 +350,161 @@ private fun labelOf(info: ShortcutInfo): String =
     info.shortLabel?.toString()?.takeIf { it.isNotBlank() }
         ?: info.longLabel?.toString()?.takeIf { it.isNotBlank() }
         ?: info.id
+
+/**
+ * `system_server` **自己那一份** System Context（包名 `android`）—— 注入侧「以系统身份 +
+ * 走公开 API」的那几个动作（弹提示、写音量）都借它。
+ *
+ * ## 为什么不用 `bridge/inject/SystemContext` 那份
+ *
+ *  那一份是从某个真实 App 进程里**借**来的 Application Context：身份是 system（挂在我们这个进程
+ *  上），包名却仍是那个 App —— 弹 Toast 会按宿主的名义走限流、写音量会按宿主的身份判权限。
+ *  `ActivityThread.getSystemContext()` 给的这一份两者对得上，正是那两件事需要的。
+ *
+ * ## 只在注入侧可用
+ *
+ *  `currentActivityThread()` / `getSystemContext()` 都是 `ActivityThread` 的静态口子：只有
+ *  `system_server` 里有那个实例。宿主进程里调会拿到 `null`（那边也不需要它）。
+ *
+ *  取到就缓存（一份 Context 贯穿进程寿命）；**取不到不缓存**，下次再试 —— 启动早期
+ *  `ActivityThread` 可能还没就绪。缓存到失败值会让那两件事整个进程内永久失效。
+ */
+internal object SystemServerContext {
+    @Volatile
+    private var cached: Context? = null
+
+    /**
+     * @param loader `system_server` 的 ClassLoader
+     * @return 拿不到返回 `null`（调用方各自记一句「断在哪一环」的日志，见五、2）
+     */
+    fun get(loader: ClassLoader): Context? {
+        cached?.let { return it }
+        val thread = ActivityThreadCompat.currentActivityThread(loader) ?: return null
+        val ctx = Reflect.call(thread, "getSystemContext") as? Context ?: return null
+        cached = ctx
+        return ctx
+    }
+}
+
+/**
+ * 由 `system_server` 替宿主弹一条提示（命令里 `echo 'tip: …'` 那行）。
+ *
+ *  **为什么不在宿主那边弹**：系统的 toast 是**按包限流**的（3 条 / 20 秒、5 条 / 42 秒、
+ *  6 条 / 68 秒，反编译与真机日志见 `docs/device/actions/feedback.md` 四十），宿主的包一旦连按超过
+ *  这个密度，后面那些直接被 `NotificationService` 丢弃。而**系统自己**（包名 `android`）
+ *  持有 `android.permission.UNLIMITED_TOASTS`，`isExemptFromRateLimiting` 判它免限流 ——
+ *  所以这条提示改由注入侧用系统 Context 弹：同一个模块、同一句话，只是换了发话人。
+ *
+ *  两个约束：
+ *  1) 用 `ActivityThread.getSystemContext()`（包名 `android`），**不是** [SystemContext] 借来的
+ *     那份 App Context —— 后者包名仍是宿主，限流照样跑不掉；
+ *  2) 整段跑在主线程、整段兜 `Throwable`：这是 `system_server`，漏一个异常出去就是整机重启
+ *     （五之二）。
+ */
+internal object SystemToast {
+    /** 主线程 Handler —— toast 只能在有 Looper 的线程上建。 */
+    private val main = Handler(Looper.getMainLooper())
+
+    /** 同一句话在这个间隔内不重复弹（长按连发时同一条命令会连着报同一句）。 */
+    private const val DEDUP_MS = 1000L
+
+    //  值与时刻收成一个对象（见 [TimedCache]）：判重与判过期读的是同一份
+    private var lastToast: TimedCache<String>? = null
+
+    /** 请注入侧弹一条提示；任何一环失败都只记日志。 */
+    fun show(
+        loader: ClassLoader,
+        text: String,
+    ) {
+        if (text.isEmpty()) return
+        main.post {
+            try {
+                val ctx = context(loader) ?: return@post
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (lastToast?.let { it.value == text && it.fresh(now, DEDUP_MS) } == true) return@post
+                lastToast = TimedCache(text, now)
+                // 每次**新建**一条、也不 cancel 上一条：同一个实例再 show 会按 token 就地更新
+                //  队列里那一条（框架的 `indexOfToastLocked`），连按时就只剩「一条一直在变」——
+                //  用户要的是每按一下都完整弹一条，所以让它们排队。配额这边免了（见类注释），
+                //  排几条都不会被系统丢掉。
+                Toast.makeText(ctx, text, Toast.LENGTH_SHORT).show()
+                XLog.w("注入侧弹提示：$text")
+            } catch (e: Throwable) {
+                XLog.w("注入侧弹提示失败（已忽略）：${e.javaClass.simpleName}", e)
+            }
+        }
+    }
+
+    /** `ActivityThread.getSystemContext()` —— 包名 `android` 的那一份（免限流就靠它）。 */
+    private fun context(loader: ClassLoader): Context? {
+        val ctx = SystemServerContext.get(loader)
+        if (ctx == null) XLog.w("拿不到 system_server 的 SystemContext，注入侧弹不了提示")
+        return ctx
+    }
+}
+
+/**
+ * 由 `system_server` 替宿主**把某一路流设到某一档**（`ModuleWire.ACTION_SET_VOLUME`）。
+ *
+ *  **为什么不在宿主那边设**：宿主进程里 `setStreamVolume` 会被 ColorOS 静默丢掉 —— 写下去、
+ *  读回来还是旧值，也不抛异常（`docs/device/actions/audio.md` 三十四）。宿主只剩「注入音量键」
+ *  这一条退路，而一颗键就是一整格（量程的 1/16，`0..160` 上 10 格），`±1%`（1.6 格）这种
+ *  细步进走不出来：硬按就是「1% 走成 6.25%」，不按就是「按了没反应」。
+ *  这一层跑在 `system_server`，调用身份是系统本身，那条策略不挡它 —— 精确档位又能拿到了，
+ *  所以**音量那一族正常就走这一条**，宿主自己那几档写只剩「模块没注入时」的兜底。
+ *
+ *  **带 `FLAG_SHOW_UI`**：改完屏幕上就有那一路流的音量条。**值本来就等于目标**时改走
+ *  `adjustStreamVolume(ADJUST_SAME, FLAG_SHOW_UI)` —— `setStreamVolume` 在同值上不发面板
+ * （宿主与这一侧都一样，真机实测），而物理音量键按到底时值也没变、面板照样弹，走的就是 adjust
+ *  （`docs/device/actions/audio.md` 三十七）。
+ *
+ *  两条约束（与 [SystemToast] 同一档）：
+ *  1) 用 `ActivityThread.getSystemContext()`（包名 `android`）—— 身份与包名对得上，
+ *     不用 [com.lookie.opluskey.bridge.inject.SystemContext] 借来的那份 App Context
+ *     （那份的包名仍是宿主，身份与包名不一致）；
+ *  2) 整段兜 `Throwable`：这是 `system_server`，漏一个异常出去就是整机重启（五之二）。
+ *     调用方（`inject/KeyHooks`）已经把它 post 到 worker 线程上，这里不再切线程。
+ */
+internal object SystemVolume {
+    /**
+     * 设为 [index] 档；任何一环失败都只记日志。
+     *
+     * @param stream `AudioManager.STREAM_MUSIC` / `STREAM_RING` 之类
+     */
+    fun set(
+        loader: ClassLoader,
+        stream: Int,
+        index: Int,
+    ) {
+        try {
+            val ctx = context(loader) ?: return
+            val am =
+                ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: run {
+                    XLog.w("注入侧设音量：拿不到 AudioManager（路 $stream → $index）")
+                    return
+                }
+            val before = am.getStreamVolume(stream)
+            if (before == index) {
+                //  值没有要改的 ⇒ 这一档要的只是**把音量条叫出来**。`setStreamVolume` 在同值上
+                //  不发面板（这一侧也一样，真机实测），而 `adjustStreamVolume` 会 —— 物理音量键
+                //  按到底时值也没变、面板照样弹，走的就是它。`ADJUST_SAME` 不改值；面板是
+                //  **当前活跃流**那一条（这台 ROM 实测）：媒体流就是媒体条。
+                am.adjustStreamVolume(stream, AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
+                XLog.w("注入侧设音量：路 $stream 已经是 $index ⇒ 值不动，只把音量条叫出来")
+                return
+            }
+            am.setStreamVolume(stream, index, AudioManager.FLAG_SHOW_UI)
+            //  判据级：宿主那边看不到结果，只认「写前 / 写后」这两个读数
+            XLog.w("注入侧设音量：路 $stream $before → ${am.getStreamVolume(stream)}（目标 $index）")
+        } catch (e: Throwable) {
+            XLog.w("注入侧设音量失败（已忽略）：路 $stream → $index | ${e.javaClass.simpleName}", e)
+        }
+    }
+
+    /** `ActivityThread.getSystemContext()` —— 包名 `android` 的那一份。 */
+    private fun context(loader: ClassLoader): Context? {
+        val ctx = SystemServerContext.get(loader)
+        if (ctx == null) XLog.w("注入侧设音量：拿不到 system_server 的 SystemContext")
+        return ctx
+    }
+}

@@ -143,8 +143,6 @@ object Strings {
 
     /** 「只参与非首键的按住组合」那行开关（开 / 关各一句副标题）—— 见 `KeyConfig.comboOnly`。 */
     const val BINDING_COMBO_ONLY = "binding.combo_only"
-    const val BINDING_COMBO_ONLY_ON = "binding.combo_only_on"
-    const val BINDING_COMBO_ONLY_OFF = "binding.combo_only_off"
 
     /** 绑定页整页灰掉时那句原因（「只参与非首键的按住组合」）—— 参数是这颗键的名字。 */
     const val BINDING_COMBO_ONLY_BLOCKED = "binding.combo_only_blocked"
@@ -1632,8 +1630,6 @@ object Strings {
     /** 下面那几行灰着被点一下时说的话 —— 「先打开上面那颗总开关」。 */
     const val KEY_SETTINGS_NEED_OWN = "key_settings.need_own"
     const val SETTING_USE_OWN = "key_settings.use_own"
-    const val SETTING_USE_OWN_ON = "key_settings.use_own_on"
-    const val SETTING_USE_OWN_OFF = "key_settings.use_own_off"
 
     /**
      * 「多击手势」那两行 —— 三击 / 四击各自一颗开关。
@@ -1645,17 +1641,9 @@ object Strings {
      *  开四击还要让三击也等。只要三击的人不该被迫接受四击那一份延迟。
      */
     const val SETTING_CLICK2 = "key_settings.click2"
-    const val SETTING_CLICK2_ON = "key_settings.click2_on"
-    const val SETTING_CLICK2_OFF = "key_settings.click2_off"
     const val SETTING_CLICK3 = "key_settings.click3"
-    const val SETTING_CLICK3_ON = "key_settings.click3_on"
-    const val SETTING_CLICK3_OFF = "key_settings.click3_off"
     const val SETTING_CLICK4 = "key_settings.click4"
-    const val SETTING_CLICK4_ON = "key_settings.click4_on"
-    const val SETTING_CLICK4_OFF = "key_settings.click4_off"
     const val SETTING_CLICK_THEN_LONG = "key_settings.click_then_long"
-    const val SETTING_CLICK_THEN_LONG_ON = "key_settings.click_then_long_on"
-    const val SETTING_CLICK_THEN_LONG_OFF = "key_settings.click_then_long_off"
 
     /** 首页「按键设置」那一行的摘要。 */
     const val HOME_GENERAL_DESC = "home.general_desc"

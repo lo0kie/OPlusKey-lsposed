@@ -1,9 +1,14 @@
 package com.lookie.opluskey.host.action.condition
 
+import android.app.KeyguardManager
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.Configuration
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.os.BatteryManager
+import android.os.PowerManager
 import android.provider.Settings
 import com.lookie.opluskey.bridge.host.RingerController
 import com.lookie.opluskey.core.log.XLog
@@ -14,6 +19,7 @@ import com.lookie.opluskey.core.model.TimeRange
 import com.lookie.opluskey.core.model.systemVarOf
 import com.lookie.opluskey.core.present.conditionValueLabel
 import com.lookie.opluskey.host.action.app.ForegroundApp
+import java.util.Calendar
 
 /**
  * 条件执行里每一种条件「此刻成不成立」—— 全项目唯一的判据出口。
@@ -25,7 +31,7 @@ import com.lookie.opluskey.host.action.app.ForegroundApp
  *
  * ## 只有派发在这里
  *
- *  具体怎么读拆在 `ConditionChecks.kt`（屏幕 / 充电 / Wi-Fi / 媒体 / 响铃 / 方向）与本文件下半
+ *  具体怎么读在本文件下半段（屏幕 / 充电 / Wi-Fi / 媒体 / 响铃 / 方向）
  *  （耳机 —— 「接着没有」要扫一遍音频输出设备）。加一种条件仍然只动两处：这里加一行、那边加一个函数。
  *
  * ## 权限
@@ -401,7 +407,7 @@ internal fun orientationMatches(
     return now == value
 }
 
-// 「条件执行」里那几个**开 / 关型的系统开关** —— 从 `ConditionChecks` 拆出来。
+// 「条件执行」里那几个**开 / 关型的系统开关**。
 //
 //  拆的判据是「读哪张表」：这里全是 `Settings.Global` / `Settings.Secure` 里的 `0/1`，
 //  而那边（`ConditionChecks`）是亮屏 / 充电 / Wi-Fi / 媒体 / 响铃 / 方向这些要靠服务问的档。
@@ -474,3 +480,61 @@ internal fun flashlightMatches(
         else -> false
     }
 }
+
+// 时间区间那一档判据 —— 从 `ConditionChecks` 拆出来：那一组全是「带取值的系统状态」，
+// 只有这一档读的是**时钟**（`TimeRange` + 本地时区），与系统服务那边不是一路。
+
+/**
+ * **时间区间**：`HH:mm-HH:mm`（`22:00-07:00` 跨午夜）。
+ *
+ *  解析与比较全在 [TimeRange] 里 —— 跨午夜那个「或」写错一次就是「夜里怎么也不成立」，
+ *  所以那种地方只留一份实现。认不出的串 ⇒ 不成立。
+ *
+ *  「现在几点」取**设备本地时区**（用户说的「晚上十点」就是他手机上的十点），
+ *  不读 GMT、也不管夏令时（一天里的第几分钟本来就是本地概念）。
+ */
+internal fun timeMatches(
+    value: String,
+    now: Calendar = Calendar.getInstance(),
+): Boolean {
+    val range = TimeRange.parse(value) ?: return false
+    return range.contains(minuteOfDayNow(now))
+}
+
+/**
+ * 此刻是**当天第几分钟**（设备本地时区）—— 时间区间判定与 `${sys.time}` 的唯一取法。
+ *
+ *  两处各写一遍 `HOUR_OF_DAY * 60 + MINUTE` 的话，将来换读法（含秒 / 换时区来源）时必有一处漏掉，
+ *  而「区间判 22:00 命中、变量念 22:00」本该永远是同一件事。
+ */
+internal fun minuteOfDayNow(now: Calendar = Calendar.getInstance()): Int = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+
+// 条件判据要用的那几个系统服务与一次电量广播 —— 从 `ConditionChecks` 拆出来：
+// 那边是「每种条件怎么判」，这边是「判之前从系统问什么」，两件事各自涨。
+//
+//  都是**顶层 internal**：同一个 `when` / 同一个判据函数里直接调，不需要带接收者。
+
+/**
+ * 充电中（含充满）；**读不到电量广播返回 `null`（判不出）**。
+ *
+ *  用 **sticky 广播**而不是 `BatteryManager` 那几个 `isCharging`（那是 API 33 才有的静态属性，
+ *  而且与 `status` 语义略有出入）：`registerReceiver(null, …)` 拿到的就是最近一次电量广播，
+ *  不需要注册、也不需要权限。
+ *
+ *  返回 `null` 而不是 `false`：这一档的「不在充电」是**取反**得来的，把「没读到」当成 `false`
+ *  会让 `idle` 凭空成立（调用方见 `chargingMatches`）。
+ */
+internal fun isCharging(ctx: Context): Boolean? {
+    val intent: Intent =
+        ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            ?: return null
+    val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+    return status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+}
+
+/** 三个系统服务各取一次 —— `getSystemService` 本身不会返回错类型，直接转。 */
+internal fun power(ctx: Context): PowerManager? = ctx.getSystemService(PowerManager::class.java)
+
+internal fun keyguard(ctx: Context): KeyguardManager? = ctx.getSystemService(KeyguardManager::class.java)
+
+internal fun audio(ctx: Context): AudioManager? = ctx.getSystemService(AudioManager::class.java)

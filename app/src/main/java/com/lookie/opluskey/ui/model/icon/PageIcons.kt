@@ -1,8 +1,11 @@
 package com.lookie.opluskey.ui.model.icon
 
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.lookie.opluskey.core.model.CommonCommand
+import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
+import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
@@ -15,9 +18,12 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AlignLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.AlphabetChinese
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
+import io.github.lyxnx.compose.ui.tablericons.outline.AppsOff
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsDoubleNeSw
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsExchange
+import io.github.lyxnx.compose.ui.tablericons.outline.Bell
+import io.github.lyxnx.compose.ui.tablericons.outline.Bluetooth
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandAlipay
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandGithub
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
@@ -27,6 +33,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Cancel
 import io.github.lyxnx.compose.ui.tablericons.outline.CapsuleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.CategoryMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.CategoryPlus
+import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
 import io.github.lyxnx.compose.ui.tablericons.outline.Check
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronRight
@@ -34,6 +41,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Circle
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
+import io.github.lyxnx.compose.ui.tablericons.outline.Clock24
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockBolt
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPause
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPlay
@@ -42,8 +50,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.CloudSearch
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.ColorSwatch
 import io.github.lyxnx.compose.ui.tablericons.outline.Contrast
+import io.github.lyxnx.compose.ui.tablericons.outline.DeviceAirpods
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
+import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobile
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
@@ -87,6 +97,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Message2
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodEmpty
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodHeart
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
+import io.github.lyxnx.compose.ui.tablericons.outline.MusicCog
 import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Notes
 import io.github.lyxnx.compose.ui.tablericons.outline.Opacity
@@ -97,6 +108,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PencilCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Photo
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.Pin
+import io.github.lyxnx.compose.ui.tablericons.outline.Plane
+import io.github.lyxnx.compose.ui.tablericons.outline.Plug
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
@@ -114,6 +127,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber6
 import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber7
 import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber8
 import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber9
+import io.github.lyxnx.compose.ui.tablericons.outline.RotateRectangle
 import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
 import io.github.lyxnx.compose.ui.tablericons.outline.Server
@@ -136,6 +150,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Trash
 import io.github.lyxnx.compose.ui.tablericons.outline.UserScreen
 import io.github.lyxnx.compose.ui.tablericons.outline.UsersGroup
 import io.github.lyxnx.compose.ui.tablericons.outline.Versions
+import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
 import io.github.lyxnx.compose.ui.tablericons.outline.Window
 import io.github.lyxnx.compose.ui.tablericons.outline.World
 import io.github.lyxnx.compose.ui.tablericons.outline.ZoomIn
@@ -1053,3 +1068,108 @@ internal object PageIcons {
      */
     val LinkTakeOver: ImageVector get() = TablerIcons.Outline.Pointer
 }
+
+// 「常用命令」清单项的行首字形 —— 绑定页那一段与「常用命令」页共用这一份。
+//
+// 为什么单独一个文件：那两处一个在 `screen/binding`、一个在 `screen/common`，各自写一份 `when`
+// 就会漂（加一个品牌时只改一处，另一处继续画错字形）。而 `PageIcons` 那一张表是「字形本身」，
+// 不该认识 `CommonCommands` 这个业务类型 —— 转译层放这里。
+
+/**
+ * 模块自带那几条的品牌 → 行首字形。
+ *
+ *  品牌标识由 `:core` 给（`CommonCommands.Brand`，那边引不到 `PageIcons`），字形只在这一层有。
+ */
+internal val CommonCommands.Brand.icon: ImageVector
+    get() =
+        when (this) {
+            CommonCommands.Brand.WECHAT -> PageIcons.BrandWechat
+            CommonCommands.Brand.ALIPAY -> PageIcons.BrandAlipay
+        }
+
+/**
+ * 一条清单项的行首字形 —— 自带那几条用自己的品牌字形，其余按动作取。
+ *
+ *  品牌要单独一支：`cmd:common.wechat_scan` 是一个 `cmd:` 动作，按动作取只会得到一个
+ *  「命令」的通用字形，而这一段的读法恰恰是「哪一家的扫一扫」。
+ */
+internal fun commonCommandIcon(token: String): ImageVector = CommonCommands.entryOf(token)?.brand?.icon ?: actionIcon(token)
+
+/**
+ * **这一条现在该画哪颗字形** —— 换过图标就用换的那颗（[FluidIcons] 里那一批），否则按动作取。
+ *
+ *  **只在这里判，不落文件**：常用命令是模块自己界面里的一格（绑定页那一段、「常用命令」页的
+ *  清单），画 `ImageVector` 就够。它不像 `fluid:` 与「执行时提示走流体云」那样要被宿主进程画
+ *  到胶囊上 —— 那两处没有 Compose 运行时，才必须先把字形渲染成 png（见 `ActionCardArt`）。
+ *
+ *  换的 id 认不出来（手改过配置）也退回按动作取 —— 不留一格空白。
+ *
+ *  绑定页那一段与「常用命令」页共用这一份：两处各判一次就会漂。
+ */
+internal fun commonCommandIcon(cmd: CommonCommand): ImageVector =
+    cmd.icon.takeIf { it.isNotEmpty() }?.let { FluidIcons.of(it) } ?: commonCommandIcon(cmd.token)
+
+// 分叉条件的字形 —— 只剩「种类」这一层。
+//
+// 从 `ActionIcons.kt` 拆出来：那边是「动作」的字形表，条件是另一族（`ConditionKind`），
+// 两族各自的 when 都在长；拆开之后「加一种条件」只碰这一个文件。
+
+/**
+ * 分叉**条件种类**的字形 —— 「选择条件」那张菜单里，一行一个条件。
+ *
+ *  每种条件共用一颗 `arrows-split` 的话，菜单就是一串长得一模一样的字，
+ *  只剩标题能区分；每档各给一颗，一眼能扫到「我要的是哪一个」。
+ *
+ *  **只给「类别」这一层**：取值那几档（WiFi 开 / 关、亮屏 / 熄屏、充电 / 未充电…）不再各给
+ *  一颗 —— 命令编辑页里每一行条件一律用父图标 `PageIcons.Scene`（见 `conditionLineIcon`），
+ *  所以「一级菜单与两态撞形」这件事在这里已经没有第二个参与者。
+ *
+ *  **全项目唯一一处**（与 `systemSettingIcon` 同一条规矩）：加一种 [ConditionKind] 时，
+ *  在这支 `when` 里加一行。
+ *
+ *  刻意**不留兜底**：漏一行会悄悄掉到某个默认字形、从代码上看不出来，而留空 `else` 又会让
+ *  编译器不再检查完备性 —— 于是加一种条件时不补字形，界面上只是「少了颗图标」。
+ *
+ */
+internal fun conditionIcon(kind: ConditionKind): ImageVector =
+    when (kind) {
+        ConditionKind.APP -> PageIcons.AppFront
+
+        //  「前台应用以外」＝ 与上一档同一族的反面，用同一族带一道斜杠的那颗，
+        //  「是 / 不是」不必再读一遍文字才分得出来。
+        ConditionKind.APP_NOT -> TablerIcons.Outline.AppsOff
+
+        // 屏幕状态：一台手机（这一档说的是「屏幕现在什么状态」，手机是它的载体）
+        ConditionKind.SCREEN -> TablerIcons.Outline.DeviceMobile
+
+        // 充电：一颗插头（说的是「插着电没有」这件事）
+        ConditionKind.CHARGING -> TablerIcons.Outline.Plug
+
+        // 耳机：一副耳机
+        ConditionKind.HEADSET -> TablerIcons.Outline.DeviceAirpods
+
+        // 媒体状态：音符 + 齿轮（「正在播什么」这件事的设定）
+        ConditionKind.MEDIA -> TablerIcons.Outline.MusicCog
+
+        ConditionKind.WIFI -> TablerIcons.Outline.Wifi
+
+        // 响铃状态：与「命令」那一侧的响铃状态同一颗（`ActionIcons` 里 `ringer:normal` 也是它）
+        ConditionKind.RINGER -> TablerIcons.Outline.Bell
+
+        // 方向：旋转的矩形（竖 / 横由那一行的文字说）
+        ConditionKind.ORIENTATION -> TablerIcons.Outline.RotateRectangle
+
+        //  时间区间给「24 小时的钟」：它不是某一刻，而是一段「几点到几点」
+        ConditionKind.TIME -> TablerIcons.Outline.Clock24
+
+        ConditionKind.BLUETOOTH -> TablerIcons.Outline.Bluetooth
+
+        //  移动数据用信号格（与「系统开关」里那格同一颗，那格也是 `cell`）
+        ConditionKind.CELLULAR -> TablerIcons.Outline.CellSignal4
+
+        // 飞行模式：一架飞机
+        ConditionKind.AIRPLANE -> TablerIcons.Outline.Plane
+
+        //  手电筒：与「系统开关」里那一格同一颗自绘灯（同一个意思不该有两个长相）
+        ConditionKind.FLASHLIGHT -> DrawnIcons.Flashlight
+    }
