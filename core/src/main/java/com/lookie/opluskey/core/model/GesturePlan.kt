@@ -172,6 +172,15 @@ sealed interface GestureTrigger {
         val COMBO_SLOTS: List<GestureTrigger> = listOf(Click(1), LongPress)
 
         /**
+         * **这一档组合**能配的几档 —— [COMBO_SLOTS] 按它有没有长按收口（判据见 [ComboKey.hasLong]）。
+         *
+         *  界面与场景块排行都从这一支取（「组合键」编辑页的手势带、「场景动作」页、
+         *  系统场景里每块的动作行三处）：少一页 / 少一行只能由这一处决定 ——
+         *  各写一遍的话，带子上少一档而动作行还在，那一行写进去永远不会命中。
+         */
+        fun comboSlots(hasLong: Boolean): List<GestureTrigger> = if (hasLong) COMBO_SLOTS else COMBO_SLOTS - LongPress
+
+        /**
          * 「长按松手」那一档的 id（广播 / 配置里那一档）。
          *
          *  与三档手势的 id **不冲突**：`Gesture.ofId` 只认 `single` / `double` / `long`。

@@ -30,7 +30,7 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
  *  这一点原先写错过：卡片直接读 `owner` 上的那几个值，而总开关关着时它们**不参与取值**。
  *  于是「公共开了振动、这颗键自己那份还是默认的关」时，这一页显示「振动反馈：关（灰）」——
  *  而按下去明明会振。同一页下半的「组合按键设置」几行一直读的是生效值
- *  （`comboWindowFor` / `comboHoldMinFor`），只有上面这张卡不一样。
+ *  （`comboWindowsFor` / `comboHoldMinFor`），只有上面这张卡不一样。
  *
  *  所以显示统一走 [effective]（`Config.effectiveFor(owner)`），**写入仍落到** [owner]：
  *  关着时看到的就是「现在实际在用的那份」，打开总开关后同一处立刻变成这一档自己的值。

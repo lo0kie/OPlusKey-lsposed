@@ -208,13 +208,32 @@ object ConfigCodec {
      *       起点」）。两项都有 `null` / `false` 缺省，老文件读回来按「只看集合 + 逐次等满」——
      *       与这一位出现之前完全一致，不需要迁移。
      *
+     *  72 = `GlobalDto` 多了 `global_detailed_key_settings`（**显示更详细的按键设置**）——
+     *       `null` 缺省按关读，与这一位出现之前一致（那一页只画常用项）。
+     *
+     *  73 = **「按键之间的等待」删掉、两个窗口长度合成一个「等待窗口」**：`combo_window_ms` /
+     *       `window_ms` 现在就是界面上那一行「等待窗口」，老文件里那份「固定窗口长度」
+     *       （`combo_fixed_window_ms` / `fixed_window_ms`）**优先搬过来**（见
+     *       `GlobalDto.legacyWindowMs` 与 `ComboDto.toCombo`）；「固定窗口起点」两位原样保留。
+     *       删字段必须抬这一位，否则老文件的 md5 会按新 DTO 重算、当场判「读不懂」。
+     *
+     *  74 = **窗口拆成四格**（等待 / 按住 × 固定窗口起点 开 / 关，公共与每组各四份）：
+     *       新增 `combo_wait_window_ms` / `combo_wait_pair_ms` / `combo_hold_window_ms` /
+     *       `combo_hold_follower_ms` 与 `ComboDto` 的同名四位。老文件那**一个**数（v73 的
+     *       `combo_window_ms` / `window_ms`）铺到前三格，第四格用出厂 150ms（原写死常量）。
+     *
+     *  75 = **两个「固定窗口起点」拆成两个变量**：`GlobalDto.combo_fixed_window_start`（等待组合）
+     *       与新增的 `combo_hold_fixed_window_start`（按住组合），`ComboDto` 同理多一位
+     *       `hold_fixed_window_start`。老文件只有前者 ⇒ 按住那一份按默认（关，逐次等满）读，
+     *       与这一位出现之前行为一致。
+     *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
      *  不抬版本的话，`version == VERSION` 那一支会拿新 DTO 去校旧文件，**每一份已有配置都当场
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 71
+    const val VERSION = 75
 
     /**
      * 「提示走流体云」由「可选增强」变成「默认落点」的那一版 —— 迁移只看「文件是不是比它旧」。

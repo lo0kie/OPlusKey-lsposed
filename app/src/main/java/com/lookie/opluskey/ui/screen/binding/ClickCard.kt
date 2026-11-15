@@ -96,7 +96,7 @@ internal fun SettingsPage.ClickDelayCard(source: ClickParamSource) {
                                 //  标题**统一叫「等待窗口」**（两处逐字相同）：这一根在两种判定时机下
                                 //  写的值不同，但问的是同一件事 —— 「按下去之后等多久」。
                                 title = I18n.get(Strings.BINDING_WAIT_WINDOW, "等待窗口"),
-                                icon = PageIcons.DelayTap,
+                                icon = PageIcons.ComboWait,
                                 summary = I18n.get(Strings.BINDING_WAIT_WINDOW_DESC, "多击判定所用的窗口长度"),
                                 //  上下限两个判定时机**统一**（100~1000）：一根滑杆写两处，
                                 //  切换时机时可用范围跟着跳一截的话，看着像值被改了。

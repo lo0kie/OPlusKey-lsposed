@@ -3,6 +3,7 @@ package com.lookie.opluskey.inject.wire
 import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
+import com.lookie.opluskey.core.model.ComboWindows
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.GlobalConfig
@@ -146,7 +147,8 @@ internal object ConfigChannel {
      * 组合键的**扫描窗口**（毫秒）—— 找同伴键时按这个宽度扫候选。
      *
      *  它是这份配置里**最宽**的那一档（见 `Config.comboScanWindowMs`）：按下当前这一颗键时
-     *  还不知道会凑成哪一组，扫窄了就把宽窗口那一档直接漏掉。命中之后由 [windowFor] 复核。
+     *  还不知道会凑成哪一组，扫窄了就把宽窗口那一档直接漏掉。命中之后由那一档**自己的跨度**
+     *  复核（[spanFor]）。
      *
      *  还没收到过广播时给出厂值（80，与这一位出现之前写死的那个数一致）。
      */
@@ -157,26 +159,19 @@ internal object ConfigChannel {
             ?.takeIf { it > 0 }
             ?.toLong() ?: GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong()
 
-    /** [combo] **自己**那一档按键间隔（没设过就跟随公共）—— 配对命中之后用它复核间隔。 */
-    fun windowFor(combo: ComboKey): Long =
-        arrived
-            ?.config
-            ?.comboWindowFor(combo)
-            ?.takeIf { it > 0 }
-            ?.toLong() ?: GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong()
-
     /**
-     * [combo] 在**固定窗口起点**下的整串窗口（毫秒）—— 按住档成员接收窗口按它判
-     * （`ComboDetector.fixedWindowFor`），没写过就跟随公共（见 `Config.comboFixedWindowFor`）。
+     * [combo] 这一档的**四格窗口**（等待 / 按住 × 固定窗口起点 开 / 关，见 `Config.comboWindowsFor`）。
      *
-     *  还没收到过广播时按出厂值（80ms，与「按键之间的等待」同一个数）。
+     *  还没收到过广播时按公共出厂值兜底：前三格 80ms，第四格（按住、起点关）150ms。
      */
-    fun fixedWindowFor(combo: ComboKey): Long =
-        arrived
-            ?.config
-            ?.comboFixedWindowFor(combo)
-            ?.takeIf { it > 0 }
-            ?.toLong() ?: GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_MS.toLong()
+    fun windowsFor(combo: ComboKey): ComboWindows =
+        arrived?.config?.comboWindowsFor(combo)
+            ?: ComboWindows(
+                wait = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                waitPair = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                hold = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                holdFollower = GlobalConfig.DEFAULT_COMBO_HOLD_FOLLOWER_MS,
+            )
 
     /**
      * [combo] 的**首键要先按住多久**（毫秒）—— 按住那条的下限，每组可另设一份
@@ -192,10 +187,8 @@ internal object ConfigChannel {
             ?.toLong() ?: GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS.toLong()
 
     /**
-     * [combo] 这一档**整串**的容忍跨度（= 相邻两颗的窗口 × (成员数-1)，见 `Config.comboSpanFor`）
-     * —— 多成员那条路（`ComboDetector.multiFor`）按它复核「凑没凑齐」。
-     *
-     *  三颗按一个窗口复核等于要求三根手指同时落，真机上永远凑不齐；两颗时它与 [windowFor] 同值。
+     * [combo] 这一档的**整串跨度**（毫秒）—— 多成员那条路（`ComboDetector.multiFor`）按它复核
+     * 「凑没凑齐」。固定窗口起点开着 = 一个等待窗口；关着 = 相邻两颗各一个（n 颗 n-1 个）。
      */
     fun spanFor(combo: ComboKey): Long =
         arrived
@@ -206,12 +199,10 @@ internal object ConfigChannel {
             ?: (GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong() * (combo.keys.size - 1).coerceIn(1, ComboKey.MAX_JUDGE_KEYS - 1))
 
     /**
-     * 这一颗键按下之后要**先等多久**（毫秒）：它参与的几组里最长的那个**整串跨度**。
+     * 这一颗键按下之后要**先等多久**（毫秒）：它参与的几组里最长的那个等待窗口。
      *
      *  按最长的而不是按某一组：等短了，宽窗口那一组永远凑不齐（第二颗键到时这颗已经回落单击）；
      *  等多了只是这根手指慢半拍，而它参与的组合本来就要求等这么久。
-     *  n 颗的组合要等的是 (n-1) 个窗口 —— 按一个窗口等的话，第一颗在第三颗到来之前就已经
-     *  回落成单击了，三颗的组合永远只在「三根手指同时落」时才成立。
      */
     fun holdWindowMsFor(id: KeyId): Long = arrived?.combos?.holdWindows?.get(id.id) ?: scanWindowMs()
 
@@ -417,8 +408,7 @@ private class ComboDerived(
  *  **窗口那两张只算认窗口的档**（`isWait`）：等窗口这件事是「会不会有第二颗键在一个窗口内落下来」
  *  这个问题的代价，不认窗口的档那个问题就不存在 —— 成员键按下去就该立刻走自己的单键判定
  *  （用户口径：不认窗口时，成员键各自不再等这个窗口）。窗口取的是**整串跨度**
- *  （`Config.comboSpanFor`，n 颗 = (n-1) 个窗口），不是单个窗口：三颗那一档的第三颗到来时，
- *  第一颗已经隔了两个窗口 —— 按一个窗口等，它早就回落成单击了。
+ *  （`Config.comboSpanFor`：固定窗口起点开着是一个窗口，关着按相邻两颗放大）。
  *
  *  **起点键只从按住那两档来**（`starterKey`）：后补的那一颗不必压 —— 它按下时组合要么当场成立、
  *  要么永远成立不了。按住那两档只对两颗成立（三颗已被 `modeFor` 挡住）。

@@ -226,11 +226,11 @@ object ConfigFields {
     const val LANGUAGE_EXTRA = "language"
     const val COLOR_OS_API_EXTRA = "color_os_api"
 
-    /** 组合键两颗键之间的等待窗口（毫秒）—— 注入侧判定要用，所以走广播。 */
-    const val COMBO_WINDOW_MS_EXTRA = "combo_window_ms"
-
-    /** 固定窗口起点下**整串**的窗口（毫秒）—— 同样判定在注入侧，走广播。 */
-    const val COMBO_FIXED_WINDOW_MS_EXTRA = "combo_fixed_window_ms"
+    /** 组合键的四格窗口（等待 / 按住 × 固定窗口起点 开 / 关）—— 判定要用，都走广播。 */
+    const val COMBO_WAIT_WINDOW_MS_EXTRA = "combo_wait_window_ms"
+    const val COMBO_WAIT_PAIR_MS_EXTRA = "combo_wait_pair_ms"
+    const val COMBO_HOLD_WINDOW_MS_EXTRA = "combo_hold_window_ms"
+    const val COMBO_HOLD_FOLLOWER_MS_EXTRA = "combo_hold_follower_ms"
 
     /** 按住那两档里**起点键要先按住多久**（毫秒）—— 同样判定在注入侧，走广播。 */
     const val COMBO_HOLD_MIN_MS_EXTRA = "combo_hold_min_ms"
@@ -243,6 +243,14 @@ object ConfigFields {
 
     /** 等待组合的**固定窗口起点** —— 判定在注入侧（`ComboDetector`），走广播。 */
     const val COMBO_FIXED_WINDOW_START_EXTRA = "combo_fixed_window_start"
+
+    /**
+     * 按住组合的**固定窗口起点** —— 与 [COMBO_FIXED_WINDOW_START_EXTRA] 是**两个变量**（两张卡各管一种按法）。
+     *
+     *  同样走广播：`ComboDetector` 判按住档的成员接收窗口时读它（开 = 从首成员起一个 `hold` 窗口，
+     *  关 = 每颗各自往前一个 `holdFollower`），而注入侧只吃广播。
+     */
+    const val COMBO_HOLD_FIXED_WINDOW_START_EXTRA = "combo_hold_fixed_window_start"
 
     /**
      * **模块总闸**（首页「启用按键绑定」那一行）—— 与 [ENABLED_EXTRA] 是两件事，别混：
@@ -645,16 +653,14 @@ object ConfigFields {
     val F_MINI_WINDOW_ANIM = Field(null, Kind.Bool(GlobalConfig.DEFAULT_MINI_WINDOW_ANIM))
 
     /**
-     * 组合键：**两颗键按下之间最多隔多久**（毫秒）。
+     * 组合键的四格窗口（`GlobalConfig.comboWaitWindowMs` 那一段，毫秒）。
      *
-     *  走**广播**那一列 —— 判定它的是注入侧（`ComboDetector` 跑在 system_server），那边读不到
-     *  配置文件、只吃广播。
-     *
-     *  调大 ⇒ 手笨一点也能搓出组合；代价是参与组合的键要先等这么久（见 `ComboScreen` 那一行的副标题）。
+     *  都走**广播**那一列 —— 判定它们的是注入侧（`ComboDetector` 跑在 system_server），
+     *  那边读不到配置文件、只吃广播。
      */
-    val F_COMBO_WINDOW_MS =
+    val F_COMBO_WAIT_WINDOW_MS =
         Field(
-            COMBO_WINDOW_MS_EXTRA,
+            COMBO_WAIT_WINDOW_MS_EXTRA,
             Kind.Number(
                 GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
                 GlobalConfig.COMBO_WINDOW_MIN_MS,
@@ -662,17 +668,31 @@ object ConfigFields {
             ),
         )
 
-    /**
-     * **固定窗口起点下那一整串的窗口**（`GlobalConfig.comboFixedWindowMs`，毫秒）。
-     *
-     *  与 [F_COMBO_WINDOW_MS] 同一列、同一个区间：判定也在注入侧（`Config.comboSpanFor` 的第一支）。
-     *  两笔账分开的理由见 `ComboKey.fixedWindowMs` —— 那一份量相邻两颗，这一份量整串。
-     */
-    val F_COMBO_FIXED_WINDOW_MS =
+    val F_COMBO_WAIT_PAIR_MS =
         Field(
-            COMBO_FIXED_WINDOW_MS_EXTRA,
+            COMBO_WAIT_PAIR_MS_EXTRA,
             Kind.Number(
-                GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_MS,
+                GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                GlobalConfig.COMBO_WINDOW_MIN_MS,
+                GlobalConfig.COMBO_WINDOW_MAX_MS,
+            ),
+        )
+
+    val F_COMBO_HOLD_WINDOW_MS =
+        Field(
+            COMBO_HOLD_WINDOW_MS_EXTRA,
+            Kind.Number(
+                GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                GlobalConfig.COMBO_WINDOW_MIN_MS,
+                GlobalConfig.COMBO_WINDOW_MAX_MS,
+            ),
+        )
+
+    val F_COMBO_HOLD_FOLLOWER_MS =
+        Field(
+            COMBO_HOLD_FOLLOWER_MS_EXTRA,
+            Kind.Number(
+                GlobalConfig.DEFAULT_COMBO_HOLD_FOLLOWER_MS,
                 GlobalConfig.COMBO_WINDOW_MIN_MS,
                 GlobalConfig.COMBO_WINDOW_MAX_MS,
             ),
@@ -726,11 +746,20 @@ object ConfigFields {
      * 等待组合的**固定窗口起点**（`GlobalConfig.comboFixedWindowStart`）。
      *
      *  **走广播**（[COMBO_FIXED_WINDOW_START_EXTRA]）：判据在注入侧 —— `ComboDetector` 判
-     *  窗口起点时要读这一位，而注入侧读不到配置文件、只吃广播。与 [F_COMBO_STARTER_KEEP_LONG]
-     *  同一类坑：写成 `Field(null, …)` 就是「界面能配、判定侧永远读默认值」。
+     *  窗口起点时要读这一位，而注入侧读不到配置文件、只吃广播。
      */
     val F_COMBO_FIXED_WINDOW_START =
         Field(COMBO_FIXED_WINDOW_START_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START))
+
+    /**
+     * 按住组合的**固定窗口起点**（`GlobalConfig.comboHoldFixedWindowStart`）。
+     *
+     *  **走广播**（[COMBO_HOLD_FIXED_WINDOW_START_EXTRA]）：`ComboDetector` 判按住档的成员接收窗口时
+     *  读这一位，而注入侧读不到配置文件。少了它，注入侧那一位永远停在默认 `false` ⇒
+     *  「按住组合」卡上那颗开关拨了没反应（而等待组合那颗照常生效，更难看出是哪一半没接上）。
+     */
+    val F_COMBO_HOLD_FIXED_WINDOW_START =
+        Field(COMBO_HOLD_FIXED_WINDOW_START_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START))
 
     /**
      * 页面缩放（百分比）—— 同样只有落盘那一列。上下限就是滑杆两端（[GlobalConfig.PAGE_SCALE_MIN]
@@ -791,6 +820,16 @@ object ConfigFields {
      */
     val F_GLOBAL_PREDICTIVE_BACK = Field(null, Kind.Bool(true))
 
+    /**
+     * **显示更详细的按键设置**（`GlobalConfig.detailedKeySettings`）—— 按键设置页收不收全部参数。
+     *
+     *  与 [F_GLOBAL_UI_VIBRATE] 同一档：只落盘、不进广播。它只管**页面画多少行**，
+     *  判定与执行一个字都不读它，注入侧也就没有必要知道。
+     *
+     *  默认关：先按「常用项」这一档给最省事的界面；要细调的人自己打开。
+     */
+    val F_GLOBAL_DETAILED_KEY_SETTINGS = Field(null, Kind.Bool(false))
+
     /** `GlobalConfig` 的全部广播字段。 */
     val GLOBAL_FIELDS: List<Field> =
         listOf(
@@ -803,16 +842,20 @@ object ConfigFields {
             F_THEME,
             F_COLOR_OS_API,
             F_MINI_WINDOW_ANIM,
-            F_COMBO_WINDOW_MS,
-            F_COMBO_FIXED_WINDOW_MS,
+            F_COMBO_WAIT_WINDOW_MS,
+            F_COMBO_WAIT_PAIR_MS,
+            F_COMBO_HOLD_WINDOW_MS,
+            F_COMBO_HOLD_FOLLOWER_MS,
             F_COMBO_HOLD_MIN_MS,
             F_COMBO_SCENE_ON_STARTER,
             F_COMBO_STARTER_KEEP_LONG,
             F_COMBO_FIXED_WINDOW_START,
+            F_COMBO_HOLD_FIXED_WINDOW_START,
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
             F_ICON_TINT_SEED,
             F_SHOW_COMMON_COMMANDS,
+            F_GLOBAL_DETAILED_KEY_SETTINGS,
         )
 
     // ── `Config` 自己那两位（正文顶层、都只落盘，不进广播）

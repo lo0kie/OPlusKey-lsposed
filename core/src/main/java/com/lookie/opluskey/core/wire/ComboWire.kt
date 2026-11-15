@@ -85,23 +85,20 @@ object ComboWire {
         /** 松手那一档的动作 token。 */
         val longRelease: String = Action.NONE,
         /**
-         * 这一组自己的「按键之间的等待」（毫秒）；`0` = 跟随公共设置。
+         * 这一组自己的**四格窗口**（毫秒，等待 / 按住 × 固定窗口起点 开 / 关）；`0` = 跟随公共设置。
          *
-         *  注入侧判定组合时读的就是它 —— 不带的话每组只能等公共那一档，
+         *  注入侧判定组合时读的就是它们 —— 不带的话每组只能等公共那几格，
          *  而界面上又能给每组各设一份（一半接线）。
          */
-        val windowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
+        val waitWindowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
+        val waitPairMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
+        val holdWindowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
+        val holdFollowerMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
         /**
-         * 这一组在**固定窗口起点**下的整串窗口（毫秒）；`0` = 跟随公共设置。
+         * **这一组开没开「使用独立设置」** —— 少了它，上面那四格等于白带。
          *
-         *  与 [windowMs] 分开带：判定侧 `Config.comboSpanFor` 在固定窗口起点那一支读的是这一位。
-         */
-        val fixedWindowMs: Int = ComboKey.FIXED_WINDOW_FOLLOW_GLOBAL,
-        /**
-         * **这一组开没开「使用独立设置」** —— 少了它，上面那个 `windowMs` 等于白带。
-         *
-         *  `Config.comboWindowFor` 的第一句就是「独立设置关着就整份看公共」，
-         *  而这个函数**跑在注入侧**（`ConfigChannel.windowFor`）。它解出来的
+         *  `Config.comboWindowsFor` 的第一句就是「独立设置关着就整份看公共」，
+         *  而这个函数**跑在注入侧**（`ConfigChannel.windowsFor`）。它解出来的
          *  [ComboKey] 一旦缺这一位就走默认 `false` ⇒ 每组自己的窗口被忽略
          *  （真机症状：「独立的组合等待怎么调都没作用」）。
          */
@@ -151,6 +148,13 @@ object ComboWire {
          *  而界面上又能给每档各设一份。三态必须原样带过去：`null` 是「跟随公共」，不是 `false`。
          */
         val fixedWindowStart: Boolean? = null,
+        /**
+         * 按住档的**固定窗口起点**（`ComboKey.holdFixedWindowStart`，`null` = 跟随公共设置）。
+         *
+         *  与上面那一位是**两个变量**（两张卡各管一种按法）。同样三态原样带 ——
+         *  `null` 是「跟随公共」，不是 `false`。
+         */
+        val holdFixedWindowStart: Boolean? = null,
     )
 
     /**
@@ -293,8 +297,10 @@ object ComboWire {
             longFireOnRelease = combo.longFireOnRelease,
             longReleaseOn = combo.longReleaseOn,
             longRelease = combo.longRelease.token,
-            windowMs = combo.windowMs,
-            fixedWindowMs = combo.fixedWindowMs,
+            waitWindowMs = combo.waitWindowMs,
+            waitPairMs = combo.waitPairMs,
+            holdWindowMs = combo.holdWindowMs,
+            holdFollowerMs = combo.holdFollowerMs,
             useOwnSettings = combo.useOwnSettings,
             mode = combo.mode,
             holdMinMs = combo.holdMinMs,
@@ -302,6 +308,7 @@ object ComboWire {
             starterKeepLong = combo.starterKeepLong,
             ordered = combo.ordered,
             fixedWindowStart = combo.fixedWindowStart,
+            holdFixedWindowStart = combo.holdFixedWindowStart,
         )
 
     /**
@@ -328,17 +335,13 @@ object ComboWire {
             longFireOnRelease = longFireOnRelease,
             longReleaseOn = longReleaseOn,
             longRelease = Action.parse(longRelease),
-            //  0 = 跟随公共设置，原样留着；设过的钳进那一档区间（老版本 / 手改的越界值在这里收口）
-            windowMs = if (windowMs <= 0) ComboKey.WINDOW_FOLLOW_GLOBAL else clampWindow(windowMs),
-            //  同上：0 是「跟随公共」
-            fixedWindowMs =
-                if (fixedWindowMs <= 0) {
-                    ComboKey.FIXED_WINDOW_FOLLOW_GLOBAL
-                } else {
-                    clampWindow(fixedWindowMs)
-                },
-            //  「这一组开了独立设置」—— 与 `windowMs` 是一组：
-            //  少了这一位，上面那个窗口在判定侧永远算不出来（见 `WireCombo` 里那段说明）
+            //  四格窗口：0 = 跟随公共设置，原样留着；设过的钳进那一档区间（手改的越界值在这里收口）
+            waitWindowMs = clampFollow(waitWindowMs),
+            waitPairMs = clampFollow(waitPairMs),
+            holdWindowMs = clampFollow(holdWindowMs),
+            holdFollowerMs = clampFollow(holdFollowerMs),
+            //  「这一组开了独立设置」—— 与上面那四格是一组：
+            //  少了这一位，四格窗口在判定侧永远算不出来（见 `WireCombo` 里那段说明）
             useOwnSettings = useOwnSettings,
             //  触发方式：认不出的取值退回窗口那条，三颗及以上的按住由 `modeFor` 挡回去
             mode = ComboKey.modeFor(mode, members.size),
@@ -350,12 +353,16 @@ object ComboWire {
             starterKeepLong = starterKeepLong,
             ordered = ordered,
             fixedWindowStart = fixedWindowStart,
+            holdFixedWindowStart = holdFixedWindowStart,
         )
     }
 
+    /** 四格窗口里的某一格：`0` 原样留着（= 跟随公共），设过的钳进字段表那一档。 */
+    private fun clampFollow(value: Int): Int = if (value <= 0) ComboKey.WINDOW_FOLLOW_GLOBAL else clampWindow(value)
+
     /** 按键间隔钳进字段表那一档（与公共那份同一个区间，上下限只写一次）。 */
     private fun clampWindow(value: Int): Int {
-        val kind = ConfigFields.F_COMBO_WINDOW_MS.kind as? ConfigFields.Kind.Number ?: return value
+        val kind = ConfigFields.F_COMBO_WAIT_WINDOW_MS.kind as? ConfigFields.Kind.Number ?: return value
         return value.coerceIn(kind.min, kind.max)
     }
 

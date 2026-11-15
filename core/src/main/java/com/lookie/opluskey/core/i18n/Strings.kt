@@ -553,6 +553,15 @@ object Strings {
     const val COMBO_DUPLICATE = "combo.duplicate"
 
     /**
+     * 选键窗里「这一组键的顺序已经一个不剩」—— 「添加」按钮置灰时说的原因。
+     *
+     *  说的是**用户此刻想加的那一项**（不分顺序）为什么加不进：顺序已经满了，它覆盖所有按法，
+     *  自然也没有位置。与 [COMBO_ORDER_ANY_BLOCKED] 分开：那句用在顺序选择器里
+     *  （只加过其中几种顺序时，那一行就已经点不动了）。
+     */
+    const val COMBO_ORDER_ALL_BLOCKED = "combo.order_all_blocked"
+
+    /**
      * 选键弹窗里「颗数不对」那几句（格式：颗数）—— 勾满上限再点下一颗时、以及写入口兜底时显示。
      *
      *  **上限按类分两条**（用户口径）：等待组合 2~3 颗，按住组合只有 2 颗（两种顺序各算一档，
@@ -594,13 +603,17 @@ object Strings {
     const val COMBO_FIXED_WINDOW_START_DESC_OFF = "combo.fixed_window_start_desc_off"
 
     /**
-     * 「固定窗口长度」滑杆（紧接上面那颗开关）—— 开了固定窗口起点之后，整串等多久。
+     * 「等待窗口」滑杆（紧接上面那颗开关）—— 这一档等多久。
      *
-     *  与上面那根「按键之间的等待」是两笔账：那一根量相邻两颗、逐次重置时整串会被放大；
-     *  这一根量的是**整串**（从首个成员按下起，只等这一个窗口）。
+     *  滑杆上挂的是**两格数**（`ComboWindows.wait` / `waitPair`），显示与写入都按那颗开关挑一格：
+     *  开着时管**整串**（从首个成员按下起只等这一个窗口，[COMBO_FIXED_WINDOW_DESC]），
+     *  关着时管**相邻两颗**（每按一颗重新等，[COMBO_FIXED_WINDOW_DESC_OFF]）。
+     *  原先这里还有一根「按键之间的等待」量相邻两颗 —— 那本来是同一件事的第二个旋钮，已删；
+     *  现在它是「关」的那一格，随开关露面。
      */
     const val COMBO_FIXED_WINDOW_TITLE = "combo.fixed_window_title"
     const val COMBO_FIXED_WINDOW_DESC = "combo.fixed_window_desc"
+    const val COMBO_FIXED_WINDOW_DESC_OFF = "combo.fixed_window_desc_off"
 
     /**
      * 「按顺序触发」开关（标题 + 开/关两句说明）—— 等待组合是否要求成员按选键的顺序先后按下。
@@ -617,6 +630,15 @@ object Strings {
 
     /** 顺序选择器里「已有不分顺序、所以其它顺序都加不了」时的提示。 */
     const val COMBO_ORDER_ANY_TAKEN = "combo.order_any_taken"
+
+    /**
+     * 顺序选择器里「已经有一档按顺序的组合、所以『不分顺序』那一行点不动」时的提示。
+     *
+     *  与 [COMBO_ORDER_ANY_TAKEN] 是**相反的两个方向**：「不分顺序」覆盖所有按法，
+     *  两个方向都会与对方重叠，所以谁先立住谁就挡住对面。用同一句「这组按键已经添加过了」
+     *  说这件事是把「加过一档有序组合」说成「这一项加过」—— 用户点的正是那一行，读起来像坏了。
+     */
+    const val COMBO_ORDER_ANY_BLOCKED = "combo.order_any_blocked"
 
     /**
      * 「首键要先按住多久」那一行（滑杆标题 + 一句说明）—— **按住手势的下限**。
@@ -692,11 +714,14 @@ object Strings {
     const val COMBO_ONLY_BLOCKED_TAIL = "combo.combo_only_blocked_tail"
     const val COMBO_ONLY_BLOCKED_ACTION = "combo.combo_only_blocked_action"
 
-    /** 组合键：按键之间的等待（两颗键按下最多隔多久才算一起按下）。 */
+    /** 组合键：等待组合的「等待窗口」（滑杆标题，与按住组合那张卡同名同一句）。 */
     const val COMBO_WINDOW_TITLE = "combo.window_title"
 
-    /** 组合键：等待时间的副标题（提示调大会带来额外的等待）。 */
+    /** 组合键：等待窗口的副标题（固定窗口起点**关**：相邻两颗之间最多隔多久）。 */
     const val COMBO_WINDOW_DESC = "combo.window_desc"
+
+    /** 组合键：等待窗口的副标题（固定窗口起点**开**：整串共用一个窗口）。 */
+    const val COMBO_WINDOW_DESC_FIXED = "combo.window_desc_fixed"
 
     /** 灵感语音 —— 菜单里那一行（点开再选开始 / 结束）。 */
     const val CATALOG_VOICE_MEMORY = "catalog.voice_memory"
@@ -1717,6 +1742,15 @@ object Strings {
     const val MORE_PREDICTIVE_BACK_TITLE = "more.predictive_back_title"
     const val MORE_PREDICTIVE_BACK_ON = "more.predictive_back_on"
     const val MORE_PREDICTIVE_BACK_OFF = "more.predictive_back_off"
+
+    /**
+     * 「显示更详细的按键设置」那一行（配置卡第一行）—— 按键设置页收不收全部参数。
+     *
+     *  纯显示项：副标题只回答「多出什么 / 少掉什么」，不解释机制。
+     */
+    const val MORE_DETAILED_KEY_SETTINGS_TITLE = "more.detailed_key_settings_title"
+    const val MORE_DETAILED_KEY_SETTINGS_ON = "more.detailed_key_settings_on"
+    const val MORE_DETAILED_KEY_SETTINGS_OFF = "more.detailed_key_settings_off"
 
     const val MORE_THEME_AUTO = "more.theme_auto"
 

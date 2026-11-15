@@ -9,11 +9,11 @@ package com.lookie.opluskey.core.model
  *  （`ComboDetector.pairFor`），3 颗起走多成员凑齐（`multiFor`），两条路都读这份计划。
  *
  *  @param keys 成员（**集合语义**：顺序不是身份，见 `ComboKey` 的类注释）
- *  @param collectMs **相邻**两颗成员的按下时刻最多相差多久 —— 这一档自己的那一个
- *    （`Config.comboWindowFor`：设过就用它，没设就是公共那份 `GlobalConfig.comboWindowMs`），
- *    两颗与多成员走同一个数。判「凑没凑齐」时按成员数放大成整串的跨度：
- *    n 颗 ⇒ `collectMs × (n-1)`（`Config.comboSpanFor`，判定器与镜像同一口径）——
- *    三颗也按「第一颗到第三颗只隔一个窗口」判的话，手指根本按不出来。
+ *  @param spanMs 这一档**整串**的容忍跨度（最早那一颗到最后一颗）—— 已经按成员数与
+ *    「固定窗口起点」展开过，判「凑没凑齐」直接用这一个数（`Config.comboSpanFor`：
+ *    开着就是 `wait` 那一格，关着是 `waitPair × (n-1)`）。
+ *    为什么不存「相邻两颗隔多久」：那样判定侧与镜像都得再乘一次成员数，而**开着固定窗口起点时
+ *    整串只给一个窗口**，乘法表达不了 —— 一个数在两个地方各自展开，口径迟早会分家。
  *  @param longPressMs 凑齐之后一起按住多久算长按（这一档自己的值，不取某个成员键的）
  *  @param mode 这一档的触发方式（`ComboKey.MODE_*`）—— 判定侧按它选判据，日志按它说清
  *    「按住哪一颗才算」；解析时已经由 `ComboKey.modeFor` 夹过（三颗及以上只会是窗口那条），
@@ -22,7 +22,7 @@ package com.lookie.opluskey.core.model
 data class ComboPlan(
     val id: String,
     val keys: Set<String>,
-    val collectMs: Int,
+    val spanMs: Int,
     val longPressMs: Int,
     val mode: Int,
 ) {
@@ -32,20 +32,20 @@ data class ComboPlan(
     /** 判据行：一眼看出「这一档要几颗、怎么触发、等多久」。 */
     override fun toString(): String =
         "$id：${keys.size} 颗（${keys.sorted().joinToString("+")}）/ " +
-            "${if (mode == ComboKey.MODE_WAIT) "等窗口" else "先按住第 $mode 颗"} / 窗口 ${collectMs}ms" +
+            "${if (mode == ComboKey.MODE_WAIT) "等窗口" else "先按住第 $mode 颗"} / 跨度 ${spanMs}ms" +
             " / 长按 ${longPressMs}ms"
 }
 
 /**
  * 一档组合 → 判定计划（**只读投影**，不改配置、不影响当前判定）。
  *
- *  @param collectMs 由调用方给：`Config.comboWindowFor`（这一档自己的，没设就是公共那一档）。
+ *  @param spanMs 由调用方给：`Config.comboSpanFor`（这一档自己的整串跨度）。
  */
-fun ComboKey.plan(collectMs: Int): ComboPlan =
+fun ComboKey.plan(spanMs: Int): ComboPlan =
     ComboPlan(
         id = id,
         keys = keys.toSet(),
-        collectMs = collectMs,
+        spanMs = spanMs,
         longPressMs = longPressMs,
         mode = mode,
     )
@@ -59,4 +59,4 @@ fun ComboKey.plan(collectMs: Int): ComboPlan =
  *  成员数不影响能不能判：手改文件写进来的三颗组合也在表里、也是 `judgeable`，
  *  判定侧（`ComboDetector` 的多成员路径）直接照它凑。
  */
-fun Config.comboPlans(): List<ComboPlan> = liveCombos().map { it.plan(comboWindowFor(it)) }
+fun Config.comboPlans(): List<ComboPlan> = liveCombos().map { it.plan(comboSpanFor(it)) }

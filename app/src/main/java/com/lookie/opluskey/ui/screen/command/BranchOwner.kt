@@ -95,12 +95,19 @@ internal fun SettingsPage.openSceneBinding(
  *  判据与 `blockGestures()` 同一条：两处各写一遍迟早出现「带子上有五档、翻到第五页是空的」。
  *
  *  **这一位是「一块有几档」的唯一来源**：场景页的动作行（`RuleActionRows`）与「场景动作」页的
- *  手势带都按它排。清单本身在 core（`GestureTrigger.slotsOn` / `COMBO_SLOTS`），
+ *  手势带都按它排。清单本身在 core（`GestureTrigger.slotsOn` / `comboSlots`），
  *  于是「再加一档」只改那一个列表 —— 界面这一层不再有第二份档位清单。
  */
 internal fun SettingsPage.sceneGesturePages(): List<GestureTrigger> {
     val comboId = branchDraft.comboId
-    if (comboId != null) return GestureTrigger.COMBO_SLOTS
+    if (comboId != null) {
+        //  长按那一档按**这一组**自己的判据收口（`ComboKey.hasLong`）：按顺序触发的那一档没有长按，
+        //  这里多摆一行，写进去的动作永远不会命中。
+        val combo =
+            configState.config.value.combos
+                .firstOrNull { it.id == comboId }
+        return GestureTrigger.comboSlots(combo?.hasLong ?: true)
+    }
     //  键那一支读**在编那颗键**的开关：与「按键绑定」页同一个判据，两页的档数才不会一页三一页六
     val key = configState.config.value.key(branchKeyNow())
     return GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn, key.doubleClickOn)

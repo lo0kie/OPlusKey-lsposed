@@ -34,6 +34,7 @@ import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.state.page.deviceModel
 import com.lookie.opluskey.ui.state.page.deviceSupport
 import com.lookie.opluskey.ui.wire.linkChecks
+import com.lookie.opluskey.ui.write.setDetailedKeySettings
 import com.lookie.opluskey.ui.write.setFollowDisplaySize
 import com.lookie.opluskey.ui.write.setPageScale
 import com.lookie.opluskey.ui.write.setPredictiveBack
@@ -222,6 +223,17 @@ internal fun SettingsPage.ConfigCard(
     CardList(
         rows =
             listOf(
+                // 第 1 行：显示更详细的按键设置 —— 按键页收不收全部参数。
+                //  **这一位还没有读取方**（先把配置键跑通）：拨完只有回执，按键页暂时不变。
+                //  与「外观」那几行同一类（页面怎么画），所以不吃总闸。
+                CardRow.Switch(
+                    title = I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_TITLE, "显示更详细的按键设置"),
+                    summaryOn = I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_ON, "按键页显示全部参数"),
+                    summaryOff = I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_OFF, "按键页只显示常用参数"),
+                    icon = PageIcons.DetailedKeySettings,
+                    checked = configState.config.value.global.detailedKeySettings,
+                    onCheckedChange = { setDetailedKeySettings(it) },
+                ),
                 // 「语言」：点开的是一层菜单，行尾给选择器字形（不是右箭头）
                 CardRow.Item(
                     title = I18n.get(Strings.MORE_LANGUAGE, "语言"),

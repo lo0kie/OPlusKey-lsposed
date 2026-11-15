@@ -122,7 +122,6 @@ internal class SideKeyInterceptor(
             bindingsFor = { keys -> ConfigChannel.combosFor(keys) },
             //  扫的时候按最宽的那一档扫，命中后由「那一组自己的窗口」复核（见 `ComboDetector`）
             windowMs = { ConfigChannel.scanWindowMs() },
-            windowFor = { combo -> ConfigChannel.windowFor(combo) },
             //  按住那两档的下限：起点键必须按满这么久、且还没抬手，另一颗落下才算这一档组合
             //  （「一起按」只归窗口那条）
             holdMinFor = { combo -> ConfigChannel.holdMinFor(combo) },
@@ -159,10 +158,13 @@ internal class SideKeyInterceptor(
                     enabled = { c -> ConfigChannel.config.comboStarterKeepLongFor(c) },
                     fire = onStarterLong,
                 )
-            //  按住档成员的「固定窗口起点」—— 判据在 `Config.comboFixedWindowStartFor` 一处
-            fixedWindowStartFor = { c -> ConfigChannel.config.comboFixedWindowStartFor(c) }
-            //  开了固定窗口起点之后，成员接收窗口用这一档的「固定窗口长度」而不是写死的 150ms
-            fixedWindowFor = { c -> ConfigChannel.fixedWindowFor(c) }
+            //  按住档成员的「固定窗口起点」—— 判据在 `Config.comboHoldFixedWindowStartFor` 一处。
+            //  **这一位与等待组合那颗开关是两个变量**：两张卡各管一种按法，共用一个的话
+            //  在「按住组合」卡上拨一下，等待组合那根滑杆也会跟着换一格。
+            fixedWindowStartFor = { c -> ConfigChannel.config.comboHoldFixedWindowStartFor(c) }
+            //  这一档的四格窗口（等待 / 按住 × 固定窗口起点 开 / 关）—— 取值只在
+            //  `Config.comboWindowsFor` 一处，这里只把那一份递进去
+            windowsFor = { c -> ConfigChannel.windowsFor(c) }
         }
 
     /**

@@ -126,8 +126,8 @@ internal fun comboAllModesTaken(
  *  与 [usedComboStarters] 同源、分两个函数：一类一档、一类按成员各一档，
  *  合成一个「返回集合」的接口反而要在调用点各拆一次。
  *
- *  加入「按顺序触发」之后，同一批成员可以有**多档有序**等待组合（AB / BA / ABC / ACB …），
- *  所以「在不在」只看「有没有一档」，具体哪一档由 [orderedWaitTaken] / [unorderedWaitTaken] 再分。
+ *  **选键窗的「添加」按它置灰**：同一组按键只能有一档等待组合 —— 顺序是下一步挑的，
+ *  但集合重了就是覆盖冲突（判定侧只取配置里靠前那个）。
  */
 internal fun waitTaken(
     cfg: Config,
@@ -138,8 +138,8 @@ internal fun waitTaken(
 }
 
 /**
- * 这一组键的**不分顺序**等待档在不在 —— 它覆盖所有按法，所以只要它存在，任何同集合的
- * 其它顺序（含有序）都排不下（用户口径「已添加不分顺序则无法添加其他顺序」）。
+ * 这一组键的**不分顺序**等待档在不在 —— 判它的是写入那一侧的去重（`writeNewCombo`），
+ *  「已有不分顺序就不该再收一个有序的」。
  */
 internal fun unorderedWaitTaken(
     cfg: Config,
@@ -152,7 +152,7 @@ internal fun unorderedWaitTaken(
 /**
  * 这一组键里**顺序 = [orderedIds]** 的有序等待档在不在 —— [orderedIds] 就是「按下的先后」。
  *
- *  判等看**键序**（不是集合）：AB 与 BA 是两档不同的有序档，各自可加一次。
+ *  判等看**键序**（不是集合）：AB 与 BA 是两档不同的有序档。
  */
 internal fun orderedWaitTaken(
     cfg: Config,
@@ -160,10 +160,10 @@ internal fun orderedWaitTaken(
 ): Boolean = cfg.combos.any { it.isWait && it.ordered && it.keys == orderedIds }
 
 /**
- * 这一组键里**已经当过的有序等待顺序** —— 顺序选择器据此把用不上的那几行置灰。
+ * 这一组键里**已经加过的有序等待顺序** —— 数量与 n! 比就知道顺序空间满没满。
  *
  *  返回的是**键序集合**（每一档有序等待的 `keys` 就是一个顺序），同一顺序只能有一档。
- *  不分顺序那档不在其中（它由 [unorderedWaitTaken] 单独判 —— 它一出现，其它顺序全禁用）。
+ *  不分顺序那档不在其中（它由 [unorderedWaitTaken] 单独判 —— 它一出现，其它顺序全用不上）。
  */
 internal fun usedWaitOrders(
     cfg: Config,
@@ -639,88 +639,105 @@ internal fun SettingsPage.updateCombo(
 }
 
 /**
- * 写「按键之间的等待」（毫秒）—— 两颗键按下最多隔多久才算一起按下。
+ * 写**公共那一格**窗口（毫秒）—— 四支写函数（等待 / 按住 × 起点开 / 关）共用的形状。
  *
  *  这一位**改的是注入侧的手感**，所以走通用写入通道（落盘 + 广播 + 重问注入侧），
  *  与别的全局项同一条路。返回「写盘成没成」：滑杆失败时要拨回原值（见 `SliderRow` 的 `commit`）。
- */
-internal fun SettingsPage.setComboWindow(ms: Int): Boolean {
-    val cfg = configState.config.value
-    val value = ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, GlobalConfig.COMBO_WINDOW_MAX_MS)
-    if (cfg.global.comboWindowMs == value) return true
-    return write(cfg.copy(global = cfg.global.copy(comboWindowMs = value)), "combo_window_ms=$value") != CommandsSave.Failed
-}
-
-/**
- * 写「固定窗口起点下的整串窗口」（毫秒）—— 公共那一档。
  *
- *  与 [setComboWindow] 同一条路（落盘 + 广播 + 重问注入侧）：判定在注入侧
- *  （`Config.comboSpanFor` 的第一支）。返回「写盘成没成」，滑杆失败要拨回原值。
+ * @param what 写盘说明里那一段（`wait_pair_ms` 这种）
+ * @param change 把这一格换掉 —— 四支各自只写自己那一格，别的一格不动
  */
-internal fun SettingsPage.setComboFixedWindow(ms: Int): Boolean {
-    val cfg = configState.config.value
-    val value = ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, GlobalConfig.COMBO_WINDOW_MAX_MS)
-    if (cfg.global.comboFixedWindowMs == value) return true
-    return write(cfg.copy(global = cfg.global.copy(comboFixedWindowMs = value)), "combo_fixed_window_ms=$value") !=
-        CommandsSave.Failed
-}
-
-/**
- * 写**这一组自己**的固定窗口长度（毫秒）—— 与 [setComboOwnWindow] 同一个形状。
- *
- *  `0` 同样只服务**老配置**与手改文件（界面滑杆的下限是 [GlobalConfig.COMBO_WINDOW_MIN_MS]）。
- */
-internal fun SettingsPage.setComboOwnFixedWindow(
-    id: String,
+private fun SettingsPage.setComboPublicWindow(
+    what: String,
     ms: Int,
-): Boolean =
-    updateCombo(id, "fixed_window_ms=$ms") { combo ->
-        val value =
-            if (ms <= 0) {
-                ComboKey.FIXED_WINDOW_FOLLOW_GLOBAL
-            } else {
-                ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, GlobalConfig.COMBO_WINDOW_MAX_MS)
-            }
-        combo.copy(fixedWindowMs = value)
-    }
+    change: (GlobalConfig, Int) -> GlobalConfig,
+): Boolean {
+    val cfg = configState.config.value
+    val value = ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, GlobalConfig.COMBO_WINDOW_MAX_MS)
+    val next = change(cfg.global, value)
+    if (next == cfg.global) return true
+    return write(cfg.copy(global = next), "combo_$what=$value") != CommandsSave.Failed
+}
+
+/** 公共：等待组合、**固定窗口起点开** —— 从首个成员按下起，整串共用一个窗口。 */
+internal fun SettingsPage.setComboWaitWindow(ms: Int): Boolean =
+    setComboPublicWindow("wait_window_ms", ms) { g, v -> g.copy(comboWaitWindowMs = v) }
+
+/** 公共：等待组合、**固定窗口起点关** —— 相邻两颗之间最多隔多久（n 颗整串 = 它 × (n-1)）。 */
+internal fun SettingsPage.setComboWaitPair(ms: Int): Boolean =
+    setComboPublicWindow("wait_pair_ms", ms) { g, v -> g.copy(comboWaitPairMs = v) }
+
+/** 公共：按住组合、**固定窗口起点开** —— 后续成员要在首个成员按下后的这个窗口内落完。 */
+internal fun SettingsPage.setComboHoldWindow(ms: Int): Boolean =
+    setComboPublicWindow("hold_window_ms", ms) { g, v -> g.copy(comboHoldWindowMs = v) }
+
+/** 公共：按住组合、**固定窗口起点关** —— 后续成员相继落下，彼此相差不超过这个窗口。 */
+internal fun SettingsPage.setComboHoldFollower(ms: Int): Boolean =
+    setComboPublicWindow("hold_follower_ms", ms) { g, v -> g.copy(comboHoldFollowerMs = v) }
 
 /**
- * 写**这一组自己**的按键间隔（毫秒）。
+ * 写**这一组自己**的某一格窗口（毫秒）—— 四支写函数共用的形状。
  *
- *  与 [setComboWindow] 不是同一个落点：那个写公共那一档（没单独设过的组都用它），
- *  这个写这一组自己的值 —— 判定侧两处都读（`Config.comboWindowFor`）。
+ *  与 [setComboPublicWindow] 不是同一个落点：那个写公共那一档（没单独设过的组都用它），
+ *  这个写这一组自己的那一格 —— 判定侧四格都读（`Config.comboWindowsFor`）。
  *
  * ## 「回到跟随公共」不是这一条路
  *
  *  那个状态的入口只有一个：**关掉这一组的「使用独立设置」**
- *  （`Config.comboWindowFor` 的第一支：关着就整份看公共）。开着独立设置时不存在「跟随」——
+ *  （`Config.comboWindowsFor` 的第一支：关着就整份看公共）。开着独立设置时不存在「跟随」——
  *  打开那一刻已经把公共值播进这一组了（见 `KeySettingsScreen.withSeededComboFields`），
- *  之后改公共它一项都不动；关掉再打开用的还是这一组上次那套。
+ *  之后改公共它一格都不动；关掉再打开用的还是这一组上次那套。
  *
  *  所以下面 `ms <= 0` 那一支**界面上到不了**：滑杆的下限是
  *  [GlobalConfig.COMBO_WINDOW_MIN_MS]（20ms）。它留着是因为**老配置**里可能已经是
  *  [ComboKey.WINDOW_FOLLOW_GLOBAL]（这一位出现之前写下的 0），读取侧的 `?: global` 靠它兜底；
  *  手改配置文件写 0 也照样表达「跟随」。
  */
-internal fun SettingsPage.setComboOwnWindow(
+private fun SettingsPage.setComboOwnWindow(
     id: String,
+    what: String,
     ms: Int,
+    change: (ComboKey, Int) -> ComboKey,
 ): Boolean =
-    updateCombo(id, "window_ms=$ms") { combo ->
+    updateCombo(id, "$what=$ms") { combo ->
         val value =
             if (ms <= 0) {
                 ComboKey.WINDOW_FOLLOW_GLOBAL
             } else {
                 ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, GlobalConfig.COMBO_WINDOW_MAX_MS)
             }
-        combo.copy(windowMs = value)
+        change(combo, value)
     }
+
+/** 这一组自己的「等待组合、起点开」那一格 —— 见 [setComboOwnWindow]。 */
+internal fun SettingsPage.setComboOwnWaitWindow(
+    id: String,
+    ms: Int,
+): Boolean = setComboOwnWindow(id, "wait_window_ms", ms) { c, v -> c.copy(waitWindowMs = v) }
+
+/** 这一组自己的「等待组合、起点关」那一格 —— 见 [setComboOwnWindow]。 */
+internal fun SettingsPage.setComboOwnWaitPair(
+    id: String,
+    ms: Int,
+): Boolean = setComboOwnWindow(id, "wait_pair_ms", ms) { c, v -> c.copy(waitPairMs = v) }
+
+/** 这一组自己的「按住组合、起点开」那一格 —— 见 [setComboOwnWindow]。 */
+internal fun SettingsPage.setComboOwnHoldWindow(
+    id: String,
+    ms: Int,
+): Boolean = setComboOwnWindow(id, "hold_window_ms", ms) { c, v -> c.copy(holdWindowMs = v) }
+
+/** 这一组自己的「按住组合、起点关」那一格 —— 见 [setComboOwnWindow]。 */
+internal fun SettingsPage.setComboOwnHoldFollower(
+    id: String,
+    ms: Int,
+): Boolean = setComboOwnWindow(id, "hold_follower_ms", ms) { c, v -> c.copy(holdFollowerMs = v) }
 
 /**
  * 写**这一组自己**的「首键要先按住多久」（毫秒）—— 按住手势的下限。
  *
- *  与 [setComboOwnWindow] 同一个形状：那个写这一组的按键间隔，这个写这一组的按住下限，
- *  判定侧都只读 `Config` 那两处（`comboHoldMinFor` / `comboWindowFor`）。
+ * 与 [setComboOwnWindow] 同一个形状：那些写这一组的四格窗口，这个写这一组的按住下限，
+ *  判定侧都只读 `Config` 那两处（`comboHoldMinFor` / `comboWindowsFor`）。
  *  `0` 同样只服务**老配置**与手改文件（界面滑杆的下限是 40ms）。
  */
 internal fun SettingsPage.setComboOwnHoldMin(

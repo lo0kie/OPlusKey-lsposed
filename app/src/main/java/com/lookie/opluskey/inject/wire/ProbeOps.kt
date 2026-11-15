@@ -424,7 +424,9 @@ internal fun ProbeChannel.combo() {
         ComboPlan(
             id = id,
             keys = keys.toSet(),
-            collectMs = 300,
+            //  探针按「相邻两颗一个窗口」摆跨度：与 `Config.comboSpanFor` 在
+            //  「固定窗口起点关着」时同一个算法，期望值才好写成人能算的数
+            spanMs = 300 * (keys.size - 1),
             longPressMs = 500,
             //  探针只模拟「等窗口」那一档：其余两档的判据要读按键的按下状态，不是这一层能造的
             mode = ComboKey.MODE_WAIT,

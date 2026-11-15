@@ -167,8 +167,14 @@ internal fun SettingsPage.setComboStarterKeepLong(on: Boolean) {
 }
 
 /**
- * 切「固定窗口起点」**公共那一档** —— 同一参数还有每组的落点
- * （`ComboKey.fixedWindowStart`，见 `Config.comboFixedWindowStartFor`：独立设置开着时那一组自己说了算）。
+ * 切「固定窗口起点」**公共那一档 —— 等待组合那一侧**（`GlobalConfig.comboFixedWindowStart`）。
+ *
+ *  同一参数还有每组的落点（`ComboKey.fixedWindowStart`，见 `Config.comboFixedWindowStartFor`：
+ *  独立设置开着时那一组自己说了算）。
+ *
+ *  **这一颗只服务等待组合那张卡**：按住组合那张卡的同名开关落的是
+ *  [setComboHoldFixedWindowStart]（`comboHoldFixedWindowStart`），两个变量各存各的
+ *  —— 把其中一种按法的窗口改成「整串共用一个」，另一种不该跟着变。
  *
  *  回执位与其它组合项一致（`HINT_SLOT_COMBO`）。
  */
@@ -184,10 +190,28 @@ internal fun SettingsPage.setComboFixedWindowStart(on: Boolean) {
 }
 
 /**
+ * 切「固定窗口起点」**公共那一档 —— 按住组合那一侧**（`GlobalConfig.comboHoldFixedWindowStart`）。
+ *
+ *  与 [setComboFixedWindowStart] 是**两个变量**（用户口径：正反分别存）：这一颗只影响
+ *  `MODE_HOLD_*` 那两条按法数窗口的方式，等待组合那张卡一格不动。
+ *  判定侧读 `Config.comboHoldFixedWindowStartFor`。
+ */
+internal fun SettingsPage.setComboHoldFixedWindowStart(on: Boolean) {
+    val cfg = configState.config.value
+    writeAndNotice(
+        cfg.copy(global = cfg.global.copy(comboHoldFixedWindowStart = on)),
+        "combo_hold_fixed_window_start=${if (on) 1 else 0}",
+        slot = HINT_SLOT_COMBO,
+    ) {
+        switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE, "固定窗口起点"), on)
+    }
+}
+
+/**
  * 写「首键要先按住多久」（毫秒）**公共那一档** —— 按住手势的下限。
  *
  *  判定在注入侧（`ComboDetector` 的 `holdMinFor`），所以走通用写入通道：落盘 + 广播 + 重问注入侧。
- *  返回「写盘成没成」：滑杆失败时要拨回原值（与「按键之间的等待」那一行同一条）。
+ *  返回「写盘成没成」：滑杆失败时要拨回原值（与「等待窗口」那一行同一条）。
  */
 internal fun SettingsPage.setComboHoldMin(ms: Int): Boolean {
     val cfg = configState.config.value
@@ -319,6 +343,21 @@ internal fun SettingsPage.setToastTemplate(template: String) {
 internal fun SettingsPage.setUiVibrate(on: Boolean) =
     toggleGlobal("ui_vibrate=${if (on) 1 else 0}", I18n.get(Strings.MORE_UI_VIBRATE_TITLE, "界面振动反馈"), on) {
         it.copy(uiVibrate = on)
+    }
+
+/**
+ * 切**显示更详细的按键设置**（`GlobalConfig.detailedKeySettings`）—— 按键设置页收不收全部参数。
+ *
+ *  纯显示项：这一位现在**还没有读取方**（先把配置键跑通），所以拨完只有回执，页面上看不出变化。
+ *  与 [setUiVibrate] 同一档：不吃总闸、不碰链路，落盘就生效。
+ */
+internal fun SettingsPage.setDetailedKeySettings(on: Boolean) =
+    toggleGlobal(
+        "detailed_key_settings=${if (on) 1 else 0}",
+        I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_TITLE, "显示更详细的按键设置"),
+        on,
+    ) {
+        it.copy(detailedKeySettings = on)
     }
 
 /**

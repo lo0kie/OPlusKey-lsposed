@@ -459,15 +459,15 @@ private fun applyOwnSettings(
 /**
  * 组合那几位「这一组独有的参数」**跟着总开关一起播种**。
  *
- *  `OwnSettings` 契约里只有那几项，`windowMs` / `holdMinMs` / `sceneOnStarter` 是 `ComboKey` 独有的，
+ *  `OwnSettings` 契约里只有那几项，四格窗口 / `holdMinMs` / `sceneOnStarter` 是 `ComboKey` 独有的，
  *  所以它们**不在** [OwnSettingsValues] 里 —— 但「打开独立设置」对用户来说是一件事：
  *  这一档从此自己说了算。只播那几项的话，其余几位仍停在「没设过 ⇒ 跟公共」，同一颗开关下就有了
  *  两套语义（那几项已经是自己的值、另几位还在跟随）——「既然都开了独立设置，还跟随公共」正是这个别扭。
  *
  *  播一次之后不再重播（判据 `ownSettingsSeeded`）：关掉总开关仍回到公共
- *  （`Config.comboWindowFor` 的第一支），重新打开用的是上次这一套。
- *  读取侧那几个 `?: global` 兜底留给**老配置**（这一位出现之前写下的 `windowMs = 0` /
- *  `holdMinMs = 0`），新配置不会再落到那一支。
+ *  （`Config.comboWindowsFor` 的第一支），重新打开用的是上次这一套。
+ *  读取侧那几个 `?: global` 兜底留给**老配置**（这一位出现之前写下的 `0` ——
+ *  `ComboKey.WINDOW_FOLLOW_GLOBAL` / `HOLD_MIN_FOLLOW_GLOBAL`），新配置不会再落到那一支。
  *
  * @param values 上面算好的那份独立设置（用它判断「这一次是不是刚打开总开关」）
  * @param before 写之前的这一档 —— 只为看 `ownSettingsSeeded`
@@ -480,24 +480,32 @@ private fun withSeededComboFields(
 ): Config {
     val base = applyOwnSettings(cfg, target, values)
     if (target !is SettingsTarget.Combo || !values.useOwnSettings || before.ownSettingsSeeded) return base
-    //  播的是**这一刻**的公共值：与上面那几项同一个时刻、同一份来源，两边不会错开
-    val windowMs = cfg.global.comboWindowMs
-    //  固定窗口起点下的那一档也一起播：它与上面那个窗口是两笔账（见 `ComboKey.fixedWindowMs`）
-    val fixedWindowMs = cfg.global.comboFixedWindowMs
-    //  按住手势的下限也一起播：它属于「这一档从此自己说了算」那一族，不播就还在跟随公共
-    val holdMinMs = cfg.global.comboHoldMinMs
-    //  「场景在什么时候取」同样属于那一族：不播的话这一位仍是 `null`，
-    //  以后改公共设置还会顺带改到这一档 —— 与「打开独立设置之后整份自己说了算」不符
-    val sceneOnStarter = cfg.global.comboSceneOnStarter
+    //  播的是**这一刻**的公共值：与上面那几项同一个时刻、同一份来源，两边不会错开。
+    //  四格各播一格（等待 / 按住 × 固定窗口起点 开 / 关）：少播一格，那一格就还在「跟随公共」，
+    //  界面上看起来是「独立设置开着、可这一根滑杆拨了不改行为」。
+    //
+    //  **只补空格**（`null` / `0` 才算空）：这一位出现之前写下的老配置里，`useOwnSettings` 可能
+    //  早就开着、`ownSettingsSeeded` 却还是 false —— 那种情况下整份覆盖会把用户早先调好的窗口 /
+    //  按住时长 / 场景时机一起顶回公共值，表现为「拨了一下振动强度，这一组的窗口自己变了」。
+    //  按位补空之后，这个动作只在「这一位确实没设过」时才落笔，重复执行也幂等。
+    val g = cfg.global
     return base.copy(
         combos =
             base.combos.map { c ->
                 if (c.id == target.id) {
                     c.copy(
-                        windowMs = windowMs,
-                        fixedWindowMs = fixedWindowMs,
-                        holdMinMs = holdMinMs,
-                        sceneOnStarter = sceneOnStarter,
+                        waitWindowMs = c.waitWindowMs.takeIf { it > 0 } ?: g.comboWaitWindowMs,
+                        waitPairMs = c.waitPairMs.takeIf { it > 0 } ?: g.comboWaitPairMs,
+                        holdWindowMs = c.holdWindowMs.takeIf { it > 0 } ?: g.comboHoldWindowMs,
+                        holdFollowerMs = c.holdFollowerMs.takeIf { it > 0 } ?: g.comboHoldFollowerMs,
+                        //  按住手势的下限也一起播：它属于「这一档从此自己说了算」那一族
+                        holdMinMs = c.holdMinMs.takeIf { it > 0 } ?: g.comboHoldMinMs,
+                        //  「场景在什么时候取」不播的话仍是 `null`，以后改公共设置还会顺带改到这一档
+                        sceneOnStarter = c.sceneOnStarter ?: g.comboSceneOnStarter,
+                        //  两颗「固定窗口起点」（等待 / 按住）是两个变量，各播各的：只播一颗的话，
+                        //  打开独立设置之后另一颗仍停在 `null`（跟随公共）
+                        fixedWindowStart = c.fixedWindowStart ?: g.comboFixedWindowStart,
+                        holdFixedWindowStart = c.holdFixedWindowStart ?: g.comboHoldFixedWindowStart,
                     )
                 } else {
                     c

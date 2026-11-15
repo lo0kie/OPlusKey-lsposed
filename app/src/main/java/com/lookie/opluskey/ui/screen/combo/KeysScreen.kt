@@ -213,9 +213,8 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
     val shownWait = (waitKeys ?: waitLast.value).takeIf { waitShown }
     if (shownWait != null && shownWait.isNotEmpty()) {
         val ids = shownWait.map { it.id }
-        //  已加过「不分顺序」：其它顺序（含不分顺序自己）全禁用 —— 它覆盖所有按法
-        val unorderedTaken = remember(cfg.combos, ids) { unorderedWaitTaken(cfg, ids) }
-        //  已加过的具体有序顺序（id 序列）
+        //  已经加过**按顺序**的组合 ⇒ 「不分顺序」那一行点不动：它覆盖所有按法，会与已经定死
+        //  先后的那些重叠，判定侧只认配置里靠前那个。已经加过的那几种顺序同样置灰（见下）。
         val usedOrders = remember(cfg.combos, ids) { usedWaitOrders(cfg, ids) }
         //  所有排列（2 键 2 种、3 键 6 种），每种一个「按 A → B → …」选项
         val orders = permutationsOf(shownWait)
@@ -228,15 +227,16 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
                     add(
                         PickerOption(
                             label = I18n.get(Strings.COMBO_ORDER_ANY, "不分顺序"),
-                            enabled = !waitTaken(cfg, ids),
+                            enabled = usedOrders.isEmpty(),
                         ),
                     )
-                    //  每种排列一行：已加过的顺序置灰（名字 + 箭头表先后）
+                    //  每种排列一行（名字 + 箭头表先后）；**已经加过的那种顺序置灰** ——
+                    //  同一顺序只能有一档，再点一次只会被写入那一步拒掉，不如当场灰掉并说明。
                     orders.forEach { order ->
                         add(
                             PickerOption(
                                 label = orderTemplate(order.size),
-                                enabled = !unorderedTaken && order.map { it.id } !in usedOrders,
+                                enabled = order.map { it.id } !in usedOrders,
                                 chips = order.map { keyName(it) },
                             ),
                         )
@@ -247,6 +247,19 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             onDismissFinished = {
                 waitShown = false
                 waitLast.value = null
+            },
+            onDisabledPick = { index ->
+                //  两种「点不动」各说各的：
+                //  · 「不分顺序」灰了 = 已经加过某几种顺序（一种不剩的那种状态在选键那一步就被拦住了）；
+                //  · 某个排列灰了 = 这一种顺序本身就加过了。
+                hint(
+                    if (index == 0) {
+                        I18n.get(Strings.COMBO_ORDER_ANY_BLOCKED, "已有按顺序的组合，无法再添加不分顺序")
+                    } else {
+                        I18n.get(Strings.COMBO_ORDER_TAKEN, "这种按法已添加")
+                    },
+                    slot = HINT_SLOT_COMBO,
+                )
             },
             onPick = { index ->
                 waitOrder = null
@@ -262,19 +275,6 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
                         }
                     }
                 }
-            },
-            onDisabledPick = { index ->
-                //  三种禁用原因各说各的（「点不动」必须说清为什么）：
-                //  · 「不分顺序」那行灰了 = 这组已经有一档；
-                //  · 其它顺序灰了、且已有不分顺序 = 被它挡住（不是「这种按法加过」）；
-                //  · 否则 = 这一种顺序本身就加过了。
-                val msg =
-                    when {
-                        index == 0 -> I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了")
-                        unorderedTaken -> I18n.get(Strings.COMBO_ORDER_ANY_TAKEN, "已有不分顺序的档，不能另加顺序")
-                        else -> I18n.get(Strings.COMBO_ORDER_TAKEN, "这种按法已存在")
-                    }
-                hint(msg, slot = HINT_SLOT_COMBO)
             },
         )
     }
@@ -407,12 +407,19 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
                 }
             },
             onDisabledPick = { index ->
-                //  三种禁用原因各说各的（与等待组合那一支同一套口径）：
+                //  四种「点不动」各说各的（四支都会真的显示，判据与各行的 `enabled` 一一对应）：
+                //  · 「不分顺序」灰了、只是有序的成员顺序已经加过 ⇒ 被它们挡住；
+                //  · 「不分顺序」灰了、而成员顺序已经一个不剩 ⇒ 顺序已满；
+                //  · 「不分顺序」灰了、它本身就加过了 ⇒ 这一组加过了；
+                //  · 某一行排列灰了、因为已有不分顺序 ⇒ 被它挡住；否则就是这一种顺序加了。
+                val ordersFull = usedOrders.size >= orderSpaceSize(followerIds.size)
                 val msg =
                     when {
-                        index == 0 -> I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了")
-                        unorderedTaken -> I18n.get(Strings.COMBO_ORDER_ANY_TAKEN, "已有不分顺序的档，不能另加顺序")
-                        else -> I18n.get(Strings.COMBO_ORDER_TAKEN, "这种按法已存在")
+                        index != 0 && unorderedTaken -> I18n.get(Strings.COMBO_ORDER_ANY_TAKEN, "已有不分顺序的组合，无法再添加顺序")
+                        index != 0 -> I18n.get(Strings.COMBO_ORDER_TAKEN, "这种按法已添加")
+                        unorderedTaken -> I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了")
+                        ordersFull -> I18n.get(Strings.COMBO_ORDER_ALL_BLOCKED, "顺序已满，无法添加不分顺序")
+                        else -> I18n.get(Strings.COMBO_ORDER_ANY_BLOCKED, "已有按顺序的组合，无法再添加不分顺序")
                     }
                 hint(msg, slot = HINT_SLOT_COMBO)
             },
@@ -576,7 +583,7 @@ private fun SettingsPage.KeysLeaveEditConfirm() {
  *  所以勾满三颗之后第四颗勾不上，顺手弹条说「一个组合最多 3 颗按键」。
  *  （让用户勾出个四颗的组合、再在「添加」那颗灰按钮上告诉他不行，等于把同一个规矩说两遍。）
  *
- *  「为什么还不能添加」只有 [blockedReason] 一处判据：已存在 / 还没选够。
+ *  「为什么还不能添加」只有 [blockedReason] 一处判据：顺序空间满了 / 还没选够。
  *  不能确定时按钮是灰的，点一下弹**通用消息条**（不在弹窗里另画一行）。
  */
 @Composable
@@ -591,29 +598,37 @@ private fun SettingsPage.ComboKeysDialog(
     val keys = cfg.allKeys
     //  每次露出都从空选起：上一次点了取消还留着一半勾选，读起来像「上次已经选好了」
     var picked by remember(show) { mutableStateOf(emptySet<String>()) }
-    //  这一组键在**这一类里**还有没有没占的触发方式：按住组合每个成员各一档（谁当首键）。
-    //  判据与 `addCombo` 的去重同一条（`comboAllModesTaken`）。
-    //  **等待组合不在这里判重复**：选完键还要弹顺序选择器（不分顺序 + 各排列），
-    //  「同集合已有一档」不代表「没得加了」—— 还能加不同顺序的有序档。判重放在顺序选择器里。
-    //  两类都能选到 [`ComboKey.MAX_KEYS`] 颗：按住那一档不再是「只两颗」——首键一颗 +
+    //  「这一组键还能不能再加一档」—— 按**顺序空间**判，不是「有没有一档」：
+    //  · 等待组合：「不分顺序」那一档覆盖所有按法，它在就什么都不用加了；否则看 n! 个排列
+    //    里还剩没剩（`usedWaitOrders`）；
+    //  · 按住组合：每个成员各能当一次首键（`comboAllModesTaken`）。
+    //  **两类都在这里拦**（用户口径）：下一步那个「按顺序触发」选择器只负责挑顺序，不再逐行置灰 ——
+    //  等它来拦时用户已经把键选完了，点下去才说不行，比在「添加」那颗按钮上先说清要绕。
+    //  两类都能选到 [`ComboKey.MAX_KEYS`] 颗：按住那一类不再是「只两颗」——首键一颗 +
     //  后续成员任意多颗（上限与等待组合同一个数）。
     val maxKeys = ComboKey.MAX_KEYS
     val pickedIds = picked.toList()
-    val allModesTaken = picked.size >= ComboKey.MIN_KEYS && hold && comboAllModesTaken(cfg, pickedIds, hold)
+    val enough = picked.size >= ComboKey.MIN_KEYS
+    val holdFull = enough && hold && comboAllModesTaken(cfg, pickedIds, true)
+    val anyOrderTaken = enough && !hold && unorderedWaitTaken(cfg, pickedIds)
+    val ordersFull = enough && !hold && usedWaitOrders(cfg, pickedIds).size >= orderSpaceSize(picked.size)
     //  「为什么还不能添加」只有一处判据：`null` = 可以加。点那颗灰按钮时由
     //  `MultiPickerDialog` 的 `onBlockedClick` 把它送进通用消息条 —— 灰着点了没反应最像「坏了」。
     //  颗数超出那一档**不在这里判**：勾满两颗之后第三颗勾不上（见 `onToggle`），走不到这儿。
     val blockedReason =
         when {
-            //  按住那两种顺序都加过时换一种说法（用户口径「要改成所有触发都已添加」）：
+            //  按住那几种首键都当过时换一种说法（用户口径「要改成所有触发都已添加」）：
             //  从这一列的「添加」进来，用户面对的就是「按住组合」这一类，全占满就是这一类没得加了。
-            //  等待组合只有一档，它已存在时仍是「这组按键已经添加过了」——那种情况下另一类
-            //  往往还能加，说「所有」不准确。
-            allModesTaken && hold -> I18n.get(Strings.COMBO_ALL_MODES_TAKEN, "所有触发方式都已添加")
+            holdFull -> I18n.get(Strings.COMBO_ALL_MODES_TAKEN, "所有触发方式都已添加")
 
-            allModesTaken -> I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了")
+            //  两种「顺序空间已经满了」各说各的：已有一档不分顺序（它覆盖所有按法），
+            //  或者每一种排列都加过了 —— 后者说的是「顺序已满、所以不分顺序也加不了」，
+            //  这正是用户此刻想加又加不进的那一项（顺序选择器已经进不去了，话得在这里说）。
+            anyOrderTaken -> I18n.get(Strings.COMBO_ORDER_ANY_TAKEN, "已有不分顺序的组合，无法再添加顺序")
 
-            picked.size < ComboKey.MIN_KEYS -> I18n.format(Strings.COMBO_MIN_KEYS, ComboKey.MIN_KEYS)
+            ordersFull -> I18n.get(Strings.COMBO_ORDER_ALL_BLOCKED, "顺序已满，无法添加不分顺序")
+
+            !enough -> I18n.format(Strings.COMBO_MIN_KEYS, ComboKey.MIN_KEYS)
 
             else -> null
         }
@@ -658,6 +673,14 @@ private fun SettingsPage.ComboKeysDialog(
  *  一个都塞不进去，表现就是「这一行看不见」。所以排列行必须有这条带占位符的模板。
  */
 private fun orderTemplate(count: Int): String = List(count.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $COMBO_ORDER_SEPARATOR ")
+
+/**
+ * [n] 颗成员一共有几种按下先后 —— 顺序空间的大小（2 颗 2 种、3 颗 6 种）。
+ *
+ *  只用来判「顺序是不是都加过了」，所以直接乘，不去生成那几张排列表：
+ *  成员上限是 [ComboKey.MAX_KEYS]（三颗），这是个小数字。
+ */
+private fun orderSpaceSize(n: Int): Int = if (n <= 1) 1 else (2..n).fold(1) { acc, i -> acc * i }
 
 /**
  * [keys] 的**全部排列**（按字典序，按 id 排）—— 顺序选择器里「不分顺序」之外的那几行。

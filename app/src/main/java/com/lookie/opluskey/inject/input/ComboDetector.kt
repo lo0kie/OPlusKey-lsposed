@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.SystemClock
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
+import com.lookie.opluskey.core.model.ComboWindows
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
@@ -33,11 +34,11 @@ private const val COMBO_REPEAT_MAX_MS = 30_000L
 private const val MULTI_MIN_KEYS = ComboKey.MIN_KEYS + 1
 
 /**
- * 按住组合里**后续成员**的接收窗口（毫秒）—— **写死**（用户口径「这个窗口先写死」）。
+ * 按住组合里**后续成员**的窗口兜底值（毫秒）—— 只在配置还没送到、或送来的值不合法时用。
  *
- *  与 `ComboKey.windowMs` 分开：那个数是等待组合的「相邻两颗最多隔多久」，也是「参与组合的键
- *  按下后要等多久才回落单击」——一个数管两件事，调它是为了单击手感，不该被按住档借走。
- *  按住档这一条只判「后续那一颗是不是紧接着落下的」，150ms 够人手一颗一颗按下去，
+ *  正常取值走四格里那一格（见 [ComboDetector.windowsFor]）：固定窗口起点开着用 `hold`
+ *  （从首个成员按下起算一个），关着用 `holdFollower`（每颗各自往前一个）。
+ *  逐次重置那一档只判「后续那一颗是不是紧接着落下的」，150ms 够人手一颗一颗按下去，
  *  又不至于把「按完 B 过一会儿再按 C」也算进来。
  */
 private const val HOLD_FOLLOWER_WINDOW_MS = 150L
@@ -68,9 +69,8 @@ private const val HOLD_FOLLOWER_WINDOW_MS = 150L
  *  按住那两档的成员根本不等窗口（它们的判据在下一节），所以也不会被压一拍。
  *
  *  **扫**候选时相对当前这一下算（`now - at <= window`）：几颗键之间夹了一颗不相干的键时，
- *  这一档照样成立。**算不算数**则由这一档自己的跨度判 —— 「相邻两颗最多隔一个窗口」
- *  ⇔「最早那一颗到当前这一下最多隔 (n-1) 个窗口」（[spanFor]）。
- *  三颗套用两颗那一个窗口会变成「三根手指必须同时落」，真机上等于永远凑不齐。
+ *  这一档照样成立。**算不算数**则由这一档自己的**整串跨度**判（[spanFor]）：固定窗口起点开着
+ *  就只等一个窗口，关着则按相邻两颗各一个窗口放大（n 颗 = n-1 个）。
  *
  * ## 「先按住某颗」那一档不看窗口，但**要真的按住**
  *
@@ -179,16 +179,9 @@ internal class ComboDetector(
     private val bindingsFor: (List<KeyId>) -> List<ComboKey>,
     /**
      * 当前的**扫描**窗口（毫秒）—— 找同伴时按这个宽度扫候选，取的是这份配置里最宽的那一档
-     * （`Config.comboScanWindowMs`）。它只管「扫多宽」，**算不算数**由 [windowFor] 判。
+     * （`Config.comboScanWindowMs`）。它只管「扫多宽」，**算不算数**由 [spanFor] 判。
      */
     private val windowMs: () -> Long,
-    /**
-     * 某一档组合**自己**的窗口（毫秒）—— 配对命中之后用它复核间隔，没设过的那些跟随公共值
-     * （`Config.comboWindowFor`）。为什么扫与判要分成两个数：按下当前这一颗键时还不知道会凑成
-     * 哪一组，扫窄了会漏掉宽窗口那一档；而不复核的话，宽窗口那一档会把本该属于短窗口那一组的
-     * 配对抢走（谁先遇上算谁）。
-     */
-    private val windowFor: (ComboKey) -> Long,
     /**
      * 某一档组合**起点键要先按住多久**（毫秒，`Config.comboHoldMinFor`）—— 按住那两档的下限。
      *
@@ -218,9 +211,10 @@ internal class ComboDetector(
      */
     private val inAnyCombo: (KeyId) -> Boolean,
     /**
-     * 某一档组合**整串**的容忍跨度（毫秒，= 相邻两颗的窗口 × (成员数-1)，见 `Config.comboSpanFor`）
-     * —— 多成员那条路按它判「凑没凑齐」：三颗按一个窗口算的话，三根手指得几乎同时落下，
-     * 真机上等于永远凑不齐。
+     * 这一档**整串**的容忍跨度（毫秒）—— 见 `Config.comboSpanFor`：固定窗口起点开着就是那一个
+     * 窗口，关着则是「每两颗各一个」（n 颗 = n-1 个窗口）。
+     *
+     *  多成员那条路（[multiFor]）与「等更宽的一档」（[awaitWider]）都按它判「来不来得及」。
      */
     private val spanFor: (ComboKey) -> Long,
     /**
@@ -264,17 +258,14 @@ internal class ComboDetector(
     var fixedWindowStartFor: ((ComboKey) -> Boolean)? = null
 
     /**
-     * 这一档**固定窗口起点下的接收窗口长度**（`Config.comboFixedWindowFor`，毫秒）——
-     * 开了 [fixedWindowStartFor] 时，按住档成员从首个成员按下起只等这一个窗口（不再写死）。
+     * 这一档**四格窗口**（`Config.comboWindowsFor`）—— 按住档的成员接收窗口按它取：
+     * 固定窗口起点开着用 `hold`（从首个成员按下起算一个），关着用 `holdFollower`（每颗各算）。
      *
-     *  逐次重置那一支仍用 [HOLD_FOLLOWER_WINDOW_MS] 常量：那是「紧接着落下」的判据，与
-     *  「从首成员起一个窗口」不是同一件事，不能拿固定窗口长度去替换。
-     *
-     *  **放类体而不是构造参数**：与 [fixedWindowStartFor] 同一个理由，装配方 `apply { }` 一次。
-     *  不接（null）= 这一档没配置固定窗口长度，退回 [HOLD_FOLLOWER_WINDOW_MS]。
+     *  **放类体而不是构造参数**：构造参数清单已贴着 detekt 上限，且这一位是可选的（不接 = 用
+     *  常量兜底）。装配方在构造之后 `apply { }` 一次。
      */
     @Volatile
-    var fixedWindowFor: ((ComboKey) -> Long)? = null
+    var windowsFor: ((ComboKey) -> ComboWindows)? = null
 
     /**
      * 一次 DOWN 的处理结果 —— 调用方据此决定「吞掉 / 延迟喂 / 立刻喂」。
@@ -869,6 +860,10 @@ internal class ComboDetector(
         c: Combo,
         startedAt: Long,
     ) {
+        //  **这一档没有长按这一档**（按顺序触发的等待组合，判据见 `ComboKey.hasLong`）：不排枪。
+        //  排了它也会到点判出「长按」并把 `longFired` 置上，抬手那条路于是不再按「一起短按」派发 ——
+        //  而那一档在界面上根本配不出长按动作，结果就是「什么都没发生」。
+        if (!c.key.hasLong) return
         val shot =
             Runnable {
                 try {
@@ -1012,11 +1007,9 @@ internal class ComboDetector(
     /**
      * 3 颗以上的组合：窗口内按下的这一组里，是不是正好凑齐了某一档（[MULTI_MIN_KEYS] 起）。
      *
-     *  与 [pairFor] 的分工见类注释。**跨度按成员数放大**：两颗那条判的正是「这两颗相差不超过
-     *  一个窗口」，n 颗要用同一条判据就得让整串（最早那一颗到当前这一下）不超过 (n-1) 个窗口
-     *  —— [spanFor]。三颗也按一个窗口判的话，三根手指必须几乎同时落下，
-     *  真机上就是「三颗的组合怎么按都没反应」，而日志里一行都不留。
-     *  夹在中间的不相干的键不作废这一档，但它也不算成员。
+     *  与 [pairFor] 的分工见类注释。**跨度按成员数放大**：固定窗口起点关着时，两颗那条判的是
+     *  「这两颗相差不超过一个窗口」，n 颗要用同一条判据就得让整串（最早那一颗到当前这一下）
+     *  不超过 (n-1) 个窗口 —— [spanFor]。夹在中间的不相干的键不作废这一档，但它也不算成员。
      *
      * ## 先数、后建表
      *
@@ -1068,27 +1061,23 @@ internal class ComboDetector(
         val span = now - members.minOf { recent[it] ?: now }
         if (hit.isHold) {
             //  按住档：**首键按多久都行**（下限由 [holdReady] 管），但后续成员每颗都得是
-            //  窗口内刚落下的。那个窗口分两档：固定窗口起点下走这一档的 `comboFixedWindowFor`
-            //  （见 [fixedWindowFor]），逐次重置走 [HOLD_FOLLOWER_WINDOW_MS] 常量 ——
-            //  不跟这一档的 `windowMs`（那是等待档的数，调宽它只会让首键的单击变钝）。
+            //  窗口内刚落下的。那个窗口是四格里的一格：固定窗口起点开着用 `hold`（从首个成员
+            //  按下起算一个），关着用 `holdFollower`（每颗各自往前一个）。
+            val w = windowsFor?.invoke(hit)
             val followers = members.drop(1)
             val fresh =
                 if (fixedWindowStartFor?.invoke(hit) == true) {
-                    //  固定窗口起点：从**首个成员**按下起一个固定窗口，其余成员都在这个窗口内落下
-                    //  （最后一个成员 = 当前这一下，它与首个成员的间隔 ≤ 接收窗口）。
-                    //  那个窗口用这一档的 `comboFixedWindowFor`（固定窗口长度滑杆），不再写死 150ms。
                     val firstAt = followers.firstOrNull()?.let { recent[it] } ?: now
-                    val window = fixedWindowFor?.invoke(hit) ?: HOLD_FOLLOWER_WINDOW_MS
-                    now - firstAt <= window
+                    now - firstAt <= (w?.hold?.toLong() ?: HOLD_FOLLOWER_WINDOW_MS)
                 } else {
-                    //  逐次重置（默认）：每个成员都在「当前这一下」往前一个窗口内落下
-                    followers.all { (now - (recent[it] ?: now)) <= HOLD_FOLLOWER_WINDOW_MS }
+                    val per = w?.holdFollower?.toLong() ?: HOLD_FOLLOWER_WINDOW_MS
+                    followers.all { (now - (recent[it] ?: now)) <= per }
                 }
             return Hit(hit, members, span).takeIf { fresh }
         }
         //  这一档自己的**整串跨度**复核：扫的时候按最宽的那一档扫，算不算数由它自己说了算
         //  （不成立就整条作废，所以是 `takeIf` 而不是再补一个 `return null`）。
-        //  用 `spanFor` 而不是 `windowFor`：n 颗的容忍跨度是 (n-1) 个窗口（见函数注释）。
+        //  逐次等满那一档的容忍跨度是 (n-1) 个窗口，见 `Config.comboSpanFor`。
         return Hit(hit, members, span).takeIf { span <= spanFor(hit) }
     }
 
@@ -1176,7 +1165,7 @@ internal class ComboDetector(
             if (ordered.isEmpty()) continue
             //  这一对的判据**按每一档自己的触发方式选**，逐档试 —— 同一组键可以配几档，
             //  各自一种方式（`ComboKey.mode`），只看成员数最大的那一档会把另一种方式整条遮掉。
-            //  · 等窗口：两颗的按下相差不超过这一档的窗口（扫按最宽的、判按它自己的）；
+            //  · 等窗口：两颗的按下相差不超过这一档**自己的跨度**（扫按最宽的、判按它自己的）；
             //  · 先按住某颗：先按的那颗**还按着**、且它正是这一档的起点（`starterKey`）、
             //    按住够久（`holdMinFor`）、它的长按还没判出来（判过就已经执行过自己的动作了）。
             //
@@ -1187,7 +1176,7 @@ internal class ComboDetector(
             for (b in ordered) {
                 val ok =
                     if (b.isWait) {
-                        span <= window && span <= windowFor(b)
+                        span <= window && span <= spanFor(b)
                     } else {
                         stillDown &&
                             span >= holdMinFor(b) &&

@@ -3,10 +3,12 @@ package com.lookie.opluskey.ui.screen
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.screen.binding.comboGestureSlots
 import com.lookie.opluskey.ui.screen.command.COMMAND_PAGE_COUNT
 import com.lookie.opluskey.ui.screen.command.sceneGesturePages
 import com.lookie.opluskey.ui.state.binding.KeyWatchState
@@ -23,7 +25,7 @@ import com.lookie.opluskey.ui.state.binding.KeyWatchState
  *  · [gestures] —— 「按键绑定」页的几档手势（单击 / 双击 / 长按，打开多击才多出三击 / 四击，
  *    清单见 `GestureTrigger.slotsOn`）；
  *  · [commands] —— 「自定义命令」页的类型那一排；
- *  · [combos] —— 「组合键」编辑页的短按 / 长按；
+ *  · [combos] —— 「组合键」编辑页的短按 / 长按（长按只在不分顺序时才存在，见 `comboGestureSlots`）；
  *  · [scenes] —— 「场景动作」页的几档（组合键的场景块只有短按 / 长按两档）。
  *
  *  带子底下那三页（按键绑定 / 组合键 / 场景动作）**共用一份页面实现**
@@ -63,8 +65,18 @@ internal fun SettingsPage.rememberPagePagers(): PagePagers {
     //  三击 / 四击没打开就只排三页 —— 页数不再是常量，开关一拨页数当场变。
     val gestures = rememberPagerState(pageCount = { bindingSlotCount() })
     val commands = rememberPagerState(pageCount = { COMMAND_PAGE_COUNT })
-    //  组合键只有短按 / 长按两档（`Gesture.entries` 是三档，别直接借它）
-    val combos = rememberPagerState(pageCount = { 2 })
+    //  组合键那一页**一档一页，档数不是常量**：长按只在「不分顺序」时存在
+    //  （`ComboKey.hasLong`）—— 与页里摆什么同一个来源（`comboGestureSlots`），
+    //  各读一份就会演出「带子只剩一档、分页器还是两页」。
+    val combos = rememberPagerState(pageCount = { comboGestureSlots().size })
+    //  页数**会缩小**：先在「不分顺序」那一档停在长按页，退出去再进一档按顺序触发的组合，
+    //  位置还留在第 2 页而页数只剩 1 —— 带子与内容两处都夹过一道（读出来是对的），
+    //  但分页器自己停在越界的那一页时，横向那一屏是空的。所以一换页数就把位置收回来。
+    //  `pageCount` 由 `rememberPagerState` 每次重组回写，这里读它等于「页数一变就跑一次」。
+    LaunchedEffect(combos.pageCount) {
+        val last = combos.pageCount - 1
+        if (last >= 0 && combos.currentPage > last) combos.scrollToPage(last)
+    }
     //  场景动作页的档数**跟当前那张表走**：一颗键三档、一组组合两档（见 `sceneGesturePages`）。
     //  读的是 `branchDraft.comboId` 这个页面级状态 —— 换了一份表，页数当场跟着变。
     val scenes = rememberPagerState(pageCount = { sceneGesturePages().size })

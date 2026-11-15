@@ -13,9 +13,7 @@ import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
-import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -108,6 +106,16 @@ internal fun SettingsPage.bindingTabBand(
     //  在编的那一份已经不在了（退场那一帧）：带子不画 —— 标签为空时分段控件也没有意义，
     //  这一页自己会在下一个 effect 里退掉。
     if (labels.isEmpty()) return
+    //  **只剩一档时整条不画**：分段控件要的是「把这些段分开」，只剩一段就没有可分的了，
+    //  留着只是一颗占地方的胶囊。眼下只有「按顺序触发的组合」会落到这一支（它没有长按那一档，
+    //  见 `comboGestureSlots`）。
+    //
+    //  高度要**显式报 0**：这一页上一次可能画过两档的带子，实测高度按页缓存在 `BandHeight` 里，
+    //  不报的话内容顶上会一直空着那条已经不存在的带子（见 `BindingScroll.tabBlock`）。
+    if (labels.size < 2) {
+        LaunchedEffect(Unit) { bindingBandOf(s).report(0) }
+        return
+    }
     PageTabBand(
         pagers.gesturesOf(s),
         labels = labels,
@@ -313,7 +321,10 @@ internal fun SettingsPage.bindingTargetsOf(s: Screen): List<BindingTarget>? =
             //  这样做是因为它是这一档的**身份**（`ComboKey.mode`），不是同一条手势底下并列的
             //  第二维度：三种触发方式共用 `single` / `long` 这一对槽，所以换方式改的是这一档的
             //  判据，动作表还是这两页。
-            COMBO_GESTURES.map { g -> BindingTarget.Combo(combo.id, g) }
+            //
+            //  **长按那一页只在「不分顺序」时存在**（判据见 `ComboKey.hasLong`）：按顺序触发那一档
+            //  量的是成员之间的先后，整组按满多久不是它能表达的 —— 见 `comboGestureSlots`。
+            comboGestureSlots().map { g -> BindingTarget.Combo(combo.id, g) }
         }
 
         Screen.SCENE_BINDING -> {
@@ -455,8 +466,17 @@ internal fun bindingBandLabels(targets: List<BindingTarget>): List<String> =
         targets.map { gestureLabel(it.gesture) }
     }
 
-/** 组合键那一页只有两档（`ComboKey` 上没有双击）—— 顺序即分页器页序。 */
-internal val COMBO_GESTURES: List<GestureTrigger> = listOf(Gesture.SINGLE, Gesture.LONG).map { it.trigger() }
+/**
+ * 「组合键」编辑页现在排**几档** —— 顺序即分页器页序。
+ *
+ *  长按那一档只在不分顺序时才存在（判据在 core：`ComboKey.hasLong`，清单由
+ *  `GestureTrigger.comboSlots` 给）。分页器的页数、带上那几档、内容摆哪几页**都只读这一支**：
+ *  各读一份的话会演出「带子只剩一档、分页器还是两页」或者反过来。
+ *
+ *  在编的那一档刚被删掉那一帧回「短按一档」：那一帧整页正在往下退（见 [bindingTargetsOf] 的
+ *  `null` 分支），页数与目标数对得上就行，不在这里判「该不该退」。
+ */
+internal fun SettingsPage.comboGestureSlots(): List<GestureTrigger> = GestureTrigger.comboSlots(editingComboOrNull()?.hasLong ?: true)
 
 /** 在编的那一档组合（`null` = 没在编 / 刚被删）—— 三处判据都从这一支取。 */
 private fun SettingsPage.editingComboOrNull() =

@@ -37,7 +37,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockBolt
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPause
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPlay
-import io.github.lyxnx.compose.ui.tablericons.outline.ClockRecord
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockStop
 import io.github.lyxnx.compose.ui.tablericons.outline.CloudSearch
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
@@ -46,6 +45,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Contrast
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
+import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
 import io.github.lyxnx.compose.ui.tablericons.outline.Download
@@ -163,6 +163,11 @@ internal object PageIcons {
      *  分不出谁是谁。
      */
     val SettingsCog: ImageVector get() = TablerIcons.Outline.Settings2
+
+    /**
+     * 「显示更详细的按键设置」那一行 —— 横三点（`dots`）：这一行展开的是同一页里被收起来的那些项。
+     */
+    val DetailedKeySettings: ImageVector get() = TablerIcons.Outline.Dots
 
     /**
      * 「启用按键绑定」那一行的行首 —— 拨到右的开关（`toggle-right`）：这一行是**模块总闸**。
@@ -942,15 +947,6 @@ internal object PageIcons {
      */
     val MenuCheck: ImageVector get() = TablerIcons.Outline.Check
 
-    /**
-     * 「等待窗口」（单击延迟 / 多击判定窗口）—— `clock-record`（钟 + 录制圆点）。
-     *
-     *  那一行问的是「按下之后等多久才算这一下结束」：钟是那段时长，录制圆点读作「从按下那一刻起
-     *  一直记着」。与 [ComboHold]（`clock-stop`）正好是一对：这颗还在**等**（窗口开着），
-     *  那颗已经**停**（撑满了，不再等）。
-     */
-    val DelayTap: ImageVector get() = TablerIcons.Outline.ClockRecord
-
     /** 「长按延迟」—— `clock-bolt`（钟 + 闪电：按到这一刻就是长按那一下）。 */
     val DelayHold: ImageVector get() = TablerIcons.Outline.ClockBolt
 
@@ -990,11 +986,14 @@ internal object PageIcons {
     val DelayStep: ImageVector get() = TablerIcons.Outline.ClockPlay
 
     /**
-     * 「按键之间的等待」—— `clock-pause`（钟 + 暂停记号）。
+     * 「等待窗口」—— `clock-pause`（钟 + 暂停记号）。
+     *
+     *  三处「等待窗口」（单击设置、等待组合、按住组合）都用这一颗：问的是同一件事
+     *  —— 「按下之后等多久」。
      *
      *  与 [DelayStep]（`clock-play`，命令步骤之间）分开：同一张页里两颗都是钟、都在量时间，
-     *  但一颗管「组合的两颗键之间允许隔多久」，一颗管「命令的下一步等多久」——
-     *  播放 / 暂停这一对记号正好把「继续走」与「先别判」分开。
+     *  但一颗管「按键的窗口」，一颗管「命令的下一步等多久」—— 播放 / 暂停这一对记号正好把
+     *  「继续走」与「先别判」分开。
      */
     val ComboWait: ImageVector get() = TablerIcons.Outline.ClockPause
 
@@ -1003,7 +1002,7 @@ internal object PageIcons {
      *
      *  与 [DelayHold]（`clock-bolt`，长按延迟）分开：两行都在量「按住多久」—— 一颗管**单颗键**
      *  按到哪一刻算长按，一颗管**组合**里先按住的那颗得撑满多久。停止方块读作「撑到这一刻就定格、
-     *  从这里起算组合」，与 [DelayTap] 那颗「还在等」的录制圆点相反。
+     *  从这里起算组合」，与 [ComboWait] 那颗「还在等」的暂停记号相反。
      */
     val ComboHold: ImageVector get() = TablerIcons.Outline.ClockStop
 
