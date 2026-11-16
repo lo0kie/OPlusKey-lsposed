@@ -281,6 +281,14 @@ interface ClickChainParams : LongPressParams {
     val clickThenLongRelease: Action
     val clickThenLongRepeatIntervalMs: Int
 
+    /**
+     * 「单击后长按」的**松手时触发** —— 与 [LongPressParams.longFireOnRelease] 同义、各自一份。
+     *
+     *  判定侧靠它决定「到点那一下要不要派发」（见 `GestureDetector.fireChained`）：
+     *  开着就到点只标状态、抬手才执行，与长按那一档走同一支。
+     */
+    val clickThenLongFireOnRelease: Boolean
+
     /** 「单击后长按」这一档**本身**有事可做（直接绑定或场景给过动作）—— 松手动作的主语。 */
     val clickThenLongActionExists: Boolean
 
@@ -298,9 +306,10 @@ interface ClickChainParams : LongPressParams {
  * **成员连击**那一份 [ClickChainParams] 视图 —— 由 `Config.comboMemberChain` 现算，
  * 供判定侧（`GestureDetector`）按「按住首键、成员键连击」那套参数走连击链。
  *
- *  不落在 `ComboKey` 自己身上：窗口值依赖「独立设置优先」的解析（`comboWindowsFor` /
- *  `comboHoldFixedWindowStartFor` 要读 `useOwnSettings` + 公共设置），而 `ComboKey` 拿不到那份
- *  `Config` 上下文。所以由装配方 / `Config` 在判定的那一刻现算一份，喂给判定器。
+ *  不落在 `ComboKey` 自己身上：窗口与判定时机取自**公共设置**里「单击那一套」三项
+ *  （见 `Config.comboMemberChain` —— 成员连击量的是同一颗键两击之间的间隔，与单键连击同一件事），
+ *  而 `ComboKey` 拿不到那份 `Config` 上下文。所以由装配方 / `Config` 在判定的那一刻现算一份，
+ *  喂给判定器。
  *
  *  长按那几位（[LongPressParams]）直接借 `ComboKey` 自己的（成员连击里「单击后长按」的长按
  *  阈值另用 `memberClickThenLongPressMs`）。
@@ -321,12 +330,14 @@ internal class MemberChainView(
     override val doubleClickOn: Boolean get() = combo.memberDoubleOn
     override val clickThenLongOn: Boolean get() = combo.memberClickThenLongOn
     override val clickThenLongPressMs: Int get() = combo.memberClickThenLongPressMs
-    override val clickThenLongReleaseOn: Boolean get() = false
-    override val clickThenLongRelease: Action get() = Action.None
-    override val clickThenLongRepeatIntervalMs: Int get() = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS
-    override val clickThenLongActionExists: Boolean
-        get() = combo.memberClickThenLongOn && (combo.memberClickThenLong.isBound || combo.scenes.any { it.chainBound })
-    override val clickThenLongRepeats: Boolean get() = false
+    override val clickThenLongReleaseOn: Boolean get() = combo.memberClickThenLongReleaseOn
+    override val clickThenLongRelease: Action get() = combo.memberClickThenLongRelease
+
+    /** 成员连击的「松手时触发」—— 与长按那一档同义，位是这一档自己的。 */
+    override val clickThenLongFireOnRelease: Boolean get() = combo.memberClickThenLongFireOnRelease
+    override val clickThenLongRepeatIntervalMs: Int get() = combo.memberClickThenLongRepeatIntervalMs
+    override val clickThenLongActionExists: Boolean get() = combo.memberClickThenLongActionExists
+    override val clickThenLongRepeats: Boolean get() = combo.memberClickThenLongRepeats
     override val longRepeats: Boolean get() = combo.longRepeat && !combo.longFireOnRelease
     override val sceneChainRelease: Boolean get() = combo.scenes.any { it.hasChainRelease }
 

@@ -444,10 +444,12 @@ internal object GestureExec {
         //  （`OwnSettings.vibrateOnNone`）、同一个理由：没有这一位时，「这一档没绑」与
         //  「模块没生效」在手上完全一样。这条路原先直接往下走 `comboShouldVibrate`，
         //  而它要求 `action.isBound` ⇒ 组合上按了永远没有反馈。
-        //  连续触发的重复不再补振：那是同一次按压（与单键那一条同口径）。
+        //  **连发的重复也看这一档的「每次触发都振动」**（`ComboKey.longRepeatVibrate`）：
+        //  这一档本来就没有动作，按住不放时那几十下重复若也不振，整段按住就是完全静默的
+        //  —— 与单键那条（`runAction` 里同一处）一字不差。
         if (!action.isBound) {
             XLog.w("$subject：这一档是无操作，不执行")
-            if (!repeat) haptic(config, combo, force = true)
+            if (!repeat || combo.longRepeatVibrate) haptic(config, combo, force = true)
             return
         }
         val log =
@@ -455,7 +457,7 @@ internal object GestureExec {
         //  一次按住会来几十条，重复那条压到 d（release 裁掉），免得把判据行淹掉。
         if (repeat) XLog.d(log) else XLog.w(log)
         // 振动 / 提示 / 报活与单键那套一致：
-        //  · 重复派发只在「连续触发时振动」打开时振（否则一次按住会震几十下）；
+        //  · 重复派发只在「每次触发都振动」打开时振（否则一次按住会震几十下）；
         //  · 提示与报活只报第一次 —— 那是同一次按压，不是几十次操作。
         //  两套取值都从 `Config` 那两个出口来（传 combo，传单键的 `KeyConfig` 也一样）：
         //  **组合键在这一层没有特殊待遇**，它只是另一种「可以有自己的设置」的东西。
@@ -554,7 +556,7 @@ internal object GestureExec {
      *
      * 「振动反馈」是**总闸**：关着时什么都不振，包括「按了但没动作」那一支。那一支另由
      * 「无操作时振动」决定振不振（`OwnSettings.vibrateOnNone`，见下面派发前那一支）。
-     * 连续触发的重复由那颗键自己的「连续触发时振动」决定：关着时只在长按那一下振一次，
+     * 连续触发的重复由那颗键自己的「每次触发都振动」决定：关着时只在长按那一下振一次，
      * 开着时每次重复都振。
      */
     private fun runAction(
@@ -583,8 +585,9 @@ internal object GestureExec {
                     //  **无操作时振动**：这一档什么都没执行，但用户确实按了 —— 按设置给一次触觉回执。
                     //  与「振动反馈」分开（那一颗只服务真的执行了动作的那一下）：没有这一位时，
                     //  「这一档没绑」与「模块没生效」在手上完全一样。
-                    //  连续触发的重复不再补振：那是同一次按压。
-                    if (!repeat) haptic(config, keyConfig, force = true)
+                    //  **连发的重复也看那颗键的「每次触发都振动」**：这一档本来就没有动作，
+                    //  按住不放时那几十下重复若也不振，整段按住就是完全静默的（用户报过）。
+                    if (!repeat || repeatVibrate(keyConfig, trigger)) haptic(config, keyConfig, force = true)
                     return
                 }
         val r =
@@ -700,7 +703,7 @@ internal object GestureExec {
     /**
      * 这一下要不要**在动作之前**振一下。
      *
-     *  连续触发的重复由那颗键自己的「连续触发时振动」决定：关着时只在长按判出来的那一下
+     *  连续触发的重复由那颗键自己的「每次触发都振动」决定：关着时只在长按判出来的那一下
      *  振一次，开着时每次重复都振。三种情况不振：
      *  · 「无操作」—— 吞键什么都不做，振了就成了「做了点什么」的假证据；
      *  · **切响铃这一档走 ColorOS 接口时** —— 那一下由执行侧在切完之后放
@@ -715,15 +718,7 @@ internal object GestureExec {
         colorOsApi: Boolean,
     ): Boolean {
         if (!action.isBound) return false
-        //  连发时振不振，两档各问各的：「单击后长按」自己有「每次都振动」
-        //  （`clickThenLongRepeatVibrate`），不能拿长按那一档的值顶。
-        val repeatVibrate =
-            if (trigger == GestureTrigger.ClickThenLong) {
-                keyConfig.clickThenLongRepeatVibrate
-            } else {
-                keyConfig.longRepeatVibrate
-            }
-        if (!repeat || repeatVibrate) return !colorOsRinger(action, colorOsApi)
+        if (!repeat || repeatVibrate(keyConfig, trigger)) return !colorOsRinger(action, colorOsApi)
         return false
     }
 
@@ -732,7 +727,7 @@ internal object GestureExec {
      *
      *  组合没有「连续触发」（`repeat` 恒为 false），所以只判两件：动作为空不振、切响铃走
      *  ColorOS 接口时由执行侧振（[colorOsRinger]）—— 两者与单键那条的口径一字不差。
-     *  单键那条还要看那颗键的「连续触发时振动」，组合没有这一位（它没有连发）。
+     *  单键那条还要看那颗键的「每次触发都振动」，组合没有这一位（它没有连发）。
      */
     private fun comboShouldVibrate(
         action: Action,
@@ -898,6 +893,27 @@ internal object GestureExec {
         }
     }
 }
+
+/**
+ * 连发的重复要不要振 —— **两档各问各的**：「单击后长按」自己有「每次触发都振动」
+ * （`KeyConfig.clickThenLongRepeatVibrate`），不能拿长按那一档的值顶。
+ *
+ *  两处读它：真的执行了动作那一支（[GestureExec] 的 `shouldVibrate`）与「按了但没动作」那一支
+ *  （`runAction` 里 `resolveAction` 返回 `null` 之后）—— 后者也要跟「每次触发都振动」走，
+ *  否则按住不放时整段静默（用户报过）。
+ *
+ *  放在对象外：与 [colorOsRinger] 同一个理由（`GestureExec` 的成员贴着 `TooManyFunctions`
+ *  的阈值），而这一条是纯函数，不属于「执行」。
+ */
+private fun repeatVibrate(
+    keyConfig: KeyConfig,
+    trigger: GestureTrigger,
+): Boolean =
+    if (trigger == GestureTrigger.ClickThenLong) {
+        keyConfig.clickThenLongRepeatVibrate
+    } else {
+        keyConfig.longRepeatVibrate
+    }
 
 /**
  * 这一次「切响铃」是不是走 ColorOS 接口（振动的去处不同，见 [GestureExec] 里的 `shouldVibrate`）。

@@ -240,15 +240,57 @@ internal class ComboDetector(
             onGestureNoted = {},
             onGesture = { _, trigger, _, repeat ->
                 val key = memberChainCombo ?: return@GestureDetector
+                //  **「单击后长按」让位给组合自己的长按**（这一档的长按真有动作时）。
+                //  两者是同一个手势 —— 按住首键、再按住唯一那颗成员，只是阈值各配一份、谁先到谁赢，
+                //  而这一档的本质是「组合长按」（它后面还挂着连续触发）。连击链要是也执行这一档，
+                //  同一次按压就出两个动作；更糟的是下面那句 `finishCombo` 会把**连发那串定时链**
+                //  一起撤掉，真机表现就是「按住组合的长按连续触发无效」——第一枪排在 300ms 之后，
+                //  永远轮不到就被撤了。
+                //  只让**这一档**：单击 / 双击 / 三击都是抬手才判的短按，与长按不重叠，照旧归连击链。
+                if (trigger == GestureTrigger.ClickThenLong && key.longActionExists) {
+                    XLog.w("组合键：${key.keys.joinToString(" + ")} 成员「单击后长按」让位给组合长按（${key.id}）")
+                    yieldMemberChainOf(key)
+                    return@GestureDetector
+                }
                 //  成员连击判出一档：动作落到这一档组合，这一轮连击结束，组合收尾。
                 //  首键可能还按着 —— 它的抬手随后会因 `consumed` 而被吞，不会再误派一次短按。
                 XLog.w("组合键：${key.keys.joinToString(" + ")} 成员连击 ${trigger.label}（${key.id}）")
                 onCombo(key, trigger, repeat)
                 memberChainCombo = null
-                combo?.let { finishCombo(it) }
+                combo?.let { c ->
+                    //  「首键松手后仍触发长按」也在这条收尾里结算：成员连击判出一档就把组合收了，
+                    //  而首键往往还按着 —— 它的长按照旧要等抬手时补（见 [keepStarterLong] 与
+                    //  [onUp] 开头那笔欠账）。
+                    //  不在这里记的话，开着成员连击时这个开关永远不生效：首键抬手时 `combo`
+                    //  已经是 null，走不到 [keepStarterLong] 的调用点。
+                    c.keys.firstOrNull { it.id == key.followers.firstOrNull() }?.let { member ->
+                        keepStarterLong(c, member)
+                    }
+                    finishCombo(c)
+                }
             },
             holdAwake = {},
         )
+
+    /**
+     * 让**成员连击**这一轮收手 —— 组合的长按已经（或即将）判出，这一按归组合。
+     *
+     *  做两件事，缺一不可：
+     *   · `memberChain.reset(member)`：把连击链上这颗成员的计时与已数击数清掉，
+     *     否则它到点还会判一档出来；
+     *   · `memberChainCombo = null`：抬起那条路据它决定「喂不喂连击链」（见 [onUp]）——
+     *     不清的话成员抬手会走进连击链，链在 `pressAt == 0` 上补判一次单击
+     *     （`GestureDetector.onKeyUp` 的「孤立抬手」那一支），于是「按住不放」变成
+     *     「长按 + 单击」两个动作。清完之后抬手走 [onUp] 的正常收尾：长按已判出 ⇒ 只看松手那两档。
+     *
+     *  @param key 这一档组合 —— 连击链的回调手上只有 [ComboKey]，所以主体按它收口
+     */
+    private fun yieldMemberChainOf(key: ComboKey) {
+        if (memberChainCombo !== key) return
+        val member = combo?.takeIf { it.key === key }?.keys?.firstOrNull { it.id == key.followers.firstOrNull() }
+        memberChain.reset(member)
+        memberChainCombo = null
+    }
 
     /**
      * 「首键那次按压自己的长按**还欠着**」—— 组合已经收尾、首键却还按着，等它抬手时补派。
@@ -714,6 +756,11 @@ internal class ComboDetector(
                     return true
                 }
                 memberChainParams(c.key)?.let { chain -> memberChain.onKeyUp(id, chain) }
+                //  **成员松过手 ⇒ 这一组不再是「两颗一起按住」**：撤掉组合自己那一枪长按。
+                //  不撤的话，第 2 击按住时首键与成员又都按着，那一枪照样到点判出组合长按 ——
+                //  表现就是「单击后长按触发了，组合的长按动作也跟着执行一次」（用户报的）。
+                //  只撤长按与连发，`waiting`（等更宽的一档）不动：那件事与成员抬不抬手无关。
+                cancelLongShot(c)
                 //  连击链自己会到点判 / 数到封顶判，动作经 memberChain 的 onGesture 落到这一档。
                 //  组合**不在这里收尾**：首键还按着，成员可能再来一下。
                 return true
@@ -870,9 +917,9 @@ internal class ComboDetector(
         c: Combo,
         startedAt: Long,
     ) {
-        //  **这一档没有长按这一档**（按顺序触发的等待组合，判据见 `ComboKey.hasLong`）：不排枪。
-        //  排了它也会到点判出「长按」并把 `longFired` 置上，抬手那条路于是不再按「一起短按」派发 ——
-        //  而那一档在界面上根本配不出长按动作，结果就是「什么都没发生」。
+        //  **这一档没有长按这一档**（按顺序触发的组合，等待与按住都一样；判据见 `ComboKey.hasLong`）：
+        //  不排枪。排了它也会到点判出「长按」并把 `longFired` 置上，抬手那条路于是不再按
+        //  「一起短按」派发 —— 而那一档在界面上根本配不出长按动作，结果就是「什么都没发生」。
         if (!c.key.hasLong) return
         val shot =
             Runnable {
@@ -886,6 +933,14 @@ internal class ComboDetector(
                         "组合键：${c.keys.joinToString(" + ") { it.label }} 长按" +
                             "（${SystemClock.elapsedRealtime() - startedAt}ms，阈值 ${c.key.longPressMs}ms）",
                     )
+                    //  **成员连击这一轮到此为止**（长按这一档真有动作时）：成员键「单击后长按」
+                    //  与组合长按是**同一个手势**（按住首键、再按住唯一那颗成员），而连击链判出
+                    //  任何一档都会收尾整个组合（见 `memberChain` 的 `onGesture`）——
+                    //  那一下连同「长按连续触发」那串定时链一起被撤掉，真机表现就是
+                    //  「按住组合的长按连续触发无效」（第一枪排在 300ms 之后，永远轮不到）。
+                    //  让位之后，成员的抬手不再喂给连击链（`memberChainCombo` 已清），
+                    //  于是走 `onUp` 那条正常收尾，也不会再补一条单击。
+                    if (c.key.longActionExists) yieldMemberChainOf(c.key)
                     //  「松手才触发」这一档到点**不动手**：动作放到抬手那一下执行（见 `onUp`）。
                     if (!c.key.longFireOnRelease) fire(c, GestureTrigger.LongPress, repeat = false)
                     // 「长按连续触发」：两颗键一起按住不放就一直重来。
@@ -936,6 +991,20 @@ internal class ComboDetector(
             handler.removeCallbacks(waiting.shot)
             c.waiting = null
         }
+    }
+
+    /**
+     * 撤掉这一组的**长按那一枪与连发**，[Combo.waiting] 留着。
+     *
+     *  只有一个调用点：成员连击里**成员键抬手**那一刻。那一抬手意味着这一组已经不再是
+     *  「两颗一起按住」，之后成员键再按住（单击后长按）属于连击链，不该让组合的长按也到点。
+     *  不能改用 [cancelShots]：那会连「等更宽的一档」一起撤掉，而升级到 {A,B,C} 与成员抬不抬手无关。
+     */
+    private fun cancelLongShot(c: Combo) {
+        c.shot?.let { handler.removeCallbacks(it) }
+        c.shot = null
+        c.repeatShot?.let { handler.removeCallbacks(it) }
+        c.repeatShot = null
     }
 
     /**

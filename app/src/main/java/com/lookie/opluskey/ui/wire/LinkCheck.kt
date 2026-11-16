@@ -59,7 +59,10 @@ internal val SettingsPage.localConfigTag: String
         //  用 `===` 比引用即可：`saveCommands` 每次都换一个新的 list 实例。
         val cmds = configState.commands.value
         localTagCache?.let { if (it.first === cur && it.second === cmds) return it.third }
-        val tag = ConfigBroadcast.tag(cur, { CommandLibrary.longIsSerial(cur, it) }, { CommandLibrary.clickThenLongIsSerial(cur, it) })
+        val tag =
+            ConfigBroadcast.tag(cur, {
+                CommandLibrary.longIsSerial(cur, it)
+            }, { CommandLibrary.clickThenLongIsSerial(cur, it) }, { CommandLibrary.memberChainIsSerial(it) })
         localTagCache = Triple(cur, cmds, tag)
         return tag
     }
@@ -80,6 +83,7 @@ internal fun primeLocalTag(
             config,
             { CommandLibrary.longIsSerial(config, it) },
             { CommandLibrary.clickThenLongIsSerial(config, it) },
+            { CommandLibrary.memberChainIsSerial(it) },
         )
     localTagCache = Triple(config, commands, tag)
 }
@@ -916,7 +920,7 @@ internal fun SettingsPage.publishConfig(config: Config): Boolean {
             HostApp.PACKAGE,
             ConfigBroadcast.intent(config, {
                 CommandLibrary.longIsSerial(config, it)
-            }, { CommandLibrary.clickThenLongIsSerial(config, it) }),
+            }, { CommandLibrary.clickThenLongIsSerial(config, it) }, { CommandLibrary.memberChainIsSerial(it) }),
         )
     ) {
         return false

@@ -261,6 +261,27 @@ internal fun SettingsPage.saveBlockedReason(): String? {
 }
 
 /**
+ * 这一下「保存」要不要先问一句「它跑不了」—— 判据是**两条执行通道都关着的 `shell:` 命令**。
+ *
+ *  模块执行 `shell:` 靠另起一个进程，而宿主（`platform_app`）与模块（`untrusted_app`）两个域
+ *  都 exec 不了 `/system/bin` 下的东西（真机实测 `sh` / `toybox` / `app_process64` 全 `EACCES`，
+ *  只有 `su` 与 Shizuku 的 uid 2000 放行）—— 所以两条通道都关着的 `shell:` 存下去就是一条
+ *  按下去什么都不发生的命令。而这恰好是新建命令的默认状态（`CommandForm.root` 初值 `false`），
+ *  不是用户特意选的。
+ *
+ *  勾了任一条就不弹：那是能跑的命令，对它说「没有权限」是假警报。
+ *
+ *  只看单条命令：多条命令每一步的身份取自它引用的那条命令（`CustomCommandRunner` 读
+ *  被引用命令的 `root` / `viaShizuku`），这一页表单上那两位对它不成立。
+ */
+internal fun SettingsPage.shellSaveNeedsConfirm(): Boolean {
+    val form = commandDraft.draft.form
+    if (form.kind != CommandKind.SINGLE) return false
+    if (form.root || form.viaShizuku) return false
+    return Action.parse(form.single.trim()) is Action.Shell
+}
+
+/**
  * 「重置」这一下做的事 —— 顶栏那颗「重置 / 取消」调它。
  *
  *  **只清当前这一页那份表单**：两页各自独立（见 `CommandForm`），在「单条」页点重置不该把

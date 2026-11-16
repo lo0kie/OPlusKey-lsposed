@@ -8,14 +8,17 @@ import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.LongPressEdit
+import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.model.icon.actionIcon
 import com.lookie.opluskey.ui.model.text.releaseActionTitle
 import com.lookie.opluskey.ui.row.LongPressSections
@@ -55,6 +58,9 @@ internal fun SettingsPage.LongPressCard(
 ) {
     val cfg = configState.config.value
     val owner = target.longPress(cfg) ?: return
+    //  「每次触发都振动」的前置：这一档的**振动反馈**（独立设置优先，见 `Config.effectiveFor`）。
+    //  场景块不是「一份设置」（`ownerIn` 回 null）⇒ 按公共那一份算。
+    val hapticOn = (target.ownerIn(cfg) as? OwnSettings)?.let { cfg.effectiveFor(it).vibrate } ?: cfg.global.vibrate
     //  整张卡的置灰只有两个来源：整页闸门、调用点给的额外原因（这一档根本不归这一页管）。
     val blockedReason = longPressBlockedReason(pageEnabled, disabledReason)
     val blocked = blockedReason != null
@@ -97,7 +103,15 @@ internal fun SettingsPage.LongPressCard(
             blockedReason = blockedReason,
             repeatBlockedReason = repeatBlockedReason(target.actionIn(cfg)),
             onRepeat = { on -> edit(target, LongPressEdit(repeat = on)) { "long_repeat=${if (on) 1 else 0}" } },
-            onVibrate = { on -> edit(target, LongPressEdit(repeatVibrate = on)) { "long_repeat_vibrate=${if (on) 1 else 0}" } },
+            onVibrate = { on ->
+                //  「每次触发都振动」是「振动反馈」的细分：总闸关着时它开了也不会振（执行侧
+                //  `haptic` 第一行就按总闸返回），所以拨开时先拦一下，让他去开总闸。
+                if (on && !hapticOn) {
+                    RepeatVibrateBlocked.ask()
+                } else {
+                    edit(target, LongPressEdit(repeatVibrate = on)) { "long_repeat_vibrate=${if (on) 1 else 0}" }
+                }
+            },
             onInterval = { v -> edit(target, LongPressEdit(repeatIntervalMs = v)) { "long_repeat_interval_ms=$v" } },
             onPressMs = { v -> edit(target, LongPressEdit(pressMs = v)) { "long_press_ms=$v" } },
             //  关掉「松手时触发」是**有代价**的：这颗键若正被某些按住手势当成「先按住的那一颗」，
@@ -118,6 +132,8 @@ internal fun SettingsPage.LongPressCard(
     )
     //  「关掉松手时触发会让按住手势失效」那一问 —— 整张卡挂一次（它是这一位的唯一入口）
     FireReleaseOffDialog()
+    //  「每次触发都振动」拨不动时那一窗（振动反馈没开，见上面 `onVibrate`）
+    RepeatVibrateBlockedDialog()
     //  挑额外动作：与命令页「挑一步」**同一个抽屉**（项目里挑动作只有这一个清单）。
     StepPickerSheet(
         show = pickingRelease,
@@ -238,11 +254,15 @@ private fun longPressBlockedReason(
 //
 //  为什么不新画一张：这几行的**文案、行序、互斥判据**与长按那一档是同一件事
 //  （按住多久算数 / 按住期间重复几次 / 松手还做不做别的），各画一遍迟早只在一边生效。
-//  差别只有两个：读写的字段（`clickThenLong*`）、摆不摆「松手才触发」那一行
-//  （见 `LongPressSections.NoTiming`）。
+//  差别只剩一个：读写的字段（`clickThenLong*`）。行本身与长按那一页**逐行相同** ——
+//  连「松手时触发」那一行也在（用户口径「和长按一样的逻辑」），它开着时同样把
+//  「松手执行额外动作」与「连续触发」那三行压灰。
 
 /**
- * 「单击后长按」的三族设置 —— 挂在「按键绑定」页的这一档上。
+ * 「单击后长按」的整张设置卡 —— 挂在「按键绑定」页的这一档上。
+ *
+ *  行与长按那一页同一套（`LongPressSections.All`）：松手时触发 / 松手执行额外动作（+ 额外动作）/
+ *  连续触发（+ 每次触发都振动 + 连续触发间隔）/ 长按延迟，参数是这一档自己的。
  *
  * @param pageEnabled 整页闸门（总闸 + 链路 + 配置可写）
  * @param disabledReason 非 null ⇒ 整张卡再压一道灰（`pageEnabled` 之外的原因，如「跟随默认」）
@@ -255,6 +275,8 @@ internal fun SettingsPage.ClickThenLongCard(
     val cfg = configState.config.value
     val id = KeyWatchState.editing(cfg)
     val key = cfg.key(id)
+    //  「每次触发都振动」的前置：这一颗键的**振动反馈**（独立设置优先）—— 与长按那张卡同一条
+    val hapticOn = cfg.effectiveFor(key).vibrate
     val release = key.clickThenLongRelease
     var picking by remember { mutableStateOf(false) }
     LongPressSettingsCard(
@@ -263,35 +285,46 @@ internal fun SettingsPage.ClickThenLongCard(
             vibrate = key.clickThenLongRepeatVibrate,
             intervalMs = key.clickThenLongRepeatIntervalMs,
             pressMs = key.clickThenLongPressMs,
-            //  这一页不摆「松手才触发」（见 `LongPressSections.NoTiming`），传 false 只是为了
-            //  让置灰结论那一支算得对 —— 它关着，连发与松手两族都亮着
-            fireOnRelease = false,
+            //  「松手时触发」与长按那一档同义：到点不执行，抬手执行一次。开着它，
+            //  下面「松手执行额外动作」与「连续触发」那三行由 `LongPressGates` 自动压灰。
+            fireOnRelease = key.clickThenLongFireOnRelease,
             releaseSupported = true,
             releaseOn = key.clickThenLongReleaseOn,
             //  行上写**动作名**（与长按那张卡同一条）：用户挑的可能是某条命令
             releaseLabel = releaseActionTitle(release.token) { appNameOf(it) },
             releaseIcon = actionIcon(release.token),
-            releaseBound = key.clickThenLongReleaseOn && release.isBound,
+            //  「松手时触发」开着时这一位不算占位（`fireEnabled` 会读到它）：否则两颗开关
+            //  会互相锁死 —— 都开着时谁也关不掉对方，只能先清配置。「松手额外动作」本身
+            //  在抬手那一刻让位（见 `GestureDetector.finishLong` 与 `clickThenLongReleaseAction`）。
+            releaseBound = key.clickThenLongReleaseOn && release.isBound && !key.clickThenLongFireOnRelease,
             //  这一档本身是「无操作」时，松手额外动作那一族跟着焊死（同长按那张卡）
             releaseAvailable = key.clickThenLongActionExists,
             enabled = pageEnabled,
             delayEnabled = pageEnabled,
-            sections = LongPressSections.NoTiming,
+            sections = LongPressSections.All,
             //  多条命令 / 灵感语音不支持连发 —— 与长按那张卡同一份判据（`repeatBlockedReason`）
             repeatBlockedReason = repeatBlockedReason(key.clickThenLong),
             blockedReason =
                 disabledReason
                     ?: if (!pageEnabled) I18n.get(Strings.STATUS_KEY_DISABLED) else null,
             onRepeat = { on -> commit(id) { it.copy(clickThenLongRepeat = on) } },
-            onVibrate = { on -> commit(id) { it.copy(clickThenLongRepeatVibrate = on) } },
+            onVibrate = { on ->
+                //  与长按那张卡同一条：振动反馈没开时先拦一下（那一档的取值走 `effectiveFor`）
+                if (on && !hapticOn) {
+                    RepeatVibrateBlocked.ask()
+                } else {
+                    commit(id) { it.copy(clickThenLongRepeatVibrate = on) }
+                }
+            },
             onInterval = { v -> commit(id) { it.copy(clickThenLongRepeatIntervalMs = v) } },
             onPressMs = { v -> commit(id) { it.copy(clickThenLongPressMs = v) } },
-            //  这一页没有那一行（见上面的 sections），不会有人拨它
-            onFireOnReleaseToggle = {},
+            onFireOnReleaseToggle = { on -> commit(id) { it.copy(clickThenLongFireOnRelease = on) } },
             onReleaseToggle = { on -> commit(id) { it.copy(clickThenLongReleaseOn = on) } },
             onReleasePick = { picking = true },
         ),
     )
+    //  「每次触发都振动」拨不动时那一窗（振动反馈没开，见上面 `onVibrate`）
+    RepeatVibrateBlockedDialog()
     //  挑额外动作：与长按那张卡**同一个抽屉**（项目里挑动作只有这一个清单）
     StepPickerSheet(
         show = picking,
@@ -318,6 +351,110 @@ internal fun SettingsPage.ClickThenLongCard(
 }
 
 /**
+ * **组合键的成员「单击后长按」**那张卡 —— 与 [ClickThenLongCard] 逐行相同，主语换成这一档组合。
+ *
+ *  两边不合并：读写的是两张表（`KeyConfig.clickThenLong*` 对 `ComboKey.memberClickThenLong*`），
+ *  合并会让每一行都多判一次「主语是谁」。行序 / 文案 / 互斥判据本来就在 `LongPressSpec` 里，
+ *  这里只把这一档的参数递进去、把改动写回这一条组合。
+ *
+ * @param pageEnabled 整页闸门（总闸 + 链路 + 配置可写）
+ * @param disabledReason 非 null ⇒ 整张卡再压一道灰（`pageEnabled` 之外的原因）
+ */
+@Composable
+internal fun SettingsPage.ComboMemberChainCard(
+    combo: ComboKey,
+    pageEnabled: Boolean,
+    disabledReason: String? = null,
+) {
+    val cfg = configState.config.value
+    //  「每次触发都振动」的前置：这一档的**振动反馈**（独立设置优先）
+    val hapticOn = cfg.effectiveFor(combo).vibrate
+    val release = combo.memberClickThenLongRelease
+    var picking by remember { mutableStateOf(false) }
+    LongPressSettingsCard(
+        LongPressSpec(
+            repeat = combo.memberClickThenLongRepeat,
+            vibrate = combo.memberClickThenLongRepeatVibrate,
+            intervalMs = combo.memberClickThenLongRepeatIntervalMs,
+            pressMs = combo.memberClickThenLongPressMs,
+            fireOnRelease = combo.memberClickThenLongFireOnRelease,
+            releaseSupported = true,
+            releaseOn = combo.memberClickThenLongReleaseOn,
+            releaseLabel = releaseActionTitle(release.token) { appNameOf(it) },
+            releaseIcon = actionIcon(release.token),
+            //  「松手时触发」开着时这一位不算占位（`fireEnabled` 会读到它）：否则两颗开关会互相锁死
+            releaseBound =
+                combo.memberClickThenLongReleaseOn &&
+                    release.isBound &&
+                    !combo.memberClickThenLongFireOnRelease,
+            releaseAvailable = combo.memberClickThenLongActionExists,
+            enabled = pageEnabled,
+            delayEnabled = pageEnabled,
+            sections = LongPressSections.All,
+            repeatBlockedReason = repeatBlockedReason(combo.memberClickThenLong),
+            blockedReason =
+                disabledReason
+                    ?: if (!pageEnabled) I18n.get(Strings.STATUS_KEY_DISABLED) else null,
+            onRepeat = { on -> commitCombo(combo.id) { it.copy(memberClickThenLongRepeat = on) } },
+            onVibrate = { on ->
+                if (on && !hapticOn) {
+                    RepeatVibrateBlocked.ask()
+                } else {
+                    commitCombo(combo.id) { it.copy(memberClickThenLongRepeatVibrate = on) }
+                }
+            },
+            onInterval = { v -> commitCombo(combo.id) { it.copy(memberClickThenLongRepeatIntervalMs = v) } },
+            onPressMs = { v -> commitCombo(combo.id) { it.copy(memberClickThenLongPressMs = v) } },
+            onFireOnReleaseToggle = { on -> commitCombo(combo.id) { it.copy(memberClickThenLongFireOnRelease = on) } },
+            onReleaseToggle = { on -> commitCombo(combo.id) { it.copy(memberClickThenLongReleaseOn = on) } },
+            onReleasePick = { picking = true },
+        ),
+    )
+    RepeatVibrateBlockedDialog()
+    StepPickerSheet(
+        show = picking,
+        sheet =
+            StepSheetSpec(
+                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE),
+                current = release,
+                onOpenPicker = { page ->
+                    picking = false
+                    when (page) {
+                        //  带 `combo`：挑完写的是这一档组合的成员松手格（见 `writeReleaseTo`）
+                        StepPickerPage.App -> openAppPickerForRelease(chain = true, combo = combo.id)
+
+                        StepPickerPage.AppStop -> openAppPickerForRelease(stop = true, chain = true, combo = combo.id)
+
+                        StepPickerPage.Vars -> Unit
+                    }
+                },
+                onPick = { token -> commitCombo(combo.id) { it.copy(memberClickThenLongRelease = Action.parse(token)) } },
+                onDismiss = { picking = false },
+                filter = StepSheetFilter(excludeTiles = true, includeNone = true),
+            ),
+    )
+}
+
+/**
+ * 把这一档组合的一次改动写回配置 —— **现读一次**再改（理由同 [commit]）。
+ *
+ *  不调 `updateCombo`：那是 combo 包的东西，这一页只该认识「写配置」这一条路。
+ */
+private fun SettingsPage.commitCombo(
+    id: String,
+    change: (ComboKey) -> ComboKey,
+): Boolean {
+    val now = configState.config.value
+    val combo = now.combos.firstOrNull { it.id == id } ?: return false
+    val next = change(combo)
+    if (next == combo) return true
+    return write(
+        now.copy(combos = now.combos.map { if (it.id == id) next else it }),
+        "member_click_then_long combo=$id",
+    ) != CommandsSave.Failed
+}
+
+/**
  * 把这一档的一次改动写回配置 —— **现读一次**再改。
  *
  *  与这一页其它卡片同一条口径：先拨开关再拖滑杆时，渲染那一帧的 `key` 会把刚写进去的值顶回去。
@@ -332,4 +469,45 @@ private fun SettingsPage.commit(
         now.copy(keys = now.keys + (id to next)),
         "click_then_long key=${id.id}",
     ) != CommandsSave.Failed
+}
+
+/**
+ * 「每次触发都振动」被拦下来那一窗的开关 —— 与 `ComboStarterBlocked` 同一套写法。
+ *
+ *  只存一个布尔：这一窗没有「确认之后做什么」，两颗按钮都只是关窗。用页面级 object 而不是
+ *  `remember`，因为它是**卡片之外**的窗口（`ConfirmDialog` 是独立 window），而卡片可能在
+ *  这一帧被整支重画 —— 状态挂在那里会跟着丢。
+ */
+internal object RepeatVibrateBlocked {
+    private val pending = mutableStateOf(false)
+
+    val open: Boolean get() = pending.value
+
+    fun ask() {
+        pending.value = true
+    }
+
+    fun clear() {
+        pending.value = false
+    }
+}
+
+/**
+ * 「每次触发都振动」拨不动时那一窗 —— 这一档的**振动反馈**没开（独立设置优先，见调用点）。
+ *
+ *  为什么拦而不是「替他一起开」：振动反馈是总闸，影响的是这一档所有动作的回执，
+ *  不该由「开一个连发振动」顺手改掉；说清要开哪一项就够了。
+ */
+@Composable
+internal fun SettingsPage.RepeatVibrateBlockedDialog() {
+    ConfirmDialog(
+        show = RepeatVibrateBlocked.open,
+        title = I18n.get(Strings.BINDING_REPEAT_VIBRATE_BLOCKED_TITLE),
+        summary = I18n.get(Strings.BINDING_REPEAT_VIBRATE_BLOCKED_BODY),
+        action = I18n.get(Strings.COMMON_GOT_IT),
+        positiveDanger = false,
+        //  这一窗没有「确认之后做点什么」—— 两颗按钮都只是把窗关掉
+        onDismiss = { RepeatVibrateBlocked.clear() },
+        onConfirm = { RepeatVibrateBlocked.clear() },
+    )
 }

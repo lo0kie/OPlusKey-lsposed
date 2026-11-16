@@ -396,7 +396,7 @@ internal fun Modifier.tapSliderToSeek(
 ): Modifier =
     pointerInput(min, max, step, enabled) {
         // 禁用时这条手势也得停 —— 它是**自己挂的**、不走滑杆的 `enabled`，
-        // 不停的话置灰的滑杆照样能点着跳值（多条命令下的「触发间隔」）。
+        // 不停的话置灰的滑杆照样能点着跳值（多条命令下的「连续触发间隔」）。
         if (!enabled) return@pointerInput
         val slop = viewConfiguration.touchSlop
         // 轨道两端：手势节点边缘往里让出的距离（行里是行内边距 + 行首图标，弹窗里是 0）

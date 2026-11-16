@@ -1,6 +1,5 @@
 package com.lookie.opluskey.ui.screen.combo
 
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,7 +40,6 @@ import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.text.BRANCHES_TITLE
-import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.row.ChipSentence
 import com.lookie.opluskey.ui.row.NameFlow
@@ -442,30 +440,24 @@ internal fun SettingsPage.KeysHeaderEdit() {
     if (editing) KeysHeaderSelectAll(canEdit)
 
     //  「按一下振一下」由顶栏那一层统一挂（见 `PageHeader` 的 `headerPressTick`），这里不再自己振
-    //  字形随编辑态换（编辑 与 完成）：形状没法插值 ⇒ 交叉淡过去；图标色与它同一条曲线，
-    //  免得「色在渐变、字形啪地换掉」。
+    //  字形随编辑态换（编辑 与 完成）：同位置替换**不做淡入淡出**（用户口径），直接换这颗字形；
+    //  颜色仍是状态驱动的过渡（`animateColorAsState`），字形与底色同一次到位。
     DisabledHint(if (canEdit) null else disabledClickReason()) {
         HeaderIconButton(
             onClick = { KeysEditState.toggleEditing() },
             enabled = canEdit,
         ) {
-            Crossfade(
-                targetState = editing,
-                animationSpec = COLOR_FADE_SPEC,
-                label = "KeysEditGlyph",
-            ) { on ->
-                Icon(
-                    if (on) PageIcons.Confirm else PageIcons.CommandEdit,
-                    contentDescription =
-                        if (on) {
-                            I18n.get(Strings.COMMON_DONE)
-                        } else {
-                            I18n.get(Strings.COMMON_EDIT)
-                        },
-                    // 顶栏按钮不给图标上色 ⇒ 禁用态得自己给（与行首图标同一个禁用色）
-                    tint = iconTint,
-                )
-            }
+            Icon(
+                if (editing) PageIcons.Confirm else PageIcons.CommandEdit,
+                contentDescription =
+                    if (editing) {
+                        I18n.get(Strings.COMMON_DONE)
+                    } else {
+                        I18n.get(Strings.COMMON_EDIT)
+                    },
+                // 顶栏按钮不给图标上色 ⇒ 禁用态得自己给（与行首图标同一个禁用色）
+                tint = iconTint,
+            )
         }
     }
 }

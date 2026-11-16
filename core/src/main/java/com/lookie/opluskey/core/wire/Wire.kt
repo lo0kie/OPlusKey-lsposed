@@ -107,6 +107,28 @@ object ComboWire {
         @SerialName("member_click_then_long_press_ms")
         val memberClickThenLongPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
         /**
+         * 成员「单击后长按」的**时序与收尾** —— 判定侧（`GestureDetector` 那条连击链）读它们：
+         * 不带的话那一档只能「到点即执行、不连发、没有松手动作」，界面上却摆着这几行。
+         */
+        @SerialName("member_click_then_long_fire_on_release")
+        val memberClickThenLongFireOnRelease: Boolean = false,
+        @SerialName("member_click_then_long_repeat")
+        val memberClickThenLongRepeat: Boolean = false,
+        @SerialName("member_click_then_long_repeat_interval_ms")
+        val memberClickThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+        @SerialName("member_click_then_long_repeat_vibrate")
+        val memberClickThenLongRepeatVibrate: Boolean = false,
+        @SerialName("member_click_then_long_release_on")
+        val memberClickThenLongReleaseOn: Boolean = false,
+        @SerialName("member_click_then_long_release")
+        val memberClickThenLongRelease: String = Action.NONE,
+        /**
+         * 这一档绑的是不是**多条命令** —— 只有广播这一列（与单键 `click_then_long_serial` 同一条）：
+         * 注入侧读不到命令库，连发要按它排掉。
+         */
+        @SerialName("member_click_then_long_serial")
+        val memberClickThenLongIsSerial: Boolean = false,
+        /**
          * 这一组自己的**四格窗口**（毫秒，等待 / 按住 × 固定窗口起点 开 / 关）；`0` = 跟随公共设置。
          *
          *  注入侧判定组合时读的就是它们 —— 不带的话每组只能等公共那几格，
@@ -266,7 +288,13 @@ object ComboWire {
         }
     }
 
-    /** 组合键列表 → 广播里那个字符串。空表也给空串（接收侧按「没有组合键」处理）。 */
+    /**
+     * 组合键列表 → 广播里那个字符串。空表也给空串（接收侧按「没有组合键」处理）。
+     *
+     *  「成员单击后长按绑的是不是多条命令」那一列**由 [ComboKey] 自己带着**
+     *  （`memberClickThenLongIsSerial`）：命令库在宿主私有目录、注入侧读不到，所以由发送侧
+     *  在组广播之前现算、盖进那份副本里（见 `ConfigBroadcast.intent`）—— 本函数只负责编码。
+     */
     fun encode(combos: List<ComboKey>): String =
         if (combos.isEmpty()) {
             ""
@@ -326,6 +354,13 @@ object ComboWire {
             memberClickThenLong = combo.memberClickThenLong.token,
             memberClickThenLongOn = combo.memberClickThenLongOn,
             memberClickThenLongPressMs = combo.memberClickThenLongPressMs,
+            memberClickThenLongFireOnRelease = combo.memberClickThenLongFireOnRelease,
+            memberClickThenLongRepeat = combo.memberClickThenLongRepeat,
+            memberClickThenLongRepeatIntervalMs = combo.memberClickThenLongRepeatIntervalMs,
+            memberClickThenLongRepeatVibrate = combo.memberClickThenLongRepeatVibrate,
+            memberClickThenLongReleaseOn = combo.memberClickThenLongReleaseOn,
+            memberClickThenLongRelease = combo.memberClickThenLongRelease.token,
+            memberClickThenLongIsSerial = combo.memberClickThenLongIsSerial,
             waitWindowMs = combo.waitWindowMs,
             waitPairMs = combo.waitPairMs,
             holdWindowMs = combo.holdWindowMs,
@@ -377,6 +412,14 @@ object ComboWire {
             memberClickThenLong = Action.parse(memberClickThenLong),
             memberClickThenLongOn = memberClickThenLongOn,
             memberClickThenLongPressMs = clampLongPress(memberClickThenLongPressMs),
+            //  这一档的时序与收尾（注入侧判定要读）：间隔与单键那一族同一个区间
+            memberClickThenLongFireOnRelease = memberClickThenLongFireOnRelease,
+            memberClickThenLongRepeat = memberClickThenLongRepeat,
+            memberClickThenLongRepeatIntervalMs = clampRepeatInterval(memberClickThenLongRepeatIntervalMs),
+            memberClickThenLongRepeatVibrate = memberClickThenLongRepeatVibrate,
+            memberClickThenLongReleaseOn = memberClickThenLongReleaseOn,
+            memberClickThenLongRelease = Action.parse(memberClickThenLongRelease),
+            memberClickThenLongIsSerial = memberClickThenLongIsSerial,
             //  四格窗口：0 = 跟随公共设置，原样留着；设过的钳进那一档区间（手改的越界值在这里收口）
             waitWindowMs = clampFollow(waitWindowMs),
             waitPairMs = clampFollow(waitPairMs),
@@ -425,7 +468,7 @@ object ComboWire {
         return value.coerceIn(kind.min, kind.max)
     }
 
-    /** 连发间隔钳进字段表那一档（与单键的「触发间隔」同一个区间）。 */
+    /** 连发间隔钳进字段表那一档（与单键的「连续触发间隔」同一个区间）。 */
     private fun clampRepeatInterval(value: Int): Int {
         val kind = ConfigFields.F_REPEAT_INTERVAL_MS.kind as? ConfigFields.Kind.Number ?: return value
         return value.coerceIn(kind.min, kind.max)

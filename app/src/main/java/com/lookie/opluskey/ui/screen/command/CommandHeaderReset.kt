@@ -1,6 +1,5 @@
 package com.lookie.opluskey.ui.screen.command
 
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,7 +14,6 @@ import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.model.icon.FluidIconRow
 import com.lookie.opluskey.ui.model.icon.PageIcons
-import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.screen.pageWritable
@@ -94,8 +92,8 @@ internal fun SettingsPage.CommandHeaderReset(
 private fun SettingsPage.CommandHeaderEdit() {
     val editing = CommandListEditState.editing
     val canEdit = configState.commands.value.isNotEmpty() && pageWritable()
-    //  字形随编辑态换（编辑 与 完成）：形状没法插值 ⇒ 交叉淡过去；图标色与它同一条曲线，
-    //  免得「色在渐变、字形啪地换掉」。
+    //  字形随编辑态换（编辑 与 完成）：同位置替换**不做淡入淡出**（用户口径），直接换这颗字形；
+    //  颜色仍是状态驱动的过渡（`animateColorAsState`），字形与底色同一次到位。
     val iconTint by animateColorAsState(
         targetValue =
             if (canEdit) {
@@ -132,22 +130,16 @@ private fun SettingsPage.CommandHeaderEdit() {
             onClick = { CommandListEditState.toggleEditing() },
             enabled = canEdit,
         ) {
-            Crossfade(
-                targetState = editing,
-                animationSpec = COLOR_FADE_SPEC,
-                label = "CommandsEditGlyph",
-            ) { on ->
-                Icon(
-                    if (on) PageIcons.Confirm else PageIcons.CommandEdit,
-                    contentDescription =
-                        if (on) {
-                            I18n.get(Strings.COMMON_DONE)
-                        } else {
-                            I18n.get(Strings.COMMON_EDIT)
-                        },
-                    tint = iconTint,
-                )
-            }
+            Icon(
+                if (editing) PageIcons.Confirm else PageIcons.CommandEdit,
+                contentDescription =
+                    if (editing) {
+                        I18n.get(Strings.COMMON_DONE)
+                    } else {
+                        I18n.get(Strings.COMMON_EDIT)
+                    },
+                tint = iconTint,
+            )
         }
     }
 }

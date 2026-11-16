@@ -56,7 +56,7 @@ import kotlinx.coroutines.launch
 // 「自定义命令」页的骨架 —— 类型选择器带、两页的 pager、以及那几条只在整页上跑一次的副作用。
 //
 // 一页的内容在 `CommandPage.kt`、「已保存的命令」那段网格在 `SavedCommands.kt`、
-// 五个确认窗在 `CommandDialogs.kt`。这里只管「pager 在哪一页、那几个位归谁」。
+// 六个确认窗在 `CommandDialogs.kt`。这里只管「pager 在哪一页、那几个位归谁」。
 //
 // 拆之前这里是 626 行一个函数（含三层 lambda 里的整页内容），改一行得先数括号。
 
@@ -242,7 +242,12 @@ internal fun SettingsPage.CommandScreen(
         //  （滚回顶部再滑进去）。给在这里而不是让窗自己拼 —— 窗拿不到 `pagerState` / `scope`。
         CommandDialogs(ui, onLoaded = openSaved)
 
-        CommandFloatingButton(scope = this, tick = tick, onListPage = pagerState.currentPage == COMMAND_LIST_PAGE)
+        CommandFloatingButton(
+            scope = this,
+            tick = tick,
+            onListPage = pagerState.currentPage == COMMAND_LIST_PAGE,
+            ui = ui,
+        )
 
         //  详情浮层摆在**最上面**：它自己带遮罩，要盖住底下的 FAB 与列表
         CommandDetailOverlay(ui)
@@ -266,6 +271,8 @@ private fun SettingsPage.CommandFloatingButton(
     tick: () -> Unit,
     /** 现在停在「命令列表」那一页 —— 那一页平时没有 FAB，编辑态里才有一颗「删除」。 */
     onListPage: Boolean,
+    /** 「保存前先问一句」那一问挂在页面上（`confirmShellSave`），FAB 只负责置位。 */
+    ui: CommandUiState,
 ) {
     val sortingSteps = commandDraft.stepEditing
     //  列表编辑态那颗「删除」：**勾了任意一条就滑进**（与「按键功能」页同一套，见 `KeysScreen`）
@@ -277,7 +284,7 @@ private fun SettingsPage.CommandFloatingButton(
             PageFabButton(
                 onClick = {
                     tick()
-                    onFabTap(listEditing, sortingSteps)
+                    onFabTap(listEditing, sortingSteps, ui)
                 },
             ) {
                 val face = fabFace(listEditing, sortingSteps)
@@ -293,10 +300,15 @@ private fun SettingsPage.CommandFloatingButton(
  *  列表编辑态 ⇒ 弹「删除选中」的确认（删了不可撤销，那几条的绑定一起改）；
  *  步骤排序态 ⇒ 只退出排序（别的控件这时都禁用，这颗是唯一出路）；
  *  其余 ⇒ 「保存」：不满足条件时把**为什么不能存**交给页内提示，与行级说法同一条。
+ *
+ *  保存那一档还有一只岔口：命令**存得下、但按下去不会有任何效果**时（见 [shellSaveNeedsConfirm]）
+ *  先把那一问挂到页面上（`ui.confirmShellSave`），由 `ShellSaveConfirmDialog` 画出来；
+ *  这里是**只置位、不落盘** —— 用户点「仍然保存」之后才由那个窗调 [addCommand]。
  */
 private fun SettingsPage.onFabTap(
     listEditing: Boolean,
     sortingSteps: Boolean,
+    ui: CommandUiState,
 ) {
     when {
         listEditing -> {
@@ -310,10 +322,10 @@ private fun SettingsPage.onFabTap(
 
         else -> {
             val blocked = saveBlockedReason()
-            if (blocked != null) {
-                hint(blocked, slot = HINT_SLOT_DISABLED)
-            } else {
-                addCommand()
+            when {
+                blocked != null -> hint(blocked, slot = HINT_SLOT_DISABLED)
+                shellSaveNeedsConfirm() -> ui.confirmShellSave = true
+                else -> addCommand()
             }
         }
     }

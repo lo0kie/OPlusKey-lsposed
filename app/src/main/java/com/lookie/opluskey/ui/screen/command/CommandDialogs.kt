@@ -12,6 +12,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.chrome.addCommand
 import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.model.text.COMMAND_DISCLAIMER_TEXT
 import com.lookie.opluskey.ui.model.text.COMMAND_DISCLAIMER_TITLE
@@ -21,15 +22,15 @@ import com.lookie.opluskey.ui.style.escapeEmphasis
 import com.lookie.opluskey.ui.write.write
 import kotlinx.coroutines.delay
 
-// 「自定义命令」页那五个确认窗 —— 从 `CommandScreen.kt` 拆出来。
+// 「自定义命令」页那六个确认窗 —— 从 `CommandScreen.kt` 拆出来。
 //
 //  它们共同的特点：**状态不在本页手里也算数**。
 //   · 三个的触发点在别处（`goBack` / `loadDraft` 置的位），这里只负责画；
-//   · 两个是页内自己的（风险提示、删命令、填前缀）。
+//   · 三个是页内自己的（风险提示、删命令、填前缀、保存前那一问）。
 //  混在页面骨架里时，「这一句是谁弹的」得往上翻一百行才知道。
 
 /**
- * 这一页所有确认窗的挂载点 —— 一次画五个，各自看自己那一位。
+ * 这一页所有确认窗的挂载点 —— 一次画六个，各自看自己那一位。
  *
  * @param onLoaded 换命令的确认窗点「放弃」之后要**切到那一条所属的页**（由调用点给：
  *   它就是「点列表里一张卡」那条路用的同一支 —— 滚回顶部再滑进去）。放在这里而不是
@@ -44,10 +45,38 @@ internal fun SettingsPage.CommandDialogs(
     LeaveDiscardDialog()
     SwitchDraftDiscardDialog(onLoaded)
     DeleteCommandDialog(ui)
+    ShellSaveConfirmDialog(ui)
     //  这两支的状态在 `CommandListEditState` 里（页面级的编辑态），不读 `ui`
     DeletePickedDialog()
     LeaveListEditDialog()
     FillPrefixDialog(ui)
+}
+
+/**
+ * 保存一条**注定不会执行**的 `shell:` 命令之前那一问 —— 判据见 [shellSaveNeedsConfirm]。
+ *
+ *  为什么值得拦一下：这台机器上「既没以 root 执行、也没走 Shizuku」的 `shell:` 起不了进程
+ *  （宿主与模块两个域都 exec 不了 `/system/bin/sh`），而**新建命令的表单默认就是这两位都关**
+ *  —— 也就是说最常见的那条路（写一条 shell 命令就存）得到的正是一条按下去毫无反应的命令，
+ *  用户往往要到绑定之后按了没动静才发现。
+ *
+ *  存下去**不是破坏性动作**（没删东西、没改绑定），所以动作项不红：「仍然保存」是允许的，
+ *  只是把后果说在前面。
+ */
+@Composable
+private fun SettingsPage.ShellSaveConfirmDialog(ui: CommandUiState) {
+    ConfirmDialog(
+        show = ui.confirmShellSave,
+        title = I18n.get(Strings.COMMAND_SHELL_WARN_TITLE),
+        summary = I18n.get(Strings.COMMAND_SHELL_WARN_BODY),
+        action = I18n.get(Strings.COMMAND_SHELL_WARN_SAVE),
+        positiveDanger = false,
+        onDismiss = { ui.confirmShellSave = false },
+        onConfirm = {
+            ui.confirmShellSave = false
+            addCommand()
+        },
+    )
 }
 
 /**

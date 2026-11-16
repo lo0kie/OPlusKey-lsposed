@@ -221,6 +221,16 @@ internal class CommandUiState {
     var pendingFormatPrefix by mutableStateOf<String?>(null)
 
     /**
+     * 「这条 shell 命令保存了也跑不了」那一问还等着回答（见 `CommandFloatingButton` 与
+     * `ShellSaveConfirmDialog`）。
+     *
+     *  与 [disclaimerPending] 不是一回事：那是「进这一页先认一次风险」，一次性的门；这是
+     *  「这一条命令**此刻的样子**让它能存下去、但按下去不会有任何效果」—— 每条命令各问各的
+     *  （见 `shellSaveNeedsConfirm`），换一条命令该重新问。
+     */
+    var confirmShellSave by mutableStateOf(false)
+
+    /**
      * 把输入框**滚回视野**的请求 —— 点一下「支持的命令格式」那一行就 +1。
      *
      *  用**自增的计数**而不是一个布尔位：连着点两行时布尔会停在同一个值上（true → true），

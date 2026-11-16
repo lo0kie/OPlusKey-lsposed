@@ -83,8 +83,13 @@ enum class ConditionKind(
      *  而 `[熄屏]` 与 `[锁屏]` 是两块**不同**的场景，不能当成同一块
      *  （见 `BlockRules.duplicateBlockIndexes`）—— 别把它们按「同一档条件」合并。
      *  探针读不到时按「判不出」处理，三档都不成立。
+     *
+     *  ## 这个顺序就是选择器里的自上而下
+     *
+     *  `on` → `locked` → `off`：先亮着的两种（先在用、再锁着），最后才轮到灭屏。判据上三档
+     *  互斥、与顺序无关（见 `ConditionChecks.screenMatches`），这里排的是**读的顺序**。
      */
-    SCREEN("screen", choices = listOf("on", "off", "locked"), defaultChoice = "on"),
+    SCREEN("screen", choices = listOf("on", "locked", "off"), defaultChoice = "on"),
 
     /** **充电状态**：`charging`（充电中，含充满）/ `idle`（没在充电）。老配置没有取值 ⇒ 按 `charging` 解释。 */
     CHARGING("charging", choices = listOf("charging", "idle"), defaultChoice = "charging"),

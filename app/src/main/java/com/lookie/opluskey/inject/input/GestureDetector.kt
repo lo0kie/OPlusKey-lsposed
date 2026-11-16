@@ -613,7 +613,7 @@ internal class GestureDetector(
                     //  （只有一条 DOWN/UP，没有「长按」那行）。攒成一句在**锁外**打：日志出口要走
                     //  logd，与 dispatch 同理，不该占着这把状态锁。
                     when (shotDecision(id, config)) {
-                        SHOT_CHAINED -> fireChained(id, config)
+                        SHOT_CHAINED -> fireChained(id, config, downAt)
                         SHOT_LONG -> fireLong(id, config, downAt)
                         else -> Unit
                     }
@@ -670,13 +670,24 @@ internal class GestureDetector(
     }
 
     /**
-     * 「单击后长按」：第 2 击按住了 ⇒ 这一档**立即派发**，不走「松手才触发」与「面板动作」
-     *  那两条（它们描述的是长按那一档的时序，这一档不是长按）。
+     * 「单击后长按」：第 2 击按住了 ⇒ 到点这一下派发 —— **除非开了「松手时触发」**。
+     *
+     *  开了那一位就与长按那一档走同一支（见 [fireLong]）：到点只把这一按标成长按、不执行，
+     *  执行留给抬手那一支（[finishLong]），并排上松手兜底那一枪 —— 抬手真丢了时不能什么都不做。
+     *  连发一并不排：到点没有执行，就没有可重复的起点（数据侧另有 `clickThenLongRepeats` 一道）。
+     *
+     * @param downAt 这一枪属于哪一次按下（松手兜底那一枪要用它做身份判据）
      */
     private fun fireChained(
         id: KeyId,
         config: ClickChainParams,
+        downAt: Long,
     ) {
+        if (config.clickThenLongFireOnRelease) {
+            XLog.w("${id.label}：单击后长按到点（松手时触发 ⇒ 等抬手再执行）")
+            scheduleReleaseFallback(id, config, downAt, GestureTrigger.ClickThenLong)
+            return
+        }
         XLog.w("${id.label}：单击后长按")
         dispatch(id, GestureTrigger.ClickThenLong, config, repeat = false)
         //  这一档自己的连发（与长按那一族各一份参数）
@@ -788,11 +799,14 @@ internal class GestureDetector(
      *  派发留在锁外（会发广播，不该占着状态锁）。
      *
      * @param downAt 这一枪属于哪一次按下（与长按枪同一条身份判据）
+     * @param trigger 兜底要补哪一档 —— 长按那一档补 `LongPress`，「单击后长按」补 `ClickThenLong`
+     *   （那一档也开了「松手时触发」，见 [fireChained]）
      */
     private fun scheduleReleaseFallback(
         id: KeyId,
         config: ClickChainParams,
         downAt: Long,
+        trigger: GestureTrigger = GestureTrigger.LongPress,
     ) {
         cancelReleaseFallback(id)
         val shot =
@@ -814,8 +828,12 @@ internal class GestureDetector(
                         XLog.w("${id.label}：松手兜底作废（抬手已到或这一按已收尾）")
                         return@Runnable
                     }
-                    XLog.w("${id.label}：长按（松手才触发，但 ${RELEASE_FALLBACK_MS}ms 未见抬手 ⇒ 兜底执行一次）")
-                    dispatch(id, GestureTrigger.LongPress, config, repeat = false)
+                    XLog.w(
+                        "${id.label}：" +
+                            (if (trigger == GestureTrigger.ClickThenLong) "单击后长按" else "长按") +
+                            "（松手才触发，但 ${RELEASE_FALLBACK_MS}ms 未见抬手 ⇒ 兜底执行一次）",
+                    )
+                    dispatch(id, trigger, config, repeat = false)
                 } catch (e: Throwable) {
                     // 计时器跑在 system_server 主线程上，抛出去就是整机崩
                     XLog.w("松手兜底失败（忽略）：${id.label}", e)
@@ -907,6 +925,8 @@ internal class GestureDetector(
      *
      *  · 已经**兜底执行过**（UP 丢过）：这一下只清理 —— 不清理会让长按状态漏到下一次按压，
      *    再执行一次就是「一次按压两个动作」；
+     *  · 「单击后长按」这一档也在这一支收尾：开了「松手时触发」就在这一下派发它的动作，
+     *    否则按它自己的松手额外动作那一格补一条（见下面第一支）；
      *  · 「松手才触发」：到点只标了状态，长按动作放到这一下执行**一次**；
      *  · 「松手执行额外动作」（`releaseBound`）：长按早在按下期间执行过（可能还连发过几轮），
      *    这一下再补一条 `release`；
@@ -929,6 +949,17 @@ internal class GestureDetector(
         //  判据是**开关**（与第 2 击那两支同一口径）：动作是无操作时这一档也要把抬手收掉，
         //  否则会落到下面「按长按收尾」那几支去补一条单击。
         if (config.clickThenLongOn && p.clicks >= 2) {
+            //  「松手时触发」（`clickThenLongFireOnRelease`）：到点只把这一按标成长按、没有派发
+            //  （见 `fireChained`），动作放到这一下执行**一次** —— 与长按那一档（下面
+            //  `config.longFireOnRelease` 那一支）同一支顺序。
+            //  「松手执行额外动作」在这里不参与：两个动作都在抬手，同一刻执行两个没有意义
+            //  （数据侧 `clickThenLongReleaseAction` 也把它排掉了，界面同样是灰的）。
+            if (config.clickThenLongFireOnRelease) {
+                XLog.w("${id.label}：单击后长按（松手时触发）")
+                reset(id)
+                dispatch(id, GestureTrigger.ClickThenLong, config, repeat = false)
+                return
+            }
             //  那一档本身是「无操作」时松手也不补：松手动作是「这一档执行之后」的收尾，
             //  主语没有就不该有谓语（用户口径「设为无操作时禁用松手后额外触发」）
             //  两个来源取或：按键自己那一格，与**场景块**里给这一档配的松手

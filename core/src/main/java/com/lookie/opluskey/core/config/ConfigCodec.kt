@@ -246,13 +246,20 @@ object ConfigCodec {
      *  78 = `ComboDto` 多了**成员连击**那一串（`member_double` / `member_clicks` /
      *       `member_click_then_long*`）。缺键 ⇒ 全关着 / 无操作，与这一位出现之前一致。
      *
+     *  79 = `KeyDto` 多了 `click_then_long_fire_on_release`（「单击后长按」的松手时触发）。
+     *       缺键 ⇒ false ⇒ 到点即执行，与这一位出现之前一致，不需要迁移。
+     *
+     *  80 = `ComboDto` 多了成员「单击后长按」的时序与收尾那一串
+     *       （`member_click_then_long_fire_on_release` / `_repeat*` / `_release*`）。
+     *       缺键 ⇒ 全关着 / 默认间隔 / 无操作，与这一位出现之前一致。
+     *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
      *  不抬版本的话，`version == VERSION` 那一支会拿新 DTO 去校旧文件，**每一份已有配置都当场
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 78
+    const val VERSION = 80
 
     /**
      * 「提示走流体云」由「可选增强」变成「默认落点」的那一版 —— 迁移只看「文件是不是比它旧」。

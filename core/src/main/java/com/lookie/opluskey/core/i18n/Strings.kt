@@ -90,8 +90,6 @@ object Strings {
     /** 「选择应用」页在**多选**那一趟（给条件挑前台应用）的大标题 —— 那一趟点一行是勾选，不是「打开」。 */
     const val APP_PICKER_MULTI_TITLE = "app_picker.multi_title"
     const val BINDING_CREATE_CUSTOM_COMMAND = "binding.create_custom_command"
-
-    const val BINDING_CREATE_CUSTOM_COMMAND_DESC = "binding.create_custom_command_desc"
     const val BINDING_DELETE_KEY = "binding.delete_key"
 
     /** 「删除按键」被挡住时那个窗的标题（这颗键还在组合里）。 */
@@ -154,8 +152,6 @@ object Strings {
      *  同宽，太长会把标题挤掉一截。
      */
     const val BINDING_COMBO_ONLY_BADGE = "binding.combo_only_badge"
-
-    const val BINDING_LONG_PRESS_DELAY_DESC = "binding.long_press_delay_desc"
     const val BINDING_LONG_PRESS_DELAY_TITLE = "binding.long_press_delay_title"
 
     /**
@@ -176,10 +172,6 @@ object Strings {
      *  它也与连续触发互斥，与「松手执行额外动作」互斥 —— 三者都由 `KeyConfig` 那两位属性收口。
      */
     const val BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE = "binding.long_press_fire_on_release_title"
-    const val BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_ON = "binding.long_press_fire_on_release_desc_on"
-    const val BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_OFF = "binding.long_press_fire_on_release_desc_off"
-    const val BINDING_LONG_PRESS_REPEAT_DESC_OFF = "binding.long_press_repeat_desc_off"
-    const val BINDING_LONG_PRESS_REPEAT_DESC_ON = "binding.long_press_repeat_desc_on"
     const val BINDING_LONG_PRESS_REPEAT_TITLE = "binding.long_press_repeat_title"
 
     /**
@@ -207,11 +199,17 @@ object Strings {
 
     /** 「按键绑定」页大标题下面那行小标题：当前这一组是「快捷键」。 */
     const val BINDING_SECTION_KEYS = "binding.section_keys"
-    const val BINDING_REPEAT_INTERVAL_DESC = "binding.repeat_interval_desc"
     const val BINDING_REPEAT_INTERVAL_TITLE = "binding.repeat_interval_title"
-    const val BINDING_REPEAT_VIBRATE_DESC_OFF = "binding.repeat_vibrate_desc_off"
-    const val BINDING_REPEAT_VIBRATE_DESC_ON = "binding.repeat_vibrate_desc_on"
     const val BINDING_REPEAT_VIBRATE_TITLE = "binding.repeat_vibrate_title"
+
+    /**
+     * 「每次触发都振动」拨不动时那一窗的标题与正文 —— 这一档的**振动反馈**没开。
+     *
+     *  执行侧 `haptic` 第一行就按总闸返回：总闸关着时这一位开了也不会有任何振动，
+     *  界面却显示「开着」= 给了一个不生效的开关。所以拨开时先拦一下，让他去开总闸。
+     */
+    const val BINDING_REPEAT_VIBRATE_BLOCKED_TITLE = "binding.repeat_vibrate_blocked_title"
+    const val BINDING_REPEAT_VIBRATE_BLOCKED_BODY = "binding.repeat_vibrate_blocked_body"
     const val BINDING_SERIAL_UNSUPPORTED_REPEAT = "binding.serial_unsupported_repeat"
     const val BINDING_VOICE_UNSUPPORTED_REPEAT = "binding.voice_unsupported_repeat"
 
@@ -262,9 +260,6 @@ object Strings {
     //  这一页与上面那一组是两件事：上面管**模块自带的那几条叫什么**（跟着语言走），
     //  这里管**用户自己钉的那张清单**（钉 / 改名 / 显不显示 / 移除）。
 
-    /** 清单页顶部那条提示（写盘成功时用）。 */
-    const val COMMON_COMMANDS_SAVED = "common_commands.saved"
-
     /** 这张清单到上限了（`GlobalConfig.MAX_COMMON_COMMANDS`），参数是那个上限。 */
     const val COMMON_COMMANDS_LIMIT = "common_commands.limit"
 
@@ -274,6 +269,9 @@ object Strings {
      */
     const val COMMON_COMMANDS_EDIT = "common_commands.edit"
 
+    /** 「修改」按成之后那条回执 —— 换掉的是它指向的动作，名字 / 图标 / 固定位都还在。 */
+    const val COMMON_COMMANDS_EDIT_DONE = "common_commands.edit_done"
+
     /** 行菜单 / 改名窗共用的「重命名」。 */
     const val COMMON_COMMANDS_RENAME = "common_commands.rename"
 
@@ -282,6 +280,9 @@ object Strings {
 
     /** 改名窗下面那行常驻小字：留空会怎样。 */
     const val COMMON_COMMANDS_RENAME_HINT = "common_commands.rename_hint"
+
+    /** 改完名之后那条回执 —— 只说「改了什么」，不重复「已保存」。 */
+    const val COMMON_COMMANDS_RENAMED = "common_commands.renamed"
 
     /**
      * 行菜单里那一项：**把这一条固定到按键绑定页**（`固定`）。
@@ -300,6 +301,14 @@ object Strings {
     const val COMMON_COMMANDS_UNPINNED_N = "common_commands.unpinned_n"
 
     /**
+     * 单条固定 / 取消固定后那条回执 —— 数量为 1 时用它，不说「已固定 1 项」。
+     *
+     *  这两条与上面的 `_N` 是同一句话的两个数法：批量走带参数的，单条走不带参数的。
+     */
+    const val COMMON_COMMANDS_PINNED_DONE = "common_commands.pinned_done"
+    const val COMMON_COMMANDS_UNPINNED_DONE = "common_commands.unpinned_done"
+
+    /**
      * 行菜单里那一项：给这一条**换一颗图标**。
      *
      *  与命令页那一档共用同一个网格选择器（[COMMAND_FLUID_ICON_TITLE] 那一套字形），只是写回去的
@@ -307,6 +316,9 @@ object Strings {
      *  用同一个词（「图标」），不另起说法。
      */
     const val COMMON_COMMANDS_ICON = "common_commands.icon"
+
+    /** 换完图标之后那条回执。 */
+    const val COMMON_COMMANDS_ICON_CHANGED = "common_commands.icon_changed"
 
     /** 行菜单里那一项：把这一条从清单里删掉。 */
     const val COMMON_COMMANDS_REMOVE = "common_commands.remove"
@@ -332,9 +344,6 @@ object Strings {
     /** 「按键设置」页那一行：进这一页。 */
     const val COMMON_COMMANDS_MANAGE = "common_commands.manage"
 
-    /** 同上那一行的副标题。 */
-    const val COMMON_COMMANDS_MANAGE_DESC = "common_commands.manage_desc"
-
     /** 顶栏副标题：这张清单里钉着几条 —— 模板带一个 `%d`（条数嵌进句子，见 `I18n.format`）。 */
     const val COMMON_COMMANDS_SUBTITLE = "common_commands.subtitle"
 
@@ -344,7 +353,12 @@ object Strings {
     /** 抽屉里选到「入口格」那种标记写法时说的是什么（它不是能执行的动作）。 */
     const val COMMON_COMMANDS_NOT_ACTION = "common_commands.not_action"
 
-    /** 选择器里「这个动作已经在清单里」那枚行尾小字。 */
+    /**
+     * 选择器里「这个动作已经在清单里」那枚行尾小字；也拿它当**添加成功**那条回执。
+     *
+     *  两处是同一句话：一枚标的是「它已经在里面了」，回执说的是「刚把它加进去了」——
+     *  用户读到的都是「这条在常用命令里」，不用为回执另起一句「已添加 1 项」。
+     */
     const val COMMON_COMMANDS_ADDED = "common_commands.added"
 
     /** 点在那种灰行上时说的原因 —— 与上面那枚小字同一件事，但被问的是「为什么点不动」。 */
@@ -624,7 +638,7 @@ object Strings {
     const val COMBO_SCENE_ON_STARTER_DESC_OFF = "combo.scene_on_starter_desc_off"
 
     /**
-     * 「首键松手后仍执行长按」那一行 —— 标题 + 开关真假各一句。
+     * 「首键松手后仍触发长按」那一行 —— 标题 + 开关真假各一句。
      *
      *  只管**按住那两档**：等窗口那一档没有「先按住哪一颗」，也就没有「首键自己的长按」
      *  （`ComboKey.starterKeepLong` 的说明）。
@@ -905,6 +919,15 @@ object Strings {
 
     /** 「保存」被禁用时：单条命令的正文还不完整（只写了 `shell:` 这种前缀也算）。 */
     const val COMMAND_PAYLOAD_INCOMPLETE = "command.payload_incomplete"
+
+    /** 保存一条注定跑不了的 `shell:` 命令之前那一问的标题（判据见 `shellSaveNeedsConfirm`）。 */
+    const val COMMAND_SHELL_WARN_TITLE = "command.shell_warn_title"
+
+    /** 同上那段的正文：缺哪个开关、后果是什么，一句说完。 */
+    const val COMMAND_SHELL_WARN_BODY = "command.shell_warn_body"
+
+    /** 上面那个窗的动作项：「仍然保存」（存下去不是破坏性动作，所以不红）。 */
+    const val COMMAND_SHELL_WARN_SAVE = "command.shell_warn_save"
 
     /** 「保存」被禁用时：多条命令还没有任何步骤。 */
     const val COMMAND_NEED_STEP = "command.need_step"

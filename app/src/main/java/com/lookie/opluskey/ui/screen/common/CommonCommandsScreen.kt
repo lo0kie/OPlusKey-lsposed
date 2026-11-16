@@ -40,6 +40,7 @@ import com.lookie.opluskey.ui.dialog.MenuEntry
 import com.lookie.opluskey.ui.dialog.NameDialog
 import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.dialog.PickerActionDialog
+import com.lookie.opluskey.ui.dialog.PickerOption
 import com.lookie.opluskey.ui.feedback.Feedback
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
@@ -368,10 +369,14 @@ private fun SettingsPage.CommonCommandsMenu(
             //  菜单关掉、就地写这一位（不新开一层窗）：这是个即时生效的开关，
             //  留一层「确定」只是多一次点击。
             st.menuToken = null
+            //  **回执说的是这一下真正做的事**（固定 / 取消固定，见用户口径）：这一支以前
+            //  借 `setCommonCommands` 那句「常用命令已保存」，读起来像「什么都没变、只是存了一下」。
+            val pin = !it.showInBinding
             //  现读一次配置再拼：改名 / 换图标可能刚在同一轮里落过盘
             val now = configState.config.value.global.commonCommands
             setCommonCommands(
-                now.map { row -> if (row.token == it.token) row.copy(showInBinding = !row.showInBinding) else row },
+                now.map { row -> if (row.token == it.token) row.copy(showInBinding = pin) else row },
+                notice = I18n.get(if (pin) Strings.COMMON_COMMANDS_PINNED_DONE else Strings.COMMON_COMMANDS_UNPINNED_DONE),
             )
         },
         onRemove = {
@@ -405,7 +410,10 @@ private fun SettingsPage.CommonCommandsIcon(st: CommonCommandsUiState) {
             st.iconToken = null
             if (token != null) {
                 val now = configState.config.value.global.commonCommands
-                setCommonCommands(now.map { row -> if (row.token == token) row.copy(icon = id) else row })
+                setCommonCommands(
+                    now.map { row -> if (row.token == token) row.copy(icon = id) else row },
+                    notice = I18n.get(Strings.COMMON_COMMANDS_ICON_CHANGED),
+                )
             }
         },
         onDismiss = { st.iconToken = null },
@@ -571,10 +579,16 @@ private fun SettingsPage.CommonCommandsSources(st: CommonCommandsUiState) {
     PickerActionDialog(
         show = st.choosing,
         title = I18n.get(Strings.COMMON_COMMANDS_ADD),
-        labels =
+        options =
             listOf(
-                I18n.get(Strings.COMMON_COMMANDS_SOURCE_BUILTIN),
-                I18n.get(Strings.COMMON_COMMANDS_SOURCE_MANUAL),
+                PickerOption(I18n.get(Strings.COMMON_COMMANDS_SOURCE_BUILTIN)),
+                //  「手动选择」这一行点开的是**底部抽屉**（下一层），行尾摆一颗 `selector`
+                //  读作「点了还得选点什么」；内置那一行点开是勾选窗，也是下一层，但用户口径只点名
+                //  这一行，不加第二颗。
+                PickerOption(
+                    I18n.get(Strings.COMMON_COMMANDS_SOURCE_MANUAL),
+                    trailing = { RowEndIcon(PageIcons.Selector) },
+                ),
             ),
         onDismiss = { st.choosing = false },
         onPick = { index ->
@@ -614,7 +628,10 @@ private fun SettingsPage.renameDialog(
             //  退场途中那一下不再落盘（`cmd` 已经空了）—— 与「音量窗退场途中又点一次确定」同一个口径
             val token = cmd?.token
             if (token != null) {
-                setCommonCommands(list.map { row -> if (row.token == token) row.copy(name = text.trim()) else row })
+                setCommonCommands(
+                    list.map { row -> if (row.token == token) row.copy(name = text.trim()) else row },
+                    notice = I18n.get(Strings.COMMON_COMMANDS_RENAMED),
+                )
             }
         },
     )
@@ -868,9 +885,12 @@ private fun SettingsPage.rowMenu(
                     //  **每条自己的开关**（用户口径「每个都可以选是否固定」）：`selected` 给的是
                     //  当前状态，行首那颗在选中时会换成对勾 —— 与「系统开关」那一族同一个读法。
                     //  关掉只影响按键绑定页那一段，这一条仍留在这一页的清单里。
+                    //
+                    //  **标题与字形说的是「按下去会做什么」**（用户口径）：已经固定着时它是
+                    //  「取消固定」那颗 —— 恒写「固定」的话，按下去反而是取消，读起来与结果相反。
                     MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_COMMANDS_PINNED),
-                        icon = PageIcons.PinnedInBinding,
+                        title = I18n.get(if (cmd.showInBinding) Strings.COMMON_COMMANDS_UNPIN else Strings.COMMON_COMMANDS_PINNED),
+                        icon = if (cmd.showInBinding) PageIcons.PinnedOff else PageIcons.Pinned,
                         selected = cmd.showInBinding,
                     ) {
                         onToggleShow(cmd)

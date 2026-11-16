@@ -3,6 +3,7 @@ package com.lookie.opluskey.core.wire
 import android.content.Intent
 import android.os.Bundle
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.GlobalConfig
@@ -102,7 +103,8 @@ object ConfigBroadcast {
         config: Config,
         longSerialOf: (KeyId) -> Boolean,
         chainSerialOf: (KeyId) -> Boolean = { false },
-    ): String = tag(intent(config, longSerialOf, chainSerialOf))
+        comboChainSerialOf: (ComboKey) -> Boolean = { false },
+    ): String = tag(intent(config, longSerialOf, chainSerialOf, comboChainSerialOf))
 
     /**
      * 把一份配置编成广播；宿主与设置页共用此构造器，格式只在这里写一次。
@@ -133,6 +135,11 @@ object ConfigBroadcast {
          *  一个 lambda 里揉在一起，读的人没法知道它答的是哪一档。
          */
         chainSerialOf: (KeyId) -> Boolean = { false },
+        /**
+         * 组合键的**成员「单击后长按」**绑的是不是多条命令 —— 与 [chainSerialOf] 同一条来路，
+         * 只是主语是某一档组合（动作挂在 `ComboKey` 上）。连发要在注入侧按它排掉。
+         */
+        comboChainSerialOf: (ComboKey) -> Boolean = { false },
     ): Intent {
         val intent = Intent(ACTION_CONFIG).addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
         val keys = config.allKeys
@@ -172,7 +179,12 @@ object ConfigBroadcast {
         //  发生在注入侧，而它读不到宿主私有目录里的配置文件。空表不放这一条 —— 与「没有组合键」
         //  同一个结果，还省掉一次序列化。
         if (config.combos.isNotEmpty()) {
-            intent.putExtra(ComboWire.EXTRA, ComboWire.encode(config.combos))
+            //  「成员单击后长按」那一档绑的是不是多条命令 —— 同一类**发送侧现算**的一位
+            //  （命令库在宿主私有目录，注入侧读不到），来路与单键那两位一样。
+            //  **盖进副本再编**：线格式只读 `ComboKey` 自己那一位，不必为它多开一个编码参数；
+            //  指纹也算在同一份 intent 上（`tag(config, …)` = `tag(intent(…))`），两边不会各算一份。
+            val stamped = config.combos.map { it.copy(memberClickThenLongIsSerial = comboChainSerialOf(it)) }
+            intent.putExtra(ComboWire.EXTRA, ComboWire.encode(stamped))
         }
         return intent
     }

@@ -813,6 +813,28 @@ private fun SettingsPage.writeReleaseTo(
             XLog.w("额外动作：${block.what} ← ${action.token}（草稿）${if (ok) "" else "（那一块已不在草稿里）"}")
             return ok
         }
+        //  组合键那一侧：写这一档的**成员「单击后长按」松手格**（`ComboKey.memberClickThenLongRelease`）。
+        //  与单键那一支同一件事、另一张表 —— 组合没有「这颗键」，动作挂在组合自己身上。
+        if (pick.comboId != null) {
+            val cfg = configState.config.value
+            val combo = cfg.combos.firstOrNull { it.id == pick.comboId }
+            if (combo == null) {
+                XLog.w("额外动作：组合 ${pick.comboId} 已不在配置里，忽略")
+                return false
+            }
+            val ok =
+                write(
+                    cfg.copy(
+                        combos =
+                            cfg.combos.map {
+                                if (it.id == combo.id) it.copy(memberClickThenLongRelease = action) else it
+                            },
+                    ),
+                    "member_click_then_long_release combo=${combo.id}",
+                ) != CommandsSave.Failed
+            XLog.w("额外动作：组合 ${combo.id} 的成员单击后长按松手 ← ${action.token}（${if (ok) "已落盘" else "没写进去"}）")
+            return ok
+        }
         val cfg = configState.config.value
         val id = KeyWatchState.editing(cfg)
         val key = cfg.key(id)
@@ -1001,6 +1023,14 @@ private fun SettingsPage.writeCommonCommand(
 ): Boolean {
     val ok = if (replaceToken != null) replaceCommonCommand(replaceToken, action) else addCommonCommand(action)
     if (ok) {
+        //  **这一趟做了什么就说什么**：这两支原先一声不响地退页 —— 回到清单页只看见多了一行 /
+        //  换了一行，而「已经加进去了」「换的是哪一条」全靠用户自己认。与固定 / 改名 / 换图标
+        //  那几处同一套说法：动作做成之后报动作，不报「已保存」。
+        hint(
+            I18n.get(
+                if (replaceToken != null) Strings.COMMON_COMMANDS_EDIT_DONE else Strings.COMMON_COMMANDS_ADDED,
+            ),
+        )
         popBackStack()
         return true
     }

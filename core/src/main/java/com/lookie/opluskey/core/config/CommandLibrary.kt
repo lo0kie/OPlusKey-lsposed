@@ -1,6 +1,7 @@
 package com.lookie.opluskey.core.config
 
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.CommandOutput
@@ -401,6 +402,14 @@ object CommandLibrary {
         config: Config,
         key: KeyId,
     ): Boolean = isSerialCommand(loadCached(), config.key(key).clickThenLong.token)
+
+    /**
+     * 与上面两支同一条，问的是**组合键的成员「单击后长按」**那一档绑的动作。
+     *
+     *  组合的动作挂在 `ComboKey` 上，不在这颗键的 `KeyConfig` 里 —— 所以这一支按组合取，
+     *  不像前两支那样要一份 `Config`（[ComboKey] 自己就带着那个动作）。
+     */
+    fun memberChainIsSerial(combo: ComboKey): Boolean = isSerialCommand(loadCached(), combo.memberClickThenLong.token)
 }
 
 /**

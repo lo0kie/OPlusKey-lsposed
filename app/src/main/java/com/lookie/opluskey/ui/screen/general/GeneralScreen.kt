@@ -251,8 +251,8 @@ private fun SettingsPage.toastTemplateRow(
         //  对不上、不写反斜杠又编译不过。缺字典时显示的就是 key 本身，一眼看得出是哪一条。
         summary = global.toastTemplate.ifBlank { I18n.get(Strings.HOME_TOAST_TEMPLATE_DEFAULT) },
         icon = PageIcons.ToastTemplate,
-        //  行尾给箭头：这一行点开的是**一张弹窗**（改文案），与「页内下一层」同一档的读法
-        arrow = true,
+        //  **不给行尾箭头**（用户口径）：那一颗的读法是「点了进下一页」（见 `PageIcons.EnterArrow`
+        //  的注释），而这一行点开的是一张弹窗 —— 没有下一层可进。
         enabled = enabled,
         visible = global.toastOnRun,
         onClick = onEdit,
@@ -263,11 +263,13 @@ private fun SettingsPage.toastTemplateRow(
  *
  *  **单独一行，不再与上面一颗开关配成对**：那一段露不露已经由清单内容决定（见 `InterfaceCard`）。
  *  行尾箭头：点开是一整页。
+ *
+ *  **不画副标题**（用户口径）：标题已经说清这一行去哪，「添加、改名、换图标与固定」是进去
+ *  之后才看得到的东西，摆在这一行只是把同一件事说两遍。
  */
 private fun SettingsPage.manageCommonCommandsRow(enabled: Boolean): CardRow =
     CardRow.Item(
         title = I18n.get(Strings.COMMON_COMMANDS_MANAGE),
-        summary = I18n.get(Strings.COMMON_COMMANDS_MANAGE_DESC),
         icon = PageIcons.CommonCommandsManage,
         arrow = true,
         enabled = enabled,

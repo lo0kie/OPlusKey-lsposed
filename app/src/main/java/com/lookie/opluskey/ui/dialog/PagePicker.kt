@@ -400,6 +400,41 @@ internal fun SettingsPage.PickerActionDialog(
 }
 
 /**
+ * 带行尾字形的那一版（见 [PickerOption.trailing]）—— 壳与上面那个完全同一份。
+ *
+ *  给「同一层里有一行点开是另一层」那种窗用：行尾摆一颗 `selector` 读作「这一行点了还得选点什么」，
+ *  与其余「点一下直接办完」的行区分开。
+ */
+@JvmName("PickerActionDialogWithOptions")
+@Composable
+internal fun SettingsPage.PickerActionDialog(
+    show: Boolean,
+    title: String,
+    options: List<PickerOption>,
+    onDismiss: () -> Unit,
+    onDismissFinished: (() -> Unit)? = null,
+    onPick: (Int) -> Unit,
+) {
+    FrostedDialog(
+        show = show,
+        title = title,
+        onDismiss = onDismiss,
+        onDismissFinished = onDismissFinished,
+    ) {
+        PickerRows(
+            options = options,
+            //  动作没有「当前是哪一个」—— 一行都不打勾
+            isSelected = { false },
+            interactive = show,
+            onClick = { index ->
+                onDismiss()
+                onPick(index)
+            },
+        )
+    }
+}
+
+/**
  * **单选**选择器弹窗 —— 标题 + 一列选项，点一行就算选完（自己关窗再回调）。
  *
  *  与「系统开关」那一层（切换 / 打开 / 关闭）同一个形状：那三档是在问「这个开关怎么用」，

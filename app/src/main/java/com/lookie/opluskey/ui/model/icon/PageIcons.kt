@@ -1022,7 +1022,7 @@ internal object PageIcons {
     /** 「长按延迟」—— `clock-bolt`（钟 + 闪电：按到这一刻就是长按那一下）。 */
     val DelayHold: ImageVector get() = TablerIcons.Outline.ClockBolt
 
-    /** 「触发间隔」—— `spacing-horizontal`（左右两支箭头拉开：管「隔多久来一次」）。 */
+    /** 「连续触发间隔」—— `spacing-horizontal`（左右两支箭头拉开：管「隔多久来一次」）。 */
     val DelayRepeat: ImageVector get() = TablerIcons.Outline.SpacingHorizontal
 
     /** 「长按连续触发」行的行首 —— `infinity-2`（无限符号）：管「要不要一直来」，与管「隔多久来一次」的 [DelayRepeat] 不同字形。 */

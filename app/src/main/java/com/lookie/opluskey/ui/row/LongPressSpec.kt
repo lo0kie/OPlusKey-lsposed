@@ -23,7 +23,14 @@ import kotlin.math.roundToInt
  *  读起来像「这一块单独配过」（用户报的）。
  */
 internal enum class LongPressSections {
-    /** 四族全摆 —— 「按键绑定」页与「组合键」页要的那一套（行序见 [LongPressSettingsCard]）。 */
+    /**
+     * 四族全摆 —— 「按键绑定」页的长按档、「单击后长按」那一档、以及「组合键」页要的那一套
+     * （行序见 [LongPressSettingsCard]）。
+     *
+     *  「单击后长按」曾经单独有一档（只摆后三族、不摆「松手时触发」），那一版把这一位拿掉的理由是
+     *  「那一档本来就是按住之后松手才结束」—— 真机上它就是一行有用的时序：按住到点先不执行、
+     *  抬手再跑，与长按那一档逐字同义（用户口径「和长按一样的逻辑」）。
+     */
     All,
 
     /**
@@ -35,15 +42,6 @@ internal enum class LongPressSections {
      *  这一族就得灰着（见 [LongPressGates.releaseEnabled]）。
      */
     ReleaseOnly,
-
-    /**
-     * 「单击后长按」那一页 —— 摆**松手额外动作 / 连发 / 长按延迟**三族，**不摆「松手才触发」**。
-     *
-     *  为什么少了那一行：那一档本来就是「按住之后松手才结束」，再叠一个「等松手才执行」
-     *  只会把它的执行点推到一个说不清的位置。其余三族的语义与长按那几项一一对应，
-     *  参数却是这一档自己的（`KeyConfig.clickThenLong*`）。
-     */
-    NoTiming,
 }
 
 /**
@@ -201,7 +199,7 @@ private class LongPressGates(
         }
 
     /**
-     * 连续触发那一族的副标题 / 置灰原因 —— 三个来源，按「越靠前越该先看到」排：
+     * 连续触发那一族的**置灰原因** —— 三个来源，按「越靠前越该先看到」排：
      * 整张卡的原因、「松手才触发」、动作本身不支持连发（[LongPressSpec.repeatBlockedReason]）。
      * 「松手执行额外动作」**不在**其中：它与连续触发不冲突（见 [LongPressGates] 的类注释）。
      */
@@ -220,7 +218,7 @@ private class LongPressGates(
 
 /**
  * 「长按」那一档的**唯一**一张卡：松手才触发 + 松手执行额外动作（+ 额外动作）+ 长按连续触发
- * （+ 连续触发时振动 + 触发间隔）+ 长按延迟。
+ * （+ 每次触发都振动 + 连续触发间隔）+ 长按延迟。
  *
  *  行序：**「松手才触发」在最上面**（它管的是「什么时候执行」，下面两族管的是「执行几次 /
  *  松手还做不做别的」）；紧跟「松手执行额外动作」那一族，再是「长按连续触发」那一族；
@@ -232,6 +230,10 @@ private class LongPressGates(
  *
  *  摆哪几族由 [LongPressSpec.sections] 定：「场景动作」页只摆松手那一族（理由见
  *  [LongPressSections]），行本身的文案与判据仍是下面那两支 —— 这一处只回答「摆哪几族」。
+ *
+ *  **这张卡的行一律不画副标题**（用户口径）：开关两档说的是「开 / 关各是什么意思」、滑杆那两行
+ *  说的是「这一根在量什么」，都是解释性的话，标题已经说得清。唯一的例外是「额外动作」那一行 ——
+ *  它的副标题是**取值**（现在配的是哪个动作），不是解释。
  */
 @Composable
 internal fun SettingsPage.LongPressSettingsCard(spec: LongPressSpec) {
@@ -240,7 +242,6 @@ internal fun SettingsPage.LongPressSettingsCard(spec: LongPressSpec) {
         rows =
             when (spec.sections) {
                 LongPressSections.All -> allRows(spec, gates)
-                LongPressSections.NoTiming -> lowerRows(spec, gates)
                 LongPressSections.ReleaseOnly -> releaseRows(spec, gates)
             },
     )
@@ -281,6 +282,9 @@ private fun SettingsPage.lowerRows(
  *
  *  开着它，长按动作只执行一次、且发生在抬手；关着才是原来的「到点即执行」（那一档才有连发）。
  *  组合键那一页不画（[LongPressSpec.releaseSupported] = false）。
+ *
+ *  **这一张卡的行一律不画副标题**（用户口径）：开关的两种状态、滑杆那一档问的是什么，
+ *  都由标题自己说得清，多一行解释只是把卡片撑高。
  */
 private fun timingRows(
     spec: LongPressSpec,
@@ -292,8 +296,6 @@ private fun timingRows(
         listOf(
             CardRow.Switch(
                 title = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE),
-                summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_ON),
-                summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_OFF),
                 icon = PageIcons.LongFireOnRelease,
                 checked = spec.fireOnRelease,
                 enabled = gates.fireEnabled,
@@ -308,6 +310,9 @@ private fun timingRows(
  *
  *  开关与动作分开（见 `KeyConfig.longReleaseOn`）：开着但还没挑动作是合法状态 —— 松手什么都不做。
  *  子行走 `visible`，所以它是**滑入**（连分隔线一起），不是"啪"地出现。
+ *
+ *  开关那一行**不画副标题**（与这张卡其它行同一条）；「额外动作」那一行的副标题**留着** ——
+ *  那不是解释，是这一行的**取值**（现在配的是哪个动作），去掉之后这一行就只剩一个标题。
  */
 private fun releaseRows(
     spec: LongPressSpec,
@@ -319,8 +324,6 @@ private fun releaseRows(
         listOf(
             CardRow.Switch(
                 title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE),
-                summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_ON),
-                summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_OFF),
                 icon = PageIcons.LongRelease,
                 checked = spec.releaseOn,
                 enabled = gates.releaseEnabled,
@@ -346,7 +349,7 @@ private fun releaseRows(
     }
 
 /**
- * 连续触发那一族：开关 + 「连续触发时振动」+「触发间隔」。
+ * 连续触发那一族：开关 + 「每次触发都振动」+「连续触发间隔」。
  *
  *  后两行只在开关打开时存在（关着时没有可调的东西），且都是那一行的参数 —— 所以紧跟着它，
  *  而不是掉到「长按延迟」后面去；显隐由列表连分隔线一起做（`visible`），只藏行会留一条孤零零的线。
@@ -357,11 +360,12 @@ private fun SettingsPage.repeatRows(
     gates: LongPressGates,
 ): List<CardRow> =
     listOf(
-        //  副标题那三个来源收在 [LongPressGates.repeatBlocked] 一处。
+        //  三个来源收在 [LongPressGates.repeatBlocked] 一处。
+        //
+        //  **它只落在 `disabledHint` 上，不再顶替副标题**（用户口径：这张卡的行不画副标题）：
+        //  灰着被点一下照样能听见原因，而亮着时那一行不需要一句「为什么能开」。
         CardRow.Switch(
             title = I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_TITLE),
-            summaryOn = gates.repeatBlocked ?: I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_DESC_ON),
-            summaryOff = gates.repeatBlocked ?: I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_DESC_OFF),
             icon = PageIcons.LongRepeat,
             checked = spec.repeat,
             enabled = gates.repeatEnabled,
@@ -371,8 +375,6 @@ private fun SettingsPage.repeatRows(
         ),
         CardRow.Switch(
             title = I18n.get(Strings.BINDING_REPEAT_VIBRATE_TITLE),
-            summaryOn = I18n.get(Strings.BINDING_REPEAT_VIBRATE_DESC_ON),
-            summaryOff = I18n.get(Strings.BINDING_REPEAT_VIBRATE_DESC_OFF),
             icon = PageIcons.Vibrate,
             checked = spec.vibrate,
             enabled = gates.repeatEnabled,
@@ -386,7 +388,7 @@ private fun SettingsPage.repeatRows(
     )
 
 /**
- * 「触发间隔」那一行 —— 长按连续触发隔多久重放一次。
+ * 「连续触发间隔」那一行 —— 长按连续触发隔多久重放一次。
  *
  *  @param disabledReason 灰着被点一下时的说法 —— 与上面那两行**同一句**
  *   （[LongPressGates.repeatBlocked]：整页闸门 / 松手才触发 / 动作不支持连发，三者之一）
@@ -405,7 +407,6 @@ private fun SettingsPage.RepeatIntervalRow(
             SliderSpec(
                 title = I18n.get(Strings.BINDING_REPEAT_INTERVAL_TITLE),
                 icon = PageIcons.DelayRepeat,
-                summary = I18n.get(Strings.BINDING_REPEAT_INTERVAL_DESC),
                 min = KeyConfig.MIN_REPEAT_INTERVAL_MS,
                 max = KeyConfig.MAX_REPEAT_INTERVAL_MS,
                 value = value,
@@ -424,15 +425,14 @@ private fun SettingsPage.RepeatIntervalRow(
 /**
  * 「长按延迟」那一行 —— 多久算长按。
  *
- *  说明里点一句「比它短算单击」：按不出来时用户第一个怀疑的就是这个数。到这一句为止 ——
- *  写全「这一档已短于人一次自然按压」那种话太长，会把行撑成两行、与旁边几行的说明也不齐。
+ *  **不画副标题**（与这张卡其它行同一条）：标题已经把这一行问的是什么说完了，行尾那个
+ * 「320 毫秒」才是要看的数。
  *
  *  它的 `enabled` 由 [LongPressSpec.delayEnabled] 单独给：同一张卡里上面几行灰着、它独自亮着，
  *  会让人以为「这行还能改 ⇒ 上面那几行也许还能点」（用户报的）。
  *
- *  @param disabledReason 灰着被点一下时的说法。**走 `SliderSpec.disabledHint` 那条通道**，
- *   不再拿副标题顶替 —— 副标题是「这一行是什么」，用它答「为什么点不了」会把原来的说明挤掉，
- *   而且灰着不动时它一直在，读起来像这一行本来就长这样。
+ *  @param disabledReason 灰着被点一下时的说法。**走 `SliderSpec.disabledHint` 那条通道** ——
+ *   灰着不动时不占版面，点一下才出那句话。
  */
 @Composable
 private fun SettingsPage.LongPressDelayRow(
@@ -447,7 +447,6 @@ private fun SettingsPage.LongPressDelayRow(
         spec =
             SliderSpec(
                 title = I18n.get(Strings.BINDING_LONG_PRESS_DELAY_TITLE),
-                summary = I18n.get(Strings.BINDING_LONG_PRESS_DELAY_DESC),
                 icon = PageIcons.DelayHold,
                 min = KeyConfig.MIN_LONG_PRESS_MS,
                 max = KeyConfig.MAX_LONG_PRESS_MS,

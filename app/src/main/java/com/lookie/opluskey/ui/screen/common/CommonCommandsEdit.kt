@@ -1,6 +1,5 @@
 package com.lookie.opluskey.ui.screen.common
 
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
@@ -26,7 +25,6 @@ import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.icon.PageIcons
-import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.command.CommandsSave
@@ -58,8 +56,8 @@ internal fun SettingsPage.CommonCommandsHeaderEdit() {
         configState.config.value.global.commonCommands
             .isEmpty()
     val canEdit = !empty && pageWritable()
-    //  字形随编辑态换（编辑 与 完成）：形状没法插值 ⇒ 交叉淡过去；图标色与它同一条曲线，
-    //  免得「色在渐变、字形啪地换掉」。
+    //  字形随编辑态换（编辑 与 完成）：同位置替换**不做淡入淡出**（用户口径），直接换这颗字形；
+    //  颜色仍是状态驱动的过渡（`animateColorAsState`），字形与底色同一次到位。
     val iconTint by animateColorAsState(
         targetValue =
             if (canEdit) {
@@ -95,22 +93,16 @@ internal fun SettingsPage.CommonCommandsHeaderEdit() {
             onClick = { CommonCommandsEditState.toggleEditing() },
             enabled = canEdit,
         ) {
-            Crossfade(
-                targetState = editing,
-                animationSpec = COLOR_FADE_SPEC,
-                label = "CommonCommandsEditGlyph",
-            ) { on ->
-                Icon(
-                    if (on) PageIcons.Confirm else PageIcons.CommandEdit,
-                    contentDescription =
-                        if (on) {
-                            I18n.get(Strings.COMMON_DONE)
-                        } else {
-                            I18n.get(Strings.COMMON_EDIT)
-                        },
-                    tint = iconTint,
-                )
-            }
+            Icon(
+                if (editing) PageIcons.Confirm else PageIcons.CommandEdit,
+                contentDescription =
+                    if (editing) {
+                        I18n.get(Strings.COMMON_DONE)
+                    } else {
+                        I18n.get(Strings.COMMON_EDIT)
+                    },
+                tint = iconTint,
+            )
         }
     }
 }
@@ -208,11 +200,17 @@ internal fun SettingsPage.togglePickedPinned(): Boolean {
     if (write(cfg.copy(global = cfg.global.copy(commonCommands = next)), "common_commands=pin") == CommandsSave.Failed) {
         return false
     }
+    //  **勾一条时说「已固定」，勾多条才报个数**：`已固定 1 项` 是句报数的话，而这一下就动了
+    //  一条 —— 与行菜单里那一支（`onToggleShow`）同一个说法，两处对得上。
     hint(
-        I18n.format(
-            if (pin) Strings.COMMON_COMMANDS_PINNED_N else Strings.COMMON_COMMANDS_UNPINNED_N,
-            picked.size,
-        ),
+        if (picked.size == 1) {
+            I18n.get(if (pin) Strings.COMMON_COMMANDS_PINNED_DONE else Strings.COMMON_COMMANDS_UNPINNED_DONE)
+        } else {
+            I18n.format(
+                if (pin) Strings.COMMON_COMMANDS_PINNED_N else Strings.COMMON_COMMANDS_UNPINNED_N,
+                picked.size,
+            )
+        },
     )
     CommonCommandsEditState.toggleEditing()
     return true

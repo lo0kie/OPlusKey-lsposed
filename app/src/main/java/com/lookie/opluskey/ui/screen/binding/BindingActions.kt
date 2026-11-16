@@ -531,6 +531,19 @@ internal fun SettingsPage.BindingGroups(
             ClickThenLongCard(settingsEnabled, followHint)
         }
 
+        //  组合键那一侧：「单击后长按」就是成员连击那一档，摆它自己那一根「长按延迟」
+        //  （`ComboKey.memberClickThenLongPressMs`）。不摆上面那张卡 —— 它读写的是
+        //  `KeyWatchState.editing` 那颗键，摆在这一页改的会是另一颗键。
+        if (target is BindingTarget.Combo && g == GestureTrigger.ClickThenLong) {
+            val combo =
+                configState.config.value.combos
+                    .firstOrNull { it.id == target.id }
+            if (combo != null) {
+                SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION))
+                ComboMemberChainCard(combo, settingsEnabled, followHint)
+            }
+        }
+
         if (g == GestureTrigger.LongPress && target.longPress(configState.config.value) != null) {
             SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION))
             LongPressCard(target, enabled, followHint)

@@ -239,7 +239,12 @@ internal fun SettingsPage.CustomCommandsGrid(
     }
 }
 
-/** 还没保存过任何命令时那一行 —— 整行可点，进「自定义命令」页新增一条（与 FAB 同一个去处）。 */
+/**
+ * 还没保存过任何命令时那一行 —— 整行可点，进「自定义命令」页新增一条（与 FAB 同一个去处）。
+ *
+ *  **不画副标题**（用户口径）：原先下面那句「一条命令或多个动作」在标题已经把这一格说清之后
+ *  只是重复一遍；同页其它格子的小字写的是「这一格现在绑着谁」，这一格没有那个东西可说。
+ */
 @Composable
 private fun SettingsPage.CreateCommandRow(
     enabled: Boolean,
@@ -250,7 +255,6 @@ private fun SettingsPage.CreateCommandRow(
             listOf(
                 CardRow.Item(
                     title = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND),
-                    summary = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND_DESC),
                     icon = PageIcons.CommandCode,
                     // 行尾箭头：「这一行后面还有一页」（它不是弹浮层的入口格，所以不画那颗选择器字形）
                     arrow = true,

@@ -427,7 +427,7 @@ internal object GestureReceiver {
                     HostApp.PACKAGE,
                     ConfigBroadcast.intent(config, {
                         CommandLibrary.longIsSerial(config, it)
-                    }, { CommandLibrary.clickThenLongIsSerial(config, it) }),
+                    }, { CommandLibrary.clickThenLongIsSerial(config, it) }, { CommandLibrary.memberChainIsSerial(it) }),
                 )
             ) {
                 XLog.w("已广播配置给注入侧（用户已解锁=${isUserUnlocked(ctx)}）")

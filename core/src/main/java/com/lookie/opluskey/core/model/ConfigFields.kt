@@ -164,6 +164,15 @@ object ConfigFields {
     const val CTL_RELEASE_EXTRA = "click_then_long_release"
 
     /**
+     * 「单击后长按」的「松手时触发」（`KeyConfig.clickThenLongFireOnRelease`）—— 与长按那一档
+     * 的 [LONG_FIRE_ON_RELEASE_EXTRA] 同义：这一档的动作**等抬手才执行**。
+     *
+     *  为了让两档的「松手时触发」长得一模一样，它同样把「松手执行额外动作」与「连续触发」
+     *  那三行挤掉（判定侧读 [KeyConfig.clickThenLongRepeats]，界面读 `LongPressGates`）。
+     */
+    const val CTL_FIRE_ON_RELEASE_EXTRA = "click_then_long_fire_on_release"
+
+    /**
      * 「单击后长按」绑的是不是**多条命令** —— **只有广播这一列**（与 [LONG_SERIAL_EXTRA] 同一条）：
      * 注入侧要读命令库才知道，而那个文件它看不到，由宿主现算带过来。
      */
@@ -547,6 +556,14 @@ object ConfigFields {
     val F_CTL_RELEASE_ON = Field(CTL_RELEASE_ON_EXTRA, Kind.Bool(false))
     val F_CTL_RELEASE = Field(CTL_RELEASE_EXTRA, Kind.Text(Action.NONE))
 
+    /**
+     * 「单击后长按」的「松手时触发」（见 [CTL_FIRE_ON_RELEASE_EXTRA]）。
+     *
+     *  与长按那一档同一条互斥：开着它，这一档到点不执行，「松手执行额外动作」与「连续触发」
+     *  都没有立足点 —— 判定侧由 [KeyConfig.clickThenLongRepeats] 收口，界面由 `LongPressGates` 置灰。
+     */
+    val F_CTL_FIRE_ON_RELEASE = Field(CTL_FIRE_ON_RELEASE_EXTRA, Kind.Bool(false))
+
     /** 「单击后长按」绑的是不是多条命令 —— **只有广播那一列**，见 [CTL_SERIAL_EXTRA]。 */
     val F_CTL_SERIAL = Field(CTL_SERIAL_EXTRA, Kind.Bool(false))
 
@@ -591,6 +608,7 @@ object ConfigFields {
             F_CTL_REPEAT_VIBRATE,
             F_CTL_RELEASE_ON,
             F_CTL_RELEASE,
+            F_CTL_FIRE_ON_RELEASE,
             F_CTL_SERIAL,
         )
 
@@ -1130,6 +1148,7 @@ fun Config.actionTokens(): List<String> =
             add(combo.memberDouble.token)
             combo.memberClicks.values.forEach { add(it.token) }
             add(combo.memberClickThenLong.token)
+            add(combo.memberClickThenLongRelease.token)
             combo.scenes.forEach { it.actionTokens().forEach(::add) }
         }
         //  「常用命令」那几条同样是动作位（见 [mapActions]）：删变量前的反查要能看进去，

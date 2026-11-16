@@ -34,7 +34,7 @@ data class KeyConfig(
     override val longRepeat: Boolean,
     override val longRepeatIntervalMs: Int,
     /**
-     * 「连续触发时振动」—— 连续触发的每一次重复都振一下。
+     * 「每次触发都振动」—— 连续触发的每一次重复都振一下。
      *
      *  只在 [longRepeat] 为真时有意义（界面那一行也只在那时出现）。默认 false = 只在长按
      *  被判出来的那一下振一次，重复不振动。
@@ -311,6 +311,16 @@ data class KeyConfig(
     /** 「单击后长按」**松手时**再执行一个动作（与 [longRelease] 各自一份）。 */
     override val clickThenLongReleaseOn: Boolean = false,
     override val clickThenLongRelease: Action = Action.None,
+    /**
+     * 「单击后长按」的**松手时触发**（与 [longFireOnRelease] 同义、各自一份）。
+     *
+     *  开着它，这一档到点（第 2 击按住满 `clickThenLongPressMs`）**不执行**，等抬手那一刻执行一次。
+     *  为了与长按那一档长得一样，它把「松手执行额外动作」与「连续触发」那三行一起挤掉：
+     *  · 连发 → [clickThenLongRepeats] 里排掉（到点不执行，没有可重复的起点）；
+     *  · 松手额外动作 → [clickThenLongReleaseAction] 里排掉（否则同一刻两个动作）。
+     *  两边的**值都不清**：关掉这一位之后原样回来。
+     */
+    override val clickThenLongFireOnRelease: Boolean = false,
     /**
      * 宿主算好的**最高绑定击数**（含场景里绑的那几档）—— **只由宿主算好、随配置广播带过来**
      * （同 [longIsSerial] 那一套）。
@@ -685,12 +695,14 @@ data class KeyConfig(
     /**
      * 「单击后长按」松手那一刻该执行什么（按键自己那一格，不含场景）。
      *
-     *  三位缺一位都是 `None`：这一档开着、松手开关开着、且**主档本身有事可做**
-     *  （松手动作是那一档执行完之后的收尾，主语没有就不该有谓语）。
+     *  四位缺一位都是 `None`：这一档开着、松手开关开着、**主档本身有事可做**
+     *  （松手动作是那一档执行完之后的收尾，主语没有就不该有谓语），以及**没开「松手时触发」**
+     *  —— 那一条把这一档的动作本身推到了抬手，再补一个额外动作就成了同一刻两个动作
+     *  （与长按那一档的 `releaseBound` 同一条）。值原样留着，关掉那一位就回来。
      */
     val clickThenLongReleaseAction: Action
         get() =
-            if (clickThenLongOn && clickThenLongReleaseOn && clickThenLongActionExists) {
+            if (clickThenLongOn && clickThenLongReleaseOn && clickThenLongActionExists && !clickThenLongFireOnRelease) {
                 clickThenLongRelease
             } else {
                 Action.None
@@ -713,15 +725,17 @@ data class KeyConfig(
         get() = longRepeat && !longFireOnRelease && !longIsSerial && !longIsVoiceMemory
 
     /**
-     * 「单击后长按」要不要排连发 —— 与 [longRepeats] 同一条口径，只少「松手才触发」那一项
-     * （这一档没有那个开关）。
+     * 「单击后长按」要不要排连发 —— 与 [longRepeats] **完全同一条口径**（四个条件一字不差）：
+     * 开关关着 / 走「松手时触发」/ 绑的是多条命令 / 绑的是灵感语音，任一就排不出连发。
      *
-     *  多条命令与灵感语音都不重复：理由与长按那一档一字不差（见 [longRepeats]）。
-     *  界面那一侧读同一份规则（`repeatBlockedReason`），两处不许各判一套。
+     *  「松手时触发」（[clickThenLongFireOnRelease]）那一项进来之后，两档的连发判据就只剩字段名不同：
+     * 到点不执行，就没有可重复的起点 —— 与长按那一档是同一条理由。
+     *  界面那一侧读同一份规则（`repeatBlockedReason` + `LongPressGates.repeatEnabled`），两处不许各判一套。
      */
     override val clickThenLongRepeats: Boolean
         get() =
             clickThenLongRepeat &&
+                !clickThenLongFireOnRelease &&
                 !clickThenLongIsSerial &&
                 !((clickThenLong as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true)
 
@@ -799,6 +813,8 @@ data class KeyConfig(
                 ConfigFields.F_CTL_REPEAT_INTERVAL_MS to clickThenLongRepeatIntervalMs,
                 ConfigFields.F_CTL_REPEAT_VIBRATE to clickThenLongRepeatVibrate,
                 ConfigFields.F_CTL_RELEASE_ON to clickThenLongReleaseOn,
+                //  「松手时触发」是**时序**，注入侧不看它就走不到抬手那一条（见 `GestureDetector.fireChained`）
+                ConfigFields.F_CTL_FIRE_ON_RELEASE to clickThenLongFireOnRelease,
                 //  **给 token 而不是 `Action` 对象**：这一格的类型是 `Kind.Text`，广播那一层按
                 //  `map[f] as? String` 取值 —— 塞对象进去会静默退回默认值（空串），
                 //  注入侧 `isBound` 恒假，松手那一档永远不发（真机上就是「配了不生效」）。
@@ -983,6 +999,7 @@ data class KeyConfig(
                 clickThenLongIsSerial = v.bool(ConfigFields.F_CTL_SERIAL),
                 clickThenLongReleaseOn = v.bool(ConfigFields.F_CTL_RELEASE_ON),
                 clickThenLongRelease = Action.parse(v.text(ConfigFields.F_CTL_RELEASE)),
+                clickThenLongFireOnRelease = v.bool(ConfigFields.F_CTL_FIRE_ON_RELEASE),
                 sceneLong = v.bool(ConfigFields.F_SCENE_LONG),
                 sceneChain = v.bool(ConfigFields.F_SCENE_CHAIN),
                 sceneChainRelease = v.bool(ConfigFields.F_SCENE_CHAIN_RELEASE),
@@ -1758,22 +1775,40 @@ data class Config(
 
     /**
      * 这一档的**成员连击参数** —— 按住首键、那颗唯一成员键连击时，判定侧（`GestureDetector`）
-     * 按这一份判。窗口与判定时机**复用按住组合已有的配置**（独立设置优先，见
-     * [comboWindowsFor] / [comboHoldFixedWindowStartFor]），不为成员连击另开一套窗口字段。
+     * 按这一份判。
      *
      *  只在 `mode == MODE_HOLD` 且 `followers.size == 1` 时有意义；多成员组合上连击没有判据，
      *  调用方不该问它（判定侧在 [ComboDetector] 里先按这一条拦掉）。
      *
-     *  语义映射（组合 → 单键连击链）：
-     *  · [comboHoldFixedWindowStartFor] `true`（固定起点）→ 连击链 `waitMultiWindow = false`，
-     *    窗口用 [ComboWindows.hold]；`false`（逐次等）→ `waitMultiWindow = true`，窗口用
-     *    [ComboWindows.holdFollower] —— 两边命名正好相反。
+     *  ## 窗口取「单击那一套」，不取组合那四格
+     *
+     *  成员连击量的是**同一颗键两击之间隔多久**，与单键连击是同一件事 —— 所以窗口与判定时机
+     *  都读公共设置里那三项（[GlobalConfig.doubleClickMs] / [GlobalConfig.waitMultiWindow] /
+     *  [GlobalConfig.multiWaitMs]，口径与 [KeyConfig.clickWindowMs] 逐条相同）。
+     *
+     *  曾经复用按住组合那四格（`comboWindowsFor`）：那是「两颗**不同**键的按下间隔」，
+     *  出厂 150ms。拿它当连击窗口的后果是「第 1 击抬手后 150ms 内必须按下第 2 击」——
+     *  人手做不到，表现正是「单击后长按怎么按都判不出来」；而按不出来时窗口一到就先派发
+     *  一次组合短按，于是偶尔判出来时又像「连带触发了一次单击」。
+     *  语义不同的两个数不该共用（见 AGENTS.md 一之二、6）。
+     *
+     *  组合那几项里**只有** `useOwnSettings` 之外的都不参与：这一档没有自己的连击窗口可配。
      */
-    fun comboMemberChain(combo: ComboKey): ClickChainParams {
-        val windows = comboWindowsFor(combo)
-        val fixed = comboHoldFixedWindowStartFor(combo)
-        return MemberChainView(combo, if (fixed) windows.hold else windows.holdFollower, !fixed)
-    }
+    fun comboMemberChain(combo: ComboKey): ClickChainParams = MemberChainView(combo, publicClickWindowMs, global.waitMultiWindow)
+
+    /**
+     * **公共**那一套的连击窗口 —— 与 [KeyConfig.clickWindowMs] 同一条口径，数据取自 [global]。
+     *
+     *  读者只有 [comboMemberChain]：单键那一侧每颗键自己存着一份（`KeyConfig.clickWindowMs`），
+     *  而成员连击属于「这一组」，公共设置里没有它的位置，直接用公共那一份。
+     */
+    private val publicClickWindowMs: Int
+        get() =
+            if (global.waitMultiWindow) {
+                global.multiWaitMs.takeIf { it > KeyConfig.FOLLOW_DOUBLE_CLICK_MS } ?: global.doubleClickMs
+            } else {
+                global.doubleClickMs
+            }
 
     /**
      * 这一组**自己存着**的「首键要先按住多久」（毫秒）—— 与 [comboStoredWindowsFor] 同一条：

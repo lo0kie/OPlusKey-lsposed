@@ -823,14 +823,13 @@ internal fun SettingsPage.HomeKeyOpsCard(pageEnabled: Boolean) {
 /**
  * 「按键列表」那一行。
  *
- *  副标题只有一句「这一页里有什么」：原来还分一档「已添加 N 组」，那是**统计**而不是入口的
- *  说明（用户口径：去掉那个小标题）—— 配了几组进去就看得见，不必在首页报数。
- *
+ *  **不画副标题**（用户口径）：原来那句是「这一页里有什么」，而进页之后顶栏自己就写着
+ *  同一句（`PageTopBar` 用的也是这条文案）；再早还分过一档「已添加 N 组」，那是**统计**
+ *  而不是入口的说明，同样去掉 —— 配了几组进去就看得见，不必在首页报数。
  */
 private fun SettingsPage.keysEntryRow(pageEnabled: Boolean): CardRow.Item =
     CardRow.Item(
         title = I18n.get(Strings.KEYS_ENTRY),
-        summary = I18n.get(Strings.KEYS_ENTRY_DESC),
         icon = PageIcons.MenuKeyList,
         enabled = pageEnabled,
         arrow = true,

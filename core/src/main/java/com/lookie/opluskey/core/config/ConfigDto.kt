@@ -316,6 +316,12 @@ internal data class KeyDto(
     @SerialName("click_then_long_repeat_vibrate") val clickThenLongRepeatVibrate: Boolean? = null,
     @SerialName("click_then_long_release_on") val clickThenLongReleaseOn: Boolean? = null,
     @SerialName("click_then_long_release") val clickThenLongRelease: String = Action.NONE,
+    /**
+     * 「单击后长按」的「松手时触发」—— 与长按那一档的 `long_fire_on_release` 同义、各自一格。
+     *
+     *  老文件没有这一格 ⇒ `null` ⇒ 走 false：与这一位出现之前一致（到点即执行）。
+     */
+    @SerialName("click_then_long_fire_on_release") val clickThenLongFireOnRelease: Boolean? = null,
 ) {
     /**
      * [longRelease] 那一格的**动作 token** —— 布尔（上一版把这一档当开关写过）一律当「未设置」。
@@ -423,6 +429,7 @@ internal data class KeyDto(
             ConfigFields.F_CTL_REPEAT_VIBRATE to (clickThenLongRepeatVibrate ?: false),
             ConfigFields.F_CTL_RELEASE_ON to (clickThenLongReleaseOn ?: false),
             ConfigFields.F_CTL_RELEASE to clickThenLongRelease,
+            ConfigFields.F_CTL_FIRE_ON_RELEASE to (clickThenLongFireOnRelease ?: false),
         )
 
     /** 线格式 → 一颗键的配置（含状态分支）。几个 `legacy*` 是迁移兜底，见 [ConfigDto.toConfig]。 */
@@ -485,6 +492,7 @@ internal data class KeyDto(
                 clickThenLongRepeatVibrate = key.clickThenLongRepeatVibrate,
                 clickThenLongReleaseOn = key.clickThenLongReleaseOn,
                 clickThenLongRelease = key.clickThenLongRelease.token,
+                clickThenLongFireOnRelease = key.clickThenLongFireOnRelease,
             )
     }
 }
@@ -722,6 +730,24 @@ internal data class ComboDto(
     @SerialName("member_click_then_long_press_ms")
     val memberClickThenLongPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
     /**
+     * 成员「单击后长按」的**时序与收尾** —— 与组合长按那一套（`long_fire_on_release` /
+     * `long_repeat` / `long_release*`）各自一份：它们挂在两个不同的档位上。
+     *
+     *  老文件缺这一段 ⇒ 全关着 / 默认间隔 / 无操作，与这一位出现之前一致，不需要迁移。
+     */
+    @SerialName("member_click_then_long_fire_on_release")
+    val memberClickThenLongFireOnRelease: Boolean = false,
+    @SerialName("member_click_then_long_repeat")
+    val memberClickThenLongRepeat: Boolean = false,
+    @SerialName("member_click_then_long_repeat_interval_ms")
+    val memberClickThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    @SerialName("member_click_then_long_repeat_vibrate")
+    val memberClickThenLongRepeatVibrate: Boolean = false,
+    @SerialName("member_click_then_long_release_on")
+    val memberClickThenLongReleaseOn: Boolean = false,
+    @SerialName("member_click_then_long_release")
+    val memberClickThenLongRelease: String = Action.NONE,
+    /**
      * 这一档的**系统场景在什么时候定下来** —— `true` = 首键按下，`false` = 成员键按下。
      *
      *  老文件缺这一格 ⇒ `null` = 跟随公共设置（布尔没有第三个值，靠 `null` 表达「跟随」）。
@@ -893,6 +919,14 @@ internal data class ComboDto(
             memberClickThenLong = Action.parse(memberClickThenLong),
             memberClickThenLongOn = memberClickThenLongOn,
             memberClickThenLongPressMs = clamp(ConfigFields.F_LONG_PRESS_MS, memberClickThenLongPressMs),
+            //  这一档的时序与收尾：与组合长按那一套各自一份（老文件缺 ⇒ 全关着 / 无操作）
+            memberClickThenLongFireOnRelease = memberClickThenLongFireOnRelease,
+            memberClickThenLongRepeat = memberClickThenLongRepeat,
+            memberClickThenLongRepeatIntervalMs =
+                clamp(ConfigFields.F_REPEAT_INTERVAL_MS, memberClickThenLongRepeatIntervalMs),
+            memberClickThenLongRepeatVibrate = memberClickThenLongRepeatVibrate,
+            memberClickThenLongReleaseOn = memberClickThenLongReleaseOn,
+            memberClickThenLongRelease = Action.parse(memberClickThenLongRelease),
             //  条件表：认不出的条目整条丢掉（与单键那条同一个 `mapNotNull` 口径）——
             //  一条读不懂的规则如果兜成「永远成立」，会把这一档的动作整个抢走。
             scenes = mergeScenes(scenes, rules),
@@ -952,6 +986,12 @@ internal data class ComboDto(
                 memberClickThenLong = combo.memberClickThenLong.token,
                 memberClickThenLongOn = combo.memberClickThenLongOn,
                 memberClickThenLongPressMs = combo.memberClickThenLongPressMs,
+                memberClickThenLongFireOnRelease = combo.memberClickThenLongFireOnRelease,
+                memberClickThenLongRepeat = combo.memberClickThenLongRepeat,
+                memberClickThenLongRepeatIntervalMs = combo.memberClickThenLongRepeatIntervalMs,
+                memberClickThenLongRepeatVibrate = combo.memberClickThenLongRepeatVibrate,
+                memberClickThenLongReleaseOn = combo.memberClickThenLongReleaseOn,
+                memberClickThenLongRelease = combo.memberClickThenLongRelease.token,
                 sceneOnStarter = combo.sceneOnStarter,
                 starterKeepLong = combo.starterKeepLong,
                 ordered = combo.ordered,

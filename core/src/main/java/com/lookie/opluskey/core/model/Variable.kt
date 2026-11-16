@@ -1,5 +1,6 @@
 package com.lookie.opluskey.core.model
 
+import com.lookie.opluskey.core.rom.RomProfile
 import java.util.Locale
 
 /**
@@ -625,6 +626,26 @@ data class ComboKey(
     val memberClickThenLongOn: Boolean = false,
     /** 成员「单击后长按」自己的长按阈值 —— 与这一档普通长按 [longPressMs] 分开。 */
     val memberClickThenLongPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
+    /**
+     * 成员「单击后长按」的**松手时触发** —— 与 [longFireOnRelease] 同义、各自一份。
+     *
+     *  开着时到点不执行、抬手执行一次；同时把「松手执行额外动作」与「连续触发」两族让位
+     *  （判据收在 [memberClickThenLongReleaseAction] / [memberClickThenLongRepeats] 一处）。
+     */
+    val memberClickThenLongFireOnRelease: Boolean = false,
+    /** 成员「单击后长按」的**连续触发**（按住不放重复派发这一档）。 */
+    val memberClickThenLongRepeat: Boolean = false,
+    val memberClickThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    /** 连发的每一次都振动（只在 [memberClickThenLongRepeat] 为真时有意义）。 */
+    val memberClickThenLongRepeatVibrate: Boolean = false,
+    /** 成员「单击后长按」松手那一刻再执行一个动作（与 [longReleaseOn] 各自一份）。 */
+    val memberClickThenLongReleaseOn: Boolean = false,
+    val memberClickThenLongRelease: Action = Action.None,
+    /**
+     * 成员「单击后长按」绑的是不是**多条命令** —— **只有广播这一列**（与单键那条同一条）：
+     * 注入侧要读命令库才知道，而那个文件它看不到，由宿主现算带过来。
+     */
+    val memberClickThenLongIsSerial: Boolean = false,
 ) : OwnSettings,
     LongPressParams {
     /** 这一档现在算不算数 —— 关掉了、或成员不足两键（配置文件被手改坏）都不算。 */
@@ -640,14 +661,20 @@ data class ComboKey(
     /**
      * 这一档**有没有长按**那一档（界面摆不摆「长按」页、判定排不排长按那一枪都问它）。
      *
-     *  只有**按顺序触发的等待组合**没有：它要的是成员按先后落下，判据量的是**相邻两颗之间**
-     *  （`Config.comboSpanFor`），整组按满多久在它身上不是一个问题 —— 也没有「按住不放」这一段
-     *  让连发 / 松手收尾落在上面。所以那一档在它身上连页都不摆（见 `GestureTrigger.comboSlots`），
-     *  判定侧也不排长按枪（`ComboDetector.scheduleLong`）：留一页写进去也永远不会命中。
+     *  **按顺序触发的组合一律没有**（不分等待 / 按住）：
+     *   · 等待档量的是**相邻两颗之间**的间隔（`Config.comboSpanFor`），整组按满多久在它身上
+     *     不是一个问题；
+     *   · 按住档一旦要求「成员按先后落下」，这一按的语义就是**那一串先后**本身 ——
+     *     再叠一档「按住不放」等于给同一串动作配第二个结果，用户配它时也没有这个预期
+     *     （用户口径：顺序组合只留单击）。
      *
-     *  其余三种都算有：按住那两档的「首键一直按着」本来就靠长按收尾，不分顺序的等待档也是。
+     *  所以那一档在它身上连页都不摆（见 `GestureTrigger.comboSlots`），判定侧也不排长按枪
+     *  （`ComboDetector.scheduleLong`）：留一页写进去也永远不会命中。
+     *
+     *  其余都算有：不分顺序的等待档、以及不分顺序的按住两档 —— 按住那两档的「首键一直按着」
+     *  本来就靠长按收尾。
      */
-    val hasLong: Boolean get() = !(isWait && ordered)
+    val hasLong: Boolean get() = !ordered
 
     /**
      * 这一档的**首键**（按住那一档才有）—— 就是 [keys] 的第一颗。窗口那一档回 `null`。
@@ -720,10 +747,44 @@ data class ComboKey(
                 if (memberClickThenLongOn) memberClickThenLong else Action.None
             }
 
+            //  这一档的松手**自成一路**：用它自己那一格，不借组合长按的 [longRelease]
+            //  （与单键 `KeyConfig.actionOf` 同一个理由）。
             GestureTrigger.ClickThenLongRelease -> {
-                Action.None
+                memberClickThenLongReleaseAction
             }
         }
+
+    /** 成员「单击后长按」这一档**本身**有事可做（直接绑定或场景给过动作）。 */
+    val memberClickThenLongActionExists: Boolean
+        get() = memberClickThenLongOn && (memberClickThenLong.isBound || scenes.any { it.chainBound })
+
+    /**
+     * 成员「单击后长按」松手那一刻该执行什么 —— 与单键 `KeyConfig.clickThenLongReleaseAction`
+     * 同一套四位判据：这一档开着、松手开关开着、主档有事可做，且**没开「松手时触发」**
+     * （那一条把动作本身推到了抬手，再补一个就是同一刻两个动作）。
+     */
+    val memberClickThenLongReleaseAction: Action
+        get() =
+            if (memberClickThenLongOn &&
+                memberClickThenLongReleaseOn &&
+                memberClickThenLongActionExists &&
+                !memberClickThenLongFireOnRelease
+            ) {
+                memberClickThenLongRelease
+            } else {
+                Action.None
+            }
+
+    /**
+     * 成员「单击后长按」要不要排连发 —— 与单键 `KeyConfig.clickThenLongRepeats` 同一条口径：
+     * 开关关着 / 走「松手时触发」/ 绑的是多条命令 / 绑的是灵感语音，任一就排不出连发。
+     */
+    val memberClickThenLongRepeats: Boolean
+        get() =
+            memberClickThenLongRepeat &&
+                !memberClickThenLongFireOnRelease &&
+                !memberClickThenLongIsSerial &&
+                !((memberClickThenLong as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true)
 
     /**
      * 松手那一下**真的有事可做** —— 开关开着、挑过动作、且不是「松手才触发」那条。
@@ -741,9 +802,26 @@ data class ComboKey(
      */
     override val releaseBound: Boolean
         get() =
-            (long.isBound || scenes.any { it.longBound }) &&
+            longActionExists &&
                 !longFireOnRelease &&
                 ((longReleaseOn && longRelease.isBound) || scenes.any { it.hasRelease })
+
+    /**
+     * 长按这一档**本身有事可做** —— 直接绑了动作，或某块场景里给长按配了动作。
+     *
+     *  与单键 `KeyConfig.longActionExists` 同一个名字、同一个含义，只是主语从「这颗键」换成
+     *  「这一组」。组合的场景表**本来就随广播带过来**（`ComboWire`），所以注入侧能就地算出来。
+     *
+     *  两个读者，都在「这一按到底归谁」这条线上：
+     *   · [releaseBound] —— 长按是无操作时，松手再补一个动作没有主语；
+     *   · `ComboDetector` —— 长按有动作时，**成员键那一档「单击后长按」让位**（两者是同一个
+     *     手势：按住首键、再按住唯一那颗成员，时序完全重合）。
+     *
+     *  先看 [hasLong]：按顺序触发的组合**根本没有长按这一档**，配过什么值都不该算数
+     *  （判定侧不排那一枪，界面也不摆那一页）—— 不算进来的话，中途改过触发方式的那些档会让
+     *  上面两处误以为「这一按归组合」。
+     */
+    val longActionExists: Boolean get() = hasLong && (long.isBound || scenes.any { it.longBound })
 
     /**
      * **带场景表**的取动作：先看 [scenes]（顺序、「条件成立且这一档有值」的第一块赢），

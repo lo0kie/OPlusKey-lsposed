@@ -452,20 +452,27 @@ internal fun SettingsPage.setShowCommonCommands(on: Boolean) {
  *
  *  第一次写就把 `null`（= 用模块自带那几条）换成真列表 —— 从那以后这份清单只认配置，
  *  用户在页面上删掉自带的那几条就不会再冒回来。
+ *
+ *  @param notice 这一下**做成了什么**（「已固定」「已重命名」…）—— 由调用点给，不在这里写死：
+ *   这条通道被四种动作共用，一句「已保存」说的是「文件写下去了」，而不是「你刚才那一下生效了」。
+ *   改的是固定位、改的是名字、改的是图标，读到的却是同一句时，用户没法确认动的是不是自己想的那项。
  */
-internal fun SettingsPage.setCommonCommands(list: List<CommonCommand>) {
+internal fun SettingsPage.setCommonCommands(
+    list: List<CommonCommand>,
+    notice: String,
+) {
     val cfg = configState.config.value
     if (cfg.global.commonCommands == list) return
     writeAndNotice(
         cfg.copy(global = cfg.global.copy(commonCommands = list)),
         "common_commands=${list.size}",
-    ) { I18n.get(Strings.COMMON_COMMANDS_SAVED) }
+    ) { notice }
 }
 
 // 「**这一颗键**的参数」这一族 —— 与 `ui/write/ConfigWrite.kt`（全局开关 + 唯一的写入口 [write]）
 // 分开：两者改的不是同一段配置（`keys[id]` 对 `global`），错放会让「这一项属于谁」看不出来。
 //
-// 长按阈值 / 触发间隔那几档是滑杆，各自在 `LongRepeatCard` 里直接调 [write]，不在这里再包一层。
+// 长按阈值 / 连续触发间隔那几档是滑杆，各自在 `LongRepeatCard` 里直接调 [write]，不在这里再包一层。
 //
 // **回执的位一律 [HINT_SLOT_BINDING]**：这一族只在「按键设置」页被调用（那一页的三张卡），
 // 回执共用一条消息（理由见 [HINT_SLOT_BINDING] 的注释）。
