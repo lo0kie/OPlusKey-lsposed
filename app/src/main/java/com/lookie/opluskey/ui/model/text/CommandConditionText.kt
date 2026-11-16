@@ -6,11 +6,10 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.Command
-import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.core.present.ClockCatalog
-import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.core.present.appTargetLabel
 import com.lookie.opluskey.core.present.commandTitleOf
 import com.lookie.opluskey.core.present.conditionValueLabel
@@ -460,16 +459,24 @@ internal fun serialSummarySteps(
 internal fun isCommandRef(token: String): Boolean = token.startsWith(Command.PREFIX)
 
 /**
- * `cmd:` 后面那一段在界面上叫什么 —— 被引用那条命令的**名字**。
- *
- *  用户命令库里的（含手改出来的）原样显示；模块内置的那几条（`CommonCommands`：
- *  `cmd:common.wechat_scan`）存的是稳定 id，要按当前语言过一遍字典，否则界面上会冒出
- *  `common.wechat_scan` 这种没人读得懂的东西。
+ * `cmd:` 后面那一段在界面上叫什么 —— 被引用那条命令的**名字**（原样显示）。
  *
  *  与 `core/present/CommandTitle` 的 `Action.Custom` 那一支同一个口径：那一边管提示 / 摘要句，
  *  这一边管步骤行与格子标题，两处都得认。
  */
-private fun commandRefName(token: String): String = token.removePrefix(Command.PREFIX).let { raw -> CommonCommands.labelOf(raw) ?: raw }
+private fun commandRefName(token: String): String = token.removePrefix(Command.PREFIX)
+
+/**
+ * 一条常用命令在界面上叫什么 —— **用户起的名字优先**；没起过就按动作自己念。
+ *
+ *  常用命令清单里的 `name` 是显示用的覆盖值（空 = 不覆盖），与命令库那条命令的名字是两件事：
+ *  `cmd:` 指向的命令叫什么，由命令页里那条命令自己的名字决定。
+ */
+internal fun commonCommandName(cmd: CommonCommand): String {
+    if (cmd.name.isNotBlank()) return cmd.name
+    val action = Action.parse(cmd.token)
+    return commandTitleOf(action).forSentence(action, { "" }, cmd.token)
+}
 
 /**
  * 一个步骤在界面上叫什么。
@@ -588,13 +595,9 @@ internal fun stepIcon(
     //  步骤行的每一次重组都会走到这一句（见 `ActionCatalog.canonicalToken`）。
     if (!isCommandRef(token)) return actionIcon(ActionCatalog.canonicalToken(token))
     val name = token.removePrefix(Command.PREFIX)
-    //  **内置那几条常用命令不在用户命令库里**（`cmd:common.wechat_scan` 这类）：按库里查必然落空，
-    //  落到通用的「命令」字形上就等于把它们的信息抹掉了。它们自带 root 位与那一步正文 ——
-    //  按与库里那条**同一条判据**（`commandIcon`）画，root 角标才不会丢。
-    CommonCommands.entryOf(token)?.let { return commandIcon(CommandKind.SINGLE, 1, it.root, it.step) }
     val ref = commands.firstOrNull { it.name == name } ?: return PageIcons.CommandSingle
-    //  单条命令按它**自己那种写法**取底图、root 那档加井号角标，与命令列表里那张卡同一条判据
-    return commandIcon(ref.kind, ref.steps.size, ref.root, ref.single)
+    //  单条命令按它**自己那种写法**取底图，以 root / 经 Shizuku 执行时整颗换身份记号，与命令列表里那张卡同一条判据
+    return commandIcon(ref.kind, ref.steps.size, ref.root, ref.single, ref.viaShizuku)
 }
 
 /**

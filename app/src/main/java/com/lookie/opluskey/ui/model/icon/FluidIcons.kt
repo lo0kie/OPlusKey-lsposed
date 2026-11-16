@@ -89,7 +89,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
 import io.github.lyxnx.compose.ui.tablericons.outline.ExternalLink
 import io.github.lyxnx.compose.ui.tablericons.outline.Eye
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeCancel
+import io.github.lyxnx.compose.ui.tablericons.outline.EyeCode
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeCog
+import io.github.lyxnx.compose.ui.tablericons.outline.EyeOff
 import io.github.lyxnx.compose.ui.tablericons.outline.FileDownload
 import io.github.lyxnx.compose.ui.tablericons.outline.FileMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.FilePencil
@@ -122,6 +124,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Language
 import io.github.lyxnx.compose.ui.tablericons.outline.LanguageOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.ListDetails
+import io.github.lyxnx.compose.ui.tablericons.outline.Loader2
 import io.github.lyxnx.compose.ui.tablericons.outline.Location
 import io.github.lyxnx.compose.ui.tablericons.outline.Lock
 import io.github.lyxnx.compose.ui.tablericons.outline.LockCog
@@ -186,6 +189,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCog
+import io.github.lyxnx.compose.ui.tablericons.outline.SettingsPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.SortAscendingShapes
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SparkleHighlight
@@ -331,7 +335,9 @@ internal object FluidIcons {
             "externallink" to TablerIcons.Outline.ExternalLink,
             "eye" to TablerIcons.Outline.Eye,
             "eyecancel" to TablerIcons.Outline.EyeCancel,
+            "eyecode" to TablerIcons.Outline.EyeCode,
             "eyecog" to TablerIcons.Outline.EyeCog,
+            "eyeoff" to TablerIcons.Outline.EyeOff,
             "filedownload" to TablerIcons.Outline.FileDownload,
             "fileminus" to TablerIcons.Outline.FileMinus,
             "filepencil" to TablerIcons.Outline.FilePencil,
@@ -364,6 +370,7 @@ internal object FluidIcons {
             "languageoff" to TablerIcons.Outline.LanguageOff,
             "link" to TablerIcons.Outline.Link,
             "listdetails" to TablerIcons.Outline.ListDetails,
+            "loader2" to TablerIcons.Outline.Loader2,
             "location" to TablerIcons.Outline.Location,
             "lock" to TablerIcons.Outline.Lock,
             "lockcog" to TablerIcons.Outline.LockCog,
@@ -428,6 +435,8 @@ internal object FluidIcons {
             "settings2" to TablerIcons.Outline.Settings2,
             "settingscancel" to TablerIcons.Outline.SettingsCancel,
             "settingscog" to TablerIcons.Outline.SettingsCog,
+            "settingsplus" to TablerIcons.Outline.SettingsPlus,
+            "shizuku" to DrawnIcons.Shizuku,
             "sortascendingshapes" to TablerIcons.Outline.SortAscendingShapes,
             "spacinghorizontal" to TablerIcons.Outline.SpacingHorizontal,
             "sparklehighlight" to TablerIcons.Outline.SparkleHighlight,

@@ -55,7 +55,7 @@ internal object ShizukuExec {
 
     private var grantListener: Shizuku.OnRequestPermissionResultListener? = null
 
-    private var grantCallback: ((Boolean) -> Unit)? = null
+    private var grantCallback: ((GrantResult) -> Unit)? = null
 
     /** 这个进程里拿得到 Shizuku 的 binder 吗（拿到 ≠ 有权限）。 */
     fun available(): Boolean = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
@@ -68,13 +68,16 @@ internal object ShizukuExec {
     /**
      * 跑一条命令，返回退出码（[FAIL_CODE] / [TIMEOUT_CODE] 见上）。**阻塞**：调用方得是后台线程。
      */
-    fun exec(command: String): Int {
+    fun exec(
+        command: String,
+        onLine: ((String) -> Unit)? = null,
+    ): Int {
         val code =
             runCatching {
                 val service = IShizukuService.Stub.asInterface(Shizuku.getBinder())
                 val proc = service.newProcess(arrayOf("sh", "-c", command), null, null)
-                val out = readAll(proc.inputStream, "shizuku> ")
-                val err = readAll(proc.errorStream, "shizuku! ")
+                val out = readAll(proc.inputStream, "shizuku> ", onLine)
+                val err = readAll(proc.errorStream, "shizuku! ", null)
                 //  AIDL 这一档的单位是个**字符串**（服务端按 `TimeUnit.valueOf` 认，见
                 //  `ShizukuRemoteProcess.waitForTimeout` 的传法），所以给 `toString()` 而不是枚举。
                 val exited = proc.waitForTimeout(TIMEOUT_SEC, TimeUnit.SECONDS.toString())
@@ -96,31 +99,37 @@ internal object ShizukuExec {
     }
 
     /**
-     * 申请一次授权 —— **已授权就直接回 true、不弹窗**（用户可能只是关掉又打开开关）。
+     * 申请一次授权 —— **已授权就直接回 [GrantResult.GRANTED]、不弹窗**（用户可能只是关掉又打开开关）。
      *
      *  **阻塞**：里面每一步都是 binder 调用（`checkSelfPermission` / `requestPermission`），
      *  而 Sui / Shizuku 会把结果投递回**本进程的主线程**。调用方必须给它一条后台线程，
      *  否则主线程卡在 binder 上等结果、结果又在等主线程 —— 两边互等，界面上就是「一直在等」。
      *
-     *  回调只会有一次：授结果、发起失败、以及重复请求（上一轮先按「没拿到」收掉）。
+     *  回调只会有一次：授结果、拒绝、发起失败、以及重复请求（上一轮先按「没问成」收掉）。
      */
-    fun requestGrantBlocking(onResult: (Boolean) -> Unit) {
+    fun requestGrantBlocking(onResult: (GrantResult) -> Unit) {
         XLog.w("Shizuku：开始申请（available=${available()} granted=${granted()}）")
         if (!available()) {
             XLog.w("Shizuku：申请时没有 binder")
-            onResult(false)
+            onResult(GrantResult.FAILED)
             return
         }
         if (granted()) {
-            onResult(true)
+            onResult(GrantResult.GRANTED)
             return
         }
         //  上一次还挂着：先收掉，否则那一侧要等到超时才知道
-        finishGrant(false)
+        finishGrant(GrantResult.FAILED)
         val listener =
             Shizuku.OnRequestPermissionResultListener { code, grantResult ->
                 if (code != GRANT_REQUEST_CODE) return@OnRequestPermissionResultListener
-                finishGrant(grantResult == PackageManager.PERMISSION_GRANTED)
+                finishGrant(
+                    if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                        GrantResult.GRANTED
+                    } else {
+                        GrantResult.DENIED
+                    },
+                )
             }
         synchronized(this) {
             grantListener = listener
@@ -129,7 +138,7 @@ internal object ShizukuExec {
         runCatching { Shizuku.addRequestPermissionResultListener(listener) }
             .onFailure {
                 XLog.w("Shizuku：注册授权回调失败", it)
-                finishGrant(false)
+                finishGrant(GrantResult.FAILED)
                 return
             }
         XLog.w("Shizuku：发起授权请求（等回执）")
@@ -139,13 +148,31 @@ internal object ShizukuExec {
         runCatching { Shizuku.requestPermission(GRANT_REQUEST_CODE) }
             .onFailure {
                 XLog.w("Shizuku：发起授权请求失败", it)
-                finishGrant(false)
+                finishGrant(GrantResult.FAILED)
             }
     }
 
-    private fun finishGrant(granted: Boolean) {
+    /**
+     * 一次申请授权的三种收场。
+     *
+     *  [DENIED] 与 [FAILED] 必须分开：前者是**用户说他不要**（回执里明确拒绝），界面一个字都不用报；
+     *  后者是**这一次压根没问成**（没有 binder / 注册回调失败 / 请求本身抛了），结论是不知道 ——
+     *  不报的话用户只看到转圈停下、什么也没说。
+     */
+    enum class GrantResult {
+        /** 拿到了。 */
+        GRANTED,
+
+        /** 有 Shizuku，用户明确拒绝了。**不是故障**。 */
+        DENIED,
+
+        /** 没问成 —— 结论未知。 */
+        FAILED,
+    }
+
+    private fun finishGrant(result: GrantResult) {
         val listener: Shizuku.OnRequestPermissionResultListener?
-        val callback: ((Boolean) -> Unit)?
+        val callback: ((GrantResult) -> Unit)?
         synchronized(this) {
             listener = grantListener
             callback = grantCallback
@@ -154,19 +181,24 @@ internal object ShizukuExec {
         }
         listener?.let { runCatching { Shizuku.removeRequestPermissionResultListener(it) } }
         if (callback == null) return
-        XLog.w("Shizuku：授权结果 granted=$granted")
-        callback(granted)
+        XLog.w("Shizuku：授权结果 $result")
+        callback(result)
     }
 
     /** 把一路输出读干净并进日志（`d` 级：这是高频路径，判据行在那两处 `w`）。 */
     private fun readAll(
         fd: ParcelFileDescriptor,
         prefix: String,
+        onLine: ((String) -> Unit)?,
     ): Future<*> =
         readers.submit {
             runCatching {
                 ParcelFileDescriptor.AutoCloseInputStream(fd).bufferedReader().use { reader ->
-                    reader.forEachLine { line -> XLog.d { "$prefix$line" } }
+                    reader.forEachLine { line ->
+                        XLog.d { "$prefix$line" }
+                        //  标准输出同时交给调用方 —— 「显示执行返回结果」那一档要的就是它
+                        if (onLine != null) runCatching { onLine(line) }
+                    }
                 }
             }.onFailure { XLog.d { "读 Shizuku 输出失败：${it.message}" } }
         }

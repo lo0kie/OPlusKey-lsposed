@@ -5,7 +5,6 @@ import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
-import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
@@ -55,13 +54,14 @@ import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobile
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
-import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
 import io.github.lyxnx.compose.ui.tablericons.outline.Download
 import io.github.lyxnx.compose.ui.tablericons.outline.Edit
 import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
 import io.github.lyxnx.compose.ui.tablericons.outline.ExternalLink
+import io.github.lyxnx.compose.ui.tablericons.outline.EyeCode
+import io.github.lyxnx.compose.ui.tablericons.outline.EyeOff
 import io.github.lyxnx.compose.ui.tablericons.outline.FileDownload
 import io.github.lyxnx.compose.ui.tablericons.outline.FileMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.FilePlus
@@ -87,6 +87,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
 import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.ListDetails
+import io.github.lyxnx.compose.ui.tablericons.outline.Loader2
 import io.github.lyxnx.compose.ui.tablericons.outline.Lock
 import io.github.lyxnx.compose.ui.tablericons.outline.LockCog
 import io.github.lyxnx.compose.ui.tablericons.outline.LockOpen
@@ -132,6 +133,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Server
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
+import io.github.lyxnx.compose.ui.tablericons.outline.SettingsPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.SortAscendingShapes
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
@@ -179,9 +181,13 @@ internal object PageIcons {
     val SettingsCog: ImageVector get() = TablerIcons.Outline.Settings2
 
     /**
-     * 「显示更详细的按键设置」那一行 —— 横三点（`dots`）：这一行展开的是同一页里被收起来的那些项。
+     * 「显示更详细的按键设置」那一行 —— `settings-plus`（齿轮带一个加号）：
+     * 这一行是**把同一页里被收起来的那些项放出来**，齿轮说「设置」、加号说「多出来一批」。
+     *
+     *  早先用的是横三点（`dots`）—— 那在列表里读作「更多菜单」，与本项目的「更多」按钮同形，
+     *  两件事挤在一个字形上分不开。
      */
-    val DetailedKeySettings: ImageVector get() = TablerIcons.Outline.Dots
+    val DetailedKeySettings: ImageVector get() = TablerIcons.Outline.SettingsPlus
 
     /**
      * 「启用按键绑定」那一行的行首 —— 拨到右的开关（`toggle-right`）：这一行是**模块总闸**。
@@ -576,15 +582,18 @@ internal object PageIcons {
      *
      *  命令卡 / 网格格子 / 步骤行那几处的底图现在按**命令自己那种写法**取（`shell:` → [FormatShell]、
      *  `notify:` → [FormatNotify] …，见 `commandIcon`），这一颗只在写法认不出时兜底。
-     *  以 root 执行不再换整颗字 —— 改成右下角一颗井号角标（[CommandRoot] 那颗字形拼上去）。
+     *  看着一样但语义不同的另一处：[FormatShell] 也是 `Terminal2` —— 那张表里它代表「这一行写的是
+     *  `shell:`」，这里代表「这条命令的写法认不出」。两者字形相同，改的时候别只改一处。
      */
     val CommandSingle: ImageVector get() = TablerIcons.Outline.Terminal2
 
     /**
      * 「以 root 执行」—— `Hash`（井号 = root 的提示符）。
      *
-     *  两处说的是同一件事「这条命令换个身份跑」：命令设置里那张开关行的行首（这一处仍是整颗），
-     *  以及命令卡右下角那颗**角标**（字形取自这里，拼接见 `commandIcon` → `badgedIcon`）。
+     *  两处说的是同一件事「这条命令换个身份跑」，而且两处都画**整颗**：命令设置里那张开关行的行首，
+     *  以及命令卡 / 网格格子 / 步骤行的类型图标（`commandIcon` 走这一支）。
+     *  不再拼角标：底图加一颗井号读起来仍是「一条 shell 命令」，而身份是这一条命令的**选择**，
+     *  整颗换掉比半个角标更省事。
      *
      *  为什么是井号：shell 里普通用户是 `$`、root 是 `#`，这颗字形就是那个提示符本身
      *  （superuser 的经典图腾也是它），比任何「提权 / 权限」的转喻都直接。
@@ -593,12 +602,21 @@ internal object PageIcons {
     val CommandRoot: ImageVector get() = TablerIcons.Outline.Hash
 
     /**
-     * 「以 Shizuku 执行」—— 行首那颗，**占位用的 `Dots`**。
+     * 「以 Shizuku 执行」—— Shizuku 的猫头（[DrawnIcons.Shizuku]，从安装包的 monochrome 层取的原形）。
      *
-     *  这一档与 [CommandRoot] 是同一件事的另一种说法（换一条执行通道），本该挑一颗同族的字形；
-     *  先把位置占住，换成哪一颗等定下来再改这里一处即可（调用点只引这个名字）。
+     *  行首与类型图标共用这一颗。与 [CommandRoot]（井号）是同一件事的两种说法：这条命令换一条
+     *  通道跑；一个是提示符、一个是那条通道自己的标志，两者一眼分得开。
      */
-    val CommandShizuku: ImageVector get() = TablerIcons.Outline.Dots
+    val CommandShizuku: ImageVector get() = DrawnIcons.Shizuku
+
+    /**
+     * 「显示执行返回结果」那一行的行首 —— `eye-code`（眼睛看着一段代码）：
+     * 它说的是「把命令跑出来的那段文字给你看」。
+     */
+    val CommandOutput: ImageVector get() = TablerIcons.Outline.EyeCode
+
+    /** 同一档菜单里「不显示」那一行 —— `eye-off`（闭上了眼睛）。 */
+    val OutputNone: ImageVector get() = TablerIcons.Outline.EyeOff
 
     /**
      * 「系统场景」（条件执行）那条命令的类型图标 —— `adjustments-alt`（三根竖着的滑杆）。
@@ -686,7 +704,6 @@ internal object PageIcons {
      * 「管理常用命令」那一行 —— `notes`（一页写满字的纸，用户指定，原名单页那一行用的字形）。
      *
      *  说的是「清单里有哪几条、哪些勾着要出现」：这一行点开就是一整页清单，一页纸正好是它。
-     *  与 [CommonCommands]（`eye-cog`，管露不露）分工清楚 —— 一个开关一个去处，字形不重。
      */
     val CommonCommandsManage: ImageVector get() = TablerIcons.Outline.Notes
 
@@ -694,8 +711,7 @@ internal object PageIcons {
      * 「固定显示在按键绑定页」—— `pin`（一枚图钉）。
      *
      *  这一项**不再是开关**：常用命令一律出现在按键绑定页那段里（用户口径「改成固定」），
-     *  所以字形要表达的是「钉住了」而不是「可以选择要不要」。原先借的是 [CommonCommands]
-     *  那颗 `eye-cog`，那是「这一段露不露」的开关字形，用在一个不可切换的结论上会让人去点它。
+     *  所以字形要表达的是「钉住了」而不是「可以选择要不要」。
      */
     val PinnedInBinding: ImageVector get() = TablerIcons.Outline.Pin
 
@@ -862,6 +878,17 @@ internal object PageIcons {
      *  中性 —— 绝大多数回执（已保存、已删除、已切换）本来就没有成败可言。
      */
     val HintAlert: ImageVector get() = TablerIcons.Outline.AlertCircle
+
+    /**
+     * 提示条里「**还在进行、没有结论**」那一档的前置图标 —— `loader-2`（三段圆弧）。
+     *
+     *  它不静止：界面按它转圈（见 `PageSnackbar.HintCapsule` 的 `loading`）。选圆弧而不是
+     *  「转盘 / 三颗点」：旋转之后仍是同一条圆轨，动态干净，与旁边那句「正在检查…」是一件事。
+     *
+     *  只有**没有结论**的提示才用它（正在检查模块 / Shizuku 授权 / 更新）；有结论的一律回
+     *  [HintAlert] 那一档 —— 结论挂一个转圈的图标会让人以为它还在等。
+     */
+    val HintLoading: ImageVector get() = TablerIcons.Outline.Loader2
 
     /**
      * 「名称」这一类输入框的行首图标 —— `label-important`（标签）。
@@ -1086,30 +1113,6 @@ internal object PageIcons {
 }
 
 // 「常用命令」清单项的行首字形 —— 绑定页那一段与「常用命令」页共用这一份。
-//
-// 为什么单独一个文件：那两处一个在 `screen/binding`、一个在 `screen/common`，各自写一份 `when`
-// 就会漂（加一个品牌时只改一处，另一处继续画错字形）。而 `PageIcons` 那一张表是「字形本身」，
-// 不该认识 `CommonCommands` 这个业务类型 —— 转译层放这里。
-
-/**
- * 模块自带那几条的品牌 → 行首字形。
- *
- *  品牌标识由 `:core` 给（`CommonCommands.Brand`，那边引不到 `PageIcons`），字形只在这一层有。
- */
-internal val CommonCommands.Brand.icon: ImageVector
-    get() =
-        when (this) {
-            CommonCommands.Brand.WECHAT -> PageIcons.BrandWechat
-            CommonCommands.Brand.ALIPAY -> PageIcons.BrandAlipay
-        }
-
-/**
- * 一条清单项的行首字形 —— 自带那几条用自己的品牌字形，其余按动作取。
- *
- *  品牌要单独一支：`cmd:common.wechat_scan` 是一个 `cmd:` 动作，按动作取只会得到一个
- *  「命令」的通用字形，而这一段的读法恰恰是「哪一家的扫一扫」。
- */
-internal fun commonCommandIcon(token: String): ImageVector = CommonCommands.entryOf(token)?.brand?.icon ?: actionIcon(token)
 
 /**
  * **这一条现在该画哪颗字形** —— 换过图标就用换的那颗（[FluidIcons] 里那一批），否则按动作取。
@@ -1123,7 +1126,7 @@ internal fun commonCommandIcon(token: String): ImageVector = CommonCommands.entr
  *  绑定页那一段与「常用命令」页共用这一份：两处各判一次就会漂。
  */
 internal fun commonCommandIcon(cmd: CommonCommand): ImageVector =
-    cmd.icon.takeIf { it.isNotEmpty() }?.let { FluidIcons.of(it) } ?: commonCommandIcon(cmd.token)
+    cmd.icon.takeIf { it.isNotEmpty() }?.let { FluidIcons.of(it) } ?: actionIcon(cmd.token)
 
 // 分叉条件的字形 —— 只剩「种类」这一层。
 //

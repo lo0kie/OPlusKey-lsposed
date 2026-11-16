@@ -36,6 +36,16 @@ internal data class HintItem(
      *  否则会出现「字换了、图标还是上一句的」。
      */
     val icon: ImageVector? = null,
+    /**
+     * 前置图标画成**转圈的 loading**（而不是 [icon] 里那张静止的图）。
+     *
+     *  给「还在进行、没有结论」的那几条（正在检查模块 / 等 Shizuku 授权 / 检查更新）—— 转圈本身
+     *  就是「还在等」，比一句「正在检查」多一层不用读的信息。**有结论的提示不要用它**：
+     *  一颗还在转的图标会让人以为它还没说完。
+     *
+     *  与 [icon] 一样属于这条提示的内容：同一个位上换句时一起换（见 [HintQueue.push]）。
+     */
+    val loading: Boolean = false,
     val slot: String? = null,
     /** 正在退场（180ms）。这段时间它仍占一格，界面按它播退场。 */
     val exiting: Boolean = false,
@@ -112,6 +122,7 @@ internal class HintQueue(
      *   屏幕上应当是一条在改字，而不是两条「已开启 / 已关闭」叠着。
      * @param icon 前置图标（见 [HintItem.icon]）。同一位上改字时**跟着一起换** —— 它属于这一条
      *   的内容，不是那一条的装饰。
+     * @param loading 前置图标画成转圈的 loading（见 [HintItem.loading]）；同样跟着一起换。
      */
     fun push(
         text: String,
@@ -119,6 +130,7 @@ internal class HintQueue(
         holdMs: Long? = null,
         icon: ImageVector? = null,
         chips: List<String> = emptyList(),
+        loading: Boolean = false,
     ) {
         if (text.isBlank()) {
             //  空文案**不是一条提示**，但也**不能什么都不做**：直接 `return` 的话，屏幕上那一条
@@ -134,8 +146,11 @@ internal class HintQueue(
         //  同一个位上已经有一条（还没开始退场）⇒ 改那条的字，不新开一条
         val same = if (slot == null) null else items.firstOrNull { it.slot == slot && !it.exiting }
         if (same != null) {
-            if (same.text != text || same.icon != icon || same.chips != chips) {
-                items = items.map { if (it.id == same.id) it.copy(text = text, icon = icon, chips = chips) else it }
+            if (same.text != text || same.icon != icon || same.chips != chips || same.loading != loading) {
+                items =
+                    items.map {
+                        if (it.id == same.id) it.copy(text = text, icon = icon, chips = chips, loading = loading) else it
+                    }
             }
             schedule(same.id, holdMs)
             return
@@ -148,7 +163,7 @@ internal class HintQueue(
         val rest = items.filterNot { it.text == text }
         items =
             enqueue(
-                listOf(HintItem(id, text, chips = chips, icon = icon, slot = slot)) + rest +
+                listOf(HintItem(id, text, chips = chips, icon = icon, loading = loading, slot = slot)) + rest +
                     duplicates.map { it.copy(exiting = true) },
             )
         //  被顶掉的旧条目要先摘掉它的计时，否则那个协程到点还会去改一个不存在的 id（无害但白跑）

@@ -664,6 +664,14 @@ object ModuleWire {
      */
     const val ACTION_OPEN_SETTINGS = "com.lookie.opluskey.OPEN_SETTINGS"
 
+    /**
+     * [ACTION_OPEN_SETTINGS] 的附加位：**这次只借跳板把进程拉起来，不要转设置页**。
+     *
+     *  用它的只有一处：宿主换 binder 时拉起跳板（见 `ShizukuHost.requestGrant` 的换进程那一步）。
+     *  那一档用户正开着设置页，再转一次会把页里那摞子页（命令详情、抽屉 …）清掉、退回第一页。
+     */
+    const val EXTRA_WAKE_ONLY = "com.lookie.opluskey.extra.WAKE_ONLY"
+
     // ── 链路自检：设置页 与 注入侧（system_server） ──
     //  这一对是**问 / 答**，只为「首页能不能说清是哪一段断了」而存在（见 `ui/wire/LinkCheck.kt`）。
     //  注入侧不必为它额外挂 Hook：它已经挂在 AMS 的广播入口上，全系统每条广播都过那里；

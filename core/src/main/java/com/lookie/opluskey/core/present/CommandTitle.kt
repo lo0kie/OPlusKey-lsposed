@@ -4,6 +4,8 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionReading
+import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.CommandKind
 
 // 「一个动作怎么念」—— 全项目**唯一**实现。
 //
@@ -211,11 +213,8 @@ private fun builtInSegments(
     //  自定义命令：名字是**用户起的那个**（`action.name`），不是清单里的名字。
     //  它不在清单里（命令库是运行时收集的），查 `label` 只会拿到 null 再退到原始 token
     //  （`cmd:喝水`）—— 那是手改配置才该看到的样子。
-    //
-    //  例外是模块内置的那几条（`CommonCommands`：`cmd:common.wechat_scan`）—— 它们的 `name`
-    //  是**稳定 id**、不是给人看的名字，念的时候要按当前语言过一遍字典。
     if (action is Action.Custom) {
-        return TitleSegments(parent = null, name = CommonCommands.labelOf(action.name) ?: action.name, state = null)
+        return TitleSegments(parent = null, name = action.name, state = null)
     }
     //  两个「没有」意思不同：没有那一档 = 它不属于任何入口格；清单标题也没有才是「谁也认不出」。
     //  只有后者可以退到 fallback，所以不能写成 `?: ...` 串下去。
@@ -379,3 +378,23 @@ fun commandTitleOf(action: Action): CommandTitle =
  */
 fun actionDetail(action: Action): String? =
     ActionCatalog.modeHitOf(action)?.let { commandTitleOf(action).forTile(action, { "" }, action.token) }
+
+/**
+ * 一条自定义命令的**执行身份** —— 「以 Shizuku 执行」/「以 root 执行」，两者都不是时 `null`。
+ *
+ *  只有**单条**命令有这两条执行通道（`Command.root` / `Command.viaShizuku`）：多条那一档
+ *  每一步的 `shell:` 各按自己那一档走，不在这里。
+ *
+ *  两条通道互斥，旧配置里两条都为真时**与执行侧同序**：先认 Shizuku（`ShellRunner` 也是先判它）。
+ *
+ *  **显示口径只有这一份**：命令详情浮层与网格格子的小字都读它。各写一份时，同一条命令
+ *  会在两处念成两种执行方式 —— 而这一句说的正是「这条命令怎么跑」，读错就是照着错的去配。
+ */
+fun commandExecIdentity(cmd: Command): String? {
+    if (cmd.kind != CommandKind.SINGLE) return null
+    return when {
+        cmd.viaShizuku -> I18n.get(Strings.COMMAND_SHIZUKU_TITLE)
+        cmd.root -> I18n.get(Strings.COMMAND_ROOT_TITLE)
+        else -> null
+    }
+}

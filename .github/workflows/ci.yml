@@ -175,17 +175,15 @@ jobs:
       - name: i18n 键集合（三份一一对应）
         run: python3 tools/check-i18n-keys.py
 
-      # 静态表（`Strings.kt` / `CommonCommandsTable.kt`）是**生成物**：源分别是
-      #   `assets/locales/zh-CN.json` 的键集合与 `core/tables/common-commands.json`。
+      # 静态表（`Strings.kt`）是**生成物**：源是 `assets/locales/zh-CN.json` 的键集合。
       #   判据是「重跑一遍生成器，看工作区有没有变」—— 与依赖锁定那一步同一个形状。
-      #   过期不会编译失败（常量少一条就是少一条），表现只是某句文案退回键名 / 少一条常用命令，
+      #   过期不会编译失败（常量少一条就是少一条），表现只是某句文案退回键名，
       #   所以这道闸必须在 CI 上，而不是靠人记得跑。
       - name: 静态表与生成物一致
         run: |
           python3 tools/gen-static-tables.py
           if ! git diff --quiet -- \
-              core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt \
-              core/src/main/java/com/lookie/opluskey/core/present/CommonCommandsTable.kt; then
+              core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt; then
             echo "::error::静态表生成物过期：跑 python3 tools/gen-static-tables.py 再把 diff 一起提交"
             git --no-pager diff --stat
             exit 1

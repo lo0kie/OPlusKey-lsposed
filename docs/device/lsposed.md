@@ -440,3 +440,109 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.GESTURE -p com.oplus.gestu
 
 ⇒ 结论：**落档一律走内部通道**（`setRingerModeInternal`），公共接口只作退路。「使用 ColorOS 接口」
 那个开关管的是切完那一下的触觉与流体云，**不决定走哪条通道**。
+
+## 四十二、ColorOS 的「启动管理」闸：非 root 一律拒，只有**闹钟档**是例外（实测 + 反编译，2026-11-16，PLK110 / ColorOS 17）
+
+模块进程没在跑时，谁能把它拉起来，逐档实测（目标都是 `.shizuku.ShizukuShellService`）：
+
+| 调用方 | 起法 | 结果 |
+| --- | --- | --- |
+| 宿主 `com.oplus.gesture`（10277） | `bindService` | 拒：`prevent start … Type bs` |
+| shell（2000） | `startService` | 先被 AOSP 拒（`Background start not allowed`），到不了 ColorOS |
+| uid 1000（`su 1000`，包名 `com.android.shell`） | `startService` / `startForegroundService` | AOSP 放行，**ColorOS 拒**：`prevent start … by com.android.shell callingUid 1000, Type ss` |
+| **system_server 自己**（uid 1000 + 包名 `android`，直接调 AMS 的 `startService`） | 普通启动 | ColorOS 拒：`prevent start … by android callingUid 1000, Type ss`；随后 AOSP 又记一条 `Background start not allowed … startFg?=false` |
+| root（0） | `startService` | 被 AOSP 拒（到不了 ColorOS） |
+| root（0） | `startForegroundService` | **放行**（服务进 `onStartCommand`） |
+
+⇒ **除 root 与 shell（uid 2000）外，没有任何调用方身份能起来它**：连 system_server 自己都拒。
+所以「让 system_server 代起」这条路在 ColorOS 上不成立 —— `bridge/ShizukuWakeBridge` 与宿主侧的
+「排闹钟拉起」两条都试过、都失败，代码已经删掉（留着只会让每次失败多等三秒、还多弹一次通知）。
+
+### 反编译：这一档的判据在哪
+
+`/system/framework/oplus-services.jar` → `com.android.server.am.OplusAppStartupManager`
+（`isAllowStartFromStartService(ProcessRecord, int, int, String callingPackage, ServiceRecord, Intent)`）的判定顺序：
+
+1. `isAllowStartInHighTemp(appInfo, callingPackage)` —— 高温/发热，拒（另一种 W 日志）；
+2. `isPreventBootStartData(appInfo)` —— 开机启动数据被清（camry），拒；
+3. **白名单捷径**：`callingPackage != null && intent.getAction() != null &&
+   mOplusStartupStrategy.inStartServiceCallerPkgList(callingPackage, action)` ⇒ **直接放行**；
+4. 否则若 `scenePriority != -1 && (intent.getIntentExt().getOplusFlags() & 0x10000) != 0`
+   ⇒ 走**闹钟档**（场景名 `ssfa`，调用方包名被改写成 `system[alarmManger]`）；
+5. 否则 ⇒ `isAllowStartFromService(…, "ss")` —— 我们日志里那条，第三方恒拒。
+
+写 Intent 时没有 `action`（`Intent().setComponent(...)`）就必然掉到第 5 档，而且第 4 档要的是
+ColorOS 自己的 `getOplusFlags()`（`IIntentExt`），第三方拿不到。
+
+`dumpsys activity services <包名>` 里每个 `ServiceRecord` 都带着这张策略表的取值
+（本机实例）：`mAllowStart_noBinding=PROC_STATE_PERSISTENT`、`mAllowStart_inBindService=DENIED`、
+`mAllowStart_byBindings=DENIED`、`getFgsAllowStart=PROC_STATE_PERSISTENT`、`allowUiJobScheduling=false`。
+
+### 因此只剩一条不靠身份的路：**闹钟**
+
+宿主用 `PendingIntent.getForegroundService(...)` + `setExactAndAllowWhileIdle` 给自己排一个 200ms 后的
+闹钟，到点由系统（不是宿主、也不是我们）把服务拉起来 —— 走的是 ColorOS 第 4 档那条 `ssfa`。
+真机待验证：`ShizukuShellClient.wake` 里两条路（广播代起 + 闹钟）是同时发的，日志会分别打
+`唤醒模块进程：AMS 已接下前台启动请求` 与 `唤醒模块进程：已排 … 后的闹钟来拉起服务`。
+
+其余可用的办法都要求**用户动一下**（模块做不到）：在 ColorOS 的启动管理里给本应用打开
+「自启动 / 允许关联启动」，或把模块应用常驻前台服务；再不然就是换 Sui（binder 注进宿主进程，
+根本不需要叫醒模块进程）。
+
+### 兜底：让自己先活着（`ShizukuShellService` 的常驻档）
+
+既然「从外面拉起」这条路被 ColorOS 关死，剩下的唯一办法是**进程一开始就别死**：
+
+- `EntryActivity`（本应用唯一会到前台的入口）起来时 `startForegroundService`，服务转前台之后
+  **不收尾**，一直挂着一条 `IMPORTANCE_MIN` 的通知；
+- 之后宿主那次 `bindService` 只是建连接（进程活着时 ColorOS 不管），
+  `dumpsys activity services` 里能看到 `isForeground=true foregroundId=… types=0x40000000`；
+- 代价是「要有一个前台通知」这件事本身：**实际上它不可见** —— 本模块没有声明
+  `POST_NOTIFICATIONS`，Android 13+ 因此不显示它（`dumpsys notification` 里渠道与
+  `foregroundNoti` 都在，通知栏里什么都没有）。前台服务只要求「有通知对象」，不要求用户看得见，
+  所以这条对用户是零打扰的；真要让它可见，得在 `EntryActivity` 里申请那个运行时权限。
+
+`BootReceiver`（`BOOT_COMPLETED` / `MY_PACKAGE_REPLACED`）也接了同一个动作，但 ColorOS 连系统发的
+广播都不肯为它拉起进程（`*Do not want to launch app … for broadcast … callUid:1000`），所以这条只在
+放行的 ROM 上有用。
+
+宿主那边**不试着「起服务」叫醒它**（那条被上表关死）：绑不上时改由那颗跳板 Activity 换一个新
+进程上来（见下一节），换完还连不上才按 `command_failure.shell_channel_off`（「Shizuku 暂时连不上，
+再点一次试试」）报，与「没有可用 Shizuku」分开。
+
+### Shizuku 关掉又开：旧进程永远拿不到新 binder，只能换进程
+
+`Shizuku` 的服务端重启时，旧服务端会先往活着的模块进程里推一个**已经死掉的** binder，库里
+`Shizuku.onBinderReceived` 的 `unlinkToDeath` 因此抛 `NoSuchElementException: Death link does not
+exist`（真机日志：`*** Uncaught remote exception!  Client PID <旧 server> UID 0`），那一次推送作废。
+
+更关键的一条（真机实测，2026-11-16）：**活着的老进程之后再也拿不到 binder**。
+
+- `requestBinderForNonProviderProcess` 在这一档等于空操作 —— 反编译 `ShizukuProvider` 可以看到
+  它只是 `ContentResolver.call(content://<自己>.shizuku, "getBinder")`，读的是**本进程**已有的
+  那个 `Shizuku.getBinder()`：进程自己没有 binder 时就返回 null，不会去问服务端；
+- binder 是服务端推给**那之后新起**的进程的。用户观察到的那句「点 LSPosed 管理器那颗 FAB 就能
+  拿到新状态」，本质就是那一下开了个新进程 —— 不是 FAB 有魔力。
+
+所以 `ShizukuShellService` 的 `OnBinderDeadListener` 直接**退场**（`stopSelf()` + 退进程），
+不再挂在原地等：留一个永远拿不到 binder 的僵尸进程只会把「没有可用 Shizuku」这个假答案一直
+说下去。
+
+### 把旧进程换掉要一个「起新进程」的动作：只有跳板 Activity 那条路
+
+ColorOS 的启动管理把 `startService` / `bindService` 那一档对所有调用方关死（见上一节的表），
+但**模块自己的跳板 Activity 不在那道判定里**：宿主在前台时起一个 `exported` 的 Activity 是被
+放行的 —— 这条正是「用户手动点模块图标」那条路的程序化版本。
+
+于是授权的那个动作（`ShizukuHost.requestGrant`）里补了一步 `replaceProcess`：
+
+1. 先问一次状态。拿到「连得上却没 binder」或「连不上」都说明问题在**进程**，不在 Shizuku；
+2. 连得上的先请它退场（`MSG_RETIRE` → `stopSelf()` + 退进程），连不上的本来就没有进程挡着；
+3. 宿主 `startActivity` 拉起 `EntryActivity`，带 `EXTRA_WAKE_ONLY` —— 跳板那一档**只把进程与
+   后台通道拉起来、连 `ACTION_OPEN_SETTINGS` 都不发**（换 binder 时用户正开着设置页，
+   任何一次 `startActivity` 都会把那页重开、页里那摞自己管的子页退回第一页）；
+4. 再按 `PROBE_ROUNDS × PROBE_GAP_MS` 的宽限问几轮（新进程拿到 binder 是异步的）。
+
+**这一条整个是「待真机验证」的**：跳板那次 `startActivity` 会不会被 ColorOS 的后台启动策略拦、
+新进程起来到 binder 到达要多久，都还没有实测日志 —— 失败时的表现是界面报「Shizuku 暂时连不上，
+再点一次试试」，不是崩。

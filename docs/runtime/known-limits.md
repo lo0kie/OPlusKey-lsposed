@@ -23,8 +23,8 @@
   这一段里按侧键**不会再弹模块页**：弹页面的根因是宿主服务 `onStartCommand` 在锁屏 / 熄屏 / 游戏等条件下
   会打开侧键设置页，而唤醒那一次 `startService` 正好把它带出来；现在宿主侧掐掉了那段正文
   （反编译与判据见 `docs/device/side-key.md` §40）。
-- **「常用命令」里那几条要 root**（**现行隐藏**：入口收在 `CommonCommands.SHOW` 后面，手改配置引用
-  `cmd:common.wechat_scan` 仍可用）：它们由模块维护（不在你的命令库里），正文是 `shell:`（微信扫一扫走
-  `am start -a android.intent.action.VIEW -d weixin://dl/scan`）—— 宿主在 `platform_app` 域，
-  直接起别人的界面会被后台启动限制拦掉，只有 `su` 这一条路（`docs/device/actions/launch.md` 二十九）。
-  宿主拿不到 root 时按下去会报「这条命令要 root」；要换写法只能自己在命令库里建一条同名的（同名时以你的那条为准）。
+- **模块补进来的 4 条预设命令**：它们是**普通自定义命令**（第一次进设置页时补进命令库，
+  之后可改可删），开态沿用之前那套 —— 微信扫一扫 / 微信收付款带着「以 root 执行」（起的是
+  不 `exported` 的 Activity），支付宝两条不开；四个开关都在各自命令页，用户随时能改。
+  微信两条没授权时按现存失败分档报「此命令需要 root 权限」。写法与原因见
+  `docs/device/actions/launch.md` 二十九。

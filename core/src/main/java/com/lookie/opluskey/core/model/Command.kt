@@ -298,6 +298,57 @@ data class BranchCondition(
     }
 }
 
+/**
+ * 一条 `shell:` 命令跑完之后，**把返回结果（标准输出）显示到哪** —— 每条命令自己的一档。
+ *
+ *  四档都是「用户看得见」的落点，只是打扰程度不同；[NONE] 是默认值（不显示），
+ *  老配置里缺这一位也落在这里 —— 一条命令跑完就安静地结束，与这一版之前的行为一致。
+ *
+ *  **只对 `shell:` 有意义**：别的写法（`toast:` / `notify:` / `fluid:` / `keyevent:` …）本身就在
+ *  「显示一句话」，没有 stdout 可回显（判据与「以 root 执行」同一个 `Action.usesRoot`）。
+ *
+ *  多条命令的每一步都是 shell，但**没有逐档配置**（步骤只存写法，见 `CommandKind.SERIAL`）：
+ *  它的输出归整条命令那一档（[Command.output]），执行侧只取这一位。
+ */
+enum class CommandOutput(
+    /** 存文件时用的标识。 */
+    val id: String,
+) {
+    /** 不显示（默认）。 */
+    NONE("none"),
+
+    /** 系统提示（`toast:` 那一档的落点）—— 最轻，一句话闪一下。 */
+    TOAST("toast"),
+
+    /** 通知（`notify:` 那一档的落点）—— 留在通知中心，长输出也读得全。 */
+    NOTIFY("notify"),
+
+    /** 流体云（`fluid:` 那一档的落点）—— 状态栏那一颗，适合「结果就一行」的场景。 */
+    FLUID("fluid"),
+
+    ;
+
+    companion object {
+        /** 老配置 / 缺键时落在哪一档。 */
+        val DEFAULT = NONE
+
+        /** 带 `Locale.ROOT`：文件格式解析不能受设备语言影响；认不出的也落回默认档。 */
+        fun fromId(id: String?): CommandOutput = entries.firstOrNull { it.id == id?.trim()?.lowercase(Locale.ROOT) } ?: DEFAULT
+    }
+}
+
+/**
+ * 「这次执行的结果送到哪」—— 执行入口那一路要的两个值（落点 + 流体云那一档的图标）。
+ *
+ *  收成一个值而不是两个平级参数：它们总是一起传（`execShell` 那条 lambda 已经 4 个位置参数了），
+ *  分开传的话每加一个落点的附加项都要再改一遍所有调用签名。
+ */
+data class OutputSink(
+    val mode: CommandOutput = CommandOutput.NONE,
+    /** 只有 [CommandOutput.FLUID] 读它；空串 = 胶囊不带图标。 */
+    val icon: String = "",
+)
+
 data class Command(
     val name: String,
     val kind: CommandKind,
@@ -334,7 +385,26 @@ data class Command(
      *  默认 `false`：老配置与没勾这一档的命令一律走原来的 `su` / `sh`。
      */
     val viaShizuku: Boolean = false,
+    /**
+     * 这条命令跑完之后**把返回结果显示到哪** —— 与 [root] / [viaShizuku] 同一族（每条命令自己的一档）。
+     *
+     *  内容是该次执行的**标准输出**（整段、去首尾空白）；没有输出就什么都不弹 ——
+     *  「成功但没说话」与「失败了」本来就该长得不一样，失败那一侧另有失败提示。
+     *
+     *  默认 [CommandOutput.NONE]：老配置与没配这一档的命令一律安静结束。
+     */
+    val output: CommandOutput = CommandOutput.DEFAULT,
+    /**
+     * [CommandOutput.FLUID] 那一档用的**胶囊图标**（`FluidIcons` 的 id，空串 = 不带图标）。
+     *
+     *  只在 `output == FLUID` 时有意义：流体云那颗胶囊左边要画一颗字形，而执行侧拿到的是命令的
+     *  输出文本，没有别的地方能告诉它画哪颗。
+     */
+    val outputIcon: String = "",
 ) {
+    /** 这次执行的结果送到哪（落点 + 流体云那一档的图标）—— 执行侧只认这一份。 */
+    val outputSink: OutputSink get() = OutputSink(output, outputIcon)
+
     /**
      * 写进配置文件 `single` / `double` / `long` 那一档的取值。
      *

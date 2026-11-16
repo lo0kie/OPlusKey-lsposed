@@ -12,7 +12,6 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.ToastNotice
-import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
@@ -26,6 +25,7 @@ import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.screen.binding.ClickDelayCard
+import com.lookie.opluskey.ui.screen.binding.SHOW_COMMON_COMMANDS
 import com.lookie.opluskey.ui.screen.binding.clickGlobalParams
 import com.lookie.opluskey.ui.screen.combo.HoldComboCard
 import com.lookie.opluskey.ui.screen.combo.WaitComboCard
@@ -121,7 +121,7 @@ private fun SettingsPage.InterfaceCard(pageEnabled: Boolean) {
                 //  **不再配一颗「显示常用命令」**：常用命令本来就只是快捷方式，露不露由清单里
                 //  有没有东西决定（空清单那一段只剩一行「去添加」），多一颗开关只是让人去关一个
                 //  本该由内容决定的事。配置位仍留着（老配置读得懂），执行侧也照旧。
-                if (CommonCommands.SHOW) {
+                if (SHOW_COMMON_COMMANDS) {
                     add(manageCommonCommandsRow(enabled = pageEnabled))
                 }
             },

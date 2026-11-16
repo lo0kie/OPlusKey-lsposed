@@ -23,6 +23,8 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.CommandOutput
+import com.lookie.opluskey.core.present.commandExecIdentity
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.FrostedDialog
 import com.lookie.opluskey.ui.dialog.dialogSideMargin
@@ -45,6 +47,9 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /** 「以 root 执行」与正文之间那一档 —— 与标题行到正文那一档同一个量级。 */
 private val DETAIL_HEAD_GAP = 10.dp
+
+/** 执行身份与「以 toast 提示」两行之间 —— 取 [DETAIL_HEAD_GAP] 的一半：这两行是同一组属性。 */
+private val DETAIL_META_GAP = 5.dp
 
 /** 多条命令里，步骤行行首那枚图标的边长 —— 跟 `body2` 的字配（卡上那份摘要用 14dp 是跟着 `footnote1`）。 */
 private val DETAIL_STEP_ICON = 18.dp
@@ -114,13 +119,26 @@ private fun SettingsPage.CommandDetailBody(cmd: Command) {
             .heightIn(max = DETAIL_MAX_HEIGHT)
             .verticalScroll(rememberScrollState()),
     ) {
-        //  「以 root 执行」排在**正文上面**：它说的是「这一整段怎么跑」（前提），
+        //  「以 root / 以 Shizuku 执行」排在**正文上面**：它说的是「这一整段怎么跑」（前提），
         //  压在正文底下时读起来像一句附注，而它其实是执行条件。
-        //  它只属于**单条**命令：多条那档没有这一个开关，每一步的 `shell:` 都按自己那一档走
-        //  （执行侧一律提权，见 `CustomCommandRunner` 的 `execShell` 第二参）。
-        if (cmd.kind == CommandKind.SINGLE && cmd.root) {
+        //  判据（哪一档有这一句、两条通道谁优先）只在 `commandExecIdentity` 一处 ——
+        //  网格格子的小字读的也是它，两处各写一遍时同一条命令会念成两种执行方式。
+        val identity = commandExecIdentity(cmd)
+        val hasOutput = cmd.output != CommandOutput.NONE
+        if (identity != null) {
             Text(
-                text = I18n.get(Strings.COMMAND_ROOT_TITLE),
+                text = identity,
+                style = COUITheme.textStyles.body2,
+                color = COUITheme.colorScheme.onSurfaceVariantSummary,
+            )
+            //  下面紧跟着提示类型那一行时两行贴紧一档（同一组属性）；否则与正文留正常那一档。
+            Spacer(Modifier.height(if (hasOutput) DETAIL_META_GAP else DETAIL_HEAD_GAP))
+        }
+        //  「显示执行返回结果」选中的那一档 —— 与执行身份同一处（都在正文上面）：
+        //  它说的同样是「这条命令跑起来是什么样」，而不是正文的一部分。`不显示` 不占一行。
+        if (hasOutput) {
+            Text(
+                text = I18n.format(Strings.COMMAND_OUTPUT_PREFIX, I18n.get(cmd.output.labelKey())),
                 style = COUITheme.textStyles.body2,
                 color = COUITheme.colorScheme.onSurfaceVariantSummary,
             )

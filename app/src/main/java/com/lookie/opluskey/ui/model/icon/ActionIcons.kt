@@ -463,9 +463,17 @@ internal fun tileIcon(spec: ActionCatalog.Spec): ImageVector = iconCache.getOrPu
  */
 internal fun specIcon(spec: ActionCatalog.Spec): ImageVector =
     when (val glyph = spec.glyph) {
-        is ActionCatalog.Glyph -> glyphIcon(glyph)
-        is ActionCatalog.GlyphSource.ByCommand -> commandIcon(glyph.kind, glyph.steps, glyph.root, glyph.body)
-        is ActionCatalog.GlyphSource.BySwitchKind -> systemSwitchKindIcon(glyph.id)
+        is ActionCatalog.Glyph -> {
+            glyphIcon(glyph)
+        }
+
+        is ActionCatalog.GlyphSource.ByCommand -> {
+            commandIcon(glyph.kind, glyph.steps, glyph.root, glyph.body, glyph.viaShizuku)
+        }
+
+        is ActionCatalog.GlyphSource.BySwitchKind -> {
+            systemSwitchKindIcon(glyph.id)
+        }
     }
 
 /**
@@ -653,27 +661,30 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
  * 一条自定义命令的类型图标：单条 → **它自己那种写法**的格式图标（[formatIconOf]），
  * 多条 → 按步骤数的 [commandSerialIcon]。
  *
- * ## 单条那颗是「写法 + 身份」两层
+ * ## 单条那颗先看「身份」，不看就看「写法」
  *
- * · **底图**说明这条命令**怎么写**：`shell:` → 终端、`notify:` → 消息、`fluid:` → 横胶囊 …
- *   与「支持的命令格式」那张卡同一份表（[formatIconOf] 直接查它）。认不出的写法退回
+ * · **以 root 执行**：整颗换成 [PageIcons.CommandRoot]（井号，root 的提示符）；
+ * · **经 Shizuku 执行**：整颗换成 [PageIcons.CommandShizuku]（当前是占位字形）；
+ * · **两者都不是**：按写法取底图 —— `shell:` → 终端、`notify:` → 消息、`fluid:` → 横胶囊 …
+ *   与「支持的命令格式」那张卡同一份表（[formatIconOf] 直接查它）；认不出的写法退回
  *   [PageIcons.CommandSingle] 那颗通用终端。
- * · **右下角那颗井号**说明它**以谁的身份跑**：`shell:` 且 `root` 为真时把 [PageIcons.CommandRoot]
- *   那颗字形拼上去（走 `badgedIcon`，与音量 / 亮度 / 铃声那几族同一支：底图右下角裁掉缺口、
- *   井号落进去）。原先这两件事挤在一颗字上（root 就整颗换成井号），
- *   于是「一条提权的 shell 命令」在列表里只看得见「提权」、看不出它干什么。
  *
- * ## 井号只给 `shell:`
+ *  两种身份**不拼角标**：底图加一颗井号读起来仍是「一条 shell 命令」，而「以 root 执行」
+ *  与「经 Shizuku 执行」说的是**同一件事的两种选择**（这条命令以谁的身份跑），一个整颗记号
+ *  比半个角标更省事 —— 也免得同一张清单里出现「终端 + 井号」与「井号」两种画法。
+ *
+ * ## 身份只对 `shell:` 生效
  *
  *  其余写法（`toast:` / `notify:` / `fluid:` / `keyevent:` …）走模块自己的通道，**不经过 shell**，
- *  「以 root 执行」那个开关对它们不起作用（判据 `Action.usesRoot`）—— 所以老配置里那些命令即使
- *  带着 `root: true`，也不该在角上顶一颗井号：那颗记号会被读成「这条命令要提权才跑得起来」，
- *  而它其实连 `su` 都不碰。
+ *  「以 root / Shizuku 执行」那两个开关对它们不起作用（判据 `Action.usesRoot`）—— 所以老配置里
+ *  那些命令即使带着 `root: true`、`viaShizuku: true`，也不该整颗换成井号 / Shizuku 的记号。
  *
  *  与「命令设置」那张卡的显隐是**同一份判据**（`Action.usesRoot`）：界面上看得见开关的那一档，
- *  列表里才看得见井号 —— 两处各判一遍时，「能看见井号却看不见开关」迟早会出现。
+ *  列表里才看得见身份记号 —— 两处各判一遍时，「能看见井号却看不见开关」迟早会出现。
  *
- * 多条命令没有 root 这一档（它的 `root` 只管正文里那些 `shell:` 步骤，不是这条命令的身份），
+ *  两条通道互斥；旧配置里两条都为真时**与执行侧同序**：先看 Shizuku（执行时也是先判它）。
+ *
+ * 多条命令没有身份这一档（它的 `root` 只管正文里那些 `shell:` 步骤，不是这条命令的身份），
  * 仍按步骤数取方框。
  *
  * 三个地方共用这一份：网格格子与「自定义命令」卡片、步骤行里引用另一条命令的那枚小图标
@@ -681,12 +692,14 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
  *
  * @param root 单条命令是否以 root 执行（`Command.root`）；多条与非 `shell:` 的写法忽略
  * @param body 单条命令的正文 —— 按它开头的前缀取底图；多条忽略
+ * @param viaShizuku 单条命令是否经 Shizuku 执行（`Command.viaShizuku`）；同上只对 `shell:` 生效
  */
 internal fun commandIcon(
     kind: CommandKind,
     steps: Int,
     root: Boolean = false,
     body: String = "",
+    viaShizuku: Boolean = false,
 ): ImageVector =
     when (kind) {
         CommandKind.SERIAL -> {
@@ -694,11 +707,15 @@ internal fun commandIcon(
         }
 
         CommandKind.SINGLE -> {
-            val base = formatIconOf(body) ?: PageIcons.CommandSingle
-            //  拼接走音量 / 亮度 / 铃声那几族同一支：底图右下角**裁掉缺口**，井号落进那块空里。
-            //  名字必须带上底图那一段 —— 「随机图标配色」按 `ImageVector.name` 取色，写死一个名字的话
-            //  所有提权命令都会染成同一个色。
-            if (root && Action.parse(body).usesRoot) badgedIcon("${base.name}+Hash", Badge.Hash, base) else base
+            val shell = Action.parse(body).usesRoot
+            when {
+                //  Shizuku 优先：与执行侧同序（`ShellRunner` 先判 `viaShizuku`）
+                viaShizuku && shell -> PageIcons.CommandShizuku
+
+                root && shell -> PageIcons.CommandRoot
+
+                else -> formatIconOf(body) ?: PageIcons.CommandSingle
+            }
         }
     }
 

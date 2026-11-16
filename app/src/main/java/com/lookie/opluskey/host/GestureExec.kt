@@ -2,6 +2,7 @@ package com.lookie.opluskey.host
 
 import android.annotation.SuppressLint
 import android.content.Context
+import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -10,6 +11,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ComboKey
+import com.lookie.opluskey.core.model.CommandOutput
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.FluidCard
 import com.lookie.opluskey.core.model.Gesture
@@ -783,6 +785,9 @@ internal object GestureExec {
         //  念完整。放回工厂的话，同一个动作在提示里是空串、在步骤行里是 `无操作`，而那两处
         //  本来就该是同一句 —— 回执那边还得再拿 `ifBlank` 兜一次。
         if (!action.isBound) return
+        //  **一次执行只留一条提示**：这条自定义命令自己开了「显示执行返回结果」时，返回结果就是
+        //  这次的回执，动作名这一句不再弹；没开才回落到这里。两者都没开就都不显示。
+        if (action is Action.Custom && commandOutputOn(action.name)) return
         // 名字表随配置来（`Config.appNames`）：快捷方式那档的名字只存在那里，token 里没有
         val what = actionNoticeReading(appContext, action, config.appNames)
         if (what.sentence.isEmpty()) return
@@ -804,6 +809,20 @@ internal object GestureExec {
             FailureNotice.toast(appContext, notice)
         }
     }
+
+    /**
+     * 这条自定义命令有没有开「显示执行返回结果」—— 开着时这次回执由命令的 stdout 承担，
+     * 动作名那句不再弹（一次执行只留一条提示）。
+     *
+     *  查不到命令（已删 / 改名）按「没开」处理：那时提示照弹，随后执行侧报 `NOT_FOUND`，
+     *  失败回执仍会说明问题。
+     */
+    private fun commandOutputOn(name: String): Boolean =
+        CommandLibrary
+            .loadCached()
+            .firstOrNull { it.name == name }
+            ?.output
+            ?.let { it != CommandOutput.NONE } ?: false
 
     /**
      * 语言档跟配置走。

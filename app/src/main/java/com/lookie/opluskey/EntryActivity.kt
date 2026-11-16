@@ -37,10 +37,23 @@ import com.lookie.opluskey.core.wire.ModuleWire
  *  两者的修法一样且都很轻：先去 系统设置 › 快捷键 打开一次宿主的设置页（那一下会把进程拉起来），
  *  再从模块入口进来。提示语就把这一步说出来，不能只说「无法打开」——
  *  用户照着「去设置里找」找过去，看到的是宿主的正常页面，只会以为模块坏了。
+ *
+ * ## 还有第二档用法：**只被叫醒，不转页面**
+ *
+ *  带 [ModuleWire.EXTRA_WAKE_ONLY] 进来时（换 Shizuku binder 那一步由宿主发起，见
+ *  `ShizukuHost.requestGrant`），它只负责把本进程拉起来 —— 那一档用户正开着设置页，
+ *  再把它 `startActivity` 一次会把页里那摞子页（命令详情、抽屉 …）清掉、退回第一页。
+ *  两档都只做「拉起进程」这一件事，所以这一页依然不画任何东西。
  */
 class EntryActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BackgroundChannel.start(this)
+        if (intent?.getBooleanExtra(ModuleWire.EXTRA_WAKE_ONLY, false) == true) {
+            XLog.w("模块入口：只被叫醒来起通道，不转设置页")
+            finish()
+            return
+        }
         sendOrderedBroadcast(
             Intent(ModuleWire.ACTION_OPEN_SETTINGS).setPackage(HostApp.PACKAGE),
             null,

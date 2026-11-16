@@ -14,20 +14,21 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KsuCompat
-import com.lookie.opluskey.core.present.CommonCommands
+import com.lookie.opluskey.core.model.OutputSink
 import com.lookie.opluskey.core.wire.ModuleWire
 
 internal class CustomCommandRunner(
     /**
      * 跑一条 shell 命令（含 KSU 别名翻译）。
      *
-     *  第二参 = **是否以 root 执行**（`true` 只走 `su`、`false` 只走 `sh`，互不兜底）：单条命令按
-     *  它自己那个开关给（`Command.root`），多条命令的步骤没有各自的开关、一律 `true`。
+     *  第二 / 第三参 = **以 root / 经 Shizuku 执行**（两位互斥，都假时只走 `sh`，互不兜底）：
+     *  单条命令按它自己那两个开关给；多条命令的每一步按**被引用那条命令**的开关给
+     *  （裸步骤按多条命令自己存的那两位）。
      *
      *  第三参 = **跑完之后**回调一次（不论成败、也不论「根本没跑」）—— 只在有步骤间隔的多条命令里
      *  给：那时下一步要**等这一步真的结束**才排（见 [runSteps]）。`null` = 不用回执。
      */
-    private val execShell: (String, Boolean, Boolean, (() -> Unit)?) -> Unit,
+    private val execShell: (String, Boolean, Boolean, OutputSink, (() -> Unit)?) -> Unit,
     /** 派发一个非 shell 的内置动作。 */
     private val dispatch: (Action) -> Unit,
     /** 展开失败时的通知出口。 */
@@ -73,14 +74,9 @@ internal class CustomCommandRunner(
             return
         }
 
-        //  先在**用户那份命令库**里找，找不到才退到模块内置的那几条（`CommonCommands`：
-        //  常用命令那一段绑出来的 `cmd:common.wechat_scan` 就只存在代码里，不进命令库文件）。
-        //  顺序不能反：用户自己建的同名命令是他写的，模块带的那几条不许盖掉它。
-        val cmd =
-            CommandLibrary.loadCached().firstOrNull { it.name == name }
-                ?: CommonCommands.commandOf(name)?.also {
-                    XLog.d("「$name」不在命令库里，按内置常用命令执行（${XLog.redactCommand(it.single)}）")
-                }
+        //  只在**命令库**里找：模块自带的几条也已经是普通命令（见 `ui/state/page/CommandSeed`），
+        //  不再有第二份「内置命令」可退。
+        val cmd = CommandLibrary.loadCached().firstOrNull { it.name == name }
         if (cmd == null) {
             XLog.w("命令库里没有「$name」（可能已被删除 / 改名），跳过")
             onFailure(CommandFailure.NOT_FOUND)
@@ -135,8 +131,9 @@ internal class CustomCommandRunner(
         // 「同时只跑一条命令链」的两道闸 —— 见 [enterChain]。
         if (!enterChain(name)) return
         try {
-            //  步骤里的 `cmd:<另一条>` 先展开成扁平表（多层、带环检测）：`runSteps` 只认「一步一步的
-            //  动作文本」，引用在进它之前就化成真实步骤，续步 / 间隔 / 合并那套逻辑一行都不用动。
+            //  步骤里的 `cmd:<另一条>` 先展开成扁平表（一层替换，单条没有出边、不可能成环）：
+            //  `runSteps` 只认「一步一步的动作文本」，引用在进它之前就化成真实步骤；**执行身份
+            //  （root / Shizuku）跟着被引用那条命令一起带过来**，续步 / 间隔 / 合并那套逻辑不用动。
             //  **放在 try 里**：展开要读命令库，抛出去的话占位就还不回来了（所有命令链会一起锁死）。
             val steps = expandStepRefs(cmd, onFailure)
             XLog.w("自定义命令「$name」（多条）共 ${cmd.steps.size} 步，展开后 ${steps.size} 步")
@@ -167,7 +164,7 @@ internal class CustomCommandRunner(
         if (parsed is Action.Shell) {
             //  单条自己的「以 root 执行」只在这一支生效：它是**整条命令**的开关，不跟着正文的
             //  `shell:` 前缀走（前缀只是格式，同一个前缀在「多条」的步骤里也一样用）。
-            execShell(parsed.command, cmd.root, cmd.viaShizuku, null)
+            execShell(parsed.command, cmd.root, cmd.viaShizuku, cmd.outputSink, null)
             return
         }
         //  正文里写 `cmd:<另一条>` 是**老版本 / 手改文件**才有的写法：命令正文不再支持引用另一条
@@ -188,6 +185,10 @@ internal class CustomCommandRunner(
      * 就返回」的，原先这里只按「起完 → 等 gapMs → 起下一条」排，两条其实并发跑 ——
      * 「先建目录、再往里面写文件」这种命令把间隔设多大都可能抢在前面。现在改成等回执再排。
      *
+     *  **每一步按自己的执行身份跑**（见 [SerialStep]）：引用来的步骤用被引用那条命令的
+     *  `root` / `viaShizuku`。身份相同的连续 shell 步骤仍合并成一条 `&&`（一个进程里顺序执行）；
+     *  身份不同的就地断开，下一步等这一步结束再起，不会把后一条也塞进前一条的 `su`。
+     *
      * 续步一律经 [scheduleNext] 回到 [worker] 上排队，所以整条链始终在同一条线程、同一顺序上。
      *
      * @param index 下一个要派发的步骤下标
@@ -195,7 +196,7 @@ internal class CustomCommandRunner(
      * @param name 正在跑的这条命令名 —— 跑完（含异常中止）时把它从 [runningSerial] 里摘掉
      */
     private fun runSteps(
-        steps: List<String>,
+        steps: List<SerialStep>,
         index: Int,
         gapMs: Int,
         name: String,
@@ -205,7 +206,8 @@ internal class CustomCommandRunner(
             return
         }
 
-        val shell = shellStepText(steps[index])
+        val step = steps[index]
+        val shell = shellStepText(step.text)
         //  空步骤（`shell:` 后面没写内容 / 手改出来的空行）就地跳过：它没有任何要跑的东西，
         //  而放进下面任何一条分支都会多一次起进程（或被并成以 ` && ` 开头的一条串）。
         if (shell != null && shell.isBlank()) {
@@ -220,39 +222,48 @@ internal class CustomCommandRunner(
         //  它是一条同步的原生调用，所以**不走**下面那个「等回执」的分支。
         if (shell != null && KsuCompat.isSidebarAlias(shell)) {
             XLog.w("  第 ${index + 1} 步（KSU 别名）→ $shell")
-            //  多条命令的步骤没有各自的开关 ⇒ 一律按默认（`su`，起不来不退回 `sh`）
-            execShell(shell, true, false, null)
+            //  别名被翻译成原生调用、不是真 shell，执行身份不参与；照旧按这一步自己的两位传
+            execShell(shell, step.root, step.viaShizuku, OutputSink(), null)
             scheduleNext(steps, index + 1, gapMs, name)
             return
         }
 
         if (shell != null && gapMs > 0) {
             XLog.w("  第 ${index + 1} 步（shell，等它跑完再等 ${gapMs}ms）→ ${XLog.redactCommand(shell)}")
-            execShell(shell, true, false) { scheduleNext(steps, index + 1, gapMs, name) }
+            execShell(shell, step.root, step.viaShizuku, OutputSink()) { scheduleNext(steps, index + 1, gapMs, name) }
             return
         }
 
-        val next =
-            if (shell != null) {
-                // 只有「没有步骤间隔」时才合并：`a; b` 是零延迟，合并等于把用户配的 stepDelayMs 抹掉。
-                val (joined, nextIndex) = collectShellRun(steps, index)
-                XLog.w("  第 ${index + 1}~$nextIndex 步（shell，合并成一条）→ ${XLog.redactCommand(joined)}")
-                execShell(joined, true, false, null)
-                nextIndex
-            } else {
-                val action = Action.parse(steps[index])
-                XLog.w("  第 ${index + 1} 步 → ${XLog.redactToken(action.token)}")
-                //  正文里写 `cmd:<另一条>` 是老版本 / 手改文件才有的写法：命令正文不再支持引用
-                //  另一条命令。这一步跳过并报一句 —— 不展开、不递归，链照常往下走。
-                if (action is Action.Custom) {
-                    XLog.w("  第 ${index + 1} 步引用了另一条命令（不再支持），跳过：${action.name}")
-                    onFailure(CommandFailure.REF_NOT_ALLOWED)
-                } else {
-                    dispatch(action)
+        if (shell != null) {
+            //  只有「没有步骤间隔」时才合并：`a; b` 是零延迟，合并等于把用户配的 stepDelayMs 抹掉。
+            //  **只合并执行身份相同的连续步骤** —— 一步要 root、下一步走 Shizuku 时不能塞进同一个
+            //  进程（`su -c "a && b"` 会把 b 也升权）。身份不同就地断开，下一步等这一步跑完再起，
+            //  保证顺序。
+            val (joined, nextIndex) = collectShellRun(steps, index)
+            XLog.w("  第 ${index + 1}~$nextIndex 步（shell，合并成一条）→ ${XLog.redactCommand(joined)}")
+            val nextIsShell = nextIndex < steps.size && shellStepText(steps[nextIndex].text) != null
+            if (nextIsShell) {
+                execShell(joined, step.root, step.viaShizuku, OutputSink()) {
+                    scheduleNext(steps, nextIndex, gapMs, name)
                 }
-                index + 1
+                return
             }
-        scheduleNext(steps, next, gapMs, name)
+            execShell(joined, step.root, step.viaShizuku, OutputSink(), null)
+            scheduleNext(steps, nextIndex, gapMs, name)
+            return
+        }
+
+        val action = Action.parse(step.text)
+        XLog.w("  第 ${index + 1} 步 → ${XLog.redactToken(action.token)}")
+        //  正文里写 `cmd:<另一条>` 是老版本 / 手改文件才有的写法：命令正文不再支持引用
+        //  另一条命令。这一步跳过并报一句 —— 不展开、不递归，链照常往下走。
+        if (action is Action.Custom) {
+            XLog.w("  第 ${index + 1} 步引用了另一条命令（不再支持），跳过：${action.name}")
+            onFailure(CommandFailure.REF_NOT_ALLOWED)
+        } else {
+            dispatch(action)
+        }
+        scheduleNext(steps, index + 1, gapMs, name)
     }
 
     /**
@@ -265,7 +276,7 @@ internal class CustomCommandRunner(
      * 闸的第一道是「非空即挡」，漏掉一个占位会锁死**所有**多条命令。
      */
     private fun scheduleNext(
-        steps: List<String>,
+        steps: List<SerialStep>,
         next: Int,
         gapMs: Int,
         name: String,
@@ -297,7 +308,7 @@ internal class CustomCommandRunner(
      * （之后**所有**自定义命令都不再执行）。
      */
     private fun runStepsGuarded(
-        steps: List<String>,
+        steps: List<SerialStep>,
         index: Int,
         gapMs: Int,
         name: String,
@@ -357,13 +368,17 @@ internal class CustomCommandRunner(
      *  并进拼接串会让 `runShell` 的前缀认领把整串认成别名，后面那些步骤随整串被吞掉。
      */
     private fun collectShellRun(
-        steps: List<String>,
+        steps: List<SerialStep>,
         index: Int,
     ): Pair<String, Int> {
         val merged = ArrayList<String>()
+        val first = steps[index]
         var cursor = index
         while (cursor < steps.size) {
-            val text = shellStepText(steps[cursor]) ?: break
+            val step = steps[cursor]
+            val text = shellStepText(step.text) ?: break
+            //  **执行身份不同的步骤不能合并**：`su -c "a && b"` 会让 b 也按 a 的身份跑。
+            if (step.root != first.root || step.viaShizuku != first.viaShizuku) break
             if (KsuCompat.isSidebarAlias(text)) break
             //  **空步不能进拼接串**：`shell:` 后面没写内容时命令是空串，`joinToString` 会在开头
             //  留下一个 ` && `（`sh -c " && echo x"` 直接是语法错误），整条链跟着失败。
@@ -399,7 +414,8 @@ internal class CustomCommandRunner(
  *
  * ## 换法
  *
- *  · 引用单条：它那一整条正文就是这一步（`cmd.single` 直接落到这个位置）；
+ *  · 引用单条：它那一整条正文就是这一步（`cmd.single` 落到这个位置），**执行身份也一起带过来**
+ *    （`target.root` / `target.viaShizuku`）—— 用不用 root 由被引用的那条命令自己决定；
  *  · 找不到这条命令（被删 / 改名）：跳过这一步并报 [CommandFailure.NOT_FOUND]；
  *  · 引用的是一条**多条**命令：跳过并报 [CommandFailure.REF_ONLY_SINGLE]。
  *
@@ -409,14 +425,16 @@ internal class CustomCommandRunner(
  * @param cmd 正在跑的这条（外层）命令
  * @param onFailure 展开期的问题出口 —— 只报**第一条**：一条命令里好几处引用坏掉时，
  *   连弹五条同样的提示没有意义（日志里逐条都有）
- * @return 步骤表（原样的非引用步骤 + 换出来的正文）
+ * @return 步骤表（原样的非引用步骤 + 换出来的正文，各带自己的执行身份）
  */
 private fun expandStepRefs(
     cmd: Command,
     onFailure: (CommandFailure) -> Unit,
-): List<String> {
+): List<SerialStep> {
     //  没有任何引用时原样返回（最常见的一档：省掉一次命令库解码）
-    if (cmd.steps.none { it.startsWith(Command.PREFIX) }) return cmd.steps
+    if (cmd.steps.none { it.startsWith(Command.PREFIX) }) {
+        return cmd.steps.map { SerialStep(it, cmd.root, cmd.viaShizuku) }
+    }
 
     //  命令库整趟只解一次：每步调一次 `loadCached` 会反复解析同一份 JSON
     val library = CommandLibrary.loadCached()
@@ -428,16 +446,18 @@ private fun expandStepRefs(
             onFailure(failure)
         }
     }
-    val out = ArrayList<String>(cmd.steps.size)
+    val out = ArrayList<SerialStep>(cmd.steps.size)
     for (step in cmd.steps) {
-        //  引用解析：用户那份库优先，找不到才退到模块内置的那几条（与 `run(name)` 同一个顺序）。
+        //  引用解析只在命令库里查：模块自带的几条也已经是普通命令。
         //  `null` = 这一步作废（引用坏了，已通过 `report` 报过），跳过。
         if (!step.startsWith(Command.PREFIX)) {
-            out.add(step)
+            //  裸步骤没有自己的开关：按这条多条命令自己存的那两位走（界面里加进来的步骤都是引用，
+            //  裸 `shell:` 只在手改 / 老配置里出现）。
+            out.add(SerialStep(step, cmd.root, cmd.viaShizuku))
             continue
         }
         val ref = step.removePrefix(Command.PREFIX).trim()
-        val target = library.firstOrNull { it.name == ref } ?: CommonCommands.commandOf(ref)
+        val target = library.firstOrNull { it.name == ref }
         if (target == null) {
             report(CommandFailure.NOT_FOUND, ref, "在命令库里找不到")
             continue
@@ -447,10 +467,27 @@ private fun expandStepRefs(
             continue
         }
         //  空正文没什么可加的（与「空步骤跳过」同一条：它没有任何要跑的东西）
-        target.single.takeIf { it.isNotBlank() }?.let { out.add(it) }
+        target.single.takeIf { it.isNotBlank() }?.let {
+            //  **执行身份跟着被引用的那条命令走**：它就是「命令本身」，root / Shizuku 是它自己的档，
+            //  不能因为被多条命令引用就退回默认的 `su`。
+            out.add(SerialStep(it, target.root, target.viaShizuku))
+        }
     }
     return out
 }
+
+/**
+ * 展开后的一步 —— **动作文本 + 执行身份**。
+ *
+ *  身份从哪来：`cmd:<名字>` 引用来的步骤用**被引用那条命令**的 `root` / `viaShizuku`；
+ *  裸步骤（手改 / 老配置里的 `shell:`、`keyevent:` 这类）用**多条命令自己**存的那两位
+ *  （界面里加进来的步骤都是引用，碰不到这一档）。身份只对 shell 有意义，其余动作不读它。
+ */
+private class SerialStep(
+    val text: String,
+    val root: Boolean,
+    val viaShizuku: Boolean,
+)
 
 /**
  * 失败提示表：Toast 里只出现 [hint]（说清哪里不对 + 怎么办），原始信息照旧进日志
@@ -520,6 +557,21 @@ internal enum class CommandFailure(
      */
     SHELL_NO_SHIZUKU(Strings.COMMAND_FAILURE_SHELL_NO_SHIZUKU, "没有可用的 Shizuku（装上或重新授权后再试）"),
 
+    /**
+     * 宿主**连不上模块进程**（`bind` 失败）—— 与 [SHELL_NO_SHIZUKU] 分开。
+     *
+     *  成因在 ColorOS 的启动管理：模块进程没在跑时，任何调用方都拉不起它（见
+     *  `docs/device/lsposed.md` 四十二）。所以执行这条路上没有自愈动作 —— 换了新进程的是
+     *  **授权那一步**（见 `ShizukuHost.requestGrant`），执行时只照实说一句，让用户再点一次。
+     *
+     *  文案**不提内部机制**：不提「后台通道」、也不指挥用户去 LSPosed 管理器点模块图标
+     *  —— 那是模块自己该做的事。
+     */
+    SHELL_CHANNEL_OFF(
+        Strings.COMMAND_FAILURE_SHELL_CHANNEL_OFF,
+        "Shizuku 暂时连不上，再点一次试试",
+    ),
+
     /** 其它非 0 退出码 —— 命令跑起来了但自己报错。 */
     SHELL_FAILED(Strings.COMMAND_FAILURE_SHELL_FAILED, "命令没跑成功"),
 
@@ -536,9 +588,10 @@ internal enum class CommandFailure(
     UNKNOWN(Strings.COMMAND_FAILURE_UNKNOWN, "这次没执行成功"),
 
     /**
-     * 这一条**指向本模块自己**（宿主包 / 设置页进程），拒绝执行 —— 与 [UNKNOWN] 分开。
+     * 这一条**指向本模块自己或系统自身**（宿主包 / 设置页进程 / 模块包 / `android`），拒绝执行 ——
+     * 与 [UNKNOWN] 分开。
      *
-     *  报「这次没执行成功」会把用户推去查 root 与命令，而正确答案是换一个应用（多半是挑错了）。
+     *  报「这次没执行成功」会把用户推去查权限与命令，而正确答案是换一个应用（多半是挑错了）。
      */
     SELF_TARGET(Strings.COMMAND_FAILURE_SELF_TARGET, "该命令指向本模块自身，已跳过"),
 

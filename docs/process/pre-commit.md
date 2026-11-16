@@ -46,15 +46,14 @@
   那份重复文本）；改一句文案现在只改字典。
 - 「注入侧不得引用界面层依赖」的复核命令见 `../architecture/structure.md` §六。
 
-## 静态表（`Strings.kt` / `CommonCommandsTable.kt`）
+## 静态表（`Strings.kt`）
 
-- 这两份是**生成物**：源分别是 `app/src/main/assets/locales/zh-CN.json`（键集合）与
-  `core/tables/common-commands.json`（「常用命令」那张表）。改文案 / 加命令改**源**，
+- 它是**生成物**：源是 `app/src/main/assets/locales/zh-CN.json`（键集合）。改文案改**源**，
   再跑 `python3 tools/gen-static-tables.py`；手改生成物会被下一次生成覆盖。
 - **只有注释能手工补**：生成器按「上一条常量之后、这一条之前」整段搬运，给某条常量补一句说明是安全的；
   改名字 / 改取值 / 调顺序都会被覆盖。
 - CI 有一道「静态表与生成物一致」—— 重跑一遍生成器再看 `git diff`（与「校验依赖锁定」同形）。
-  过期**不会**编译失败：表现只是某句文案退回键名、或少一条常用命令，所以这道闸不能靠人记得跑。
+  过期**不会**编译失败：表现只是某句文案退回键名，所以这道闸不能靠人记得跑。
 
 ## 依赖锁定（`app/gradle.lockfile` + `core/gradle.lockfile`）
 

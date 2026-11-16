@@ -40,6 +40,8 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.page.APP_STATE_ICON_SIZE
 import com.lookie.opluskey.ui.model.page.APP_STATE_TEXT_GAP
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
+import com.lookie.opluskey.ui.model.theme.HOST_ALIVE_TIMEOUT_MS
+import com.lookie.opluskey.ui.model.theme.QUERY_ROUNDS
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.write.write
 import io.github.suqi8.coui.kmp.basic.Checkbox
@@ -75,6 +77,14 @@ internal val LocalTick = staticCompositionLocalOf<() -> Unit> { {} }
 internal class HintText(
     val template: String,
     val chips: List<String> = emptyList(),
+    /**
+     * 这句话的意思是「**还在检查、没有结论**」（此刻只有 [CHECKING_HINT] 那一句）。
+     *
+     *  交付时据此走「检查」那一位、并且保留转圈的图标（见 [SettingsPage.hintReason]）：
+     *  自检没跑完时点一下灰控件，答案本来就是那句「正在检查模块…」，而屏幕上那条**已经**在
+     *  说同一句话了 —— 再往「禁用原因」那一位压一条，只会得到「同样的字旁边多一颗 info 图标」。
+     */
+    val checking: Boolean = false,
 )
 
 /**
@@ -551,6 +561,44 @@ internal const val HINT_SLOT_OWN_SETTINGS = "own_settings"
 internal const val HINT_SLOT_CHECKING = "checking"
 
 /**
+ * 「正在检查模块…」那条的**兜底**停留时长 —— 只是防它赖着不走：正常路径是自检一结束就收。
+ *
+ *  按自检最长那一趟给（[QUERY_ROUNDS] 轮 × [HOST_ALIVE_TIMEOUT_MS]）再留 1 秒余量 ——
+ *  用默认那 2.2 秒的话，它会在结论出来之前先自己消失，中间空出一段「什么都没有」的空档，
+ *  看着像「检查完了、什么也没说」。
+ *
+ *  两个投递点共用它：[PageCheckingHint]（进页那一次）与 [hintReason]（检查中点了灰控件）。
+ *  各写一份的话，后者会用默认秒数提前收掉。
+ */
+internal const val CHECKING_HINT_FALLBACK_MS = QUERY_ROUNDS * HOST_ALIVE_TIMEOUT_MS + 1000L
+
+/**
+ * 把一句「这一下为什么点不动」（[HintText]）落到队列里 —— **原因那句话决定它落到哪一位**。
+ *
+ *  平时都是「禁用原因」那一位（[HINT_SLOT_DISABLED]，连点几行只改同一条的字）。
+ *  例外是「还在检查」（[HintText.checking]）：那句话本来就是页面顶上那条 loading 提示的原话，
+ *  落回 [HINT_SLOT_CHECKING] 才是同一个意思。落到「禁用原因」那一位的结果是**屏幕上出现两行
+ *  一模一样的字**、一行转圈一行 info（真机口径「点被禁用的行，Loading 会被换成 info」）。
+ *
+ *  三个投递点共用这一支：`PageContent` 的两条 CompositionLocal（行级 / 库控件级）与
+ *  `PageMenuPopup.tapDisabledRow` —— 分开写三遍就会有两种落位。
+ */
+internal fun SettingsPage.hintReason(reason: HintText) {
+    if (reason.checking) {
+        hint(
+            reason.template,
+            slot = HINT_SLOT_CHECKING,
+            holdMs = CHECKING_HINT_FALLBACK_MS,
+            chips = reason.chips,
+            //  与 `PageCheckingHint` 同一档：转圈就是「还在等」，重推一次不能把图标换掉
+            loading = true,
+        )
+    } else {
+        hint(reason.template, slot = HINT_SLOT_DISABLED, chips = reason.chips)
+    }
+}
+
+/**
  * 操作提示 —— 用户做完一个动作之后的回执（一句话，页面顶端短暂出现）。
  *
  *  文案一律走这里，调用点只传一句结论；写盘失败这类没有可见结果的也报一句，免得「点了没反应」。
@@ -588,12 +636,17 @@ internal fun SettingsPage.hint(
      * 空表 = 整句纯文字；[text] 里带着 `%s` 却给了空表时原样显示（那是调用点写漏了）。
      */
     chips: List<String> = emptyList(),
+    /**
+     * 前置图标画成**转圈的 loading** —— 给「还在进行、没有结论」的那几条（检查模块 / 等 Shizuku
+     * 授权 / 检查更新）。见 `HintItem.loading`。
+     */
+    loading: Boolean = false,
 ) {
     //  **`d` 而不是 `w`**：提示条本身就是用户看得见的回执，它不在「判据级」那张清单里
     //  （装没装上 / 这次按键是不是侧键 / 判成什么手势 / 配置到没到），而它是全页最高频的一条 ——
     //  挂在 `w` 上会把真正的告警挤掉。调试包照样留着一行。
     XLog.d("提示：$text${if (chips.isEmpty()) "" else "（名字：${chips.joinToString()}）"}${if (slot != null) "（位：$slot）" else ""}")
-    hints.hint(text, slot, holdMs, icon, chips)
+    hints.hint(text, slot, holdMs, icon, chips, loading)
 }
 
 /** 把某个语义位上的提示**提前收掉**（播完退场再摘，不硬切）—— 见 [HintQueue.retire]。 */

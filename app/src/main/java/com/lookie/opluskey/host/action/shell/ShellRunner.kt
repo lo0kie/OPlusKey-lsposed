@@ -1,8 +1,9 @@
 package com.lookie.opluskey.host.action.shell
 
+import android.content.Context
+import com.lookie.opluskey.bridge.ProcessBridge
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.host.ProcessController
 import com.lookie.opluskey.host.action.CommandFailure
 import com.lookie.opluskey.shizuku.ShizukuExec
 import com.lookie.opluskey.shizuku.ShizukuShellService
@@ -23,8 +24,6 @@ internal object ShellRunner {
      *
      * @param onFailure 失败回调（后台线程里调 —— 实现方自己负责切线程）。
      *   两类时机：`ProcessBuilder.start()` 直接失败；子进程退出码非 0；等待超时。
-     * @param onTip 命令自己写的那行提示（[TIP_PREFIX]），**只在退出码 0 时**回调一次；
-     *   同样在后台线程上 —— 要弹 Toast 的那一侧自己负责切主线程（`FailureNotice.toast` 已经切了）。
      * @param preferRoot false ⇒ **只试 `sh`**，不再申请 root（命令库里「以 root 执行」关掉的那一档）。
      *   注意这台机器的宿主域没有 `/system/bin/sh` 的执行权，关掉之后多数命令会起不来 ——
      *   那是用户的选择，失败按「这条命令没开『以 root 执行』」报（见 [classifyFailure]）；
@@ -41,7 +40,6 @@ internal object ShellRunner {
     fun exec(
         command: String,
         onFailure: (CommandFailure) -> Unit = {},
-        onTip: (String) -> Unit = {},
         preferRoot: Boolean = true,
         onLine: ((String) -> Unit)? = null,
         /**
@@ -88,7 +86,7 @@ internal object ShellRunner {
                 //  `onDone` 包在**最外层**：`execBlocking` 内部有多个出口（占不到槽、起进程失败、
                 //  正常结束），只有包在这里才一种不漏。拒绝入队那一支不算「跑完」，不调它。
                 try {
-                    execBlocking(command, onFailure, onTip, preferRoot, onLine, ctx, viaShizuku)
+                    execBlocking(command, onFailure, preferRoot, onLine, ctx, viaShizuku)
                 } finally {
                     onDone?.invoke()
                 }
@@ -110,7 +108,6 @@ internal object ShellRunner {
     private fun execBlocking(
         command: String,
         onFailure: (CommandFailure) -> Unit,
-        onTip: (String) -> Unit,
         preferRoot: Boolean,
         onLine: ((String) -> Unit)?,
         ctx: android.content.Context?,
@@ -134,7 +131,7 @@ internal object ShellRunner {
             //  `Process` —— 所以不能落到下面 `startProcess` / `awaitProcess` 那一套里。
             //  槽位由 finally 照常归还（这里 return 不会跳过它）。
             if (viaShizuku) {
-                val code = ShizukuHost.exec(ctx, command)
+                val code = ShizukuHost.exec(ctx, command, onLine)
                 XLog.w("shell 已交给 Shizuku（exit=$code）：${XLog.redactCommand(command)}")
                 if (code != 0) onFailure(classifyShizukuFailure(code))
                 return
@@ -147,7 +144,7 @@ internal object ShellRunner {
             //  必须在等结束**之前**打：命令挂到超时的那一档，用户要知道它确实起过。
             XLog.w("shell 命令已在后台启动（走的是 $via）：${XLog.redactCommand(command)}")
 
-            awaitProcess(proc, via, command, ShellSinks(onFailure, onTip, onLine))
+            awaitProcess(proc, via, command, ShellSinks(onFailure, onLine))
         } catch (e: Throwable) {
             // 起进程这一步就失败：槽位由下面的 finally 还（只此一处释放，避免两条路径各记一次）
             XLog.w("执行 shell 失败：${XLog.redactCommand(command)}", e)
@@ -206,11 +203,7 @@ internal object ShellRunner {
         // 输出的**尾部**（最多 [SHELL_TAIL_LINES] 行）：只在失败时以 `w` 回放，
         //  理由见那个常量的注释。读写都在读线程里，主线程在 `reader.get` 之后才拿。
         val tail = java.util.Collections.synchronizedList(ArrayDeque<String>())
-        // 命令自己写的那行提示（见 [TIP_PREFIX]）：只留**最后一条**，一个动作只弹一次
-        val tip =
-            java.util.concurrent.atomic
-                .AtomicReference<String>()
-        val reader = startOutputReader(proc, denied, tail, tip, sinks.onLine)
+        val reader = startOutputReader(proc, denied, tail, sinks.onLine)
 
         try {
             // 必须带超时：有些命令在这个身份下会直接挂住（真机实测 `cmd audio set-ringer-mode` 就是）；
@@ -249,11 +242,6 @@ internal object ShellRunner {
                 logOutputTail(tail)
                 sinks.onFailure(classifyFailure(code, via, denied.get()))
                 return
-            }
-            // 成功才弹提示：失败那边已经有失败提示，这里再弹一句「已切换」就是报喜不报忧
-            tip.get()?.takeIf { it.isNotEmpty() }?.let { line ->
-                XLog.w("shell 提示：$line")
-                sinks.onTip(line)
             }
         } finally {
             // 收尾时**强关管道**：脚本派生的常驻子进程（`cmd &` / 没有 `nohup` 解除 stdout）
@@ -343,12 +331,11 @@ internal object ShellRunner {
         XLog.w("shell 输出（尾 ${lines.size} 行）：\n" + lines.joinToString("\n"))
     }
 
-    /** 读输出并逐行匹配权限拒绝提示，顺带收命令自己那行提示（[TIP_PREFIX]）与调用方要的原始行。 */
+    /** 读输出并逐行匹配权限拒绝提示，顺带把原始行交给调用方。 */
     private fun startOutputReader(
         proc: Process,
         denied: java.util.concurrent.atomic.AtomicReference<String>,
         tail: MutableList<String>,
-        tip: java.util.concurrent.atomic.AtomicReference<String>,
         onLine: ((String) -> Unit)?,
     ): Future<*> =
         readerPool.submit {
@@ -371,11 +358,6 @@ internal object ShellRunner {
                                 .firstOrNull { line.contains(it, ignoreCase = true) }
                                 ?.let { denied.compareAndSet(null, it) }
                         }
-                        //  命令自己的提示行（`echo 'tip: …'`）—— 覆盖式记录，只弹最后一条
-                        val trimmed = line.trim()
-                        if (trimmed.startsWith(TIP_PREFIX)) {
-                            tip.set(trimmed.removePrefix(TIP_PREFIX).trim())
-                        }
                     }
                 }
             }.onFailure { XLog.d("读 shell 输出失败：${it.message}") }
@@ -390,8 +372,15 @@ internal object ShellRunner {
      */
     private fun classifyShizukuFailure(code: Int): CommandFailure =
         when (code) {
-            ShizukuShellService.NO_SHIZUKU, ShizukuShellClient.CONNECT_FAIL -> CommandFailure.SHELL_NO_SHIZUKU
+            //  模块进程自己回的「这个进程没有可用的 Shizuku」—— 该去装 / 重新授权。
+            ShizukuShellService.NO_SHIZUKU -> CommandFailure.SHELL_NO_SHIZUKU
+
+            //  连不上模块进程 —— 它没在跑（后台通道没常驻）。与上一档分开：该做的事是
+            //  「打开一次 OPlusKey」，不是去重装 Shizuku（见 `docs/device/lsposed.md` 四十二）。
+            ShizukuShellClient.CONNECT_FAIL -> CommandFailure.SHELL_CHANNEL_OFF
+
             ShizukuExec.TIMEOUT_CODE, ShizukuShellClient.TIMEOUT -> CommandFailure.SHELL_TIMEOUT
+
             else -> CommandFailure.ofShellExit(code)
         }
 
@@ -583,29 +572,6 @@ internal object ShellRunner {
     private const val SH = "sh"
 
     /**
-     * 命令自己给的那行提示 —— 写法是 `echo 'tip: 屏幕超时 · 30 分钟'`。
-     *
-     *  存在的理由：`shell:` 跑完**没有任何回执**，而「屏幕超时 / 亮度 / 音量」这类改动屏幕上
-     *  一点反应都没有 —— 按完不知道切成了哪一档。Toast 只能由应用身份弹，root shell 里没有这条
-     *  命令（`cmd notification` 发的是通知，不会浮起来），所以约定由命令自己写进输出、模块负责弹。
-     *
-     *  口径：前缀**精确** `tip:`（前导空白先去掉），一条命令只取**最后一条**，且**只在这一次算成功
-     *  时**弹（失败那边已经有失败提示）。「算成功」就是**退出码 0**（见 [awaitProcess]）。
-     *
-     *  **只认显式写的 `tip:`**：命令没写就一条都不弹，不拿它的输出去猜（`am start` 那句
-     *  `Starting: Intent {…}` 就是单行输出，猜了只会弹一串没人要的东西）。写法上引号可以省 ——
-     *  `echo tip: 屏幕超时 · 30 分钟` 与 `echo 'tip: 屏幕超时 · 30 分钟'` 等价（`echo` 会把几个词
-     *  用空格连起来）。
-     *
-     *  与「执行时提示」（`GlobalConfig.toastOnRun`）互不影响：那个报「执行了哪个动作」，
-     *  这条报「命令算出来的结果」，两个都开会连弹两条。
-     *
-     *  `internal` 而不是 `private`：模块自己写的命令（[RootGrant] 那条探测）也要按同一个前缀
-     *  回执 —— 字面量只留这一处，改前缀时不会漏掉那边。
-     */
-    internal const val TIP_PREFIX = "tip:"
-
-    /**
      * 输出里出现这几句 = 这条命令**大概率是权限那一档失败**，用来给失败**分档**。
      *
      *  · `Permission Denial` / `SecurityException` / `Permission denied` / `Operation not permitted`
@@ -649,15 +615,13 @@ internal object ShellRunner {
 }
 
 /**
- * 一条 shell 的三种回调 —— 打成一个包只是为了让 [ShellRunner.awaitProcess] 的形参不超上限。
+ * 一条 shell 的两种回调 —— 打成一个包只是为了让 [ShellRunner.awaitProcess] 的形参不超上限。
  *
  *  @param onFailure 失败回调
- *  @param onTip 命令自己那行提示（[ShellRunner.TIP_PREFIX]）
  *  @param onLine 每一行标准输出；不传就只进日志
  */
 private class ShellSinks(
     val onFailure: (CommandFailure) -> Unit,
-    val onTip: (String) -> Unit,
     val onLine: ((String) -> Unit)?,
 )
 
@@ -707,9 +671,9 @@ internal const val SHELL_THREAD_IDLE_SECONDS = 60L
  *  **与真执行走同一条链路**（[ShellRunner.exec]）：解释器、并发槽位、失败分档全同一套 ——
  *  这里说「拿到了」，按侧键时也一定拿得到；这里报没授权，按下去也是同一句提示。
  *
- *  成功怎么认：不新开回调通道，就用命令自己的回执（[ShellRunner.TIP_PREFIX]，`shell:` 动作本来
- *  就靠它报结果）。所以探测命令是 `id -u && echo 'tip: …'` —— `&&` 保证 `id -u` 没跑成时那行提示
- *  根本不出现，于是「有回执」= 「`su` 起来且真的拿到了 uid 0」。
+ *  成功怎么认：**看退出码**（`ShellRunner` 只在非 0 时回调 `onFailure`，`onDone` 到时仍是「没人
+ *  报失败」就是成了）。探测命令因此只要一句 `id -u | grep -qx 0` —— 拿到 uid 0 才返回 0，
+ *  与「真执行能不能跑」同一个判据。
  */
 internal object RootGrant {
     /**
@@ -720,44 +684,64 @@ internal object RootGrant {
      */
     fun request(onResult: (CommandFailure?) -> Unit) {
         XLog.w("申请 root：以 su 跑一次探测命令（$PROBE）")
+        //  只回一次：`onFailure` 与 `onDone` 会先后都到（失败那一条也是「跑完了」）
+        val replied =
+            java.util.concurrent.atomic
+                .AtomicBoolean(false)
+        val reply: (CommandFailure?) -> Unit = { failure ->
+            if (replied.compareAndSet(false, true)) onResult(failure)
+        }
         ShellRunner.exec(
             command = PROBE,
-            onFailure = { onResult(it) },
-            onTip = { onResult(null) },
+            onFailure = { failure -> reply(failure) },
+            onDone = { reply(null) },
         )
     }
 
     /**
-     * 探测命令：`id -u` 的输出**必须正好是 `0`** 才算拿到 root，后面那行 `echo` 是成功回执
-     * （见类注释）。
+     * 探测命令：`id -u` 的输出**必须正好是 `0`** 才算拿到 root。
      *
-     *  **不能只写 `id -u && echo …`**：`id -u` 对任何身份都成功（普通应用打自己的 uid、shell 打
-     * 2000 也一样返回 0 退出），`&&` 只判退出码 —— 于是「su 没给 root、只是起了个普通 shell」
-     *  这一档也会报「已拿到 root」，而真按下去时命令照样没有 root。
-     *  用 `grep -qx 0` 判输出本身，既不看退出码也不依赖引号嵌套。
+     *  不能只写 `id -u`：它对任何身份都成功（普通应用打自己的 uid、shell 打 2000 也一样返回 0
+     *  退出）—— 那样「su 没给 root、只是起了个普通 shell」这一档也会报「已拿到 root」。
+     *  `grep -qx 0` 判的是**输出本身**：uid 不是 0 时 grep 退出 1，整条命令就算失败。
      */
-    private val PROBE = "id -u | grep -qx 0 && echo '${ShellRunner.TIP_PREFIX} root-granted'"
+    private const val PROBE = "id -u | grep -qx 0"
 }
 
 /**
  * `proc:stop:包名` 的执行器 —— 把「结束应用」那一格挑出来的应用做成按键动作。
  *
- *  真正的命令拼装与成败判据在 [ProcessController.perform]。这一层只做两件事：把 [Action.Process]
- *  交给它，失败时按项目统一那套报出去。
+ *  真正停人的那一侧在 `system_server`（[ProcessBridge]）：宿主这个身份既看不见别的应用的进程、
+ *  也停不掉系统应用。这一层只做两件事 —— 先判这一次该不该停（[ProcessBridge.isForbidden]，
+ *  按下去就给出提示），再把包名转过去。
  *
- *  **异步**：`perform` 立刻返回，结果在 ShellRunner 的池上回调 —— 本函数跑在宿主主线程的
- *  按键回调里，阻塞就把宿主的 UI 卡住了。失败提示由 [onFailure] 走既有的 Toast 通道。
+ *  **不等结果**：广播是单向的，停没停成由注入侧落日志（`结束应用：…` 那几行）。所以这里
+ *  不报「已执行」—— 那是它并不知道的事（AGENTS 五、4）。
  */
 internal object ProcessAction {
     fun run(
+        context: Context?,
         act: Action.Process,
         onFailure: (CommandFailure) -> Unit,
     ) {
-        ProcessController.perform(act.pkg) { failure ->
-            //  判据级：这条是「动作到底有没有落到系统上」的唯一凭证，用 w。
-            //  带具体失败档：没 root / 权限不够 / 命令没跑成，各报各的，不再糊成一句「没成功」。
-            XLog.w("proc：${act.token} ${failure?.let { "没成功（${it.name}）" } ?: "已执行"}")
-            if (failure != null) onFailure(failure)
+        val pkg = act.pkg
+        if (ProcessBridge.isForbidden(pkg)) {
+            //  挑错了应用（宿主 / 模块 / 系统自身）—— 说清是「拒绝」，别让人去查日志
+            XLog.w("proc：${act.token} 指向本模块 / 系统自身（$pkg），拒绝执行")
+            onFailure(CommandFailure.SELF_TARGET)
+            return
         }
+        val ctx =
+            context ?: run {
+                XLog.w("proc：没有 Context，结束应用跳过（$pkg）")
+                onFailure(CommandFailure.UNKNOWN)
+                return
+            }
+        if (!ProcessBridge.send(ctx, pkg)) {
+            onFailure(CommandFailure.UNKNOWN)
+            return
+        }
+        //  判据级：这条是「请求有没有发出去」的凭证（成败在注入侧），用 w。
+        XLog.w("proc：${act.token} 已转给 system_server（$pkg，成败看注入侧的「结束应用」那几行）")
     }
 }

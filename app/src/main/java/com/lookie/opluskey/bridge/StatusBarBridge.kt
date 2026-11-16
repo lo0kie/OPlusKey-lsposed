@@ -40,6 +40,17 @@ internal object StatusBarBridge {
     const val CMD_SETTING = "setting"
 
     /**
+     * 状态栏指令：结束一个应用（`proc:stop:`，见 [ProcessBridge]）。
+     *
+     *  与 [CMD_SETTING] 同一条广播、同一个理由：宿主那个身份停不掉别的应用，而 `system_server`
+     *  （uid 1000）连系统应用都停得动。
+     */
+    const val CMD_STOP_PACKAGE = "stop_package"
+
+    /** [CMD_STOP_PACKAGE] 里带「停哪个包」。 */
+    const val EXTRA_STOP_PACKAGE = "stop_package_name"
+
+    /**
      * 状态栏指令：起一个**倒计时**（[EXTRA_TIMER_SECONDS] 秒）。
      *
      *  与 [CMD_POWER_MENU] / [CMD_VOICE_ASSIST] 同属「**必须由 system_server 本人干**」那一类，
@@ -56,8 +67,7 @@ internal object StatusBarBridge {
     /**
      * 状态栏指令：把这块屏的背光推到某个 raw 值。
      *
-     *  **只推不写库** —— 写库仍归宿主（自动亮度下要写的 `screen_auto_brightness_adj` 是
-     *  PRIVATE_SETTINGS，注入侧也没有 `ContentResolver`）。这条指令的唯一职责是让
+     *  **只推不写库** —— 库由宿主自己写（两个键都是公开的）。这条指令唯一的职责是让
      *  `DisplayPowerController` 走一次**真实亮度变化**：控制中心的亮度条只在那一刻刷新
      *  （见 `docs/device/actions/brightness.md` 38.3）。
      */
@@ -104,9 +114,8 @@ internal object StatusBarBridge {
     /**
      * 宿主进程调：把这块屏的背光推到 [raw]（raw 尺度，本机 `2..4095`）。
      *
-     *  与 [send] 同一个通道、同一个接收器，区别只是带一个数值。
-     *  写库**不在这里**（见 [CMD_BRIGHTNESS] 的注释），所以这条指令失败最多是「控制中心没跟着刷新」，
-     *  亮度本身仍按宿主写下的值生效。
+     *  与 [send] 同一个通道、同一个接收器，区别只是带一个数值。写库**不在这里**，所以这条指令
+     *  失败最多是「控制中心没跟着刷新」，亮度本身仍按宿主写下的值生效。
      */
     fun sendBrightness(
         context: Context,
@@ -197,6 +206,10 @@ internal object StatusBarBridge {
 
                 CMD_SETTING -> {
                     SettingBridge.handle(intent, loader)
+                }
+
+                CMD_STOP_PACKAGE -> {
+                    ProcessBridge.handle(intent, loader)
                 }
 
                 CMD_BRIGHTNESS -> {
@@ -470,35 +483,36 @@ internal object StatusBarBridge {
 }
 
 /**
- * 「把这块屏的背光推到某个值」那一条 —— [StatusBarBridge.CMD_BRIGHTNESS] 的注入侧实现。
+ * 「调一次亮度」那一条 —— [StatusBarBridge.CMD_BRIGHTNESS] 的注入侧实现。
  *
  * ## 为什么要走 system_server
  *
- *  `IDisplayManager.setTemporaryBrightness` 在服务那层要
- *  `android.permission.CONTROL_DISPLAY_BRIGHTNESS`（signature|privileged）。宿主
- *  `com.oplus.gesture` 只有 `WRITE_SETTINGS` + `DEVICE_POWER`，调不动；system_server 是 uid 1000，
- *  天然放行（依据见 `docs/device/actions/brightness.md` 38.3）。
+ *  `IDisplayManager.setTemporaryBrightness` 要 `CONTROL_DISPLAY_BRIGHTNESS`（signature|privileged），
+ *  宿主只有 `WRITE_SETTINGS` + `DEVICE_POWER`；system_server 是 uid 1000，天然放行
+ *  （依据见 `docs/device/actions/brightness.md` 38.3）。
  *
- * ## 为什么要调它
+ * ## 为什么要推临时亮度
  *
  *  控制中心的亮度条只在 `DisplayPowerController.saveBrightnessInfo()` 判成「这块屏的背光变了」时
  *  才刷新（它随后 `sendDisplayEventsIfEnabledLocked(display, 128)` → `onDisplayChanged` →
- *  SystemUI 重读 `screen_brightness`）。自动亮度下 `screen_brightness` 只是「关掉自动后回到的值」，
- *  写它不会让背光按那个值走，条也就不动 —— 小布 `j40.j.r()` 在写库前先调这两个方法，正是为了
- *  这一下（38.2 / 38.3）。
+ *  SystemUI 重读 `screen_brightness`）。写库那一刻背光不一定跟着走 —— 小布 `j40.j.r()` 在写库前
+ *  先推一下临时亮度，正是为了这一下（38.2 / 38.3）。
+ *
+ *  小布那一步还有一句 `setTemporaryAutoBrightnessAdjustment`，**这里不调**：它是「自动亮度下的临时
+ *  偏移」语义，调完就被 DPC 消费掉；而且它正是 38.4 那道「背光真变了也不发 display 通知」的闸门
+ *  条件之一。这一档已经改走「先把自动亮度关掉再写亮度」，没有它要表达的东西。
  *
  * ## 独立成一个对象
  *
  *  `StatusBarBridge` 已经贴着 detekt 的「对象内函数数」上限（[StatusBarBridge] 那几条指令各一支
- *  private 实现），再往里塞四个函数就顶破了；这一支与状态栏也本来没关系 —— 它只是借了那条广播。
+ *  private 实现），再往里塞几个函数就顶破了；这一支与状态栏也本来没关系 —— 它只是借了那条广播。
  */
 internal object BrightnessBridge {
     /**
      * 把主屏背光推到 [raw]（raw 尺度，本机 `2..4095`）。
      *
      *  与系统自己拖动亮度条同一条路（`SystemUI/BrightnessController.setBrightness` 调的也是它）。
-     *  **不写库**：写库仍归宿主（自动亮度下要写的 `screen_auto_brightness_adj` 是 PRIVATE_SETTINGS，
-     *  注入侧也没有 `ContentResolver`）。
+     *  **不写库**：两个键都由宿主写（`screen_auto_brightness_adj` 那一档已经不走了）。
      */
     fun apply(
         loader: ClassLoader?,
@@ -509,11 +523,9 @@ internal object BrightnessBridge {
             return
         }
         val global = displayManager(loader) ?: return
-        val value = raw.toFloat()
         try {
-            if (!pushTemporaryBrightness(global, value)) return
+            if (!pushTemporaryBrightness(global, raw.toFloat())) return
             XLog.w("已把背光推到 $raw（DisplayManager 临时亮度）")
-            pushAutoAdjustment(global, value)
         } catch (e: InvocationTargetException) {
             // 服务端抛的异常包在 InvocationTargetException 里 —— 只打外层等于没打
             XLog.w("setTemporaryBrightness 被拒：${e.cause?.javaClass?.name}: ${e.cause?.message}")
@@ -524,10 +536,6 @@ internal object BrightnessBridge {
 
     /** 取 `DisplayManagerGlobal` 实例（`setTemporaryBrightness` 的载体）；取不到就记一行、返回 `null`。 */
     private fun displayManager(loader: ClassLoader?): Any? {
-        if (loader == null) {
-            XLog.w("还没有 system_server 的 ClassLoader，亮度刷新跳过")
-            return null
-        }
         val cls =
             Reflect.findClass(loader, Framework.Calls.DISPLAY_MANAGER_GLOBAL) ?: run {
                 XLog.w("找不到 ${Framework.Calls.DISPLAY_MANAGER_GLOBAL}，亮度刷新跳过")
@@ -556,25 +564,6 @@ internal object BrightnessBridge {
         m.isAccessible = true
         asSystem { m.invoke(global, 0, value) }
         return true
-    }
-
-    /** 第二下：把自动亮度的用户偏移也设成同值；方法不存在时只记一行（不影响上面那一下）。 */
-    private fun pushAutoAdjustment(
-        global: Any,
-        value: Float,
-    ) {
-        val m =
-            Reflect.methodByNameAndArity(
-                global.javaClass,
-                Framework.Calls.SET_TEMPORARY_AUTO_ADJUSTMENT,
-                1,
-            )
-        if (m == null) {
-            XLog.w("${global.javaClass.name} 上没有 setTemporaryAutoBrightnessAdjustment(float)，只推了背光")
-            return
-        }
-        m.isAccessible = true
-        asSystem { m.invoke(global, value) }
     }
 }
 

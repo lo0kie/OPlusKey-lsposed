@@ -18,4 +18,6 @@
     <string name="module_description">Remap the OnePlus / OPPO side key (Plus Key) with single tap,
         double tap and long press. Entry: System Settings - Shortcuts</string>
     <string name="entry_open_failed">Could not open it. Open Settings &gt; Shortcuts once first, then use this entry.</string>
+    <string name="wake_channel">Background bridge</string>
+    <string name="keep_text">Background bridge is on — the side key runs Shizuku commands through this app</string>
 </resources>

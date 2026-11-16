@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.model.icon
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -589,6 +590,118 @@ internal object DrawnIcons {
             "c -0.49,0.35,-0.97,0.71,-1.46,1.11c 0,0.04,0.8,0.62,1.73,1.33l 3.14,2.3" +
             "c 1.33,0.97,1.46,1.06,1.68,1.06c 0.49,0,0.88,-0.4,0.88,-0.88v -0.04" +
             "C 22.13,16.14,21.96,15.74,19.65,11.62z"
+
+    /**
+     * Shizuku 的猫头 —— 「以 Shizuku 执行」那两处（设置里的开关行、命令卡片 / 步骤行的类型图标）
+     * 用的记号，替换原先那颗占位的 `Dots`。
+     *
+     * ## 形状从哪来
+     *
+     *  pathData 是从 Shizuku 安装包里取出来的：adaptive icon 的 **monochrome 层**
+     *  （`res/Hz.xml`，108 视口）里那条「猫头 + 两只眼睛」的路径，原样搬过来，只做等比缩放与平移
+     *  摆进 24 格 —— 与 [BrandCoolapk] 同一套做法，形状一个点没动。
+     *
+     *  monochrome 层里还有一条 `fillAlpha=0.45` 的六边形符号（108 视口中央那块装饰），**没有取**：
+     *  它是主题图标在单色下的暗纹，不是猫头的一部分；24dp 下只会糊成一片灰。
+     *
+     * ## 为什么是填充
+     *
+     *  官方这颗就是**实心剪影**，重画成描边就不是 Shizuku 了（与 [BrandCoolapk] 同一条理由）。
+     *  两只眼睛是**反向子路径**，靠 nonzero 绕向挖空 —— 填充规则保持默认（不设 `EvenOdd`），
+     *  于是眼睛仍然是「没有墨」，上色仍由 `SrcIn` 给。
+     *
+     * ## 眼睛是唯一偏离原件的一处
+     *
+     *  原件的眼睛直径只有猫头宽的 5%（24 格里 1 格），缩到列表那个 20dp 上就是两个针孔 ——
+     *  真机上读成「眯着眼」，越看越诡异。所以眼睛**位置照抄、半径放大**（约 1.45 倍，见
+     *  [SHIZUKU_EYES]）；轮廓一个点没动。
+     */
+    val Shizuku: ImageVector by lazy {
+        val scale = 20f / SHIZUKU_SRC_WIDTH
+        val builder = vectorBuilder("Shizuku")
+        //  **变换走组**（不烘焙进字符串）：`Viewport 108 → 24` 只差一个等比系数与一次平移，
+        //  放在组参数里改一个数就重算一遍，字符串仍是资源里那一份，逐字可核。
+        //  pivot 取默认的 0 ⇒ 这一组就是「先缩放、再平移」。
+        builder.addGroup(
+            scaleX = scale,
+            scaleY = scale,
+            translationX = 2f - SHIZUKU_SRC_LEFT * scale,
+            translationY = (24f - SHIZUKU_SRC_HEIGHT * scale) / 2f - SHIZUKU_SRC_TOP * scale,
+        )
+        builder.addPath(
+            pathData = shizukuPath(),
+            //  **偶数奇偶**裁决：眼睛是后接的两个圆，交叉数落在偶数侧即挖空 —— 不依赖
+            //  「两个圆必须与外轮廓反向」这个约定（原件靠绕向，这里靠规则，改一个也塌不了）。
+            pathFillType = PathFillType.EvenOdd,
+            fill = SolidColor(Color.Black),
+        )
+        builder.clearGroup()
+        builder.build()
+    }
+
+    /** 猫头轮廓（108 视口原样）解析成节点，再把两只眼睛接在后面 —— 解析失败就当空字形，绝不在组合期抛异常（降级纪律）。 */
+    private fun shizukuPath(): List<PathNode> =
+        runCatching {
+            val head = PathParser().parsePathString(SHIZUKU_HEAD_PATH).toNodes()
+            head + SHIZUKU_EYES.flatMap { (cx, cy, r) -> eyeNodes(cx, cy, r) }
+        }.getOrDefault(emptyList())
+
+    /**
+     * 一只眼睛 —— 一个整圆，**顺时针**（与外轮廓相反，于是在 nonzero 填充下是挖空）。
+     *
+     *  原件的眼睛也是这么画的（两段 `sweep=1` 的圆弧），这里只换了半径与书写方式。
+     */
+    private fun eyeNodes(
+        cx: Float,
+        cy: Float,
+        r: Float,
+    ): List<PathNode> =
+        PathData {
+            moveTo(cx + r, cy)
+            arcToRelative(r, r, 0f, isMoreThanHalf = true, isPositiveArc = true, -2 * r, 0f)
+            arcToRelative(r, r, 0f, isMoreThanHalf = true, isPositiveArc = true, 2 * r, 0f)
+            close()
+        }
+
+    /**
+     * 两只眼睛的圆心与半径 —— **108 视口坐标**（与 [SHIZUKU_HEAD_PATH] 同处一组，跟着那一次
+     * 缩放走，所以这里不能写 24 格的数）。
+     *
+     *  圆心照抄原件（(29, 62.5) / (47.5, 71.25)），**半径是放大过的**：原件的 1.5 换到 24 格只有
+     *  0.51 格，20dp 下就是两个针孔（见 [Shizuku] 末段）。这里 2.18 / 2.09 对应 24 格的
+     *  0.74 / 0.71 —— 比原件明显大一圈，又不至于笑成一张脸。右眼比左眼小一档 —— 原件里就是如此（斜着看人，近的那只更大）。
+     */
+    private val SHIZUKU_EYES =
+        listOf(
+            Triple(29f, 62.5f, 2.18f),
+            Triple(47.5f, 71.25f, 2.09f),
+        )
+
+    /**
+     * 猫头剪影的 pathData，**108 视口原样**（Adaptive icon 的 monochrome 层）—— 只剩轮廓。
+     *
+     *  原件里这一串后面还接着两个眼睛子路径，已经拆出去（见 [eyeNodes]：那颗半径要放大，
+     *  写死在原件里就没法改）。别手改这里的数字 —— 要换形状就重取一遍安装包。
+     */
+    private const val SHIZUKU_HEAD_PATH =
+        "M64,57.5a26.52,26.52 0,0 0,-4 -1,25.47 25.47,0,0,0 -9,0.5 25.48,25.48,0,0,0 -9 -5," +
+            "24.92 24.92,0,0,0 -5,-1 24.8,24.8,0,0,0 -9.5 -10.5A20.55,20.55,0,0 0,21 51a26,26,0,0 0,-11 8" +
+            "c-1.79,2.24 -4.92,6.15 -5,11C4.83,80 17.8,87.15 23,90a51.88,51.88,0,0 0,19 6,15.21 15.21,0,0,0 9,-2" +
+            "c4.38,-2.64 5.92,-6.92 7,-10a27.67,27.67,0,0 0,1 -14,30.15 30.15,0,0 0,4,-8A37.08,37.08,0,0 0,64 57.5Z"
+
+    /**
+     * 上面那份图形在 108 视口里的包围盒 —— 缩放的基准。
+     *
+     *  宽 [SHIZUKU_SRC_WIDTH] 撑满 20 格（四周各留 2 格），高按同一系数走、垂直居中；两数是从
+     *  那份 pathData 量出来的（含两端圆弧），改字符串就得跟着重量一遍。
+     */
+    private const val SHIZUKU_SRC_LEFT = 5f
+
+    private const val SHIZUKU_SRC_TOP = 40.5f
+
+    private const val SHIZUKU_SRC_WIDTH = 59f
+
+    private const val SHIZUKU_SRC_HEIGHT = 55.5f
 
     /**
      * 侧键那颗外框的笔画宽度 —— 与 Tabler 那一档（2dp）对齐，收 0.1 是为了让圆头笔画的两端

@@ -16,7 +16,6 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommonCommand
-import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
@@ -28,6 +27,7 @@ import com.lookie.opluskey.ui.model.page.GRID_GAP
 import com.lookie.opluskey.ui.model.page.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.page.gridColumnCount
+import com.lookie.opluskey.ui.model.text.commonCommandName
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SectionTitle
@@ -41,11 +41,11 @@ import com.lookie.opluskey.ui.write.BindingTarget
 //  它属于**绑定页**而不是命令库页：这里回答的是「这一档手势绑什么」，用户在这一页就该能
 //  直接拿到一条马上能用的命令，不必先回「自定义命令」页手工建一条再回来挑。
 //
-//  与「自定义命令」那一片是**两套东西**：这一段由模块维护（表在 `core/present/CommonCommands`），
-//  不写进用户的命令库文件，命令页里也一条都不出现 —— 所以它有自己的一段标题、自己的行。
+//  与「自定义命令」那一片是**两套东西**：这一段是用户自己钉的快捷方式清单，命令正文在
+//  「自定义命令」页里编，这里只存指向它的引用 —— 所以它有自己的一段标题、自己的行。
 
 /**
- * 「常用命令」那一段（[CommonCommands.SHOW] 关着时整段不画）。
+ * 「常用命令」那一段（[SHOW_COMMON_COMMANDS] 关着时整段不画）。
  *
  *  **每条自己决定露不露**（`CommonCommand.showInBinding`，在「常用命令」页的行菜单里切）：
  *  清单里有几条就列几条的前提是那条没关 —— 空清单 / 一条都没勾时只剩「去添加」一行。
@@ -65,11 +65,11 @@ internal fun SettingsPage.CommonCommandsGroup(
     target: BindingTarget,
     enabled: Boolean,
 ) {
-    //  两档总闸：模块自带的 `CommonCommands.SHOW`（编译期常量），以及用户在「按键设置」里
+    //  两档总闸：这一页自己的编译期开关 [SHOW_COMMON_COMMANDS]，以及用户在「按键设置」里
     //  拨的 `GlobalConfig.showCommonCommands`（纯界面项，只落盘、不进广播）—— 任一关着就整段不画。
     //  判断放在这一支里而不是调用点，这样调用点那边一行都不动 —— 关回去时也不必回去找哪一页少画了一段。
     val global = configState.config.value.global
-    if (!CommonCommands.SHOW || !global.showCommonCommands) return
+    if (!SHOW_COMMON_COMMANDS || !global.showCommonCommands) return
     //  **只画这一条勾了「在按键绑定页显示」的那些**（每条各有自己的开关，见「常用命令」页的行菜单）。
     //  没有「全显示 / 全隐藏」的总闸：常用命令只是快捷方式，哪几条值得常按由用户自己挑。
     //
@@ -144,7 +144,7 @@ private fun SettingsPage.CommonCommandTile(
     modifier: Modifier,
     target: BindingTarget,
 ) {
-    val name = CommonCommands.displayName(cmd)
+    val name = commonCommandName(cmd)
     //  **直接复用网格那套格子**（[ActionTile]）：外形、图标色、标题与小字、行尾槽位都是同一份实现 ——
     //  这里只多说一句「行尾画那枚圆点」。
     //
@@ -227,3 +227,9 @@ private fun AddCommonCommandRow(
             ),
     )
 }
+
+/**
+ * 「常用命令」那一段的**编译期总闸** —— 真要收起来就改成 `false`：绑定页那一段与
+ * 「按键设置」页的入口一起消失，清单、配置位与执行侧都不受影响（已经钉住的照常执行）。
+ */
+internal const val SHOW_COMMON_COMMANDS = true

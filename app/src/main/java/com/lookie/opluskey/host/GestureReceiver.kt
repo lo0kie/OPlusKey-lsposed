@@ -327,13 +327,20 @@ internal object GestureReceiver {
      *  同包起自己的 Activity 不走 `android:permission` 那道跨应用检查，所以这里不需要
      *  `OPLUS_COMPONENT_SAFE` —— 这就是「为什么绕宿主一趟」的全部理由（见
      *  [ModuleWire.ACTION_OPEN_SETTINGS]）。
+     *
+     *  `CLEAR_TOP | SINGLE_TOP` 是页面堆栈的判据：宿主那一页是 `singleInstance`，不带 `CLEAR_TOP`
+     *  时这次 `startActivity` 只是把用户**已经在看的那一页**重新走一遍 `onCreate`，页面里那摞
+     *  自己管的子页（命令详情、抽屉 …）全部退回第一页，看起来就是「页面被重开了一次」。
+     *  带上之后：这一页本来就在栈顶 ⇒ 什么都不做（`onNewIntent`，堆栈原样保留）；
+     *  被别的东西压着 ⇒ 把它上面的清掉再提上来（那才是「打开设置页」该有的样子）。
      */
     private fun openSettingsPage(ctx: Context): Boolean =
         runCatching {
             ctx.startActivity(
                 Intent()
                     .setComponent(ComponentName(ctx.packageName, Framework.HOST_SETTINGS_ACTIVITY))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
             )
             XLog.w("模块入口：已把侧键设置页拉到前台")
             true

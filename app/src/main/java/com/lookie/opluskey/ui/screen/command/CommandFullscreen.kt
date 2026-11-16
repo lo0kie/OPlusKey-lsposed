@@ -37,6 +37,7 @@ import com.lookie.opluskey.ui.dialog.FrostedDialog
 import com.lookie.opluskey.ui.dialog.dialogSideMargin
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.retireHint
 import com.lookie.opluskey.ui.input.ImeFocusRelease
 import com.lookie.opluskey.ui.model.theme.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER_MS
@@ -267,27 +268,64 @@ internal fun SettingsPage.requestRootGrant(onResult: (Boolean) -> Unit = {}) {
  *  **把框关掉不算失败**：那时一个字都不报，开关自己停在「关」上；只有「这台机器没有可用的
  *  Shizuku」才弹那句失败提示。
  *
+ *  ## 先摆一条「检查中」
+ *
+ *  这一行到真正弹框之间有一段**看不见**的等待：预检要 bind 模块进程、问一句授权状态（冷启动时
+ *  还要等它把 binder 拿到手），真机上最长能到几秒。不给话就是「点一下没反应」，用户会再点一次。
+ *  所以一进来就在同一个提示位（[HINT_SLOT_COMMAND]）摆一句「正在检查…」，结果回来时**改那一条
+ *  的字**（同一个位是改写，不是叠一条，见 `HintCenter.hint`）。
+ *
+ *  拒绝 / 关掉框那一档要把这条**收掉**（[retireHint]）：那一档本来就不报错，留着「正在检查…」
+ *  挂在屏幕上等于说「还在转」。
+ *
  * @param onResult 拿到没有（**主线程**回调）—— 那一行拿它决定「这个开关许不许停在开上」。
  */
 internal fun SettingsPage.requestShizukuGrant(onResult: (Boolean) -> Unit = {}) {
     try {
+        //  给它一个**足够长的兜底**（不是默认那 3 秒）：这条的意思是「还在问」，收场只该由结果决定 ——
+        //  到点自己消失就会在「框还没弹 / 框还开着」的时候先跑掉，看着像「检查完了、什么也没说」。
+        hint(
+            I18n.get(Strings.COMMAND_SHIZUKU_CHECKING),
+            slot = HINT_SLOT_COMMAND,
+            holdMs = SHIZUKU_CHECK_HINT_FALLBACK_MS,
+            //  图标转圈：等授权这件事没有结论可报，能报的只有「还在等」
+            loading = true,
+        )
         ShizukuHost.requestGrant(context) { outcome ->
             //  同一件事只有一处文案：失败那句直接用 `CommandFailure` 表里那句，与按侧键执行失败时
             //  一字不差；拒绝 / 关掉框**不是故障**，一个字都不报（开关自己停在「关」上）。
             val said =
                 when (outcome) {
                     ShizukuHost.GrantOutcome.GRANTED -> I18n.get(Strings.COMMAND_SHIZUKU_GRANTED)
+
                     ShizukuHost.GrantOutcome.UNAVAILABLE -> CommandFailure.SHELL_NO_SHIZUKU.hint
+
+                    //  换过新进程也连不上模块进程：与「没装 Shizuku」分开说 —— 这一档是这一次
+                    //  没拉起来（换进程那一步见 `ShizukuHost.requestGrant`），不是机器上没有 Shizuku
+                    ShizukuHost.GrantOutcome.CHANNEL_DOWN -> CommandFailure.SHELL_CHANNEL_OFF.hint
+
                     ShizukuHost.GrantOutcome.DENIED -> null
                 }
-            if (said != null) hint(said, slot = HINT_SLOT_COMMAND)
+            if (said != null) hint(said, slot = HINT_SLOT_COMMAND) else retireHint(HINT_SLOT_COMMAND)
             onResult(outcome == ShizukuHost.GrantOutcome.GRANTED)
         }
     } catch (e: Throwable) {
         XLog.w("申请 Shizuku 授权失败（已忽略）：${e.message}")
+        retireHint(HINT_SLOT_COMMAND)
         onResult(false)
     }
 }
+
+/**
+ * 「正在检查 Shizuku 授权…」那条的**兜底**停留时长 —— 只是防它赖着不走。
+ *
+ *  正常路径是结果一到就在**同一个提示位**上换字（`HintQueue.push` 按位改写，item 的 id 不变，
+ *  界面走换句动画而不是重新入场），这一档兜底按这条链路最长的那一趟给：
+ *  查授权 6 秒（`ShizukuShellClient.QUERY_TIMEOUT_MS`）＋ 授权那一趟最多 15 秒
+ *  （跨进程那条的 `GRANT_TIMEOUT_MS`，本进程那条更短）＋ 余量。那几处是 `host` 层的实现
+ *  细节，这里不引它们。
+ */
+private const val SHIZUKU_CHECK_HINT_FALLBACK_MS = 25_000L
 
 // 「这张场景表往哪儿写」的两条路 —— 整表（「系统场景」页那颗「确认」）与单块（「场景动作」页那颗）。
 //

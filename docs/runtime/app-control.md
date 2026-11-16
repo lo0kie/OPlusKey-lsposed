@@ -18,20 +18,23 @@
   `BindingTarget` 决定。
 - **点行不写盘**：这一页先「选中」，确认键才落盘。结束那一趟不挑界面（`AppPickerState.appOnly`：
   点一行就是选中、没有二级页、菜单里也没有「以小窗口打开」）。
-- **结束是三步**，不是一条命令：`am force-stop` → 按 `ps` 第 2 列挑出残留 pid 一律 `kill -9` →
-  **再查一遍这批 pid，查不到才算成功**。三个理由都是真机踩出来的：
-  · `am force-stop` 对系统应用会被 `system_server` 拦住而**照样退出码 0**（PLK110 上
-  `am force-stop com.android.systemui` 返回 0、那一行进程的 `ETIME` 一动不动）—— 原来的判据是
-  「`am` 没报错」，于是日志写着「已执行」而屏幕上一个反应都没有；
-  · 强杀要用 `ps` 第 2 列挑 pid，**不能 `pkill -f 包名`**：它按整条命令行匹配，而这条命令自己的
-  `sh -c …` 里就带着那个包名，一枪先把执行它的 shell 打了，后面那行 `tip:` 永远等不到 ⇒ 成功也报失败；
-  · 两处 `sleep` 是给 `system_server` 与内核收尸留时间，否则查表查到的是还活着的旧 pid。
-  判据是「这几个 pid 没了」而不是「这个包没有进程了」：常驻应用被杀之后会被立刻重新拉起（新 pid），
-  按包名判会把成功报成失败。
-  包名拼进命令串之前过一道形状校验（`Action.isPackageName`，与解析入口同一把尺子）。
-- **按键那条路必须异步**：`proc:stop:` 在宿主主线程的按键回调里执行，等 `su` 会卡住宿主 UI ——
-  所以执行器调的是 `ProcessController.perform`（回调式）。
-- **要 root**：宿主跑在 `platform_app` 域，别的应用的进程它既看不见也停不掉，整条命令走 `su`。
+- **结束用的是 `system_server` 的身份**（`bridge/ProcessBridge`）：宿主只发一条广播（与系统开关
+  同一条通道），注入侧先调 AMS 的 `forceStopPackage(包名, userId)`。宿主跑在 `platform_app` 域，
+  别的应用的进程它既看不见也停不掉；而模块本来就注入在 `system_server`（uid 1000）里。
+  原先那一套「`am force-stop` → 按 `ps` 捞残留 pid → `kill -9` → 再核一遍」的 shell 串整条删掉。
+- **`forceStopPackage` 只对普通应用落地，常驻应用要补一刀**（真机 PLK110 / ColorOS 17 实测）：
+  微信那条走到 `OPM: handleAppExit … FORCE STOP`、进程真没了；而 `com.android.systemui` 的
+  `pkgFlags` 带 **PERSISTENT**，AMS 已经打印 `Force stopping com.android.systemui … (system)`、
+  进程一动没动。所以停完再按名字捞一遍 pid，用 `Process.killProcess`（就是 AMS 自己收进程那个
+  `kill(pid, SIGKILL)`；`system_server` 的 `CapEff` 带 `CAP_KILL`）补杀剩下的。
+- **成败判据落在注入侧**：补刀前后各读一遍 `/proc/<pid>/cmdline`，把「杀了几个、还剩几个」写进日志。
+  常驻应用被真杀掉之后系统会**立刻**把它重新拉起来（新 pid），所以判据是「我停的那一刻它退出没退出」，
+  不是「这个包还有没有进程」。补杀前**逐个复核进程名**：pid 会被回收再分配给别的进程。
+- **不停本模块 / 宿主 / 系统自身**：`ProcessBridge.isForbidden` 是唯一判据 —— 宿主那一侧调它是为了
+  按下去就给出提示，注入侧再核一次（广播的载荷不能当可信输入）。判据里必含 `android`：那一次执行
+  就在 `system_server` 里跑，停它等于整机重启。
+- **宿主那一侧只发不等**：广播是单向的，`ProcessAction` 不报「已执行」—— 成败由注入侧落日志。
+  只对主用户生效（`Action.Process` 只存包名，分身那一档没有入口）。
 - **「显示失效应用」按这一趟分档**（`AppPickerState.stopApp` / `showUnopenable`）：**打开**那一趟
   菜单里有这一项（默认关 = 默认不显示），关着时空态那句话指回它；**结束**那一趟没有这一项、
   也不读它 —— 一律全列（停掉一个没有启动图标的应用正是它的用处）。行尾的「不可打开」标签同样

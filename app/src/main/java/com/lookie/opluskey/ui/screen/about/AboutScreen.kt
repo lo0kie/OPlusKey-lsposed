@@ -105,7 +105,8 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
                 ui.checkUpdateNow = false
                 //  「正在检查」这条用「本页杂项」那一档 holdMs 撑不住 10 秒的检查（2 秒就自己没了，
                 //  中间空一截）；给它一个长兜底，真正的收场是查完那句回执顶上来。
-                hint(I18n.get(Strings.UPDATE_CHECKING), holdMs = UPDATE_CHECKING_HOLD_MS)
+                //  图标转圈：检查更新同样是「还在问」（见 `HintItem.loading`）
+                hint(I18n.get(Strings.UPDATE_CHECKING), holdMs = UPDATE_CHECKING_HOLD_MS, loading = true)
                 val outcome = UpdateState.checkManually(this@AboutScreen.updateHost())
                 val text =
                     when (outcome) {

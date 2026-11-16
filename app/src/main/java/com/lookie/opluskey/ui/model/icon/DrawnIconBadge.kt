@@ -21,7 +21,7 @@ import kotlin.math.sqrt
  *  [Cycle] 是唯一一个「不是动词」的角标：它标的是响铃状态里的「循环」那一档（按一下轮换三档），
  *  底图是铃铛，角标是一圈箭头。
  */
-internal enum class Badge { Plus, Minus, Gear, Cycle, Pause, Power, TriangleUp, TriangleDown, Hash }
+internal enum class Badge { Plus, Minus, Gear, Cycle, Pause, Power, TriangleUp, TriangleDown }
 
 /**
  * 角标在 24 格里占的那块地 —— 圆心是角标中心，半径见 [notch]。
@@ -82,9 +82,6 @@ private val Badge.inkRadius: Float
                 Badge.TriangleUp -> TRI_INK
 
                 Badge.TriangleDown -> TRI_INK
-
-                //  井号看四条笔的端点
-                Badge.Hash -> HASH_ARM
             }
 
 /** 这一档角标占的缺口。 */
@@ -193,19 +190,6 @@ internal fun badgePath(badge: Badge): List<PathNode> =
                 arcToRelative(POWER_RING, POWER_RING, 0f, isMoreThanHalf = true, isPositiveArc = true, -POWER_RING * 1.414f, 0f)
                 moveTo(c, c - POWER_BAR)
                 lineTo(c, c)
-            }
-
-            Badge.Hash -> {
-                //  井号（root 的提示符）：两竖 + 两横，四条各 [HASH_ARM] 半长，不画斜 ——
-                //  7 格见方里再斜一下就糊成一团，方方正正反而更像提示符本身
-                moveTo(c - HASH_GAP, c - HASH_ARM)
-                lineTo(c - HASH_GAP, c + HASH_ARM)
-                moveTo(c + HASH_GAP, c - HASH_ARM)
-                lineTo(c + HASH_GAP, c + HASH_ARM)
-                moveTo(c - HASH_ARM, c - HASH_GAP)
-                lineTo(c + HASH_ARM, c - HASH_GAP)
-                moveTo(c - HASH_ARM, c + HASH_GAP)
-                lineTo(c + HASH_ARM, c + HASH_GAP)
             }
         }
     }
@@ -339,17 +323,6 @@ private const val BADGE_CENTER = 19f
 
 /** 加号 / 减号的半臂长（横竖各 6 格，与 `bell-plus` 那颗同宽）。 */
 private const val BADGE_ARM = 3f
-
-/**
- * 井号角标（「以 root 执行」）的半臂长 —— 四条笔的端点离角标中心 3.2 格。
- *
- *  比 [BADGE_ARM] 略长：井号是四条**互相平行**的短线拼出来的，端点那一截在视觉上会「缩」进去一点，
- *  与加号同长时整颗看着小一圈。
- */
-private const val HASH_ARM = 3.2f
-
-/** 井号那两横 / 两竖之间的距离（半间距）—— 间距再大中间就空了，四条笔读成四段。 */
-private const val HASH_GAP = 1.5f
 
 /** 减号的半臂长 —— 比 [BADGE_ARM] 短 0.4：光是一条横线时看上去更长，得收一点才与加号同档。 */
 private const val MINUS_ARM = 2.6f

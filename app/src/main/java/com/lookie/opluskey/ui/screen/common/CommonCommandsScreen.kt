@@ -29,7 +29,6 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.GlobalConfig
-import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
 import com.lookie.opluskey.ui.chrome.PageFabButton
@@ -48,6 +47,7 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.icon.commonCommandIcon
 import com.lookie.opluskey.ui.model.page.APP_KIND_TAG_GAP
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
+import com.lookie.opluskey.ui.model.text.commonCommandName
 import com.lookie.opluskey.ui.model.theme.TAB_PAGE_SWITCH_MS
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.row.CardList
@@ -500,7 +500,7 @@ private fun SettingsPage.renameDialog(
         //  与「重命名按键」「重命名配置」同一颗（全项目所有改名共用一个记号）
         icon = PageIcons.MenuRename,
         initial = cmd?.name.orEmpty(),
-        //  空 = 回到动作自带的名字（`CommonCommands.displayName` 那一套），所以允许空
+        //  空 = 回到动作自带的名字（`commonCommandName` 那一套），所以允许空
         allowEmpty = true,
         hint = I18n.get(Strings.COMMON_COMMANDS_RENAME_HINT),
         onDismiss = onDismiss,
@@ -536,7 +536,7 @@ private fun SettingsPage.removeDialog(
     ConfirmDialog(
         show = show,
         title = I18n.get(Strings.COMMON_COMMANDS_REMOVE_TITLE),
-        summary = I18n.format(Strings.COMMON_COMMANDS_REMOVE_BODY, cmd?.let { CommonCommands.displayName(it) }.orEmpty()),
+        summary = I18n.format(Strings.COMMON_COMMANDS_REMOVE_BODY, cmd?.let { commonCommandName(it) }.orEmpty()),
         action = I18n.get(Strings.COMMON_COMMANDS_REMOVE),
         onDismiss = onDismiss,
         onConfirm = {
@@ -652,9 +652,7 @@ private fun SettingsPage.commonCommandRow(
     CardRow.Item(
         //  进 / 退场由 `CardList` 按这一位播（规格见 `VISIBILITY_ENTER` / `VISIBILITY_EXIT`）
         visible = visible,
-        title = CommonCommands.displayName(cmd),
-        //  自带那几条有自己的小字；用户自己收录的动作没有（小字里塞 token 只是噪音）
-        summary = CommonCommands.entryOf(cmd.token)?.let { I18n.getOr(it.summaryKey, it.summaryFallback) },
+        title = commonCommandName(cmd),
         //  换过图标就画换的那颗（`commonCommandIcon(cmd)` 里判），没换过才按动作取
         icon = commonCommandIcon(cmd),
         //  在按键绑定页不显示的那几条压一档色：一眼能看出哪些不会出现在那一段

@@ -12,9 +12,12 @@ import com.lookie.opluskey.core.config.VariableStore
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.CommandOutput
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
+import com.lookie.opluskey.core.model.OutputSink
 import com.lookie.opluskey.core.model.expandedWith
 import com.lookie.opluskey.core.rom.RomKeyFamilies
 import com.lookie.opluskey.core.rom.RomProfile
@@ -40,7 +43,8 @@ import com.lookie.opluskey.host.action.shell.ShellRunner
 internal class ActionRunner(
     /** 借来的宿主 Context（`host/GestureReceiver` 从 `ActivityThread` 反射取）。 */
     @Volatile var context: Context?,
-    handler: Handler,
+    /** 主线程 handler —— 手电筒那条 torch 回调用它，[publishOutput] 回主线程发结果也用它。 */
+    private val handler: Handler,
 ) {
     /**
      * 这一次执行走不走 ColorOS 接口 —— [run] 每次开头写入，往下（手电筒 / 响铃）都读它。
@@ -274,7 +278,16 @@ internal class ActionRunner(
      */
     fun runTest(cmd: Command) {
         XLog.w("测试命令 → ${cmd.name.ifBlank { "（未命名）" }}")
-        custom.run(cmd)
+        //  **测试时「不显示」按「提示」跑**：`none` 是给日常按键用的（不想每次按都被打扰），
+        //  照搬到这一条路上就成了「点了测试、什么都没发生」—— 而测试这一档的意义恰恰是看见结果。
+        //  只改这一条路：按侧键真跑的时候仍按用户选的那一档（安静就是安静）。
+        val forTest =
+            if (cmd.kind == CommandKind.SINGLE && cmd.output == CommandOutput.NONE) {
+                cmd.copy(output = CommandOutput.TOAST)
+            } else {
+                cmd
+            }
+        custom.run(forTest)
     }
 
     /**
@@ -344,8 +357,8 @@ internal class ActionRunner(
 
                 is Action.VarSet -> runVarSet(act)
 
-                // 结束应用（`proc:stop:…`）：异步发一条 `su`，不等结果
-                is Action.Process -> ProcessAction.run(act, ::notifyFailure)
+                // 结束应用（`proc:stop:…`）：转给 system_server（uid 1000）去停，不等结果
+                is Action.Process -> ProcessAction.run(context, act, ::notifyFailure)
             }
         } catch (e: Throwable) {
             // 必须 catch Throwable：执行环境（Runtime / 反射注入）出错可能是 Error 系，漏出去会崩系统
@@ -485,6 +498,12 @@ internal class ActionRunner(
          */
         viaShizuku: Boolean = false,
         /**
+         * 跑完之后把**标准输出**显示到哪（`Command.outputSink`：落点 + 流体云那一档的图标）。
+         *
+         *  `mode == NONE` = 不收集、不显示（默认）；其余三档见 [publishOutput]。
+         */
+        sink: OutputSink = OutputSink(),
+        /**
          * 「这一条跑完了」的回执 —— **只给多条命令的步骤间隔用**（`CustomCommandRunner` 要等这一步
          * 真的结束才排下一步，见 `CustomCommandRunner.runSteps`）。
          *
@@ -533,23 +552,75 @@ internal class ActionRunner(
             settle()
             return
         }
-        //  原样交给 shell（不传 trim 过的）：用户写的空白 / 引号是命令的一部分
-        //  命令里写 `echo 'tip: …'` 的那一行，成功时弹成提示 —— 这是 shell 动作唯一能回显结果的
-        //  通道（`ShellRunner.TIP_PREFIX`），失败那一侧由 [notifyFailure] 报。
-        //  提示**交给注入侧弹**（[requestSystemToast]）：宿主的包受系统 toast 配额，连按会丢。
+        //  原样交给 shell（不传 trim 过的）：用户写的空白 / 引号是命令的一部分。
+        //  结果怎么给用户看由 `Command.output` 那一档决定（见 [publishOutput]），失败那一侧由
+        //  [notifyFailure] 报 —— 执行侧不再从输出里认任何前缀。
+        //  要显示结果时才收行（`Collections.synchronizedList`：读线程写、`onDone` 读）
+        val lines =
+            if (sink.mode == CommandOutput.NONE) {
+                null
+            } else {
+                java.util.Collections.synchronizedList(mutableListOf<String>())
+            }
         ShellRunner.exec(
             command = command,
             onFailure = ::notifyFailure,
-            onTip = { text -> requestSystemToast(context, text) },
+            onLine = { line -> lines?.add(line) },
             //  「以 root 执行」是**每条命令自己的**开关（见 `Command.root`）；内置的 `shell:` 动作没有
             //  这个开关，一直按默认走（`su`）。`su` 起不来就报失败，不退回 `sh`（见 `ShellRunner.startProcess`）。
             preferRoot = preferRoot,
-            //  跑完（含起进程失败 / 被拒 / 超时）回执一次 —— 有间隔的多条命令靠它推进下一步
-            onDone = settle,
+            //  跑完（含起进程失败 / 被拒 / 超时）回执一次 —— 有间隔的多条命令靠它推进下一步。
+            //  **先报输出、再回执**：回执会推进下一步，反过来的话这一步的尾巴会落进下一步之后。
+            onDone = {
+                publishOutput(sink, lines)
+                settle()
+            },
             //  Shizuku 那一路要 bind 模块进程的执行服务，需要宿主 Context
             ctx = context,
             viaShizuku = viaShizuku,
         )
+    }
+
+    /**
+     * 把这次执行的标准输出送到用户选的那个落点（`Command.output` 那四档里的后三档）。
+     *
+     *  ## 只报**有内容**的那一次
+     *
+     *  没有输出就什么都不弹：`ls /nonexistent >/dev/null` 这种「跑成功了但没说话」与「失败了」
+     *  本来就该长得不一样，失败那一侧另有 [notifyFailure]。空串同理（`printf ''`）。
+     *
+     *  ## 三档落点用的都是现成的那一套
+     *
+     *  提示 / 通知 / 流体云各自已经有动作实现（`toast:` / `notify:` / `fluid:` 三档），这里
+     *  **直接调那三支**而不是再写一遍：它们各自管长度、图标、失败回执，重写一遍必然两套口径。
+     *  也**不走 [dispatch]**：那里会再展开一次 `${…}`，而这段是命令跑出来的原文，不该被当成模板。
+     *
+     *  ## 为什么要 `handler.post`
+     *
+     *  `ShellRunner` 的回调在池线程上（读输出的那一条），而这三支落点都要碰界面 / 系统服务；
+     *  回主线程再发，与项目里其它「池线程跑完回来报一句」的地方同一条做法。
+     *
+     * @param lines 读输出那条线程攒下的行；`mode == NONE` 时为 `null`
+     */
+    private fun publishOutput(
+        sink: OutputSink,
+        lines: List<String>?,
+    ) {
+        if (sink.mode == CommandOutput.NONE || lines.isNullOrEmpty()) return
+        val text = lines.joinToString("\n").trim()
+        if (text.isEmpty()) return
+        handler.post {
+            when (sink.mode) {
+                CommandOutput.NONE -> Unit
+
+                CommandOutput.TOAST -> requestSystemToast(context, text)
+
+                CommandOutput.NOTIFY -> NotifyAction.run(context, Action.Notify(text), ::notifyFailure)
+
+                //  图标跟着这一档一起走（用户挑的那颗，空串 = 胶囊不带图标）
+                CommandOutput.FLUID -> FluidAction.run(context, Action.Fluid(text, sink.icon), ::notifyFailure)
+            }
+        }
     }
 
     /**

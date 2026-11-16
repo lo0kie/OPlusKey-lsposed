@@ -634,9 +634,6 @@ internal object Framework {
         /** `setTemporaryBrightness(int displayId, float brightness)`。 */
         const val SET_TEMPORARY_BRIGHTNESS = "setTemporaryBrightness"
 
-        /** `setTemporaryAutoBrightnessAdjustment(float adjustment)`。 */
-        const val SET_TEMPORARY_AUTO_ADJUSTMENT = "setTemporaryAutoBrightnessAdjustment"
-
         /** 长按电源那个全局菜单（走 `PhoneWindowManager`）。 */
         const val SHOW_GLOBAL_ACTIONS = "showGlobalActions"
 

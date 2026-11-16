@@ -75,7 +75,12 @@ internal fun SettingsPage.CommandVarsCard(
     var lastKind by remember { mutableStateOf<ConditionKind?>(null) }
     picking?.let { lastKind = it }
     //  小标题说的是这一档的名字，行里只留这一档的名字（进去能挑什么，点开就看见了）。
-    SectionTitle(I18n.get(Strings.COMMAND_VARS_TITLE))
+    //
+    //  条数拼进小标题（`可用变量 (8)`）：行里只有一行「可用变量」，数的是点进去之后能挑几档 ——
+    //  **与浮层菜单里那一段的小标题同一个数**（下面 `titleWithCount` 那一处），两处说法一致。
+    SectionTitle(
+        text = titleWithCount(I18n.get(Strings.COMMAND_VARS_TITLE), SYSTEM_VAR_KINDS.size),
+    )
     CardList(
         rows =
             listOf(
@@ -245,3 +250,7 @@ private fun insertVar(
     //  同样不聚焦 —— 这一点与格式卡同一条口径。
     ui.singleScrollRequest++
 }
+
+// 「这一档落点在界面上叫什么 / 行首画哪颗」这两支随「显示执行返回结果」那一行搬到了
+// `CommandPage.kt` 的 `ExecSwitchCard`（`CommandOutput.labelKey` / `.icon`）—— 那一行现在是
+// 「命令设置」那张卡的一行，判据跟着使用者走。

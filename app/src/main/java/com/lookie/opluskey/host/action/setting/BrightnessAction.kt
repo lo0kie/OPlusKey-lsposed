@@ -8,7 +8,6 @@ import com.lookie.opluskey.bridge.StatusBarBridge
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.host.action.CommandFailure
-import com.lookie.opluskey.host.action.shell.ShellRunner
 
 /**
  * 屏幕亮度（`bright:50` / `bright:+10` / `bright:-10`）—— 宿主侧唯一实现。
@@ -19,24 +18,21 @@ import com.lookie.opluskey.host.action.shell.ShellRunner
  *  （本机 `2,4095`），读不到才退回 1..255。框架那个 `get-brightness --unit percentage` 报的是
  *  另一套 HLG 感知值：按它换算，`+10%` 在条上会走三十多格（见 `docs/device/actions/brightness.md` 三十八）。
  *
- * ## 自动亮度开着时那条路只能走 root
+ * ## 自动亮度开着时：先落库，再把自动亮度关掉
  *
  *  自动亮度（`screen_brightness_mode = 1`）下 `DisplayPowerController` 不拿 `screen_brightness`
- *  当目标 —— 只写它，显示一点不动。要让它跟手就得写 `screen_auto_brightness_adj`（值是**目标
- *  raw 本身**，不是 -1..1 的偏移），这正是小布助手 `j40.j.r(int)` 那两步（见 38.2）。
+ *  当目标 —— 只写它，显示一点不动。真正的目标键是 `screen_auto_brightness_adj`（值是**目标
+ *  raw 本身**，不是 -1..1 的偏移，见 38.2），而它在 `Settings.System.PRIVATE_SETTINGS` 里：
+ *  只有 uid 0 / 1000 / 2000 写得了（宿主是 `platform_app` ⇒ `IllegalArgumentException:
+ *  You cannot change private secure settings.`，实测见 38.2）。
  *
- *  但 `screen_auto_brightness_adj` 在 `Settings.System.PRIVATE_SETTINGS` 里：SettingsProvider 的
- *  `enforceRestrictedSystemSettingsMutationForCallingPackage` 只对 uid 0 / 1000 / 2000 直接放行，
- *  其余包要么是 privileged app、要么在 OPPO 的白名单里。宿主是 `platform_app`、不是 privileged
- *  ⇒ 真机实测 `Settings.System.putFloat` 抛 `IllegalArgumentException: You cannot change private
- *  secure settings.`（`screen_brightness` 是 PUBLIC_SETTINGS，不受这条限制，写它没事）。
+ *  那三个身份都不借（root 要授权、Shizuku 要另装、注入侧又没有可用的 `ContentResolver`），
+ *  所以这一档走 38.2 记的**第二条路**，也就是 ColorOS 自己那份实现在同一格里做的事：把
+ *  `screen_brightness` 落库，再把 `screen_brightness_mode` 写成 0（等于关掉自动亮度）——
+ *  两个都是公开键（「自动亮度」那颗系统开关写的就是同一个键），宿主自己就能写。
  *
- *  注入侧也接不了这一棒：system_server 里没有可用的 `ContentResolver`（见 六之五）。所以自动亮度
- *  那一档改成一条 `settings put` 交给 root —— 与用户自己写 `shell:` 走的是同一条通道。
- *  自动亮度**关着**的时候不需要 root：直接写 `screen_brightness` 就能落到显示上。
- *
- *  两个键写在**同一条命令**里是有意的：顺序必须是先 adj 再亮度（照小布），而 `su` 那条是异步的，
- *  拆成两次调用就保证不了先后。
+ *  两个代价说清楚：**这一档会把自动亮度关掉**；顺序必须是先落库再关，反过来那一刻显示会先跳回
+ *  上次手动档的旧值、再被新值改一次。
  *
  * ## 光写库，控制中心的亮度条不一定动
  *
@@ -74,7 +70,7 @@ internal object BrightnessAction {
                     return
                 }
             //  自动亮度那一格读不到就**别猜**：猜成「手动」会直接写 `screen_brightness`（自动亮度下
-            //  显示不动），猜成「自动」则会去要 root。两档都不是用户按下去的意思 ⇒ 报失败。
+            //  显示不动），猜成「自动」则会白关一次自动亮度 —— 两档都不是用户按下去的意思 ⇒ 报失败。
             val modeText = runCatching { Settings.System.getString(cr, KEY_MODE) }.getOrNull()
             val mode = modeText?.trim()?.toIntOrNull()
             if (mode == null) {
@@ -86,31 +82,19 @@ internal object BrightnessAction {
             XLog.w(
                 "亮度：${action.token} → raw=$target" +
                     "（量程 ${range.first}..${range.last}，当前 ${current ?: "读不到"}" +
-                    "${if (auto) "，自动亮度开着 → 走 root 写 adj" else ""}）",
+                    "${if (auto) "，自动亮度开着 → 写完新值就把它关掉" else ""}）",
             )
             // 先让 system_server 把背光推到目标值 —— 小布 `j40.j.r()` 的第三步，屏幕会立刻跟上。
             // 它顺带可能换来一次 display 事件，但那次事件不保证（38.4 的闸二）：
             // 真正保证亮度条跟着走的是下面那句 nudgeSlider。
             StatusBarBridge.sendBrightness(context, target)
-            if (auto) {
-                //  root 那条是**排队**的：`ShellRunner.exec` 立刻返回，真正落库在池子里。
-                //  所以刷新口令必须挂在它的完成回调上 —— 直接写下一行的话，SystemUI 读到的
-                //  还是旧值，亮度条不动。
-                //  **失败时不再发口令**：`onDone` 是「跑完就调、成功失败都算」（见 `ShellRunner.exec`），
-                //  写盘被拒还去写 `screen_brightness_duration`，等于告诉 SystemUI「亮度变了」——
-                //  控制中心那根条会跳到一个根本没生效的值上。
-                var failed = false
-                writeViaRoot(
-                    target,
-                    onFailure = { f ->
-                        failed = true
-                        onFailure(f)
-                    },
-                ) { if (!failed) nudgeSlider(cr, target, current) }
-            } else {
-                //  手动档是同步写 `Settings`，**写成功**才发口令（顺序反了的话 SystemUI 读到的还是旧值）
-                if (writeBrightness(cr, target, onFailure)) nudgeSlider(cr, target, current)
-            }
+            //  先落库、再关自动亮度：反过来写的话，关掉那一刻显示先跳到「上次手动档的旧值」、
+            //  紧接着又被新值改一次 —— 屏幕上闪两下。自动亮度开着时写 `screen_brightness` 是无害的：
+            //  它就是「关掉自动后要回到的值」（38.1）。
+            if (!writeBrightness(cr, target, onFailure)) return
+            //  不关掉自动亮度，`screen_brightness` 就不驱动显示，前一句等于白写。
+            if (auto && !writeMode(cr, MODE_MANUAL, onFailure)) return
+            nudgeSlider(cr, target, current)
         } catch (e: Throwable) {
             XLog.w("亮度调整失败（已忽略）：${e.javaClass.simpleName}: ${e.message}")
             onFailure(CommandFailure.UNKNOWN)
@@ -158,28 +142,36 @@ internal object BrightnessAction {
             ?: runCatching { Settings.System.getInt(cr, KEY_BRIGHTNESS) }.getOrNull()
 
     /**
-     * 自动亮度那一档：一条 root 命令写两个键（顺序见类注释）。
+     * 把 `screen_brightness_mode` 写成 [mode]（0 = 手动 / 1 = 自动）。
      *
-     *  用 `shell:` 同一个执行器（[ShellRunner]）：并发槽位、超时、失败分档与失败提示都是现成的。
-     *  这里不写 `tip:` —— 亮度变化本身在屏幕上看得到。
-     *
-     *  两句之间用 `&&` 而不是 `;`：`;` 的退出码只取**最后一句** —— 第一条 `put adj` 被拒时
-     *  第二条照样写 `screen_brightness`，整条命令还报成功（用户看到「亮度没变，也没报错」）。
-     *  `&&` 让第一条失败当场停下、退出码非 0，整条按失败返回。
+     *  为什么非得关：自动亮度开着时 `screen_brightness` 不驱动显示（38.1），不关就写等于白写。
+     *  与 [writeBrightness] 同一档：公开键、同步写、**写成功**才往下走 —— 它失败还接着发刷新口令
+     *  的话，条会跳到一个根本没生效的值上。
      */
-    private fun writeViaRoot(
-        target: Int,
+    private fun writeMode(
+        cr: ContentResolver,
+        mode: Int,
         onFailure: (CommandFailure) -> Unit,
-        onDone: () -> Unit,
-    ) {
-        ShellRunner.exec(
-            "$SETTINGS put system $KEY_ADJ $target.0 && $SETTINGS put system $KEY_BRIGHTNESS $target",
-            onFailure = onFailure,
-            onDone = onDone,
-        )
+    ): Boolean {
+        val wrote =
+            runCatching { Settings.System.putInt(cr, KEY_MODE, mode) }
+                .getOrElse {
+                    XLog.w("亮度：写 $KEY_MODE 抛了 ${it.javaClass.simpleName}", it)
+                    false
+                }
+        if (!wrote) {
+            XLog.w("亮度：$KEY_MODE 被拒，自动亮度没关成（这次不动）")
+            onFailure(CommandFailure.UNKNOWN)
+            return false
+        }
+        //  判据级：写完**读回**一遍。这条键被系统改回去过（真机：两次按键之间它自己回到 1），
+        //  只信 `putInt=true` 的话，日志里会是一串「已关掉」而实际早被拉回自动档。
+        val now = runCatching { Settings.System.getString(cr, KEY_MODE) }.getOrNull()
+        XLog.w("亮度：$KEY_MODE 写成 $mode（读回 $now）")
+        return true
     }
 
-    /** 自动亮度关着：`screen_brightness` 是公开键，宿主自己就能写，不必起 shell。 */
+    /** `screen_brightness` 是公开键，宿主自己就能写。 */
     private fun writeBrightness(
         cr: ContentResolver,
         target: Int,
@@ -251,11 +243,13 @@ internal object BrightnessAction {
 /** 亮度值（raw）。 */
 private const val KEY_BRIGHTNESS = "screen_brightness"
 
-/** 自动亮度开关：1 = 自动、0 = 手动。与 `SettingSwitch` 里那个键同值，那边判开关、这边判该走哪条路。 */
+/**
+ * 自动亮度开关：1 = 自动、0 = 手动。
+ *
+ *  与 `SettingSwitch` 里那颗「自动亮度」开关写的是同一个键（那边判开关，这边判该走哪条路、
+ *  以及要不要先把它关掉）。
+ */
 private const val KEY_MODE = "screen_brightness_mode"
-
-/** 自动亮度下的目标亮度（raw）。见类注释：这是 `PRIVATE_SETTINGS`，宿主写不了。 */
-private const val KEY_ADJ = "screen_auto_brightness_adj"
 
 /** 亮度条的取值范围，写成 `"min,max"`。 */
 private const val KEY_RANGE = "screen_brightness_range"
@@ -278,10 +272,11 @@ private const val RATE_DEFAULT = "91.7"
 
 private const val MODE_DEFAULT = "7"
 
-/** `settings` 这个 CLI —— 走 root 时用它写两个键。 */
-private const val SETTINGS = "settings"
-
+/** [KEY_MODE] 的「自动」档（1 = 自动、0 = 手动）。 */
 private const val MODE_AUTO = 1
+
+/** [KEY_MODE] 的「手动」档 —— 自动亮度开着时先把它写下来（见类注释）。 */
+private const val MODE_MANUAL = 0
 
 /** 读不到量程时的退路：AOSP 默认的 1..255（本机是 2..4095）。 */
 private const val DEFAULT_MIN = 1

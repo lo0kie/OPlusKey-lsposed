@@ -239,29 +239,23 @@ object Strings {
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
 
     /**
-     * 按键绑定页那一段「常用命令」的小标题 —— 现成命令的快捷入口（表见 `CommonCommands`）。
+     * 按键绑定页那一段「常用命令」的小标题 —— 用户钉住的若干动作快捷入口。
      *
-     *  条数拼进标题（与内置动作那几组同一个写法）：这一段是「有几条」由表决定的列，不写就看不出有没有漏。
+     *  条数拼进标题（与内置动作那几组同一个写法）：这一段是「有几条」由清单决定的列，不写就看不出有没有漏。
      */
     const val BINDING_COMMON_COMMANDS = "binding.common_commands"
 
     /**
-     * 「常用命令」**自己那条命令的名字**（[COMMON_COMMAND_WECHAT_SCAN] 等）。
+     * 模块补进命令库的那几条**预设命令的名字**（[COMMON_COMMAND_WECHAT_SCAN] 等）。
      *
-     *  与界面文案不同：它会作为**命令名**落进用户的配置（`cmd:<名字>`），所以落盘时按当时的
-     *  语言取一次字面量，之后跟着配置走 —— 中途换语言不会把已有的那条命令改掉。
+     *  与界面文案不同：它会在补齐那一刻作为**命令名**落进命令库（之后的引用是 `cmd:<名字>`），
+     *  所以按当时的语言取一次字面量，之后跟着命令库走 —— 中途换语言不会把已有的那条命令改掉。
      */
     const val COMMON_COMMAND_WECHAT_SCAN = "common_command.wechat_scan"
 
-    /** 同一行下面那行小字：这一条到底做什么。 */
-    const val COMMON_COMMAND_WECHAT_SCAN_DESC = "common_command.wechat_scan_desc"
-
     const val COMMON_COMMAND_WECHAT_PAY = "common_command.wechat_pay"
-    const val COMMON_COMMAND_WECHAT_PAY_DESC = "common_command.wechat_pay_desc"
     const val COMMON_COMMAND_ALIPAY_SCAN = "common_command.alipay_scan"
-    const val COMMON_COMMAND_ALIPAY_SCAN_DESC = "common_command.alipay_scan_desc"
     const val COMMON_COMMAND_ALIPAY_PAY = "common_command.alipay_pay"
-    const val COMMON_COMMAND_ALIPAY_PAY_DESC = "common_command.alipay_pay_desc"
 
     // —— 「常用命令」页（`Screen.COMMON_COMMANDS`）：那张清单怎么管 ——
     //
@@ -831,8 +825,6 @@ object Strings {
 
     /** 「以 root 执行」那一行（每条命令自己的开关）：标题 + 真假两句副标题。 */
     const val COMMAND_ROOT_TITLE = "command.root_title"
-    const val COMMAND_ROOT_DESC_ON = "command.root_desc_on"
-    const val COMMAND_ROOT_DESC_OFF = "command.root_desc_off"
 
     /** 打开「以 root 执行」时那次探测成功：root 已授权（失败那一侧用 `COMMAND_FAILURE_SHELL_NO_ROOT`）。 */
     const val COMMAND_ROOT_GRANTED = "command.root_granted"
@@ -859,6 +851,9 @@ object Strings {
     const val COMMAND_FORMAT_SHELL_DESC = "command.format_shell_desc"
     const val COMMAND_FORMAT_SHORTCUT = "command.format_shortcut"
     const val COMMAND_FORMAT_SHORTCUT_DESC = "command.format_shortcut_desc"
+
+    /** 「支持的命令格式」小标题行尾那一格 —— 说的是点一行会发生什么（把它的前缀填进输入框）。 */
+    const val COMMAND_FORMAT_FILL_HINT = "command.format_fill_hint"
     const val COMMAND_FORMATS_TITLE = "command.formats_title"
     const val COMMAND_LIST_TITLE = "command.list_title"
 
@@ -924,11 +919,17 @@ object Strings {
     const val COMMAND_VARS_ENTRY_TITLE = "command.vars_entry_title"
 
     /**
-     * 「图标」那一档的小标题与行标题（只在正文是 `fluid:` 时出现）。
+     * 「图标」那一档的**小标题**（只在正文是 `fluid:` 时出现）。
      *
      *  点开是网格选择器：模块在用的那批 Tabler 字形全在里面，选中即渲染成 png 落盘。
      */
     const val COMMAND_FLUID_ICON_TITLE = "command.fluid_icon_title"
+
+    /**
+     * 同一档**行内**的标题 —— 与小标题分开：小标题说的是「这一组是什么」（图标），
+     * 行标题说的是「点这一行做什么」（选择图标），点下去才知道会开一层网格。
+     */
+    const val COMMAND_FLUID_ICON_PICK = "command.fluid_icon_pick"
 
     /**
      * 「图标」那一行的副标题 —— 一共有几颗可选（`当前有 %s 个图标`）。
@@ -2045,11 +2046,31 @@ object Strings {
 
     const val COMMAND_SHIZUKU_TITLE = "command.shizuku_title"
 
-    const val COMMAND_SHIZUKU_DESC_ON = "command.shizuku_desc_on"
-
-    const val COMMAND_SHIZUKU_DESC_OFF = "command.shizuku_desc_off"
-
     const val COMMAND_SHIZUKU_GRANTED = "command.shizuku_granted"
 
+    /** 「显示执行返回结果」那一行的**行标题** —— 命令跑完之后把标准输出送到哪。 */
+    const val COMMAND_OUTPUT_TITLE = "command.output_title"
+
+    /**
+     * 同一件事那层菜单的**小标题**（「提示类型」）—— 与行标题分开说：
+     * 行说的是「这一项管什么」，菜单标题说的是「这一层在挑哪一类东西」（四档落点）。
+     */
+    const val COMMAND_OUTPUT_MENU_TITLE = "command.output_menu_title"
+
+    /** 四档落点（顺序即菜单顺序）：不显示 / 提示 / 通知 / 流体云。 */
+    const val COMMAND_OUTPUT_NONE = "command.output_none"
+
+    const val COMMAND_OUTPUT_TOAST = "command.output_toast"
+
+    const val COMMAND_OUTPUT_NOTIFY = "command.output_notify"
+
+    const val COMMAND_OUTPUT_FLUID = "command.output_fluid"
+
     const val COMMAND_FAILURE_SHELL_NO_SHIZUKU = "command_failure.shell_no_shizuku"
+
+    const val COMMAND_OUTPUT_PREFIX = "command.output_prefix"
+
+    const val COMMAND_FAILURE_SHELL_CHANNEL_OFF = "command_failure.shell_channel_off"
+
+    const val COMMAND_SHIZUKU_CHECKING = "command.shizuku_checking"
 }

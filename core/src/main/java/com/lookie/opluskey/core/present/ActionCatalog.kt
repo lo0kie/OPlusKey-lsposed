@@ -242,9 +242,9 @@ object ActionCatalog {
      */
     sealed interface GlyphSource {
         /**
-         * 由命令本身决定：单条 / 多条、几步、是否以 root 执行。
+         * 由命令本身决定：单条 / 多条、几步、以 root 还是经 Shizuku 执行。
          *
-         *  三个字段照抄 [Spec] 上那三位 —— 它们本来就在 Spec 里，这里是「字形也看它们」的声明。
+         *  这几个字段照抄 [Spec] 上那几位 —— 它们本来就在 Spec 里，这里是「字形也看它们」的声明。
          */
         data class ByCommand(
             val kind: CommandKind,
@@ -252,6 +252,8 @@ object ActionCatalog {
             val root: Boolean,
             /** 单条命令的正文 —— 按开头的前缀挑格式图标（`shell:` → 终端…）；多条命令不看它。 */
             val body: String = "",
+            /** 单条命令是否经 Shizuku 执行；与 [root] 互斥（两条执行通道），两者都假时按写法取底图。 */
+            val viaShizuku: Boolean = false,
         ) : GlyphSource
 
         /**
@@ -1132,8 +1134,8 @@ object ActionCatalog {
             commandSteps = command.steps.size,
             //  单条命令的两档字形靠它分（su / 非 su），抽屉与网格摆的就是这张候选表
             commandRoot = command.root,
-            //  字形由命令自己决定：单条 / 多条、几步、是否提权 —— 三者都是 `commandIcon` 的入参
-            glyph = GlyphSource.ByCommand(command.kind, command.steps.size, command.root, command.single),
+            //  字形由命令自己决定：单条 / 多条、几步、以 root 还是经 Shizuku（都是 `commandIcon` 的入参）
+            glyph = GlyphSource.ByCommand(command.kind, command.steps.size, command.root, command.single, command.viaShizuku),
         )
 
     /**

@@ -27,7 +27,6 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.icon.icon
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.text.COMMAND_FORMAT_LINES
 import com.lookie.opluskey.ui.model.theme.CommandFormatLine

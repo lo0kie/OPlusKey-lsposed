@@ -1,5 +1,7 @@
 package com.lookie.opluskey.ui.screen.command
 
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -17,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.core.i18n.I18n
@@ -25,28 +28,36 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.host.action.shell.ShizukuHost
+import com.lookie.opluskey.core.model.CommandOutput
+import com.lookie.opluskey.host.action.shell.RootGrant
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.dialog.MenuEntry
 import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.dialog.rememberMenuState
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.input.IconInputView
 import com.lookie.opluskey.ui.input.InputSpec
+import com.lookie.opluskey.ui.model.icon.FluidIconPicker
+import com.lookie.opluskey.ui.model.icon.FluidIcons
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
+import com.lookie.opluskey.ui.model.text.COMMAND_FORMAT_LINES
 import com.lookie.opluskey.ui.model.text.commandKindLabel
 import com.lookie.opluskey.ui.model.text.isTypingCommandPrefix
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SectionTitleClick
 import com.lookie.opluskey.ui.row.SectionTitleTrailingMore
 import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.row.TitleCounter
+import com.lookie.opluskey.ui.row.TitleSmallText
+import com.lookie.opluskey.ui.row.titleWithCount
 import com.lookie.opluskey.ui.state.command.CommandUiState
 import com.lookie.opluskey.ui.state.page.CommandForm
 import com.lookie.opluskey.ui.state.page.singleLine
@@ -55,10 +66,9 @@ import com.lookie.opluskey.ui.style.VisibleAreaCentered
 import com.lookie.opluskey.ui.style.visibleAreaHeight
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「自定义命令」页的一页（单条 / 多条各一份）—— 从 `CommandScreen.kt` 拆出来。
 //
@@ -166,7 +176,12 @@ internal fun SettingsPage.CommandPage(
             // 「支持的命令格式」卡 —— 说的是「命令输入框里能写什么」，多条命令没有那个
             // 输入框，所以只在单条那一栏出现。
             if (kind == CommandKind.SINGLE) {
-                SectionTitle(I18n.get(Strings.COMMAND_FORMATS_TITLE))
+                SectionTitle(
+                    //  条数拼进小标题（`支持的命令格式 (7)`）—— 与「常用命令」那一段同一写法
+                    text = titleWithCount(I18n.get(Strings.COMMAND_FORMATS_TITLE), COMMAND_FORMAT_LINES.size),
+                    //  行尾说的是那张卡的用法：点一行就把它的前缀填进输入框
+                    trailing = { TitleSmallText(I18n.get(Strings.COMMAND_FORMAT_FILL_HINT)) },
+                )
                 CommandFormatsCard(tick, ui)
             }
 
@@ -488,14 +503,6 @@ private fun SettingsPage.CommandSettingsSection(
 }
 
 /**
- * 读一次 Shizuku 授权最多等多久（毫秒）。
- *
- *  它只是一次 binder 调用，正常是几毫秒；给个上限是为了「读不到」别把那一行卡成永远打不开
- *  —— 界面上宁可按「没授权」显示（点一下还能再去申请），也不要停在一个不动的东西上。
- */
-private const val GRANT_READ_TIMEOUT_MS = 2_000L
-
-/**
  * 「命令设置」那张卡 —— 单条命令**自己**的两项设置：以 root 执行、以 Shizuku 执行。
  * （多条命令的步骤没有各自的开关，它的「命令设置」是间隔时长，见 [CommandSettingsSection]。）
  *
@@ -508,14 +515,19 @@ private const val GRANT_READ_TIMEOUT_MS = 2_000L
  *  · 两条通道就是「这一次以谁的身份起进程」，同时成立没有意义，所以**打开一个就把另一个关掉**。
  *    （执行侧仍先判 Shizuku —— 那只是为了兼容配置里已经两条都开了的旧命令，不是给人用的状态。）
  *
- * ## 开关的勾选状态**跟着授权结果走**，不是自己说开就开
+ * ## 「先有授权，才许打开」—— 但**不拿授权去改已经存好的勾**
  *
- *  两行都是「先有授权，才许打开」：没授权时点一下就是**去申请**，拿到才真的停在「开」上；
- *  拒绝 / 拿不到就退回「关」并弹那句失败提示。判据分两种来源：
- *  · Shizuku 是**能读**的（`Shizuku.checkSelfPermission`，不发弹窗）—— 进这一栏读一次，
- *    所以别处撤了授权，这里的勾也跟着消失；
- *  · root 读不了（探一次 `su` 本身就可能弹一次授权框），只在**按下去那一刻**探：
- *    平时按存的那一档显示，点开时先探、拿到才置真。
+ *  两行都是「打开那一刻去拿授权，拿到才停在开上」：没授权时点一下就是**去申请**，
+ *  拒绝 / 拿不到就退回关并弹那句失败提示（申请途中不锁这一行，见下）。
+ *
+ *  区别在**进页面时读不读**：
+ *  · root 读一次（探 `su`，与真执行同一条判据）—— 机器上已经没了 root 的命令，勾还亮着
+ *    会让人以为这一档是好的；
+ *  · Shizuku **不读**。这一档的授权按 **uid** 记，宿主与模块是两个 uid，进页面时那次读要
+ *    跨进程 bind 模块进程问一句；而它一旦回「没有」（没装 / 那一下没连上 / 授权被撤），
+ *    界面上看到的就是**用户明明存着「开」、编辑时却变成「关」** —— 那不是在报错，是在替他
+ *    改配置。授权状态属于**执行那一刻**：真没授权时按侧键会得到同一句失败提示（文案与这里
+ *    申请失败时一字不差），比一个会自己翻面的勾更诚实。
  *
  *  申请途中**不锁住这一行**：授权框可能被直接关掉（Sui 那边关了框既不给回执、状态也不变），
  *  锁着等一个不会来的结果，看上去就是「一直挂起」。框还在时再点一下最多是再问一次。
@@ -539,20 +551,25 @@ private fun SettingsPage.ExecSwitchCard(
 ) {
     val text = form.single.trim()
     val show = remember(text) { Action.parse(text).usesRoot }
-    //  Shizuku 的授权读得到（见函数头）：初值按「没授权」，读完再纠正 —— 读不到也不能把这一行
-    //  卡在「打不开」上（读的是一次 binder 调用，卡住时界面还得能用）。
-    var shizukuGranted by remember { mutableStateOf(false) }
+    //  「显示执行返回结果」那一行自己的菜单（与卡里那两档开关各一个锚点：这一行弹的是选择层）
+    val outputMenu = rememberMenuState()
     //  正在探 root（那一次 `su` 可能要等管理器弹框）：只在这一行上禁用，避免连点叠两次探测。
     var pendingRoot by remember { mutableStateOf(false) }
-    //  读授权要过 binder（Sui 那一档还要 `Sui.init`），别放在组合 / 主线程上。
-    LaunchedEffect(show) {
+    //  「提示类型 → 流体云」那一档要先挑一颗胶囊图标（选中即落盘，png 由选择器自己写）
+    var pickingOutputIcon by remember { mutableStateOf(false) }
+    //  编辑已有命令**回填表单之后，先看 root 现在还真的有**：配置里存着「以 root 执行」、
+    //  机器上却已经没了 root 时，勾还亮着会让人以为这一档是好的（真按下去只会得到一句失败）。
+    //  初值按「有」：进页面前那几帧不先灭一下再亮（探回来才纠正）。
+    var rootGranted by remember { mutableStateOf(true) }
+    //  key 只取「换了一条命令 / 这一页刚进来」：`form.root` 自己变化（用户点开关）由下面那条路
+    //  当场探过并回填了，不必再探第二次 —— 两次 `su` 在没授权时要弹两次框。
+    //
+    //  **不看配置那一位**：`root = false` 的命令也要探一次 —— 用户要的是「进这一页就能看出这台
+    //  机器上 root 还有没有」。Shizuku 那一行**不探**（原因见函数头）。
+    LaunchedEffect(show, form.editingName) {
         if (!show) return@LaunchedEffect
-        shizukuGranted =
-            withContext(Dispatchers.IO) {
-                withTimeoutOrNull(GRANT_READ_TIMEOUT_MS) {
-                    ShizukuHost.readGranted(context.packageName)
-                }
-            } ?: false
+        val main = Handler(Looper.getMainLooper())
+        RootGrant.request { failure -> main.post { rootGranted = failure == null } }
     }
     //  小标题与卡片一起进退（`AnimatedColumn` 里面自带 `Column`，两行不会叠在一处）
     AnimatedColumn(visible = show) {
@@ -560,12 +577,36 @@ private fun SettingsPage.ExecSwitchCard(
         CardList(
             rows =
                 listOf(
+                    //  返回结果的落点排在**执行身份之前**：先决定「这条命令跑完，输出给不给看」，
+                    //  再决定「它用哪种身份跑」。两件事都只对 `shell:` 成立（整张卡就在 `show` 里）。
+                    CardRow.Item(
+                        title = I18n.get(Strings.COMMAND_OUTPUT_TITLE),
+                        //  副标题就是**当前那一档的名字**（「不显示」/「提示」/…）—— 这一行要说的
+                        //  「现在把结果送到哪」由它回答，点开才是选别的档。
+                        summary = I18n.get(form.output.labelKey()),
+                        icon = PageIcons.CommandOutput,
+                        //  与上面那一行同一个记号：点了要选点什么，不是进下一层
+                        trailing = {
+                            RowEndIcon(
+                                PageIcons.Selector,
+                                tint =
+                                    if (enabled) {
+                                        COUITheme.colorScheme.onSurfaceVariantActions
+                                    } else {
+                                        COUITheme.colorScheme.disabledOnSecondaryVariant
+                                    },
+                            )
+                        },
+                        enabled = enabled,
+                        modifier = Modifier.preciseClickAnchor(outputMenu.anchor),
+                        onClick = { outputMenu.show() },
+                    ),
                     CardRow.Switch(
                         title = I18n.get(Strings.COMMAND_ROOT_TITLE),
-                        summaryOn = I18n.get(Strings.COMMAND_ROOT_DESC_ON),
-                        summaryOff = I18n.get(Strings.COMMAND_ROOT_DESC_OFF),
                         icon = PageIcons.CommandRoot,
-                        checked = form.root,
+                        //  存的是「要 root」，**显示**还要看这次探到的结果（见上面那段 `LaunchedEffect`）：
+                        //  撤了 root 的命令不该还亮着一颗勾。
+                        checked = form.root && rootGranted,
                         // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
                         enabled = enabled && !pendingRoot,
                         onCheckedChange = { on ->
@@ -579,6 +620,9 @@ private fun SettingsPage.ExecSwitchCard(
                                 requestRootGrant { granted ->
                                     pendingRoot = false
                                     form.root = granted
+                                    //  这一刻的探测结果就是上面的显示依据，顺手记下（免得下次进页面
+                                    //  又拿旧值显示一次「没授权」）
+                                    rootGranted = granted
                                     //  两条通道互斥：这一条开了，Shizuku 那条就得关
                                     if (granted) form.viaShizuku = false
                                 }
@@ -587,27 +631,23 @@ private fun SettingsPage.ExecSwitchCard(
                     ),
                     CardRow.Switch(
                         title = I18n.get(Strings.COMMAND_SHIZUKU_TITLE),
-                        summaryOn = I18n.get(Strings.COMMAND_SHIZUKU_DESC_ON),
-                        summaryOff = I18n.get(Strings.COMMAND_SHIZUKU_DESC_OFF),
                         icon = PageIcons.CommandShizuku,
-                        //  存的是「这条命令要用 Shizuku」，可**显示**要连授权一起看：
-                        //  撤了授权的那条命令不该还亮着。
-                        checked = form.viaShizuku && shizukuGranted,
+                        //  存的是什么就显示什么 —— **不拿一次授权读改这个勾**（原因见函数头：
+                        //  授权按 uid 记，读一次要跨进程问，读回来「没有」时不该把用户存的档改显示成关）。
+                        checked = form.viaShizuku,
                         //  **等授权框期间不禁用**：框可能被直接关掉（那就没有任何回执），
                         //  把这一行锁住等一个不会来的结果是「一直挂起」的全部观感。
                         enabled = enabled,
                         onCheckedChange = { on ->
                             if (!on) {
                                 form.viaShizuku = false
-                            } else if (shizukuGranted) {
-                                form.viaShizuku = true
-                                //  两条通道互斥：这一条开了，root 那条就得关
-                                form.root = false
                             } else {
-                                //  没授权 ⇒ 这一步就是去申请（框由 Shizuku / Sui 弹），
-                                //  **结果决定勾选**：关掉框 / 拒绝就退回关。
+                                //  打开这一档 = **当场去拿一次授权**，拿到才停在「开」上 ——
+                                //  与上面「以 root 执行」那一行同一条读法（那里也是每次打开都探一次）。
+                                //  已经授权过时这一次不弹框（`ShizukuHost.requestGrant` 先问一遍状态就回），
+                                //  但**回执照旧给一句**「已获取 Shizuku 权限」：两行都是
+                                //  「点一下会告诉你拿到了没有」，不因中间少一次弹框就少一句话。
                                 requestShizukuGrant { granted ->
-                                    shizukuGranted = granted
                                     form.viaShizuku = granted
                                     //  两条通道互斥：这一条开了，root 那条就得关
                                     if (granted) form.root = false
@@ -618,7 +658,87 @@ private fun SettingsPage.ExecSwitchCard(
                 ),
         )
     }
+    //  四档落点：不显示 / 提示 / 通知 / 流体云 —— 单选，选中那一行行首换成对勾（`selected`）
+    PageMenu(state = outputMenu) {
+        listOf(
+            MenuEntry.Section(
+                title = titleWithCount(I18n.get(Strings.COMMAND_OUTPUT_MENU_TITLE), CommandOutput.entries.size),
+                rows =
+                    CommandOutput.entries.map { mode ->
+                        //  **流体云那一行多两样**：行尾是这颗胶囊当前用的图标（选过才有），副标题是
+                        //  它的名字（`FluidIcons` 的 id，如 `flask2`）—— 那一档的图标是用户自己挑的，
+                        //  光一行「流体云」看不出显示的是哪颗字形。
+                        val fluid = mode == CommandOutput.FLUID
+                        MenuEntry.Row(
+                            title = I18n.get(mode.labelKey()),
+                            summary = if (fluid) form.outputIcon.ifEmpty { null } else null,
+                            icon = mode.icon(),
+                            //  行尾那一格**只在「已经挑过图标」时才画**（`PageMenuPopup` 里
+                            //  `hasSubmenu` 决定画不画、`trailingIcon` 决定画什么）：没挑过时什么都不摆 ——
+                            //  这一档的行尾不该冒出一颗默认的进层箭头，那看起来像「点进去还有一页」，
+                            //  而它只是「还没选图标」。
+                            submenu = fluid && form.outputIcon.isNotEmpty(),
+                            trailingIcon =
+                                if (fluid) {
+                                    FluidIcons.of(form.outputIcon)
+                                } else {
+                                    null
+                                },
+                            selected = form.output == mode,
+                            onPick = {
+                                outputMenu.dismiss()
+                                //  流体云这一档**先挑图标、挑完才算选中**（关掉选择器就什么都没发生）；
+                                //  其余三档点一下即生效，并把上一档挑的图标**清掉** —— 图标只属于
+                                //  流体云那一档，留着会让下次切回来时显示一颗他以为已经换掉的字形。
+                                if (fluid) {
+                                    pickingOutputIcon = true
+                                } else {
+                                    form.output = mode
+                                    form.outputIcon = ""
+                                }
+                            },
+                        )
+                    },
+            ),
+        )
+    }
+    //  图标选择器：选中那一刻 png 已经写好，这里只记 id 并把落点切成流体云
+    FluidIconPicker(
+        show = pickingOutputIcon,
+        onDismiss = { pickingOutputIcon = false },
+        onPick = { id ->
+            pickingOutputIcon = false
+            form.outputIcon = id
+            form.output = CommandOutput.FLUID
+        },
+    )
 }
+
+/**
+ * 这一档落点在界面上叫什么 —— 那一行的小字与菜单行共用这一份。
+ *
+ *  四档的名字**不复用**「支持的命令格式」卡上那几条（`toast: <文字>` 那种写法）：那几条讲的是
+ *  「怎么写」，这里讲的是「送到哪」，读起来是两件事，各自的文案也要各自能改。
+ */
+internal fun CommandOutput.labelKey(): String =
+    when (this) {
+        CommandOutput.NONE -> Strings.COMMAND_OUTPUT_NONE
+        CommandOutput.TOAST -> Strings.COMMAND_OUTPUT_TOAST
+        CommandOutput.NOTIFY -> Strings.COMMAND_OUTPUT_NOTIFY
+        CommandOutput.FLUID -> Strings.COMMAND_OUTPUT_FLUID
+    }
+
+/**
+ * 菜单里那一行的行首 —— 用**这一档落点自己的**图标（提示 / 通知 / 流体云三颗与「支持的命令格式」
+ * 卡同一族），「不显示」用 `eye-off`（闭上了眼睛）。
+ */
+private fun CommandOutput.icon(): ImageVector =
+    when (this) {
+        CommandOutput.NONE -> PageIcons.OutputNone
+        CommandOutput.TOAST -> PageIcons.FormatToast
+        CommandOutput.NOTIFY -> PageIcons.FormatNotify
+        CommandOutput.FLUID -> PageIcons.FormatFluid
+    }
 
 /**
  * 单条命令的正文输入（「命令」那一栏）—— **单行**（多行那一档已按用户口径撤掉）。

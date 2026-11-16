@@ -27,6 +27,15 @@
     -->
 
     <!--
+      仅服务于「被叫醒那一下」：`ShizukuShellService` 要在 startForegroundService 之后 5 秒内
+      转前台（见那个服务的 `onStartCommand`）。`specialUse` 是这一档唯一说得通的类型 —— 它既不是
+      数据同步、也不是媒体播放，就是替宿主把进程拉起来守着一条 binder 通道。
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
       图标走自适应图标（`mipmap-anydpi-v26/ic_launcher.xml`，底色 + 字形两层）。改回单张满幅
       矢量会被启动器当 legacy 图标补白底圆角并缩小。这只是图标属性，与入口无关。
     -->
@@ -94,10 +103,34 @@
 
           `exported=true` 是为了让宿主 bind 得上；一条 `sh -c` 的入口不能对全机开放，所以服务
           自己再按调用方 uid 拦一道（只认自己与 `com.oplus.gesture`，见它的类注释）。
+
+          `foregroundServiceType` 是**被叫醒那一下**要的（见 `ShizukuWakeBridge`）：模块进程没在
+          跑时，只有 `startForegroundService` 那条路能过 AOSP 的「后台不许起服务」—— 而它要求
+          5 秒内 `startForeground`。真机实测（`docs/device/lsposed.md` 四十二）：同样的调用方身份
+          `uid 1000 + 包名 android` 走 `startService` 被 AOSP 拒、走前台那一档才放行。
         -->
         <service
             android:name=".shizuku.ShizukuShellService"
-            android:exported="true" />
+            android:exported="true"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="wake bridge for the side-key host" />
+        </service>
+
+        <!--
+          开机 / 换包后把上面那个服务立成常驻（见 `BootReceiver` 的类注释）。`exported=false` 就够：
+          `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` 都是系统发的，系统身份不受 `exported` 限制；
+          写成 true 只是多开一个可以被第三方广播唤醒的落点。
+        -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

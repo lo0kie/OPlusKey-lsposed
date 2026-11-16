@@ -4,6 +4,9 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
@@ -48,14 +52,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.feedback.CHECKING_HINT_FALLBACK_MS
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_CHECKING
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.retireHint
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.text.CHECKING_HINT
 import com.lookie.opluskey.ui.model.theme.FROSTED_SURFACE_ALPHA
-import com.lookie.opluskey.ui.model.theme.HOST_ALIVE_TIMEOUT_MS
-import com.lookie.opluskey.ui.model.theme.QUERY_ROUNDS
 import com.lookie.opluskey.ui.row.ChipText
 import com.lookie.opluskey.ui.state.signal.HintItem
 import com.lookie.opluskey.ui.style.frosted
@@ -185,20 +188,14 @@ internal fun SettingsPage.PageCheckingHint() {
         //  [HOST_ALIVE_TIMEOUT_MS]（3 秒）才敢下结论 —— 用默认那 2.2 秒，它会在结论出来
         //  之前先自己消失，中间空出一段「什么都没有」的空档，看着像「检查完了、什么也没说」。
         //  所以给一个足够长的兜底，真正的收场在下面那条 effect。
-        hint(CHECKING_HINT, slot = HINT_SLOT_CHECKING, holdMs = CHECKING_HINT_FALLBACK_MS)
+        //  图标转圈：这一条的意思是「还在问」，转圈本身就把这句话说了一半（见 `HintItem.loading`）
+        hint(CHECKING_HINT, slot = HINT_SLOT_CHECKING, holdMs = CHECKING_HINT_FALLBACK_MS, loading = true)
     }
     LaunchedEffect(link.injectChecked) {
         //  自检一跑完就把这条收掉（播退场），「系统侧 / 宿主侧还是旧版」那条紧接着顶上来。
         if (link.injectChecked) retireHint(HINT_SLOT_CHECKING)
     }
 }
-
-/**
- * 「正在检查模块…」那条的**兜底**停留时长 —— 只是防它赖着不走：正常路径是自检一结束就收。
- *
- *  按自检最长那一趟给（[QUERY_ROUNDS] 轮 × [HOST_ALIVE_TIMEOUT_MS]）再留 1 秒余量。
- */
-private const val CHECKING_HINT_FALLBACK_MS = QUERY_ROUNDS * HOST_ALIVE_TIMEOUT_MS + 1000L
 
 /** 「检查中 → 结论」之间那一档停顿 —— 等于提示条退场的那 220ms 再留一点余量。 */
 private const val HINT_HANDOFF_MS = 260L
@@ -297,7 +294,7 @@ private fun HintSlot(
                 bottom = HINT_SHADOW_CAP,
             ),
         ) {
-            HintCapsule(item.text, item.chips, item.icon, backdrop, onScrollMs)
+            HintCapsule(item.text, item.chips, item.icon, item.loading, backdrop, onScrollMs)
         }
     }
 }
@@ -339,6 +336,8 @@ private fun HintCapsule(
     message: String,
     chips: List<String>,
     icon: ImageVector?,
+    /** 前置图标画成转圈的 loading（见 `HintItem.loading`）。 */
+    loading: Boolean,
     backdrop: HazeState?,
     /** 文字比胶囊宽、要滚多久（毫秒）—— 调用方据此把这一条的到期时间往后推。 */
     onScrollMs: (Long) -> Unit,
@@ -354,17 +353,34 @@ private fun HintCapsule(
     var shownText by remember { mutableStateOf(message) }
     var shownChips by remember { mutableStateOf(chips) }
     var shownIcon by remember { mutableStateOf(icon) }
+    var shownLoading by remember { mutableStateOf(loading) }
     val contentAlpha = remember { Animatable(1f) }
-    LaunchedEffect(message, chips, icon) {
-        if (message == shownText && chips == shownChips && icon == shownIcon) return@LaunchedEffect
-        contentAlpha.animateTo(0f, tween(HINT_TEXT_FADE_MS, easing = AccelerateEasing()))
-        shownText = message
-        shownChips = chips
-        shownIcon = icon
-        //  只等到宽度过渡的**尾巴**：淡入与最后那几十毫秒重叠，否则「等都等完了文字才出来」
-        //  会有一拍发条感。这时宽度已经走到九成，配上刚开始涨的 alpha，看不出不同步。
-        delay((HINT_RESIZE_MS - HINT_TEXT_FADE_MS).toLong())
-        contentAlpha.animateTo(1f, tween(HINT_TEXT_FADE_MS, easing = DecelerateEasing()))
+    LaunchedEffect(message, chips, icon, loading) {
+        val changed = message != shownText || chips != shownChips || icon != shownIcon || loading != shownLoading
+        if (changed) {
+            contentAlpha.animateTo(0f, tween(HINT_TEXT_FADE_MS, easing = AccelerateEasing()))
+            shownText = message
+            shownChips = chips
+            shownIcon = icon
+            shownLoading = loading
+            //  只等到宽度过渡的**尾巴**：淡入与最后那几十毫秒重叠，否则「等都等完了文字才出来」
+            //  会有一拍发条感。这时宽度已经走到九成，配上刚开始涨的 alpha，看不出不同步。
+            //
+            //  **那段等待放在 tween 的 `delayMillis` 里，不写成 `delay()`**：写在协程里的 `delay`
+            //  一旦被下一次换句取消，alpha 就停在 0 —— 而紧接着那次 effect 会因为「内容没变」
+            //  直接返回，于是这句话永远半透明（真机：连点「以 Shizuku 执行」，字越来越淡）。
+            contentAlpha.animateTo(
+                1f,
+                tween(
+                    HINT_TEXT_FADE_MS,
+                    delayMillis = HINT_RESIZE_MS - HINT_TEXT_FADE_MS,
+                    easing = DecelerateEasing(),
+                ),
+            )
+        } else if (contentAlpha.value < 1f) {
+            //  内容没变，但上一次换句可能被打断在半透明那一段（同一句话连点就会）—— 补回不透明。
+            contentAlpha.animateTo(1f, tween(HINT_TEXT_FADE_MS, easing = DecelerateEasing()))
+        }
     }
     Box(
         modifier =
@@ -416,11 +432,9 @@ private fun HintCapsule(
             //  图标**不套容器**，直接按 [HINT_ICON_SIZE] 画：库的 `Snackbar` 用 30dp 的容器给
             //  前置图标占位，照抄会把胶囊整条撑高 10dp（真机口径「被撑高太多了」）。这里只让
             //  图标站在一行字的高度里 —— 它比文字略高一点就够，胶囊的高度仍由那行字说了算。
-            Icon(
-                //  调用方没指定就画默认的 alert-circle（见 `PageIcons.HintAlert`）
-                imageVector = shownIcon ?: PageIcons.HintAlert,
-                contentDescription = null,
-                modifier = Modifier.size(HINT_ICON_SIZE),
+            HintLeadingIcon(
+                icon = shownIcon,
+                loading = shownLoading,
                 //  与文字同色：图标是这句话的性质记号，不该比正文更抢眼
                 tint = colors.contentColor,
             )
@@ -446,6 +460,49 @@ private fun HintCapsule(
             }
         }
     }
+}
+
+/**
+ * 提示条的前置图标 —— 静止的一颗，或一颗**转圈的 loading**。
+ *
+ * ## 为什么单独抽出来
+ *
+ *  转圈只该在 `loading` 那几条上跑：`rememberInfiniteTransition` 一旦建起来就一直在推进帧，
+ *  给每条回执都挂一个等于让提示条常驻 60fps（回执两三秒就走，纯白烧）。所以动画只在 `loading`
+ *  为真时创建 —— 判定写在组合里，跟着这一条的内容一起换。
+ *
+ * ## 画的是什么
+ *
+ *  `loading` 为真时用 [PageIcons.HintLoading]（三段圆弧）匀速转一圈 [HINT_SPIN_MS]；否则按调用方
+ *  指定的图标画、没指定就是默认那颗 alert-circle（[PageIcons.HintAlert]）。尺寸与颜色两档一致：
+ *  图标只是这句话的性质记号，不该因为「在转」就更抢眼。
+ */
+@Composable
+private fun HintLeadingIcon(
+    icon: ImageVector?,
+    loading: Boolean,
+    tint: Color,
+) {
+    val spin: Modifier =
+        if (loading) {
+            val angle by
+                rememberInfiniteTransition(label = "hint-loading").animateFloat(
+                    initialValue = 0f,
+                    targetValue = 360f,
+                    animationSpec = infiniteRepeatable(tween(HINT_SPIN_MS, easing = LinearEasing)),
+                    label = "hint-loading-angle",
+                )
+            Modifier.rotate(angle)
+        } else {
+            Modifier
+        }
+    Icon(
+        //  调用方没指定就画默认的 alert-circle（见 `PageIcons.HintAlert`）
+        imageVector = if (loading) PageIcons.HintLoading else icon ?: PageIcons.HintAlert,
+        contentDescription = null,
+        modifier = Modifier.size(HINT_ICON_SIZE).then(spin),
+        tint = tint,
+    )
 }
 
 /**
@@ -598,6 +655,14 @@ private val HINT_ITEM_MARGIN = 4.dp
  *  和那行字一般高、看着是同一条内容就行。
  */
 private val HINT_ICON_SIZE = 18.dp
+
+/**
+ * 那颗 loading 图标转一圈的时长 —— 800ms，匀速。
+ *
+ *  匀速（`LinearEasing`）是有意的：一圈里变速会读成「卡了一下」，而它要表达的恰恰是「一直在转」。
+ *  800ms 比常见的 1s 略快一点：提示条只挂两三秒，太慢的话看不出它在动。
+ */
+private const val HINT_SPIN_MS = 800
 
 /**
  * 图标与文字之间的间距 —— 6dp。图标已经贴着一行字的高度，间距再大就把两者读成两件事。

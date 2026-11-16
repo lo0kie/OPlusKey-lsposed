@@ -11,4 +11,6 @@
     <string name="app_name">OPlusKey</string>
     <string name="module_description">一加 / OPPO 侧键（Plus Key）重映射，支持单击、双击与长按，模块入口：系统设置 - 快捷键</string>
     <string name="entry_open_failed">无法打开：请先打开一次 系统设置 › 快捷键，再从模块入口进来</string>
+    <string name="wake_channel">后台通道</string>
+    <string name="keep_text">后台通道已开启 —— 侧键的 Shizuku 命令由本应用执行</string>
 </resources>

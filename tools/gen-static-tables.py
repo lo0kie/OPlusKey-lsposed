@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-r"""静态表生成器 —— 两张**生成物**：`Strings.kt` 与 `CommonCommandsTable.kt`。
+r"""静态表生成器 —— `Strings.kt` 这一张**生成物**。
 
-## 两张表、两个源
+## 一个源
 
 | 生成物 | 源 | 加一条时要改哪里 |
 | --- | --- | --- |
 | `core/i18n/Strings.kt` | `app/src/main/assets/locales/zh-CN.json` 的键集合 | 两份字典各加一行 |
-| `core/present/CommonCommandsTable.kt` | `core/tables/common-commands.json` | 那张表里加一项 |
 
 `Strings` 是**键名常量**：`zh-CN.json` 里有一个键，这里就有一条 `const val`。改动之前这两份
 靠 `tools/check-i18n-keys.py` 事后对账 —— 删一条文案要记得同时删常量与两份字典（本项目就在
 「删了常量、忘删字典」上踩过一次）。生成之后这件事变成单向：字典是源，常量是投影。
+
+（「常用命令」那四条已经不在这张生成表里：它们是普通自定义命令，第一次进设置页时补进命令库，
+见 `ui/state/page/CommandSeed`。补完之后增删改查都只认命令库。）
 
 ## 为什么是「生成」而不是「运行时读 JSON」
 
@@ -53,8 +55,6 @@ REPO = Path(__file__).resolve().parent.parent
 STRINGS = REPO / "core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt"
 ZH = REPO / "app/src/main/assets/locales/zh-CN.json"
 EN = REPO / "app/src/main/assets/locales/en.json"
-COMMANDS_SRC = REPO / "core/tables/common-commands.json"
-COMMANDS_OUT = REPO / "core/src/main/java/com/lookie/opluskey/core/present/CommonCommandsTable.kt"
 
 CONST = re.compile(r'^    const val (\w+) = "([^"]+)"$')
 
@@ -82,41 +82,6 @@ STRINGS_HEADER = """package com.lookie.opluskey.core.i18n
 @Suppress("LargeClass")
 object Strings {
 """
-
-COMMANDS_HEADER = """package com.lookie.opluskey.core.present
-
-import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.model.Action
-
-/**
- * 「常用命令」那张表 —— **生成物，改 `core/tables/common-commands.json`**。
- *
- *  生成器是 `tools/gen-static-tables.py`。每一项的字段含义见 [CommonCommands.Entry]；
- *  `name` / `summary` 是**字典键**，这里已经翻成 `Strings.X` 常量 —— 键写错当场编译失败，
- *  不会退成界面上那一行显示键名的样子。
- *
- *  兜底文案（`nameFallback` / `summaryFallback`）留在表里是对的：这两个键是**动态键**（存在
- *  表里、编译器看不见它有没有进字典），字典读不到时（宿主主进程那条路见
- *  `DictionaryLoader`）只有它能把这行念出来。
- */
-internal val COMMON_COMMAND_ENTRIES: List<CommonCommands.Entry> =
-    listOf(
-"""
-
-# 动作前缀 → `Action` 里那个常量名。表里写的是**完整 token**，生成时把前缀换成常量，
-#  后一半留字面量 —— 这样 SHELL_PREFIX 改了口径，这张表不用跟着改。
-PREFIXES = {
-    "shell:": "SHELL_PREFIX",
-    "keyevent:": "KEYEVENT_PREFIX",
-    "intent:": "INTENT_PREFIX",
-    "notify:": "NOTIFY_PREFIX",
-    "fluid:": "FLUID_PREFIX",
-    "toast:": "TOAST_PREFIX",
-    "shortcut:": "SHORTCUT_PREFIX",
-    "setting:": "SETTING_PREFIX",
-    "oplus:": "OPLUS_PREFIX",
-    "app:": "APP_PREFIX",
-}
 
 
 class Entry:
@@ -245,61 +210,7 @@ def render_strings() -> str:
     return "\n".join(out)
 
 
-def render_step(step: str) -> str:
-    """`shell:am start …` → `Action.SHELL_PREFIX + "am start …"`（前缀符号化，口径只写一处）。"""
-    for prefix, symbol in PREFIXES.items():
-        if step.startswith(prefix):
-            return f'            step = Action.{symbol} + "{step[len(prefix):]}",'
-    return f'            step = "{step}",'
-
-
-def render_commands() -> str:
-    rows = load_json(COMMANDS_SRC)
-    if not isinstance(rows, list) or not rows:
-        sys.exit(f"静态表：{COMMANDS_SRC} 必须是非空数组")
-
-    # 字典键 → 常量名（键写错时这里会当场报出来，而不是生成一个编译不过的文件）。
-    zh = load_json(ZH)
-    strings_text, _eol = read_source(STRINGS)
-    entries, _tail = parse_strings(strings_text)
-    by_key = {entry.key: entry.name for entry in entries}
-    by_key.update({key: derive_name(key) for key in zh if key not in by_key})
-
-    out = [COMMANDS_HEADER.rstrip("\n")]
-    ids: set[str] = set()
-    for row in rows:
-        missing = [
-            field
-            for field in ("id", "brand", "root", "name", "nameFallback", "summary", "summaryFallback", "step")
-            if field not in row
-        ]
-        if missing:
-            sys.exit(f"静态表：{COMMANDS_SRC} 的 {row.get('id', '?')} 缺字段 {missing}")
-        if row["id"] in ids:
-            sys.exit(f"静态表：id 重复：{row['id']}（它同时是写进配置的 `cmd:` 取值）")
-        ids.add(row["id"])
-        for field in ("name", "summary"):
-            if row[field] not in by_key:
-                sys.exit(f"静态表：{row['id']} 的 {field} 指向一个字典里没有的键：{row[field]}")
-
-        if row.get("note"):
-            out.append(f'        // {row["note"]}')
-        out.append("        CommonCommands.Entry(")
-        out.append(f'            id = "{row["id"]}",')
-        out.append(f'            brand = CommonCommands.Brand.{row["brand"]},')
-        out.append(f'            root = {"true" if row["root"] else "false"},')
-        out.append(f'            nameKey = Strings.{by_key[row["name"]]},')
-        out.append(f'            nameFallback = "{row["nameFallback"]}",')
-        out.append(f'            summaryKey = Strings.{by_key[row["summary"]]},')
-        out.append(f'            summaryFallback = "{row["summaryFallback"]}",')
-        out.append(render_step(row["step"]))
-        out.append("        ),")
-    out.append("    )")
-    out.append("")
-    return "\n".join(out)
-
-
-#  两张生成物里**允许出现**的顶层声明 —— 整份文件重写，多出来的都是别人的代码。
+#  生成物里**允许出现**的顶层声明 —— 整份文件重写，多出来的都是别人的代码。
 #
 #  加这一道闸的来路：2026-11-16 有一次合并把 `ClockCatalog` / `CommonCommands` 等几份并进了
 #  `CommonCommandsTable.kt`，跑一次生成器就把它们连内容一起抹掉了 —— 编译当场崩，而生成器
@@ -307,7 +218,6 @@ def render_commands() -> str:
 #  生成吃掉。所以这里宁可拒绝执行，也不写。
 EXPECTED_DECLS = {
     STRINGS: {"Strings"},
-    COMMANDS_OUT: {"COMMON_COMMAND_ENTRIES"},
 }
 
 #  顶格声明（行首无空白）：生成物里的成员都在对象 / 列表里面，缩进着，不会误伤。
@@ -332,9 +242,9 @@ def main(argv: list[str]) -> int:
     if not check and len(argv) > 1:
         sys.exit(f"用法：{Path(sys.argv[0]).name} [--check]")
 
-    targets = [(STRINGS, render_strings()), (COMMANDS_OUT, render_commands())]
+    targets = [(STRINGS, render_strings())]
 
-    #  **先查「有没有别人的代码」再谈覆盖**：两张表都是整份重写，混进去的声明会被静默抹掉。
+    #  **先查「有没有别人的代码」再谈覆盖**：生成物整份重写，混进去的声明会被静默抹掉。
     dirty = [(path, foreign_decls(path, EXPECTED_DECLS[path])) for path, _ in targets]
     dirty = [(path, extra) for path, extra in dirty if extra]
     if dirty:
@@ -365,7 +275,7 @@ def main(argv: list[str]) -> int:
         return 0
 
     if not stale:
-        print("静态表：两张生成物都与源一致。")
+        print("静态表：生成物与源一致。")
         return 0
 
     print(f"[不达标] {len(stale)} 份生成物过期：")

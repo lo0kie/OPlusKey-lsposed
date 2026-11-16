@@ -21,6 +21,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.core.present.commandExecIdentity
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.ModeMenuPopups
@@ -318,12 +319,15 @@ private fun SettingsPage.CustomTile(
             modifier = cellModifier,
             // 与内置网格同一判据。
             enabled = enabled && linkReady,
-            // 标题下面那行小字 = **命令间隔时长**（`stepDelayMs`）。
-            // 只有多条命令有这个值 —— 单条只有一步、用不到它，所以那种格子不画。
+            // 标题下面那行小字 —— **每一档都有一句要说的**，只是内容不同：
+            //  · 多条命令：命令间隔时长（`stepDelayMs`）—— 只有它有多步，单条用不到；
+            //  · 单条命令：执行身份（「以 root 执行」/「以 Shizuku 执行」），两样都不是时不画。
+            //  两条通道的口径在 `commandExecIdentity` 一处（与命令详情浮层同源）：
+            //  这里再判一遍，改口径时就会漏掉一处。
             subtitle =
-                cmd
-                    ?.takeIf { it.kind == CommandKind.SERIAL }
-                    ?.let { durationText(it.stepDelayMs) },
+                cmd?.let { c ->
+                    if (c.kind == CommandKind.SERIAL) durationText(c.stepDelayMs) else commandExecIdentity(c)
+                },
             // **已经选中的再点一次 = 「我要改它」**，不是「重新绑一遍」，
             // 所以走编辑；没选中时才是「选中绑定」。这一格不再接长按 ——
             // 「选中 → 再点一次」两步本来就走得通，长按只是同一件事的第二个入口。

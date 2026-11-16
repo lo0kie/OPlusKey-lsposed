@@ -3,6 +3,7 @@ package com.lookie.opluskey.core.config
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.CommandOutput
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.isSerialCommand
@@ -10,7 +11,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 
@@ -23,6 +27,17 @@ object CommandLibrary {
     const val VERSION = 1
 
     /**
+     * 预设命令补齐到第几版 —— 写进命令库文件的 `seed` 位，只增不减。
+     *
+     *  用户删掉某条预设之后，这个标记保证它不会被下一次进设置页又补回来；以后要再加预设就抬这一位。
+     *  与 [VERSION] 分开：格式版本会因为别的字段变，不能拿来当「补过没有」的判据。
+     *
+     *  3 = 按预设的默认开态（微信两条开 root、支付宝两条不开）修正已有命令的 root 位；
+     *  2 = 命令与「常用命令」清单里的引用一起补；1 是只补命令的旧标记。
+     */
+    const val SEED_VERSION = 3
+
+    /**
      * 读命令库的结果 —— 与 [ConfigStore.Load] **同一条口径**：「读不懂」必须与「空」分两态。
      *
      *  为什么这条纪律在命令库上更要紧：界面把空表当真相之后，用户**随便改一条命令**就会
@@ -30,9 +45,14 @@ object CommandLibrary {
      *  主配置那边靠这三态 + `configReadOnly` 挡住同一件事，命令库原来没有，只有个空表兜底。
      */
     sealed interface Load {
-        /** 读到了（可能是空表 —— 用户确实一条都没建）。 */
+        /**
+         * 读到了（可能是空表 —— 用户确实一条都没建）。
+         *
+         * @param seed 文件里记的「预设已补齐到第几版」；老文件没有这一位，按 0 算
+         */
         data class Ok(
             val commands: List<Command>,
+            val seed: Int = 0,
         ) : Load
 
         /** 文件不存在（首装 / 刚清过数据）—— 空表就是真相，可以写回。 */
@@ -47,6 +67,9 @@ object CommandLibrary {
     //  **同字面量不同义**（命令库版本 / 主配置版本 / 导出信封版本各一个），所以常量名带上前缀
     //  区分 —— 别把它们并成一个：它们的版本号各涨各的。
     private const val KEY_LIBRARY_COMMANDS = "commands"
+
+    /** 「预设命令已补齐到第几版」—— 与 `commands` 同一层，缺键按 0。 */
+    private const val KEY_LIBRARY_SEED = "seed"
 
     /** 清洗命令名：去掉换行（换行会撑开列表行），掐掉首尾空白。存库 / 比对用。 */
     fun sanitizeName(raw: String): String = sanitizeNameInput(raw).trim()
@@ -80,8 +103,10 @@ object CommandLibrary {
      * 先拿元素、再逐条解码，而不是整份 `decodeFromString`：命令库的纪律是**坏一条只丢一条**
      * （见 [parse] 的 KDoc），整份解码会让一条手改坏的条目带走整个命令库。
      */
+    private fun libraryRoot(text: String): JsonObject? = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull()
+
     private fun commandElements(text: String): JsonArray? =
-        runCatching { json.parseToJsonElement(text).jsonObject[KEY_LIBRARY_COMMANDS]?.jsonArray }.getOrNull()
+        runCatching { libraryRoot(text)?.get(KEY_LIBRARY_COMMANDS)?.jsonArray }.getOrNull()
 
     /** 解一条命令；类型不对 / 认不出 → `null`（调用方决定是跳过还是整份判坏）。 */
     private fun decodeCommand(e: JsonElement): Command? = runCatching { toCommand(json.decodeFromJsonElement<CommandDto>(e)) }.getOrNull()
@@ -111,6 +136,8 @@ object CommandLibrary {
                     single = dto.single,
                     root = dto.root,
                     viaShizuku = dto.viaShizuku,
+                    output = CommandOutput.fromId(dto.output),
+                    outputIcon = dto.outputIcon,
                 )
             }
 
@@ -122,6 +149,8 @@ object CommandLibrary {
                     stepDelayMs = dto.stepDelayMs.coerceIn(Command.MIN_STEP_DELAY_MS, Command.MAX_STEP_DELAY_MS),
                     root = dto.root,
                     viaShizuku = dto.viaShizuku,
+                    output = CommandOutput.fromId(dto.output),
+                    outputIcon = dto.outputIcon,
                 )
             }
         }
@@ -203,9 +232,14 @@ object CommandLibrary {
             sanitizeName(dto.name).isNotEmpty() && CommandKind.fromId(dto.kind) == null
         }.getOrDefault(false)
 
-    /** 序列化成命令库文本，缩进两格、末尾一个换行（与老格式一致）。 */
+    /**
+     * 序列化成命令库文本，缩进两格、末尾一个换行（与老格式一致）。
+     *
+     *  写出的 `seed` 一律是 [SEED_VERSION]：任何一次落盘都表示「这一份已经看过预设」——
+     *  导入 / 新建配置写进来的空库因此不会被下一次进设置页补上那几条。
+     */
     fun serialize(commands: List<Command>): String =
-        json.encodeToString(CommandLibraryDto(VERSION, commands.map { CommandDto.of(it) })) + "\n"
+        json.encodeToString(CommandLibraryDto(VERSION, commands.map { CommandDto.of(it) }, SEED_VERSION)) + "\n"
 
     /**
      * 读命令库（三态）。文件不存在 ⇒ [Load.Absent]；**文件在却读不出来**（权限 / IO）/ 外皮解不开 /
@@ -251,12 +285,14 @@ object CommandLibrary {
         }
 
     private fun parseState(text: String): Load {
+        val root = libraryRoot(text)
         val elements =
-            commandElements(text) ?: run {
+            runCatching { root?.get(KEY_LIBRARY_COMMANDS)?.jsonArray }.getOrNull() ?: run {
                 // 外皮剥开了、正文却不是合法 JSON，或正文里没有那一段 ⇒ 文件坏了，不是「用户没有命令」
                 XLog.w("读命令库：正文不是合法 JSON 或没有 $KEY_LIBRARY_COMMANDS 这一段 ⇒ 按读不懂处理")
                 return Load.Unreadable
             }
+        val seed = (root?.get(KEY_LIBRARY_SEED) as? JsonPrimitive)?.intOrNull ?: 0
         val commands = parse(text)
         // 「有元素、但一条都认不出」不是空表：那是整份格式变了解析不了。当 Ok(empty) 交出去，
         //  界面下一次保存就会把这张空表写回、把用户的命令全删掉。
@@ -264,7 +300,7 @@ object CommandLibrary {
             XLog.w("读命令库：${elements.size} 条一条都认不出 ⇒ 按读不懂处理（不拿空表覆盖）")
             return Load.Unreadable
         }
-        return Load.Ok(commands)
+        return Load.Ok(commands, seed)
     }
 
     /**
@@ -384,6 +420,11 @@ object CommandLibrary {
 internal data class CommandLibraryDto(
     val version: Int = 0,
     val commands: List<CommandDto> = emptyList(),
+    /**
+     * 预设命令补齐到第几版（见 `CommandLibrary.SEED_VERSION`）。老文件缺键 ⇒ 0 ⇒ 下次进设置页补一次。
+     * 每次落盘都写成当前版本：导入 / 新建的空库因此不会被补预设。
+     */
+    val seed: Int = 0,
 )
 
 /**
@@ -406,6 +447,10 @@ internal data class CommandDto(
     val root: Boolean = true,
     /** 是否经 Shizuku 执行（同上：只有 `shell:` 用得上，缺键 ⇒ 不走）。 */
     val viaShizuku: Boolean = false,
+    /** 返回结果显示到哪（`CommandOutput.id`）；缺键 ⇒ 空串 ⇒ 读成「不显示」那一档。 */
+    val output: String = "",
+    /** 流体云那一档用的图标 id（`FluidIcons`）；缺键 ⇒ 空串 ⇒ 胶囊不带图标。 */
+    val outputIcon: String = "",
 ) {
     companion object {
         fun of(c: Command): CommandDto =
@@ -417,6 +462,8 @@ internal data class CommandDto(
                 stepDelayMs = c.stepDelayMs,
                 root = c.root,
                 viaShizuku = c.viaShizuku,
+                output = c.output.id,
+                outputIcon = c.outputIcon,
             )
     }
 }

@@ -8,6 +8,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.CommandOutput
 
 // 页面用到的两个状态容器：`CommandDraft` 是纯表单模型，`FallbackOwners` 是宿主不给 owner
 // 时的兜底实现。两者都不引用外层类的任何东西，从 `ui/SettingsPage` 原样拆出（去掉 `inner`）。
@@ -66,6 +67,21 @@ internal class CommandForm(
     var viaShizuku by mutableStateOf(false)
 
     /**
+     * 这条命令跑完之后把**返回结果显示到哪**（「命令设置 → 显示执行返回结果」那一行）。
+     *
+     *  与 [root] / [viaShizuku] 同一档：只对 `shell:` 有意义、每条命令自己的选择。
+     */
+    var output by mutableStateOf(CommandOutput.DEFAULT)
+
+    /**
+     * 「提示类型 = 流体云」时那颗胶囊图标（`FluidIcons` 的 id，空串 = 不带图标）。
+     *
+     *  它不写进命令正文（与 `fluid:` 那一档不同）：正文是命令本身，图标只是结果的装饰，
+     *  存成独立一位才不会因为换图标改掉一条命令的指纹。
+     */
+    var outputIcon by mutableStateOf("")
+
+    /**
      * 「点击已保存的命令时可编辑」—— 加载后记着原名，UI 据此把卡片标题 / 提交按钮切成
      * 「修改命令 / 修改」；`addCommand` 据此判「名字改没改」（改了 = 真替换，没改 = 原地覆盖）。
      *
@@ -98,6 +114,8 @@ internal class CommandForm(
         stepDelayMs = Command.DEFAULT_STEP_DELAY_MS
         root = false
         viaShizuku = false
+        output = CommandOutput.DEFAULT
+        outputIcon = ""
         editingName = null
         loaded = null
     }
@@ -143,6 +161,8 @@ internal class CommandForm(
         //  这一版之前存下来的，读进来时归一成 Shizuku（执行侧本来也是先判它）。
         viaShizuku = cmd.viaShizuku
         root = cmd.root && !cmd.viaShizuku
+        output = cmd.output
+        outputIcon = cmd.outputIcon
         editingName = cmd.name
         // 快照按**折过之后**那份记：只改表单不动它，[CommandDraft.dirty] 就是「与它比有没有变」——
         //  记原文的话，打开一条带换行的老命令会立刻被判成「改过」，退出时白问一句。
@@ -299,6 +319,18 @@ internal class CommandDraft {
         get() = form.viaShizuku
         set(value) {
             form.viaShizuku = value
+        }
+
+    var output: CommandOutput
+        get() = form.output
+        set(value) {
+            form.output = value
+        }
+
+    var outputIcon: String
+        get() = form.outputIcon
+        set(value) {
+            form.outputIcon = value
         }
 
     var editingName: String?

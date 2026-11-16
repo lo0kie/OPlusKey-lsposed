@@ -39,11 +39,11 @@ import com.lookie.opluskey.ui.PageDebugChannel
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.onDebugCommand
-import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.LocalDisabledHint
 import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.hintReason
 import com.lookie.opluskey.ui.feedback.tickNow
 import com.lookie.opluskey.ui.model.icon.IconTint
 import com.lookie.opluskey.ui.model.icon.PrewarmActionIcons
@@ -171,9 +171,10 @@ internal fun SettingsPage.PageContent() {
             //  `hint` 在**调用那一刻**才读，每次重组换一个新实例会让所有读它的控件白白重组一遍。
             //  卡片行的「这一行为什么不能点」—— **与整页那条同一个槽位**：
             //  行级说法与本页原因共用一个位，连点几行只会改同一条提示里的字，不叠条。
+            //  落哪一位由那句话自己定（「还在检查」要落回检查那一位），见 `hintReason`。
             LocalDisabledHint provides
                 remember {
-                    { t: HintText -> hint(t.template, slot = HINT_SLOT_DISABLED, chips = t.chips) }
+                    { t: HintText -> hintReason(t) }
                 },
             //  能点的行默认振一下（见 `LocalTick`）：控件层拿不到页面实例，走这一条下来。
             //  `remember` 住同一个理由：每次重组换新实例会让读它的控件白白重组。
@@ -187,12 +188,11 @@ internal fun SettingsPage.PageContent() {
             //  —— 见 `patches/coui/0008-disabled-click-explains.patch`。
             //  `remember` 住这个 lambda：`hint` / `disabledClickReason()` 都在**调用那一刻**才读，
             //  每次重组换一个新实例会让所有读它的控件白白重组一遍。
-            //  同一个语义位（[HINT_SLOT_DISABLED]）：连点几下是这一条在改字，不叠一串
+            //  落位同样交给 `hintReason`：连点几下是这一条在改字，不叠一串
             LocalDisabledClick provides
                 remember {
                     {
-                        val reason = disabledClickReason()
-                        hint(reason.template, slot = HINT_SLOT_DISABLED, chips = reason.chips)
+                        hintReason(disabledClickReason())
                     }
                 },
         ) {

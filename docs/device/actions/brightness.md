@@ -137,8 +137,10 @@ settings put system screen_brightness 1500      # Display Brightness 仍是 1800
   抛这句；同一段代码写 `screen_brightness`（`PUBLIC_SETTINGS`）成功。小布 `com.heytap.speechassist`
   的 privateFlags 里有 `PRIVILEGED`（`/product/priv-app`）⇒ 它写得进去，不是用了什么特殊 API。
   `settings` CLI 走 shell（uid 2000）也不受限。
-- 因此自动亮度那一档只有两条路：**走 root（uid 0）把两个键写下去**，或先关掉自动亮度再写
-  `screen_brightness`。注入侧接不了这一棒 —— system_server 里没有可用的 `ContentResolver`（六之五）。
+- 因此自动亮度那一档只有两条路：以 uid 0 / 1000 / 2000 之一把 adj 写下去，或先关掉自动亮度再写
+  `screen_brightness`。uid 0 要 root、uid 2000 要 Shizuku、uid 1000 那一侧又**没有可用的
+  `ContentResolver`**（六之五）—— 三条身份都不借，所以**现在走的是后一条**（38.2 第 4 步里
+  ColorOS 自己那一档，实现见 `BrightnessAction`）。代价写在「已知限制」里：这一档会把自动亮度关掉。
 - SettingsProvider 的 `SettingsFilter` 只改写 `screen_off_timeout`，别的键原样放行 —— 写
   `screen_brightness` 不会被换值，也不会被丢（仍要 `WRITE_SETTINGS`）。
 
@@ -185,14 +187,16 @@ settings，读到的正是写进去的新值 ⇒ 那一刻才对上（现象与�
 宿主 `com.oplus.gesture` 只有 `WRITE_SETTINGS` 与 `DEVICE_POWER` ⇒ 调不了；小布带 `PRIVILEGED` ⇒ 能调。
 system_server（uid 1000）能调，模块已有跨进程桥（`StatusBarBridge` + `asSystem`）。
 
-**现在的做法（2026-11-04 实现）**：宿主算好 raw 之后先发一条
+**现在的做法（2026-11-04 实现，2026-11-16 改为「先落库再关自动亮度」）**：宿主算好 raw 之后先发一条
 `StatusBarBridge.CMD_BRIGHTNESS`（`brightness` extra = raw），注入侧 `BrightnessBridge.apply()`
-在 system_server 里以自身身份（`asSystem`）调 `setTemporaryBrightness(0, raw)` +
-`setTemporaryAutoBrightnessAdjustment(raw)`，然后再由宿主写库 —— 顺序与小布一致。
+在 system_server 里以自身身份（`asSystem`）调 `setTemporaryBrightness(0, raw)` 让背光立刻跟上；
+然后宿主写两个**公开**键：先把 `screen_brightness` 落库，再把 `screen_brightness_mode` 写成 0
+（等于关掉自动亮度）。顺序是先落库再关 —— 反过来那一刻显示会先跳回上次手动档的旧值。
 
-写库仍留在宿主：自动亮度下要写的 `screen_auto_brightness_adj` 是 `PRIVATE_SETTINGS`，宿主只能走
-root；而 system_server 侧**没有可用的 `ContentResolver`**（六之五），写库这条它接不了。所以现在
-是「注入侧负责让条刷新、宿主负责把值存下来」，root 只在自动亮度那一档用。
+小布那一步的第二句 `setTemporaryAutoBrightnessAdjustment(raw)` **不调**：它是「自动亮度下的临时
+偏移」语义，调完就被 DPC 消费掉（`dumpsys display`：`mTemporaryAutoBrightnessAdjustment=NaN`、
+`mAppliedTemporaryAutoBrightnessAdjustment=false`）；而且它正是 38.4 那道「背光真变了也不发 display
+通知」的闸门条件之一。这一档已经不再保留自动亮度，没有它要表达的东西。
 
 ## 38.4 「有时候还是不更新」：自动亮度下 `screen_brightness` 的 onChange 被 SystemUI 丢掉（反编译 SystemUI + services + 真机，2026-11-04，PLK110 / ColorOS 17）
 

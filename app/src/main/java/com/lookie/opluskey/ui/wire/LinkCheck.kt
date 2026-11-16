@@ -652,6 +652,13 @@ internal fun SettingsPage.disabledClickReason(): HintText {
             )
         }
 
+        //  自检还没跑完：这一下的答案就是那句「正在检查」，而它也是页面顶上那条 loading 提示的
+        //  原话 —— 标成 `checking` 让它落回检查那一位（见 `SettingsPage.hintReason`），
+        //  否则屏幕上会出现两行同样的字、一行转圈一行 info。
+        !f.injectChecked -> {
+            HintText(CHECKING_HINT, checking = true)
+        }
+
         //  这一项自己没有原因 ⇒ 才轮到「整页为什么不对」（重启 / 勾作用域那几句）；
         //  页面是通的、这一项仍然点不动（比如行要求先选一颗键）：说结论，不编一个「没就绪」
         else -> {

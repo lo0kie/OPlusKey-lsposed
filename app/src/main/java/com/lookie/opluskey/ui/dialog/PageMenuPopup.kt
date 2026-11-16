@@ -35,10 +35,9 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.HEADER_BORDER_ALPHA
-import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.TickHapticScope
-import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.hintReason
 import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.MENU_ICON_SIZE
@@ -734,5 +733,6 @@ private fun SettingsPage.tapDisabledRow(
     //  **空串当没有**：`?:` 只在 `null` 时才落到页面那条统一原因，写成 `""` 的行会让这次点击
     //  变成「什么都没说」，而屏幕上还留着上一条提示（用户口径：空文案会回退到上一个消息文案）。
     val say = hintText?.takeIf { it.isNotBlank() }?.let { HintText(it, hintChips) } ?: disabledClickReason()
-    hint(say.template, slot = HINT_SLOT_DISABLED, chips = say.chips)
+    //  落哪一位由那句话定（「还在检查」要落回检查那一位，见 `hintReason`）
+    hintReason(say)
 }
