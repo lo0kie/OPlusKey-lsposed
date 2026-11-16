@@ -107,6 +107,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.Photo
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.Pin
+import io.github.lyxnx.compose.ui.tablericons.outline.Pinned
+import io.github.lyxnx.compose.ui.tablericons.outline.PinnedOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Plane
 import io.github.lyxnx.compose.ui.tablericons.outline.Plug
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
@@ -714,6 +716,18 @@ internal object PageIcons {
      *  所以字形要表达的是「钉住了」而不是「可以选择要不要」。
      */
     val PinnedInBinding: ImageVector get() = TablerIcons.Outline.Pin
+
+    /**
+     * 「固定」那一档 —— `pinned`（带底座的那颗图钉），给编辑态右下角那颗按钮用。
+     *
+     *  与 [PinnedInBinding] 的 `pin` 分开：那一颗是**行尾的静态标记**（说的是「这条已固定」），
+     *  这两颗是**按钮的两档**（说的是「按下去会固定 / 会取消固定」）。按钮那两颗在画的时候
+     *  还会顺时针转 45°（见 `CommonCommandsEditFabs`），看着像斜插进去。
+     */
+    val Pinned: ImageVector get() = TablerIcons.Outline.Pinned
+
+    /** 「取消固定」那一档 —— `pinned-off`。 */
+    val PinnedOff: ImageVector get() = TablerIcons.Outline.PinnedOff
 
     /**
      * 「图标」那一行的行首 —— `photo`（用户指定）。

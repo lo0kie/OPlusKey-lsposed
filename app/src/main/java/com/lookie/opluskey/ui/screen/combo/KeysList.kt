@@ -338,22 +338,29 @@ internal fun SettingsPage.removePicked(): Boolean {
 }
 
 /**
- * 勾中的项里**还有没有开着的**（按键 + 组合按键）。
+ * 勾中的项是不是**全都开着**（按键 + 组合按键）。
  *
  *  这一条同时决定两件事：那颗 FAB 显示「停用」还是「启用」、以及按下去之后全部置成哪一档。
  *  收成一处是因为两边各算一次就会出现「图标写着停用、按下去却全启用了」这种自相矛盾。
+ *
+ *  **判「全都」而不是「还有没有」**（用户口径）：勾里混杂了开与关时，这一下按**启用**走 ——
+ *  只有整批本来就开着，才轮到停用。这样连按两下必定来回翻转，「取反一次还剩一半开着」那种
+ *  像什么都没发生的结果不会出现。
  */
-internal fun pickedAnyEnabled(cfg: Config): Boolean =
-    //  不看 `isCustom`：内置侧键也能被勾、也能停用（它只是删不掉），漏掉它会让那颗按钮
+internal fun pickedAllEnabled(cfg: Config): Boolean {
+    //  不看 `isCustom`：内置侧键也能被勾、也能停用（它只是删不掉），漏掉它会让这颗按钮
     //  判成「全关着」，于是一按就把侧键也打开。
-    cfg.keys.any { (id, key) -> id.id in KeysEditState.pickedKeys && key.enabled } ||
-        cfg.combos.any { it.id in KeysEditState.pickedCombos && it.enabled }
+    val rows =
+        cfg.keys.filter { (id, _) -> id.id in KeysEditState.pickedKeys }.map { it.value.enabled } +
+            cfg.combos.filter { it.id in KeysEditState.pickedCombos }.map { it.enabled }
+    return rows.isNotEmpty() && rows.all { it }
+}
 
 /**
  * 把编辑态里勾中的那些项**统一**改成「启用 / 停用」—— 右下角那颗开关按钮调的。
  *
  *  **不是逐项取反**：勾了「一开一关」两项，取反之后还是一开一关 —— 按下去像什么都没发生。
- *  判据是 [pickedAnyEnabled]：只要还有开着的就全部停用，全关才全部启用。
+ *  判据是 [pickedAllEnabled]：整批都开着才全部停用，否则（含混杂）一律启用。
  *
  *  与组合按键的联动（用户口径）：
  *   · **停用 ⇒ 连带停用**：含这些键的组合一并停（少一颗键的组合本来就跑不起来）；
@@ -367,7 +374,7 @@ internal fun SettingsPage.togglePickedEnabled(): Boolean {
     val keyIds = KeysEditState.pickedKeys
     val comboIds = KeysEditState.pickedCombos
     if (keyIds.isEmpty() && comboIds.isEmpty()) return false
-    val turnOn = !pickedAnyEnabled(cfg)
+    val turnOn = !pickedAllEnabled(cfg)
     //  含这些键的组合（不管开没开）
     val usingKeys = cfg.combos.filter { combo -> combo.keys.any { it in keyIds } }
     if (turnOn) {

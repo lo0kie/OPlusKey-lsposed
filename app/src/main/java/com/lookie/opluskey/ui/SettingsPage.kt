@@ -32,6 +32,7 @@ import com.lookie.opluskey.ui.state.binding.KeysEditState
 import com.lookie.opluskey.ui.state.binding.SceneBinding
 import com.lookie.opluskey.ui.state.command.CommandDraftState
 import com.lookie.opluskey.ui.state.command.CommandListEditState
+import com.lookie.opluskey.ui.state.common.CommonCommandsEditState
 import com.lookie.opluskey.ui.state.page.ConfigState
 import com.lookie.opluskey.ui.state.page.HostLinkState
 import com.lookie.opluskey.ui.state.picker.AppPickerState
@@ -249,6 +250,8 @@ internal class SettingsPage(
         if (inKeysEdit()) return false
         //  「命令列表」的编辑态同理：那一退是「退出编辑」，人留在这页
         if (inCommandsEdit()) return false
+        //  「常用命令」页的编辑态：同一条账（见 [inCommonCommandsEdit]）
+        if (inCommonCommandsEdit()) return false
         return navStack.size > 1 &&
             overlays.openCount.intValue == 0 &&
             !hasUnsavedDraft(screen) &&
@@ -264,6 +267,13 @@ internal class SettingsPage(
      *  与 [inKeysEdit] 同一档：那一页的三个页签共用一颗「编辑」按钮，编辑态只属于「命令列表」。
      */
     private fun inCommandsEdit(): Boolean = screen == Screen.COMMANDS && CommandListEditState.editing
+
+    /**
+     * 「常用命令」页现在是不是编辑态 —— [goBack] 与 [wouldConsumeBack] 共用这一条判据。
+     *
+     *  与上面两条同一档：那一页只有一张清单，编辑态就是「勾几条 → 固定 / 删除」。
+     */
+    private fun inCommonCommandsEdit(): Boolean = screen == Screen.COMMON_COMMANDS && CommonCommandsEditState.editing
 
     /** 此刻有浮窗开着吗 —— 开着时系统返回**整个吞掉**（见 `BackInterception.handleDiscreteBack`）。 */
     internal fun hasOpenOverlays(): Boolean = overlays.hasOpen()
@@ -561,6 +571,8 @@ internal class SettingsPage(
         if (inKeysEdit()) return consumeKeysEditBack()
         // 「命令列表」的编辑态：同一套账（见 [consumeCommandsEditBack]）。
         if (inCommandsEdit()) return consumeCommandsEditBack()
+        // 「常用命令」的编辑态：同一套账（见 [consumeCommonCommandsEditBack]）。
+        if (inCommonCommandsEdit()) return consumeCommonCommandsEditBack()
         // 「打开应用」页那一趟的收尾（「为谁挑」、搜索词、临时的小窗口开关）**不在这一处**：
         //  统一归 [discardPageStateOf] —— 它挂在「真的离栈」那一刻，一次返回退两层（多级 pop）
         //  与从设置重进模块清栈也走同一条，不会漏。
@@ -651,6 +663,23 @@ internal class SettingsPage(
     }
 
     /**
+     * 「常用命令」编辑态里按返回 —— 与 [consumeCommandsEditBack] 完全同一套账：
+     * 没勾就退出编辑态，勾了先问一句，两条路都消费掉这次返回。
+     */
+    private fun consumeCommonCommandsEditBack(): Boolean {
+        if (CommonCommandsEditState.count == 0) {
+            XLog.w("退出常用命令编辑态：没有勾选，直接退出")
+            CommonCommandsEditState.toggleEditing()
+            return true
+        }
+        if (!CommonCommandsEditState.confirmLeaveEdit) {
+            XLog.w("退出常用命令编辑态：先问一句（已勾 ${CommonCommandsEditState.count} 条）")
+            CommonCommandsEditState.confirmLeaveEdit = true
+        }
+        return true
+    }
+
+    /**
      * 一页**离开栈**时的收尾 —— 把这一页引入的**页面级状态**复位成「下次进来是新的一份」。
      *
      *  为什么要手动做：这些位挂在**页面对象**上（[commandDraft] / [branchDraft] / [picker] /
@@ -713,6 +742,12 @@ internal class SettingsPage(
                 //  滚动位置属于「这一次停留」：换一组组合再进来该从头看，不能接着上一组的偏移
                 bindingScrolls.remove(Screen.COMBO_EDIT)
                 picker.cancelResume()
+            }
+
+            Screen.COMMON_COMMANDS -> {
+                //  **编辑态也是这一趟的账**：勾着几条退出去，回来还留着旧勾选 —— 下一次进编辑态
+                //  再点「删除」就把上次勾的那些一起删了（跨次误删，与命令列表那一页同一条）。
+                CommonCommandsEditState.resetForLeave()
             }
 
             Screen.APP_PICKER -> {

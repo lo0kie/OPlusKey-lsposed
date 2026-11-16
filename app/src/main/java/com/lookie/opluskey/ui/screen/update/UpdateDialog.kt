@@ -20,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -40,9 +39,9 @@ import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.input.markdownToAnnotated
 import com.lookie.opluskey.ui.model.page.SCROLLBAR_WIDTH
 import com.lookie.opluskey.ui.row.AppScrollBar
+import com.lookie.opluskey.ui.row.PickBox
 import com.lookie.opluskey.ui.screen.home.openUrl
 import com.lookie.opluskey.ui.state.host.UpdateState
-import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -230,10 +229,7 @@ private fun ColumnScope.UpdateBody(info: ReleaseInfo) {
                 }.padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(
-            state = if (UpdateState.dontRemind) ToggleableState.On else ToggleableState.Off,
-            onClick = null,
-        )
+        PickBox(picked = UpdateState.dontRemind)
         Spacer(Modifier.width(8.dp))
         Text(
             text = I18n.get(Strings.UPDATE_DONT_REMIND),

@@ -41,9 +41,9 @@ import com.lookie.opluskey.ui.model.target.donors
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SECTION_TITLE_PAD_TOP
+import com.lookie.opluskey.ui.style.AppDivider
+import com.lookie.opluskey.ui.style.appDividerColor
 import io.github.suqi8.coui.kmp.basic.CardDefaults
-import io.github.suqi8.coui.kmp.basic.DividerDefaults
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.VerticalDivider
@@ -98,12 +98,12 @@ internal fun SettingsPage.DonateListScreen(scrollBehavior: ScrollBehavior) {
 }
 
 /**
- * 表格的线宽 —— **框与格线同一支笔**，直接引 COUI 分隔线那一档（`DividerDefaults.Thickness`）。
+ * 表格的线宽 —— **框、竖线、横线同一支笔**，取 [AppDivider] 那一档（1dp）。
  *
- *  不另写一个数：外框与格子里的线粗细/颜色都要一样，而这两样 COUI 已经有一套现成的
- *  （`DividerDefaults`，页面上下 listview 的行线用的就是它）—— 写死就等于多一套要与主题对账的数。
+ *  以前取的是库默认（0.33dp）：横线走 `AppDivider` 是 1dp，框与竖线却只有 0.33dp，
+ *  同一张表里两种粗细并排，看久了像框没对齐。粗细跟着全项目那条细线走，改也只改一处。
  */
-private val TABLE_LINE = DividerDefaults.Thickness
+private val TABLE_LINE = 1.dp
 
 /**
  * 表格的圆角 —— **直接引 [CardDefaults.CornerRadius]**（`coui_round_corner_m`，12dp）：
@@ -148,11 +148,10 @@ private fun EmptyDonorCard() {
 /**
  * 那张表 —— 一张板子，里面一行表头 + 一行一条数据。
  *
- *  线一律用 COUI 那两支现成的（[HorizontalDivider] / [VerticalDivider]），颜色与笔宽跟着主题走，
- *  不另引一套「表格线的颜色」。**表头下面那条横线也在这套里**（它就是第一条横线），
- *  不靠「表头自带的边界」——手写的东西不该有两处画线的地方。
- *  **外框也用同一档**（[TABLE_LINE] + 同一个 `dividerLine`）：框和格线不是两种线，
- *  谁粗一点谁深一点都会读成「两套东西拼起来的」。
+ *  横线走全项目那一支（[AppDivider]），竖线与外框取**同一档颜色**（[appDividerColor]）——
+ *  这张表的三处线是「同一条线」的三种画法，谁深一点都会读成「两套东西拼起来的」。
+ *  **表头下面那条横线也在这套里**（它就是第一条横线），不靠「表头自带的边界」——
+ *  手写的东西不该有两处画线的地方。笔宽仍走 [TABLE_LINE]（框与格线同宽，那是排版账）。
  *
  *  **圆角靠 `clip`**：表头那一行与横线都要铺满整块板子，不裁的话方角会顶穿圆角。
  *  裁在板子上、描边描在裁之后（`border` 排在 `clip` 后面），框线才不会被裁掉半条。
@@ -168,7 +167,7 @@ private fun DonorTable(rows: List<Donor>) {
                 .padding(horizontal = PAGE_MARGIN)
                 .clip(shape)
                 .background(scheme.surfaceContainer)
-                .border(TABLE_LINE, DividerDefaults.DividerColor, shape),
+                .border(TABLE_LINE, appDividerColor(), shape),
     ) {
         DonorRow(
             name = I18n.get(Strings.DONATE_LIST_COL_NAME),
@@ -177,7 +176,7 @@ private fun DonorTable(rows: List<Donor>) {
         )
         rows.forEach { row ->
             // 表头与第一条数据之间也走这一条，别让表头靠「自己的边界」分家
-            HorizontalDivider()
+            AppDivider()
             DonorRow(name = row.name, amount = row.amountText, header = false)
         }
     }
@@ -214,7 +213,7 @@ private fun DonorRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         DonorCell(name, style, Modifier.weight(1f), interactive = !header)
-        VerticalDivider()
+        VerticalDivider(thickness = TABLE_LINE, color = appDividerColor())
         DonorCell(amount, style, Modifier.weight(1f), interactive = !header)
     }
 }

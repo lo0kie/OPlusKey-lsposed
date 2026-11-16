@@ -4,7 +4,7 @@ import android.os.Handler
 import android.os.SystemClock
 import android.view.MotionEvent
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.KeyConfig
+import com.lookie.opluskey.core.model.ClickChainParams
 import com.lookie.opluskey.core.model.KeyId
 import java.util.concurrent.ConcurrentHashMap
 
@@ -56,8 +56,8 @@ import java.util.concurrent.ConcurrentHashMap
  */
 internal class HeldPresses(
     private val handler: Handler,
-    private val feed: (KeyId, KeyConfig, Long) -> Unit,
-    private val feedUp: (KeyId, KeyConfig) -> Unit,
+    private val feed: (KeyId, ClickChainParams, Long) -> Unit,
+    private val feedUp: (KeyId, ClickChainParams) -> Unit,
 ) {
     /** 压着的那几颗键 —— key → 那一枪 + 按下那一刻的判定参数。 */
     private val held = ConcurrentHashMap<KeyId, Press>()
@@ -70,7 +70,7 @@ internal class HeldPresses(
      */
     fun hold(
         id: KeyId,
-        keyConfig: KeyConfig,
+        keyConfig: ClickChainParams,
         windowMs: Long,
     ) {
         held.remove(id)?.let { prev ->
@@ -215,7 +215,7 @@ internal class HeldPresses(
 
     /** 压着等窗口的一次按压。 */
     private class Press(
-        val keyConfig: KeyConfig,
+        val keyConfig: ClickChainParams,
         /** 手指按下那一刻（`elapsedRealtime`）—— 补发晚一个窗口，判定仍要用它当按下时刻。 */
         val downAt: Long,
         val shot: Runnable,

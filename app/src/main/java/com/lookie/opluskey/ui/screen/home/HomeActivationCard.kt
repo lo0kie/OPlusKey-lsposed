@@ -48,6 +48,7 @@ import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.screen.linkSettled
 import com.lookie.opluskey.ui.state.host.UpdateState
+import com.lookie.opluskey.ui.style.AppDivider
 import com.lookie.opluskey.ui.style.LocalAppTheme
 import com.lookie.opluskey.ui.wire.blockedReason
 import com.lookie.opluskey.ui.wire.linkFacts
@@ -56,7 +57,6 @@ import com.lookie.opluskey.ui.wire.statusTipText
 import com.lookie.opluskey.ui.write.setModuleEnabled
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -706,7 +706,7 @@ private fun SettingsPage.ActivationTips(
         exit = VISIBILITY_EXIT,
     ) {
         Column {
-            HorizontalDivider(Modifier.padding(horizontal = ACTIVATION_DIVIDER_INSET))
+            AppDivider(Modifier.padding(horizontal = ACTIVATION_DIVIDER_INSET))
             Column(
                 modifier =
                     Modifier.padding(

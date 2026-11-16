@@ -12,7 +12,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -27,16 +26,12 @@ import com.lookie.opluskey.ui.dialog.FrostedDialog
 import com.lookie.opluskey.ui.dialog.PickerRow
 import com.lookie.opluskey.ui.dialog.PickerRowTraits
 import com.lookie.opluskey.ui.feedback.hint
-import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_DARK_ALPHA
-import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_LIGHT_ALPHA
-import com.lookie.opluskey.ui.model.theme.isDarkScheme
 import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.style.AppDivider
+import com.lookie.opluskey.ui.style.AppHeavyDivider
 import com.lookie.opluskey.ui.style.escapeEmphasis
 import com.lookie.opluskey.ui.write.canWriteConfig
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
-import io.github.suqi8.coui.kmp.basic.DropdownDefaults
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
-import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -197,7 +192,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ImportTargetRows(
     ) {
         profiles.forEachIndexed { index, item ->
             if (index > 0) {
-                HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+                AppDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
             }
             PickerRow(
                 label = item.displayName,
@@ -209,7 +204,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ImportTargetRows(
         //  「新增配置」与上面那份列表之间用**加深带**断开：上面几行是「盖掉哪一份」（替换已有的），
         //  这一行是「另起一份」，两类动作不是一件事 —— 一条同样粗细的细线读起来还在同一组里。
         if (profiles.isNotEmpty()) {
-            PopupHeavyDivider()
+            AppHeavyDivider()
         }
         PickerRow(
             //  已满时这一行置灰，字换成「最多三份配置」—— 这就是那句回执本身。
@@ -231,23 +226,6 @@ private sealed interface ImportTarget {
 
     /** 新增一份、插在最末。 */
     data object New : ImportTarget
-}
-
-/**
- * 选择器里「这一组 / 下一组」之间那条**加深带** —— 与浮层菜单组间那条同一档（同两个 alpha、
- * 同一档粗细），两处读起来才是同一种分隔。
- */
-@Composable
-private fun PopupHeavyDivider() {
-    HorizontalDivider(
-        thickness = DropdownDefaults.PopupGroupDividerThickness,
-        color =
-            if (COUITheme.colorScheme.isDarkScheme) {
-                Color.Black.copy(alpha = MENU_GROUP_LINE_DARK_ALPHA)
-            } else {
-                Color.Black.copy(alpha = MENU_GROUP_LINE_LIGHT_ALPHA)
-            },
-    )
 }
 
 /** 新建一份（插在最末）—— 与旧版「导入时插到最末」完全一致。 */

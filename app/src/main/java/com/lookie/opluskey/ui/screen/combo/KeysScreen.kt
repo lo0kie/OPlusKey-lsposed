@@ -136,7 +136,7 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             (KeysEditState.pickedKeys - KeyId.PLUS.id).isNotEmpty() || KeysEditState.pickedCombos.isNotEmpty()
         KeysEditFabs(
             visible = KeysEditState.editing && pickedCount > 0,
-            turningOn = !pickedAnyEnabled(cfg),
+            turningOn = !pickedAllEnabled(cfg),
             onToggle = { togglePickedEnabled() },
             onDelete = {
                 if (deletablePicked) {

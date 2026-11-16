@@ -13,6 +13,7 @@ import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.trigger
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -87,6 +88,24 @@ object ComboWire {
         val longReleaseOn: Boolean = false,
         /** 松手那一档的动作 token。 */
         val longRelease: String = Action.NONE,
+        /**
+         * **成员连击**（按住首键、唯一成员键连击）—— 注入侧 `ComboDetector` 判成员连击就取这些，
+         * 动作落在这一档组合自己的槽上（与成员键单键多击解耦）。不带的话成员连击整条不生效。
+         */
+        @SerialName("member_double")
+        val memberDouble: String = Action.NONE,
+        @SerialName("member_double_on")
+        val memberDoubleOn: Boolean = true,
+        @SerialName("member_clicks")
+        val memberClicks: Map<Int, String> = emptyMap(),
+        @SerialName("member_clicks_on")
+        val memberClicksOn: List<Int> = emptyList(),
+        @SerialName("member_click_then_long")
+        val memberClickThenLong: String = Action.NONE,
+        @SerialName("member_click_then_long_on")
+        val memberClickThenLongOn: Boolean = false,
+        @SerialName("member_click_then_long_press_ms")
+        val memberClickThenLongPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
         /**
          * 这一组自己的**四格窗口**（毫秒，等待 / 按住 × 固定窗口起点 开 / 关）；`0` = 跟随公共设置。
          *
@@ -300,6 +319,13 @@ object ComboWire {
             longFireOnRelease = combo.longFireOnRelease,
             longReleaseOn = combo.longReleaseOn,
             longRelease = combo.longRelease.token,
+            memberDouble = combo.memberDouble.token,
+            memberDoubleOn = combo.memberDoubleOn,
+            memberClicks = combo.memberClicks.mapValues { it.value.token },
+            memberClicksOn = combo.memberClicksOn.sorted(),
+            memberClickThenLong = combo.memberClickThenLong.token,
+            memberClickThenLongOn = combo.memberClickThenLongOn,
+            memberClickThenLongPressMs = combo.memberClickThenLongPressMs,
             waitWindowMs = combo.waitWindowMs,
             waitPairMs = combo.waitPairMs,
             holdWindowMs = combo.holdWindowMs,
@@ -338,6 +364,19 @@ object ComboWire {
             longFireOnRelease = longFireOnRelease,
             longReleaseOn = longReleaseOn,
             longRelease = Action.parse(longRelease),
+            //  **成员连击**：与单键多击同一个读法（开关 + 动作分两格，表里只留认得出的）。
+            memberDouble = Action.parse(memberDouble),
+            memberDoubleOn = memberDoubleOn,
+            memberClicks =
+                memberClicks.entries
+                    .mapNotNull { (n, token) ->
+                        val action = Action.parse(token)
+                        if (n < 3 || action is Action.None) null else n to action
+                    }.toMap(),
+            memberClicksOn = memberClicksOn.filter { it >= 3 }.toSet(),
+            memberClickThenLong = Action.parse(memberClickThenLong),
+            memberClickThenLongOn = memberClickThenLongOn,
+            memberClickThenLongPressMs = clampLongPress(memberClickThenLongPressMs),
             //  四格窗口：0 = 跟随公共设置，原样留着；设过的钳进那一档区间（手改的越界值在这里收口）
             waitWindowMs = clampFollow(waitWindowMs),
             waitPairMs = clampFollow(waitPairMs),

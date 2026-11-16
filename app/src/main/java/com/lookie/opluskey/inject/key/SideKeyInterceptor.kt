@@ -167,6 +167,10 @@ internal class SideKeyInterceptor(
                     //  这一档的四格窗口（等待 / 按住 × 固定窗口起点 开 / 关）—— 取值只在
                     //  `Config.comboWindowsFor` 一处，这里只把那一份递进去
                     windowsFor = { c -> ConfigChannel.windowsFor(c) },
+                    //  **成员连击参数**（按住首键、唯一成员键连击）—— 判据在
+                    //  `Config.comboMemberChain` 一处（窗口按「独立设置优先」解析），
+                    //  这里只把那一份递进去；`null` = 这档不支持成员连击。
+                    memberChainFor = { c -> ConfigChannel.config.comboMemberChain(c) },
                 ),
         )
 

@@ -46,12 +46,10 @@ import com.lookie.opluskey.ui.model.page.POPUP_PANEL_RADIUS
 import com.lookie.opluskey.ui.model.page.SCROLLBAR_WIDTH
 import com.lookie.opluskey.ui.model.page.STEP_PICKER_MAX_HEIGHT
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_DARK_ALPHA
-import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.theme.POPUP_FROSTED_ALPHA
-import com.lookie.opluskey.ui.model.theme.isDarkScheme
 import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.row.SECTION_TITLE_PAD_TOP
+import com.lookie.opluskey.ui.style.AppHeavyDivider
 import com.lookie.opluskey.ui.style.frosted
 import com.lookie.opluskey.ui.style.tinted
 import com.lookie.opluskey.ui.wire.GestureProbe
@@ -61,7 +59,6 @@ import com.lookie.opluskey.ui.wire.rememberGestureProbe
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
 import io.github.suqi8.coui.kmp.basic.DropdownImpl
 import io.github.suqi8.coui.kmp.basic.DropdownItem
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ListPopupColumn
 import io.github.suqi8.coui.kmp.basic.ListPopupDefaults
@@ -482,17 +479,8 @@ private fun SettingsPage.MenuEntries(
             }
 
             MenuPart.HeavyLine -> {
-                HorizontalDivider(
-                    thickness = DropdownDefaults.PopupGroupDividerThickness,
-                    // 组间那条**槽**：暗色下加深（`#333` 面板上压到 `#1f` 才看得出是一道槽），
-                    // 浅色下仍是那点灰。见 [popupDividerColor]。
-                    color =
-                        if (COUITheme.colorScheme.isDarkScheme) {
-                            Color.Black.copy(alpha = MENU_GROUP_LINE_DARK_ALPHA)
-                        } else {
-                            Color.Black.copy(alpha = MENU_GROUP_LINE_LIGHT_ALPHA)
-                        },
-                )
+                //  组间那条**槽**：与卡片里、导入目标里那几条同一份（见 `ui/style/Dividers.kt`）
+                AppHeavyDivider()
             }
         }
     }

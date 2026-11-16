@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
@@ -34,6 +35,7 @@ import com.lookie.opluskey.ui.screen.combo.HoldComboCard
 import com.lookie.opluskey.ui.screen.combo.WaitComboCard
 import com.lookie.opluskey.ui.screen.combo.comboOwnParams
 import com.lookie.opluskey.ui.screen.combo.holdCombosStartedBy
+import com.lookie.opluskey.ui.screen.combo.updateCombo
 import com.lookie.opluskey.ui.screen.combo.waitCombosUsing
 import com.lookie.opluskey.ui.screen.settingsTargetLabel
 import com.lookie.opluskey.ui.state.page.SettingsTarget
@@ -98,6 +100,18 @@ internal fun SettingsPage.KeySettingsScreen(
             ExtraClicksCard(
                 target = target,
                 cfg = cfg,
+                enabled = pageEnabled,
+            )
+        }
+
+        //  —— 成员连击开关（单成员按住组合有）——
+        //  按住首键、那颗唯一成员键连击的几档开关，与上面单键那一族同名同义，主语换成这一档组合。
+        //  多成员组合 / 等待组合没有这几档，不进这一支。
+        val memberCombo = (target as? SettingsTarget.Combo)?.let { cfg.combos.firstOrNull { c -> c.id == it.id } }
+        if (memberCombo?.memberGestures != null) {
+            SectionTitle(I18n.get(Strings.KEY_SETTINGS_MULTI_CLICK))
+            MemberClicksCard(
+                combo = memberCombo,
                 enabled = pageEnabled,
             )
         }
@@ -190,6 +204,88 @@ private fun SettingsPage.ExtraClicksCard(
             ),
     )
 }
+
+/**
+ * **成员连击**开关卡 —— 单成员按住组合才有（`ComboKey.memberGestures` 非空）。
+ *
+ *  按住首键、那颗唯一成员键连击的几档开关，与 [ExtraClicksCard] 那一族同名同义，主语换成
+ *  这一档组合。写回落进 `ComboKey` 的 `memberDoubleOn` / `memberClicksOn` /
+ *  `memberClickThenLongOn`（走 [updateCombo]，只动这一位）。
+ *
+ *  与单键那张一样**不吃**「使用独立设置」总开关：公共设置里没有「成员连击」这一项。
+ */
+@Composable
+private fun SettingsPage.MemberClicksCard(
+    combo: ComboKey,
+    enabled: Boolean,
+) {
+    CardList(
+        rows =
+            listOf(
+                memberDoubleOnRow(combo, enabled),
+                memberClickRow(combo, COUNT3, enabled),
+                memberClickRow(combo, COUNT4, enabled),
+                memberClickThenLongRow(combo, enabled),
+            ),
+    )
+}
+
+/** 成员双击那一行。 */
+@Composable
+private fun SettingsPage.memberDoubleOnRow(
+    combo: ComboKey,
+    enabled: Boolean,
+): CardRow =
+    CardRow.Switch(
+        title = I18n.get(Strings.SETTING_CLICK2),
+        icon = PageIcons.gestureIcon(GestureTrigger.Click(2)),
+        checked = combo.memberDoubleOn,
+        enabled = enabled,
+    ) { on ->
+        updateCombo(combo.id, "member_double=${if (on) 1 else 0}") { it.copy(memberDoubleOn = on) }
+    }
+
+/** 成员三击 / 四击那一行 —— 与 [extraClickRow] 同族，写回落进 `memberClicksOn`。 */
+@Composable
+private fun SettingsPage.memberClickRow(
+    combo: ComboKey,
+    count: Int,
+    enabled: Boolean,
+): CardRow {
+    val on = count in combo.memberClicksOn
+    return CardRow.Switch(
+        title =
+            when (count) {
+                COUNT3 -> I18n.get(Strings.SETTING_CLICK3)
+                else -> I18n.get(Strings.SETTING_CLICK4)
+            },
+        icon = PageIcons.gestureIcon(GestureTrigger.Click(count)),
+        checked = on,
+        enabled = enabled,
+    ) { checked ->
+        val clicksOn = if (checked) combo.memberClicksOn + count else combo.memberClicksOn - count
+        updateCombo(combo.id, "member_click$count=${if (checked) 1 else 0} 全档=${clicksOn.sorted()}") {
+            it.copy(memberClicksOn = clicksOn)
+        }
+    }
+}
+
+/** 成员「单击后长按」那一行。 */
+@Composable
+private fun SettingsPage.memberClickThenLongRow(
+    combo: ComboKey,
+    enabled: Boolean,
+): CardRow =
+    CardRow.Switch(
+        title = I18n.get(Strings.SETTING_CLICK_THEN_LONG),
+        icon = PageIcons.gestureIcon(GestureTrigger.ClickThenLong),
+        checked = combo.memberClickThenLongOn,
+        enabled = enabled,
+    ) { on ->
+        updateCombo(combo.id, "member_click_then_long=${if (on) 1 else 0}") {
+            it.copy(memberClickThenLongOn = on)
+        }
+    }
 
 /**
  * 「只参与非首键的按住组合」那一行 —— 这颗键不判单键手势、只等组合成员（见 `KeyConfig.comboOnly`）。

@@ -35,7 +35,7 @@ import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.row.ChipText
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import com.lookie.opluskey.ui.style.AppDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.layout.DialogDefaults
@@ -67,6 +67,13 @@ internal class PickerOption(
      *  占位符由文案自己留着（`按下 %s 或 %s 后等另一颗`）：语序是翻译的事，名字是界面的事。
      */
     val chips: List<String> = emptyList(),
+    /**
+     * 行尾那一格换成自己的东西（`null` = 平时那个对勾槽）—— 见 [PickerRow.trailing]。
+     *
+     *  给「这一行还有状态要说」那种行用（例如「已添加」）：那一行同时置灰，状态与可点性
+     *  是两件事，所以分成 [enabled] 与这一格。
+     */
+    val trailing: (@Composable () -> Unit)? = null,
 )
 
 /**
@@ -107,6 +114,13 @@ internal fun PickerRow(
     traits: PickerRowTraits = PickerRowTraits(),
     /** 文案里那几个 `%s` 位置换成名字（见 [PickerOption.chips]）—— 空表 = 纯文字。 */
     chips: List<String> = emptyList(),
+    /**
+     * 行尾那一格换成**自己的东西**（`null` = 平时那个对勾槽）。
+     *
+     *  给「这一行除了选没选、还有状态要说」那种行用（已添加）：放了它就不再画对勾 ——
+     *  同一格既说状态又说「选中的是这一档」会自相矛盾。
+     */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = COUITheme.colorScheme
     //  弹窗里这一列也算「能点的行」：默认振一下（见 `LocalTick`）
@@ -174,6 +188,7 @@ internal fun PickerRow(
             labelColor = labelColor,
             checkAlpha = checkAlpha,
             checkTint = colors.primary,
+            trailing = trailing,
         )
     }
 }
@@ -198,6 +213,7 @@ private fun RowScope.PickerRowContent(
     labelColor: Color,
     checkAlpha: Float,
     checkTint: Color,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val style = COUITheme.textStyles.body1
     //  纯文字那一档（绝大多数行）：一个 `Text` 就够，别为它套一层流式布局
@@ -220,13 +236,19 @@ private fun RowScope.PickerRowContent(
             modifier = Modifier.weight(1f),
         )
     }
-    Box(Modifier.size(ROW_END_ICON_SIZE), contentAlignment = Alignment.Center) {
-        Icon(
-            PageIcons.MenuCheck,
-            contentDescription = null,
-            modifier = Modifier.size(ROW_END_ICON_SIZE).alpha(checkAlpha),
-            tint = checkTint,
-        )
+    //  行尾这一格：**放了自己的东西就不再画对勾**（见 [PickerOption.trailing]）——
+    //  同一格既说状态又说「选中的是这一档」会自相矛盾。
+    if (trailing != null) {
+        trailing()
+    } else {
+        Box(Modifier.size(ROW_END_ICON_SIZE), contentAlignment = Alignment.Center) {
+            Icon(
+                PageIcons.MenuCheck,
+                contentDescription = null,
+                modifier = Modifier.size(ROW_END_ICON_SIZE).alpha(checkAlpha),
+                tint = checkTint,
+            )
+        }
     }
 }
 
@@ -304,7 +326,7 @@ internal fun ColumnScope.PickerRows(
                 //  不照抄 `CardList` 那条：卡片里的行首有图标列，它那份左内缩是 56dp，套到这儿会
                 //  让线从半个行宽处才开始。第一行之上不画。
                 if (index > 0) {
-                    HorizontalDivider(Modifier.padding(horizontal = DialogDefaults.insideMargin.width))
+                    AppDivider(Modifier.padding(horizontal = DialogDefaults.insideMargin.width))
                 }
                 PickerRow(
                     label = option.label,
@@ -314,6 +336,7 @@ internal fun ColumnScope.PickerRows(
                     onDisabledClick = onDisabledClick?.let { pick -> { pick(index) } },
                     traits = PickerRowTraits(interactive = interactive),
                     chips = option.chips,
+                    trailing = option.trailing,
                 )
             }
         }

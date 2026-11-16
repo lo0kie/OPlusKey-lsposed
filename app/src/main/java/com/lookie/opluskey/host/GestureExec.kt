@@ -413,25 +413,10 @@ internal object GestureExec {
 
     /** 组合键上认得出的两档（双击在组合上没有定义，见 `ComboKey`）。 */
     private fun comboTrigger(phaseId: String?): GestureTrigger? =
-        when (phaseId) {
-            Gesture.SINGLE.id -> {
-                GestureTrigger.Click(1)
-            }
-
-            Gesture.LONG.id -> {
-                GestureTrigger.LongPress
-            }
-
-            //  松手那一档：动作在 `ComboKey.longRelease`（另一个槽位），见 `handleCombo`
-            GestureTrigger.RELEASE_ID -> {
-                GestureTrigger.Release
-            }
-
-            else -> {
-                XLog.w("组合键不支持的手势：$phaseId")
-                null
-            }
-        }
+        //  `single` / `double` / `long` / `release` / `click_then_long` / `clickN` 都走统一入口：
+        //  成员连击判出的双击 / 三击 / 四击 / 单击后长按，广播里就是 `double` / `click3` /
+        //  `click_then_long` 这些 id，`ofId` 都认得。认不出的只可能来自手搓的广播。
+        GestureTrigger.ofId(phaseId).also { if (it == null) XLog.w("组合键不支持的手势：$phaseId") }
 
     /**
      * 组合键那一下的收尾 —— 日志、振动、提示、执行、报活。

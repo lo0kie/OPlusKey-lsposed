@@ -560,6 +560,32 @@ internal object DrawnIcons {
         builder.build()
     }
 
+    /**
+     * 编辑态勾选框的**空心那一档** —— 一圈细圆环。
+     *
+     *  为什么手绘：图标库那颗 `circle` 的笔画是 2.0（与它自己那批一致），摆在 24dp 的行尾格子里
+     *  比勾上那颗实心圆重一档，看着像被加粗过。这里把笔画收到 [PICK_RING_STROKE]，
+     *  半径取到外缘仍是 10（`circle-check-filled` 那块实心圆的边）—— 两档切换时外径不跳。
+     */
+    val PickRing: ImageVector by lazy {
+        val builder = vectorBuilder("PickRing")
+        builder.addPath(
+            pathData =
+                PathData {
+                    val r = PICK_RING_RADIUS
+                    moveTo(12f - r, 12f)
+                    arcTo(r, r, 0f, true, true, 12f + r, 12f)
+                    arcTo(r, r, 0f, true, true, 12f - r, 12f)
+                    close()
+                },
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = PICK_RING_STROKE,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        )
+        builder.build()
+    }
+
     /** 官方 pathData 解析成节点 —— 解析失败就当空字形，绝不在组合期抛异常（降级纪律）。 */
     private fun coolapkPath(): List<PathNode> =
         runCatching { PathParser().parsePathString(COOLAPK_PATH).toNodes() }.getOrDefault(emptyList())
@@ -702,6 +728,12 @@ internal object DrawnIcons {
     private const val SHIZUKU_SRC_WIDTH = 59f
 
     private const val SHIZUKU_SRC_HEIGHT = 55.5f
+
+    /** 勾选框空心那一档的笔画 —— 比图标库那档（2.0）细，压到行尾才不像加粗过的圆。 */
+    private const val PICK_RING_STROKE = 1.3f
+
+    /** 上面那圈环的半径 —— 加上半个笔画正好 10（与实心圆那一档同一个外径）。 */
+    private const val PICK_RING_RADIUS = 9.35f
 
     /**
      * 侧键那颗外框的笔画宽度 —— 与 Tabler 那一档（2dp）对齐，收 0.1 是为了让圆头笔画的两端

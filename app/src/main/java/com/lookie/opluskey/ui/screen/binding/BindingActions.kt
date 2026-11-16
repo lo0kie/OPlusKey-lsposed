@@ -219,19 +219,48 @@ private fun SettingsPage.withTargetBound(
                         if (c.id != target.id) {
                             c
                         } else {
-                            //  三种触发方式**共用**这一对槽（`single` / `long`）：怎么按出来的是
-                            //  这一档的身份（`mode`），动作只跟手势走，不再为它多开几套。
-                            when {
-                                target.gesture.isSingle -> {
-                                    c.copy(single = action)
+                            //  三种触发方式**共用**下面这几格：怎么按出来的是这一档的身份（`mode`），
+                            //  动作只跟手势走。多成员组合只有短按 / 长按；**单成员按住组合**还多
+                            //  成员连击那几格（双击 / 第 3 击起 / 单击后长按），落在 `ComboKey`
+                            //  的 `memberDouble` / `memberClicks` / `memberClickThenLong`。
+                            when (val g = target.gesture) {
+                                is GestureTrigger.Click -> {
+                                    when {
+                                        g.isSingle -> {
+                                            c.copy(single = action)
+                                        }
+
+                                        //  成员双击 / 三击 / 四击
+                                        g.count == 2 -> {
+                                            c.copy(memberDouble = action)
+                                        }
+
+                                        g.count in c.memberClicksOn -> {
+                                            c.copy(
+                                                memberClicks =
+                                                    if (action is Action.None) {
+                                                        c.memberClicks - g.count
+                                                    } else {
+                                                        c.memberClicks + (g.count to action)
+                                                    },
+                                            )
+                                        }
+
+                                        //  这一档没开：界面上走不到，真走到了原样不动
+                                        else -> {
+                                            c
+                                        }
+                                    }
                                 }
 
-                                target.gesture == GestureTrigger.LongPress -> {
+                                GestureTrigger.LongPress -> {
                                     c.copy(long = action)
                                 }
 
-                                //  组合上没有双击、也没有第 3 击起的档位（`ComboKey.actionOf` 恒返回
-                                //  「无操作」）—— 界面上走不到这两支；真走到了就原样不动，不写用不上的位。
+                                GestureTrigger.ClickThenLong -> {
+                                    c.copy(memberClickThenLong = action)
+                                }
+
                                 else -> {
                                     c
                                 }

@@ -379,7 +379,7 @@ internal data class KeyDto(
                     clamp(ConfigFields.F_DOUBLE_CLICK_MS, doubleClickMs ?: legacyDoubleClickMs),
                 ConfigFields.F_COMBO_ONLY to (comboOnly ?: false),
                 ConfigFields.F_DOUBLE_CLICK_ON to (doubleClickOn ?: true),
-                ConfigFields.F_WAIT_MULTI_WINDOW to (waitMultiWindow ?: false),
+                ConfigFields.F_WAIT_MULTI_WINDOW to (waitMultiWindow ?: true),
                 //  **与上面几档同一条纪律：上下限只定义在 `ConfigFields` 里**。不钳的话，手改出来的
                 //  `600000` 会原样成为判定窗口 —— 那颗键此后每按一次都要等十分钟才回落。
                 ConfigFields.F_MULTI_WAIT_MS to
@@ -704,6 +704,24 @@ internal data class ComboDto(
     /** 松手那一档的动作 token。 */
     val longRelease: String = Action.NONE,
     /**
+     * **成员连击**（按住首键、唯一成员键连击）—— 动作 token 与开关分两格（与单键多击同族）。
+     *  老文件没有这一段 ⇒ 全关着 / 无操作，与这一位出现之前一致，不需要迁移。
+     */
+    @SerialName("member_double")
+    val memberDouble: String = Action.NONE,
+    @SerialName("member_double_on")
+    val memberDoubleOn: Boolean = true,
+    @SerialName("member_clicks")
+    val memberClicks: Map<Int, String> = emptyMap(),
+    @SerialName("member_clicks_on")
+    val memberClicksOn: List<Int> = emptyList(),
+    @SerialName("member_click_then_long")
+    val memberClickThenLong: String = Action.NONE,
+    @SerialName("member_click_then_long_on")
+    val memberClickThenLongOn: Boolean = false,
+    @SerialName("member_click_then_long_press_ms")
+    val memberClickThenLongPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
+    /**
      * 这一档的**系统场景在什么时候定下来** —— `true` = 首键按下，`false` = 成员键按下。
      *
      *  老文件缺这一格 ⇒ `null` = 跟随公共设置（布尔没有第三个值，靠 `null` 表达「跟随」）。
@@ -862,6 +880,19 @@ internal data class ComboDto(
             longFireOnRelease = longFireOnRelease,
             longReleaseOn = longReleaseOn,
             longRelease = Action.parse(longRelease),
+            //  **成员连击**：与单键多击同一个读法（开关 + 动作分两格，表里只留认得出的）。
+            memberDouble = Action.parse(memberDouble),
+            memberDoubleOn = memberDoubleOn,
+            memberClicks =
+                memberClicks.entries
+                    .mapNotNull { (n, token) ->
+                        val action = Action.parse(token)
+                        if (n < 3 || action is Action.None) null else n to action
+                    }.toMap(),
+            memberClicksOn = memberClicksOn.filter { it >= 3 }.toSet(),
+            memberClickThenLong = Action.parse(memberClickThenLong),
+            memberClickThenLongOn = memberClickThenLongOn,
+            memberClickThenLongPressMs = clamp(ConfigFields.F_LONG_PRESS_MS, memberClickThenLongPressMs),
             //  条件表：认不出的条目整条丢掉（与单键那条同一个 `mapNotNull` 口径）——
             //  一条读不懂的规则如果兜成「永远成立」，会把这一档的动作整个抢走。
             scenes = mergeScenes(scenes, rules),
@@ -914,6 +945,13 @@ internal data class ComboDto(
                 longFireOnRelease = combo.longFireOnRelease,
                 longReleaseOn = combo.longReleaseOn,
                 longRelease = combo.longRelease.token,
+                memberDouble = combo.memberDouble.token,
+                memberDoubleOn = combo.memberDoubleOn,
+                memberClicks = combo.memberClicks.mapValues { it.value.token },
+                memberClicksOn = combo.memberClicksOn.sorted(),
+                memberClickThenLong = combo.memberClickThenLong.token,
+                memberClickThenLongOn = combo.memberClickThenLongOn,
+                memberClickThenLongPressMs = combo.memberClickThenLongPressMs,
                 sceneOnStarter = combo.sceneOnStarter,
                 starterKeepLong = combo.starterKeepLong,
                 ordered = combo.ordered,
@@ -1125,7 +1163,7 @@ internal data class GlobalDto(
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
                 //  公共设置里的「单击」三项：老文件缺项按默认读（见各自字段的 KDoc）
                 ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS to (doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS),
-                ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to (waitMultiWindow ?: false),
+                ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to (waitMultiWindow ?: true),
                 ConfigFields.F_GLOBAL_MULTI_WAIT_MS to (multiWaitMs ?: KeyConfig.FOLLOW_DOUBLE_CLICK_MS),
                 ConfigFields.F_GLOBAL_UI_VIBRATE to (uiVibrate ?: true),
                 ConfigFields.F_GLOBAL_PREDICTIVE_BACK to (predictiveBack ?: true),

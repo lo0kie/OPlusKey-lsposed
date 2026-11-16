@@ -368,15 +368,12 @@ internal const val DISABLED_ALPHA = 0.4f
 internal const val SUBTITLE_DIM_FACTOR = 0.5f
 
 /**
- * 浮层菜单里两种分隔的 alpha。
+ * 「加深带」那一档的 alpha（`ui/style/Dividers.kt` 的 `AppHeavyDivider` 读它）。
  *
- *  库默认那一档在磨砂面板上几乎看不见，所以自己给：**细线**暗色走亮线、浅色走黑线；
  *  **组间那条槽**暗色要压得更重（`#333` 面板上压到 `#1f` 才看得出是一道槽）。
+ *  细线那两条（0.14 / 0.10）随「所有分隔线统一出口」一起删掉了 —— 细线现在只认
+ *  `AppDivider` 里那一档颜色。
  */
-internal const val MENU_ROW_LINE_DARK_ALPHA = 0.14f
-
-internal const val MENU_ROW_LINE_LIGHT_ALPHA = 0.10f
-
 internal const val MENU_GROUP_LINE_DARK_ALPHA = 0.32f
 
 internal const val MENU_GROUP_LINE_LIGHT_ALPHA = 0.08f

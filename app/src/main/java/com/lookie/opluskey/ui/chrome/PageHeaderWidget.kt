@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -202,8 +203,8 @@ internal fun SettingsPage.PageHeader(
     actions: @Composable RowScope.() -> Unit = {},
     bottomContent: @Composable () -> Unit = {},
 ) {
-    //  两侧按钮的「按一下振一下」在这一层挂好（见 [headerPressTick]）—— 这一页所有顶栏按钮
-    //  都走它，调用点不必各自 rememberTick。
+    //  「按一下振一下」在这一层备好、由两个槽位各自提供给里面的圆键（见 [LocalHeaderTick]）——
+    //  调用点不必各自 rememberTick，也不会因为挂在槽位容器上把空白处一起算进去。
     val tick = rememberTick()
     // 顶栏里那条固定带的高度（没有带子时为 0）：上报顶栏高度时扣掉它。
     val bandHeightPx = remember { mutableIntStateOf(0) }
@@ -268,7 +269,11 @@ internal fun SettingsPage.PageHeader(
                     //  副标题两档上限都按这条栏的宽度算（见 `HeaderSubtitleBar`）
                     subtitleBar.barWidthPx.value = it.width
                 },
-        navigationIcon = { HeaderBackIcon(tick) { subtitleBar.navigationWidthPx.value = it } },
+        navigationIcon = {
+            CompositionLocalProvider(LocalHeaderTick provides tick) {
+                HeaderBackIcon { subtitleBar.navigationWidthPx.value = it }
+            }
+        },
         actions = {
             //  右侧那一组同样只挂振动：`Row` 保持「一个挨一个靠右」，与库那排的排法一致。
             //  顺带量宽度：**多一颗按钮就少一格字**，折叠态的副标题得让开它（见
@@ -276,11 +281,14 @@ internal fun SettingsPage.PageHeader(
             Row(
                 modifier =
                     Modifier
-                        .headerPressTick(tick)
+                        //  振动不挂在这一层：容器含两颗按钮之间的间距与让位那一档，
+                        //  按在空白处也会振（见 [LocalHeaderTick]）
                         .onSizeChanged { subtitleBar.actionsWidthPx.value = it.width },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End,
-                content = actions,
+                content = {
+                    CompositionLocalProvider(LocalHeaderTick provides tick) { actions() }
+                },
             )
         },
         bottomContent = {
@@ -505,11 +513,22 @@ private fun collapsedSubtitleColumns(
 // 顶栏右侧那几颗按钮（返回 / 刷新 / 菜单）与它们共用的「按一下振一下」。
 
 /**
- * 顶栏两侧按钮共用的「按一下振一下」—— 挂在两个槽位的**容器**上，一次管住这一页所有顶栏按钮。
+ * 顶栏那一份「按一下振一下」—— 由 [PageHeader] 提供，[HeaderIconButton] 自己取用。
  *
- *  为什么不是逐个按钮加：顶栏按钮有六七处（返回 / ⋮ / 添加 / 新建 / 重置 / 设置），
- *  漏一处就是「这一颗按下去没手感」，而它们长得一模一样，用户分不出哪颗有哪颗没有；
- *  挂在容器上之后，**新加一颗顶栏按钮自动带振动**，调用点只写自己的 onClick。
+ *  **不能挂在槽位容器上**：容器比按钮大一圈（两侧那 8dp 让位、两颗之间的间距、以及每颗按钮
+ *  外面那圈内边距都在容器里），按在那些地方一样会振 —— 表现就是「这儿没有按钮，手机却震了」。
+ *  所以改成每颗圆键按**自己的边界**振：这一层仍保住「新加一颗顶栏按钮自动带振动」，
+ *  只是不再把空白也算进去。
+ */
+internal val LocalHeaderTick = staticCompositionLocalOf<() -> Unit> { {} }
+
+/**
+ * 「按一下振一下」—— 挂在**控件自己的边界**上（顶栏那几颗圆键由 [HeaderIconButton] 挂，
+ * 见 [LocalHeaderTick]）。
+ *
+ *  为什么不挂在槽位容器上：容器比按钮大一圈（两颗之间的间距、返回键末端那 8dp 让位、
+ *  按钮外圈的内边距都在容器里），按在那些空白上也会振 —— 用户读到的就是「这儿没有按钮，
+ *  手机却震了」。挂在控件自己身上，边界正好等于看得见的那一块。
  *
  *  不消费事件、不改排版：只在按下那一刻振一下，点击照旧由里面的按钮自己处理
  *  （`Main` 那一趟里子节点先拿到事件，这里既不会抢走点击、也不会重复触发）。
@@ -625,8 +644,12 @@ internal fun HeaderIconButton(
     //  **圆底与描边必须用 `CircleShape` 自己画**：库的 `IconButton` 走的是 squircle（超椭圆），
     //  圆角取边长一半时也只是「很圆的方」，四角仍比正圆鼓一点（用户口径「感觉这个按钮不是圆的」）。
     //  所以库那层底色置透明，圆底 / 描边 / 裁剪全在这里做。
+    val tick = LocalHeaderTick.current
     Box(
         modifier
+            //  按一下振一下，**按这颗圆自己的边界**（见 [LocalHeaderTick]）：槽位容器比它大，
+            //  挂在容器上会让「没有按钮的地方」也振
+            .headerPressTick(tick)
             //  挂在底色**外面**：倾斜的是整颗圆（圆底 + 描边 + 字形），不是只有里面那支字
             .pressable(interactionSource = tiltSource, indication = TiltFeedback(), delay = null)
             .background(color = fill, shape = CircleShape)
@@ -660,13 +683,10 @@ internal fun HeaderIconButton(
  *  （见 `HeaderSubtitleBar`）。报的是外框、含末端那 8dp —— 正好是库算 `collapsedTitleX` 用的那个数。
  */
 @Composable
-internal fun SettingsPage.HeaderBackIcon(
-    tick: () -> Unit,
-    onWidth: (Int) -> Unit,
-) {
+internal fun SettingsPage.HeaderBackIcon(onWidth: (Int) -> Unit) {
     Box(
+        //  振动归里面的圆键（见 [LocalHeaderTick]）：这 8dp 让位不是按钮，按它不该振
         Modifier
-            .headerPressTick(tick)
             .onSizeChanged { onWidth(it.width) }
             .padding(end = 8.dp),
     ) {

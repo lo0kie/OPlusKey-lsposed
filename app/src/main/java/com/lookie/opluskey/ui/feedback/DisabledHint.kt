@@ -28,7 +28,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,9 +41,9 @@ import com.lookie.opluskey.ui.model.page.APP_STATE_TEXT_GAP
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.theme.HOST_ALIVE_TIMEOUT_MS
 import com.lookie.opluskey.ui.model.theme.QUERY_ROUNDS
+import com.lookie.opluskey.ui.row.PickBox
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.write.write
-import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -225,11 +224,7 @@ internal fun DisabledStateWithPick(
     Row(verticalAlignment = Alignment.CenterVertically) {
         //  与 [DisabledStateWithArrow] 同一条：勾选框是控件，不能被状态文字挤出去
         if (state != null) DisabledStateText(state, modifier = Modifier.weight(1f, fill = false), maxLines = 1)
-        Checkbox(
-            state = if (picked) ToggleableState.On else ToggleableState.Off,
-            onClick = null,
-            enabled = enabled,
-        )
+        PickBox(picked = picked, enabled = enabled)
     }
 }
 

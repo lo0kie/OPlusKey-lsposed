@@ -292,6 +292,13 @@ object Strings {
      */
     const val COMMON_COMMANDS_PINNED = "common_commands.pinned"
 
+    /** 行菜单里那一项：把这一条从「固定」里撤下来（与 [COMMON_COMMANDS_PINNED] 是同一颗开关的两面）。 */
+    const val COMMON_COMMANDS_UNPIN = "common_commands.unpin"
+
+    /** 固定 / 取消固定后那条回执：参数是数量。 */
+    const val COMMON_COMMANDS_PINNED_N = "common_commands.pinned_n"
+    const val COMMON_COMMANDS_UNPINNED_N = "common_commands.unpinned_n"
+
     /**
      * 行菜单里那一项：给这一条**换一颗图标**。
      *
@@ -307,8 +314,11 @@ object Strings {
     /** 删除前那道确认窗的标题。 */
     const val COMMON_COMMANDS_REMOVE_TITLE = "common_commands.remove_title"
 
-    /** 同上那段正文（`%s` = 这一条的名字）—— 就一句「把这一条从清单里删除」。 */
+    /** 同上那句正文 —— 只说一件事：摘的是这一行快捷方式，**源命令不会被删**。 */
     const val COMMON_COMMANDS_REMOVE_BODY = "common_commands.remove_body"
+
+    /** 批量删除那一问的正文（`%d` = 勾了几项）—— 同样要说清「源命令不会被删」。 */
+    const val COMMON_COMMANDS_DELETE_PICKED_BODY = "common_commands.delete_picked_body"
 
     /** 右下角那颗加号打开的那层抽屉的标题。 */
     const val COMMON_COMMANDS_ADD = "common_commands.add"
@@ -333,6 +343,38 @@ object Strings {
 
     /** 抽屉里选到「入口格」那种标记写法时说的是什么（它不是能执行的动作）。 */
     const val COMMON_COMMANDS_NOT_ACTION = "common_commands.not_action"
+
+    /** 选择器里「这个动作已经在清单里」那枚行尾小字。 */
+    const val COMMON_COMMANDS_ADDED = "common_commands.added"
+
+    /** 点在那种灰行上时说的原因 —— 与上面那枚小字同一件事，但被问的是「为什么点不动」。 */
+    const val COMMON_COMMANDS_ADDED_HINT = "common_commands.added_hint"
+
+    // —— 加号那颗「先挑来源」的窗口 +「内置常用命令」那一窗 ——
+    //
+    //  加号不再直接开抽屉：先问一句「用内置的还是自己挑」（两行），内置那一档再开一层勾选窗。
+
+    /** 来源选择窗里的第一行：内置命令（模块自带的那几条）。 */
+    const val COMMON_COMMANDS_SOURCE_BUILTIN = "common_commands.source_builtin"
+
+    /** 同上第二行：自己挑（打开动作抽屉）。 */
+    const val COMMON_COMMANDS_SOURCE_MANUAL = "common_commands.source_manual"
+
+    /** 内置勾选窗的标题。 */
+    const val COMMON_COMMANDS_BUILTIN_TITLE = "common_commands.builtin_title"
+
+    /** 内置勾选窗那颗动作键的字（「添加」）—— 窗口标题已经说明加什么，按钮不必重复。 */
+    const val COMMON_COMMANDS_BUILTIN_ADD = "common_commands.builtin_add"
+
+    /** 内置那一次的回执（全都进去了）：`%1$d` = 进清单了几条。 */
+    const val COMMON_COMMANDS_BUILTIN_ADDED = "common_commands.builtin_added"
+
+    /**
+     * 内置那一次的回执（有跳过）：`%1$d` = 进清单了几条，`%2$d` = 跳过几条。
+     *
+     *  跳过两种都算：清单里已经有这一条（`cmd:<名字>` 撞上）、或清单已经到上限。
+     */
+    const val COMMON_COMMANDS_BUILTIN_SKIPPED = "common_commands.builtin_skipped"
 
     /**
      * 「场景动作」页里，某一档选的是「跟随默认」时那几张设置卡为什么点不了。
@@ -1275,6 +1317,16 @@ object Strings {
      */
     const val DIALOG_RESET_MODULE_IRREVERSIBLE = "dialog.reset_module_irreversible"
     const val DIALOG_RESET_MODULE_TITLE = "dialog.reset_module_title"
+
+    /**
+     * 三页顶栏那颗「重置」的正文 —— 一页一句，说清「会动什么、不动什么」。
+     *
+     *  与 [DIALOG_RESET_MODULE_MESSAGE]（整模块重置）分开：那一条删的是配置与命令，
+     *  这三条只把**这一页上的那几项**恢复默认。
+     */
+    const val RESET_ABOUT_MESSAGE = "reset.about_message"
+    const val RESET_GENERAL_MESSAGE = "reset.general_message"
+    const val RESET_KEY_SETTINGS_MESSAGE = "reset.key_settings_message"
 
     /** 「重启服务」确认窗：动作（按钮上的那个词）。 */
     const val DIALOG_RESTART_CONFIRM = "dialog.restart_confirm"

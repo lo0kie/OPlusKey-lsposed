@@ -406,13 +406,13 @@ object ConfigFields {
     val F_DOUBLE_CLICK_ON = Field(DOUBLE_CLICK_ON_EXTRA, Kind.Bool(true))
 
     /** 「多击窗口内逐次等满」—— 到档也等窗口走完再判（默认关 = 按完就判）。 */
-    val F_WAIT_MULTI_WINDOW = Field(WAIT_MULTI_WINDOW_EXTRA, Kind.Bool(false))
+    val F_WAIT_MULTI_WINDOW = Field(WAIT_MULTI_WINDOW_EXTRA, Kind.Bool(true))
 
     /**
      * 「多击窗口」—— 逐次等满那一档的窗口（`KeyConfig.multiWaitMs`）。
      *
      *  **下限是 0**：0 = 跟随「单击延迟」（老配置没有这一位，见那一位的 KDoc）。
-     *  钳到 [KeyConfig.MIN_DOUBLE_CLICK_MS] 会把「跟随」这个值当场改写成 100 ——
+     *  钳到 [KeyConfig.MIN_DOUBLE_CLICK_MS] 会把「跟随」这个值当场改写成那个下限 ——
      *  那正是升级之后手感突变的那类 bug。
      */
     val F_MULTI_WAIT_MS =
@@ -1079,6 +1079,12 @@ fun Config.mapActions(transform: (Action) -> Action): Config =
                     single = transform(combo.single),
                     long = transform(combo.long),
                     longRelease = transform(combo.longRelease),
+                    //  **成员连击**那几格同样是动作位（双击 / 第 3 击起 / 单击后长按）——
+                    //  少这几行，改名之后它们留着指向旧名的 `cmd:`，删命令时 `bindsToken`
+                    //  也数不到（与单键那几行同一个道理）。
+                    memberDouble = transform(combo.memberDouble),
+                    memberClicks = combo.memberClicks.mapValues { transform(it.value) },
+                    memberClickThenLong = transform(combo.memberClickThenLong),
                     scenes = combo.scenes.map { it.mapActions(transform) },
                 )
             },
@@ -1121,6 +1127,9 @@ fun Config.actionTokens(): List<String> =
             add(combo.single.token)
             add(combo.long.token)
             add(combo.longRelease.token)
+            add(combo.memberDouble.token)
+            combo.memberClicks.values.forEach { add(it.token) }
+            add(combo.memberClickThenLong.token)
             combo.scenes.forEach { it.actionTokens().forEach(::add) }
         }
         //  「常用命令」那几条同样是动作位（见 [mapActions]）：删变量前的反查要能看进去，

@@ -23,15 +23,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.page.MENU_ICON_SIZE
 import com.lookie.opluskey.ui.model.theme.AppTheme
-import com.lookie.opluskey.ui.model.theme.MENU_ROW_LINE_DARK_ALPHA
-import com.lookie.opluskey.ui.model.theme.MENU_ROW_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.theme.POPUP_SURFACE_DARK
 import com.lookie.opluskey.ui.model.theme.POPUP_SURFACE_LIGHT
 import com.lookie.opluskey.ui.model.theme.isDarkScheme
 import com.lookie.opluskey.ui.row.titleWithCount
+import com.lookie.opluskey.ui.style.AppDivider
 import com.lookie.opluskey.ui.style.LocalAppTheme
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -45,19 +43,19 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  * 见 [MENU_TITLE_INSET]）：线与每一行的标题同一条竖线，图标那一格留空。
  * 右端仍让出行尾那一格（对勾 / 右箭头 / 提示），取库的内边距。
  *
- * 颜色自己给（见 [popupDividerColor]）：面板磨砂后半透明，库默认那一档暗色下几乎看不见。
+ * 颜色与粗细不在这里给（见 [AppDivider]）：与卡片行之间那条是同一条线。
  *
  * @param modifier 透给库的 `HorizontalDivider`，与这里自己的左右内边距叠加（默认无）。
  */
 @Composable
 internal fun PopupRowDivider(modifier: Modifier = Modifier) {
-    HorizontalDivider(
-        modifier =
-            modifier.padding(
-                start = MENU_TITLE_INSET,
-                end = DropdownDefaults.InsideHorizontalPadding,
-            ),
-        color = popupDividerColor(darkAlpha = MENU_ROW_LINE_DARK_ALPHA, lightAlpha = MENU_ROW_LINE_LIGHT_ALPHA),
+    //  颜色与粗细归 `ui/style/Dividers.kt`（[AppDivider]）—— 浮层里那条线与卡片里那条是同一条，
+    //  以前这里单独按亮暗主题折算半透明白 / 黑，于是「统一分隔线颜色」时它总会漏在外面。
+    AppDivider(
+        modifier.padding(
+            start = MENU_TITLE_INSET,
+            end = DropdownDefaults.InsideHorizontalPadding,
+        ),
     )
 }
 
@@ -71,10 +69,7 @@ internal fun PopupRowDivider(modifier: Modifier = Modifier) {
  */
 @Composable
 internal fun PopupSectionDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = DropdownDefaults.InsideHorizontalPadding),
-        color = popupDividerColor(darkAlpha = MENU_ROW_LINE_DARK_ALPHA, lightAlpha = MENU_ROW_LINE_LIGHT_ALPHA),
-    )
+    AppDivider(Modifier.padding(horizontal = DropdownDefaults.InsideHorizontalPadding))
 }
 
 /**
@@ -137,23 +132,6 @@ private val POPUP_SECTION_TITLE_GAP = 10.dp
  *  （`DropdownDefaults`）。分隔线按它缩进，线才从标题最左处起。
  */
 private val MENU_TITLE_INSET = 52.dp
-
-/**
- * 浮层里分隔的颜色：暗色走**亮**线、浅色走黑线。
- *
- *  「暗色下看不清，加深分隔条」（真机反馈）：面板磨砂后是半透明的深灰（`#2e` 附近），
- *  库默认那一档线压在上面几乎看不见 —— 暗色下压暗只会更糊，得反过来提亮。
- */
-@Composable
-private fun popupDividerColor(
-    darkAlpha: Float,
-    lightAlpha: Float,
-): Color =
-    if (COUITheme.colorScheme.isDarkScheme) {
-        Color.White.copy(alpha = darkAlpha)
-    } else {
-        Color.Black.copy(alpha = lightAlpha)
-    }
 
 /**
  * 面板本色（[POPUP_SURFACE_LIGHT] / [POPUP_SURFACE_DARK]）—— 分档照抄库 `ListPopupContent`

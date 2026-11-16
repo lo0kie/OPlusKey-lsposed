@@ -172,13 +172,29 @@ sealed interface GestureTrigger {
         val COMBO_SLOTS: List<GestureTrigger> = listOf(Click(1), LongPress)
 
         /**
-         * **这一档组合**能配的几档 —— [COMBO_SLOTS] 按它有没有长按收口（判据见 [ComboKey.hasLong]）。
+         * **这一档组合**能配的几档 —— [COMBO_SLOTS] 按它有没有长按收口（判据见 [ComboKey.hasLong]），
+         *  单成员按住组合再按成员连击的开关接上双击 / 三击 / 四击 / 单击后长按。
          *
          *  界面与场景块排行都从这一支取（「组合键」编辑页的手势带、「场景动作」页、
          *  系统场景里每块的动作行三处）：少一页 / 少一行只能由这一处决定 ——
          *  各写一遍的话，带子上少一档而动作行还在，那一行写进去永远不会命中。
+         *
+         *  @param member 成员连击开关（`ComboKey` 上那几位）；`null` = 这档不支持成员连击
+         *  （不是按住档 / 不止一颗成员），带子上只有短按 / 长按。
          */
-        fun comboSlots(hasLong: Boolean): List<GestureTrigger> = if (hasLong) COMBO_SLOTS else COMBO_SLOTS - LongPress
+        fun comboSlots(
+            hasLong: Boolean,
+            member: MemberGestures? = null,
+        ): List<GestureTrigger> {
+            val base = if (hasLong) COMBO_SLOTS else COMBO_SLOTS - LongPress
+            if (member == null) return base
+            //  成员连击那几档接在短按 / 长按之后：双击 / 第 3 击起 / 单击后长按。
+            //  （短按 `Click(1)` 与长按已在 [COMBO_SLOTS] 里，不在这里重复。）
+            return base +
+                (if (member.doubleClickOn) listOf<GestureTrigger>(Click(2)) else emptyList()) +
+                HIGHER_CLICKS.filter { (it as Click).count in member.extraClicksOn } +
+                (if (member.clickThenLongOn) listOf<GestureTrigger>(ClickThenLong) else emptyList())
+        }
 
         /**
          * 「长按松手」那一档的 id（广播 / 配置里那一档）。
@@ -251,6 +267,22 @@ sealed interface GestureTrigger {
             }
     }
 }
+
+/**
+ * **成员连击**那套开关 —— 按住首键、唯一成员键连击时，这几档开没开。
+ *
+ *  组合键本身没有双击 / 多击（多颗键「再按一遍」没有判据），但**按住组合只有一颗成员**时，
+ *  那颗成员键连击就是这一档自己的手势（动作落在 `ComboKey` 的 `memberDouble` /
+ *  `memberClicks` / `memberClickThenLong`）。界面按它拼手势带（`GestureTrigger.comboSlots`）。
+ *
+ *  多成员组合 / 等待组合回 `null`（`ComboKey.memberGestures`）。
+ */
+data class MemberGestures(
+    val doubleClickOn: Boolean,
+    /** 开着哪几档成员多击（第 3 击起）。 */
+    val extraClicksOn: Set<Int>,
+    val clickThenLongOn: Boolean,
+)
 
 /**
  * 这一档是不是**某一次按压的收尾**（松手那一刻才发）—— `Release` 与 `ClickThenLongRelease`。

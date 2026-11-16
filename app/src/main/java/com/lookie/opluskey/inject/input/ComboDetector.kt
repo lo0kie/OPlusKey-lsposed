@@ -3,6 +3,7 @@ package com.lookie.opluskey.inject.input
 import android.os.Handler
 import android.os.SystemClock
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ClickChainParams
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.ComboPlan
 import com.lookie.opluskey.core.model.GestureTrigger
@@ -216,6 +217,40 @@ internal class ComboDetector(
     private var combo: Combo? = null
 
     /**
+     * 正在做**成员连击**的那一档组合（`null` = 没有）—— 成员连击的连击链判出 trigger 时，
+     * 动作落到它身上（`onCombo`），而不是成员键自己的单键动作。
+     *
+     *  写它的是「成员连击开始」那一支，读它的是 [memberChain] 的 `onGesture` 回调与收尾处；
+     *  [reset] 一并清。与 [combo] 不是同一个生命周期：组合可能还在（首键按着），成员连击
+     *  却在成员键那一轮连击判完后就结束了。
+     */
+    @Volatile
+    private var memberChainCombo: ComboKey? = null
+
+    /**
+     * **成员连击**的连击链 —— 复用 [GestureDetector]（单键那套连击链，状态机一行不新写）。
+     *
+     *  按住组合成立、且这一档开了成员连击时，那颗唯一成员键的按下 / 抬手就喂给它
+     *  （参数用 `Config.comboMemberChain` 那份视图），判出的 trigger 经 `onGesture` 落到
+     *  [memberChainCombo] 那一档的动作上。熄屏不顶 CPU（组合成立的前提是首键按着、屏幕亮着）。
+     */
+    private val memberChain =
+        GestureDetector(
+            handler = handler,
+            onGestureNoted = {},
+            onGesture = { _, trigger, _, repeat ->
+                val key = memberChainCombo ?: return@GestureDetector
+                //  成员连击判出一档：动作落到这一档组合，这一轮连击结束，组合收尾。
+                //  首键可能还按着 —— 它的抬手随后会因 `consumed` 而被吞，不会再误派一次短按。
+                XLog.w("组合键：${key.keys.joinToString(" + ")} 成员连击 ${trigger.label}（${key.id}）")
+                onCombo(key, trigger, repeat)
+                memberChainCombo = null
+                combo?.let { finishCombo(it) }
+            },
+            holdAwake = {},
+        )
+
+    /**
      * 「首键那次按压自己的长按**还欠着**」—— 组合已经收尾、首键却还按着，等它抬手时补派。
      *
      *  为什么需要跨组合存：按住组合的模型是**首键一直按着、成员按一下就松**。成员松手那一刻
@@ -237,6 +272,22 @@ internal class ComboDetector(
      *  所以还在压着的那几颗一旦被吸收，这里立刻为真 —— 补发任务到点时正是要这个结论。
      */
     fun comboCovers(id: KeyId): Boolean = combo?.keys?.contains(id) == true
+
+    /**
+     * 这一档组合**支不支持成员连击** —— 按住档、只有一颗成员、且成员连击至少开了一档。
+     *
+     *  返回那一份连击链参数（`null` = 不支持）。判据落在装配方的 `binds.memberChainFor`
+     *  （它内部走 `Config.comboMemberChain`，窗口按「独立设置优先」解析）。
+     */
+    private fun memberChainParams(c: ComboKey): ClickChainParams? = if (c.isHold && c.followers.size == 1) binds.memberChainFor(c) else null
+
+    /**
+     * [id] 是不是当前组合的**那颗唯一成员键**（成员连击的那颗）—— 首键按着、成员连击进行中。
+     */
+    private fun isChainMember(id: KeyId): Boolean {
+        val c = combo ?: return false
+        return memberChainCombo === c.key && c.key.followers.firstOrNull() == id.id
+    }
 
     private class Combo(
         /** 这一档是谁 —— 执行什么由它决定（`single` / `long` 两格）。 */
@@ -546,6 +597,13 @@ internal class ComboDetector(
         //  另一条例外是「这一组只在等更宽的一档、而这一颗不属于它」（见 [absorb]）：那一组先收尾，
         //  这一颗继续走下面的正常判定。
         combo?.let { active ->
+            //  **成员连击**：这颗正是那一档的成员键、且连击链还在窗口里 ⇒ 喂给连击链（下一击），
+            //  仍按「组合进行中」吞掉（不喂单键判定器）。
+            if (isChainMember(id)) {
+                memberChainParams(active.key)?.let { chain -> memberChain.onKeyDown(id, chain, now) }
+                consumed += id
+                return Down.TAKEN
+            }
             //  `absorb` 答「这一颗归组合吗」：归就吞掉；不归说明那一组刚被它收尾并清了，接着判这一颗
             if (absorb(active, id, now)) return Down.TAKEN
         }
@@ -567,6 +625,16 @@ internal class ComboDetector(
         //  最早那一颗的按下时刻 = 成立这一刻 - 这一组的整串间隔（`Hit.spanMs` 就是它）
         val c = Combo(hit.key, hit.keys, Times(formed = now, firstDown = now - hit.spanMs))
         combo = c
+        //  **成员连击**：这一档按住组合只有一颗成员、且开了成员连击时，那颗成员键刚才的按下
+        //  就是连击链的「第一击」—— 喂给连击链，让后续抬手 / 再按下接着数。
+        //  首键按住是前提（按住组合成立本就意味着首键按着）。
+        memberChainParams(c.key)?.let { chain ->
+            memberChainCombo = c.key
+            val member = hit.keys.firstOrNull { it.id == c.key.followers.firstOrNull() }
+            if (member != null) {
+                memberChain.onKeyDown(member, chain, now)
+            }
+        }
         //  只有**还按着**的那几颗需要吞抬手：早松开的那颗不会再有 UP 到来，记进 [consumed]
         //  会一直留着 —— 下一次按它时那条正常抬手就被吞了（表现是「这颗键偶尔按了没反应」）
         hit.keys.filterTo(consumed) { down.containsKey(it) }
@@ -634,6 +702,28 @@ internal class ComboDetector(
         consumed.remove(id)
         val c = combo
         if (c != null && id in c.keys) {
+            //  **成员连击**：这一颗是成员键、且这一档正在连击 ⇒ 抬手喂给连击链（数下一击 / 排窗口），
+            //  不按「一起短按」收尾 —— 组合要等首键抬手或连击链走完才结束。
+            if (memberChainCombo === c.key && c.key.followers.firstOrNull() == id.id) {
+                if (!short) {
+                    //  取消：这一按不算数，连击链也一起撤掉，组合照旧收尾
+                    XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 成员连击被取消 ⇒ 收尾")
+                    memberChain.reset(id)
+                    memberChainCombo = null
+                    finishCombo(c)
+                    return true
+                }
+                memberChainParams(c.key)?.let { chain -> memberChain.onKeyUp(id, chain) }
+                //  连击链自己会到点判 / 数到封顶判，动作经 memberChain 的 onGesture 落到这一档。
+                //  组合**不在这里收尾**：首键还按着，成员可能再来一下。
+                return true
+            }
+            //  首键抬手 = 成员连击结束（前提没了）。连击链还没判出任何 trigger 时，
+            //  这一按回到「一起短按」语义（成员只点了一下、首键跟着松）。
+            if (memberChainCombo === c.key && id.id == c.key.starterKey) {
+                memberChain.reset(null)
+                memberChainCombo = null
+            }
             //  还在等更宽的一档、这一组本身又什么都没派发过 ⇒ 抬手也先压着，收尾交给那一枪
             //  （见 [awaitWider]）。**长按已经派发过的不在此列**：那时等的意义已经没有了，
             //  「松手才触发 / 松手额外动作」得照老规矩立刻办。
@@ -759,6 +849,9 @@ internal class ComboDetector(
      */
     fun reset() {
         combo?.let(::finishCombo)
+        //  成员连击的连击链状态跟着一起作废：改配置 / 关主开关后，那颗成员键不该再按旧档判。
+        memberChainCombo = null
+        memberChain.reset(null)
         //  这一笔欠账跟着配置一起作废：关掉主开关 / 改了配置之后，那颗键的抬手不该再派旧动作
         starterKeepPending = null
         down.clear()

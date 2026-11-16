@@ -245,6 +245,102 @@ interface LongPressParams {
 }
 
 /**
+ * **连击链**那几档的判定参数 —— 单键 `KeyConfig` 与**按住组合的成员连击**共用这一份视图。
+ *
+ * ## 为什么要有
+ *
+ *  按住组合（`ComboKey.mode == MODE_HOLD`、只有一颗成员）上要能配「按住首键、成员键连击」：
+ *  首键按住不放，那颗成员键在窗口内双击 / 三击 / 四击 / 单击后长按。这几档在单键上已经有
+ *  一整套连击链状态机（`GestureDetector`：窗口、封顶、第 2 击按住变两段式、连发、松手收尾），
+ *  而它读的全部参数就是这十几位。
+ *
+ *  收成接口之后，`GestureDetector` 的参数类型从 `KeyConfig` 换成这个窄视图，**判定逻辑一行不改**
+ *  —— 成员连击那边再给一份实现（那一档组合自己的连击参数），状态机照旧那一套。这正是
+ *  「状态机复用单键现成的」：没有第二套连击链，只有第二份参数。
+ *
+ * ## 与 [LongPressParams] 的关系
+ *
+ *  两个接口不合并：那一份是「长按这一档」的参数，界面上的长按卡只认它；这一份是「同一颗键
+ *  再按几下」的参数，只有判定侧读。合并会让长按卡多看到一堆与它无关的字段。
+ *  单键与成员连击两边都实现（成员连击里「单击后长按」照旧要判长按）。
+ */
+interface ClickChainParams : LongPressParams {
+    /** 连击链的窗口（两击之间最多隔多久，也是单击要等多久）。 */
+    val clickWindowMs: Int
+
+    /** 两种判定时机：`false` = 固定窗口起点（首击抬手排一次），`true` = 每次松手重新起算。 */
+    val waitMultiWindow: Boolean
+
+    /** 判定侧数到第几击就**封顶**（按开着的档算，不看绑没绑动作，至少 1）。 */
+    val judgeCap: Int
+
+    val doubleClickOn: Boolean
+    val clickThenLongOn: Boolean
+    val clickThenLongPressMs: Int
+    val clickThenLongReleaseOn: Boolean
+    val clickThenLongRelease: Action
+    val clickThenLongRepeatIntervalMs: Int
+
+    /** 「单击后长按」这一档**本身**有事可做（直接绑定或场景给过动作）—— 松手动作的主语。 */
+    val clickThenLongActionExists: Boolean
+
+    /** 「单击后长按」要不要排连发（`repeat` 开关 + 串行命令 / 灵感语音那几条互斥）。 */
+    val clickThenLongRepeats: Boolean
+
+    /** 长按要不要排连发（[LongPressParams.longFireOnRelease] + 串行命令 / 灵感语音那几条互斥）。 */
+    val longRepeats: Boolean
+
+    /** 场景块给「单击后长按」配了松手动作 —— 注入侧看不到场景表，这一位由装配方算好带进来。 */
+    val sceneChainRelease: Boolean
+}
+
+/**
+ * **成员连击**那一份 [ClickChainParams] 视图 —— 由 `Config.comboMemberChain` 现算，
+ * 供判定侧（`GestureDetector`）按「按住首键、成员键连击」那套参数走连击链。
+ *
+ *  不落在 `ComboKey` 自己身上：窗口值依赖「独立设置优先」的解析（`comboWindowsFor` /
+ *  `comboHoldFixedWindowStartFor` 要读 `useOwnSettings` + 公共设置），而 `ComboKey` 拿不到那份
+ *  `Config` 上下文。所以由装配方 / `Config` 在判定的那一刻现算一份，喂给判定器。
+ *
+ *  长按那几位（[LongPressParams]）直接借 `ComboKey` 自己的（成员连击里「单击后长按」的长按
+ *  阈值另用 `memberClickThenLongPressMs`）。
+ */
+internal class MemberChainView(
+    private val combo: ComboKey,
+    override val clickWindowMs: Int,
+    override val waitMultiWindow: Boolean,
+) : ClickChainParams {
+    override val longPressMs: Int get() = combo.longPressMs
+    override val longRepeat: Boolean get() = combo.longRepeat
+    override val longRepeatIntervalMs: Int get() = combo.longRepeatIntervalMs
+    override val longRepeatVibrate: Boolean get() = combo.longRepeatVibrate
+    override val longFireOnRelease: Boolean get() = combo.longFireOnRelease
+    override val longReleaseOn: Boolean get() = combo.longReleaseOn
+    override val longRelease: Action get() = combo.longRelease
+    override val releaseBound: Boolean get() = combo.releaseBound
+    override val doubleClickOn: Boolean get() = combo.memberDoubleOn
+    override val clickThenLongOn: Boolean get() = combo.memberClickThenLongOn
+    override val clickThenLongPressMs: Int get() = combo.memberClickThenLongPressMs
+    override val clickThenLongReleaseOn: Boolean get() = false
+    override val clickThenLongRelease: Action get() = Action.None
+    override val clickThenLongRepeatIntervalMs: Int get() = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS
+    override val clickThenLongActionExists: Boolean
+        get() = combo.memberClickThenLongOn && (combo.memberClickThenLong.isBound || combo.scenes.any { it.chainBound })
+    override val clickThenLongRepeats: Boolean get() = false
+    override val longRepeats: Boolean get() = combo.longRepeat && !combo.longFireOnRelease
+    override val sceneChainRelease: Boolean get() = combo.scenes.any { it.hasChainRelease }
+
+    /** 数到第几击封顶 —— 按成员连击开着的档算（与单键 `judgeCap` 同一个口径）。 */
+    override val judgeCap: Int
+        get() =
+            maxOf(
+                if (combo.memberDoubleOn) 2 else 1,
+                combo.memberClicksOn.maxOrNull() ?: 1,
+                if (combo.memberClickThenLongOn) 2 else 1,
+            ).coerceAtMost(ConfigFields.MAX_JUDGE_CLICKS)
+}
+
+/**
  * 长按卡上的一次改动 —— 只带**改了的那几位**，没带的保持原样。
  *
  *  卡片每次只改一格（拨一个开关、拖一根滑杆），用一个「变更包」交回去，

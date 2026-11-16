@@ -36,6 +36,7 @@ import com.lookie.opluskey.ui.dialog.sheetCardColors
 import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.text.actionRowView
+import com.lookie.opluskey.ui.row.AddedTag
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.RowEndIcon
@@ -250,6 +251,16 @@ internal class StepSheetSpec(
     val onPick: (String) -> Unit,
     val onDismiss: () -> Unit,
     val filter: StepSheetFilter = StepSheetFilter(),
+    /**
+     * **已经在目标清单里**的那些动作 token —— 这些行灰着、行尾标「已添加」（空 = 不判）。
+     *
+     *  只有「常用命令」那一趟传：别处（多条命令的某一步、条件执行的动作）同一个动作出现两次
+     *  是合法的，没有「已存在」这回事。
+     *
+     *  「修改」那一趟要把**被改的那一条**排除掉 —— 它本来就在清单里，灰掉之后就没法把它改回
+     *  同一个动作了（那一行此刻由 [current] 打勾，本来就表示「现在就是它」）。
+     */
+    val added: Set<String> = emptySet(),
 )
 
 /**
@@ -425,6 +436,7 @@ internal fun SettingsPage.StepPickerSheet(
             onLand = { spec, anchor -> land(spec, anchor) },
             current = sheet.current,
             boundApp = boundApp,
+            added = sheet.added,
             groups = groups,
         )
     //  「已保存的命令」那一组的锚点是另外一份（见 `savedAnchors`），其余上下文相同
@@ -435,6 +447,7 @@ internal fun SettingsPage.StepPickerSheet(
             onLand = { spec, anchor -> land(spec, anchor) },
             current = sheet.current,
             boundApp = boundApp,
+            added = sheet.added,
             groups = groups,
         )
 
@@ -509,6 +522,8 @@ private class StepSheetCtx(
      * 只有那一两行用得到，但一次查好递进来比重组里按行判更省事（`boundAppName` 自己带缓存）。
      */
     val boundApp: String?,
+    /** 已经在目标清单里的动作 token（见 [StepSheetSpec.added]）—— 命中那几行灰着、行尾标「已添加」。 */
+    val added: Set<String>,
     /** 这一次列哪张候选表（场景那张多一个「无操作」，见 [StepSheetFilter.includeNone]）。 */
     val groups: List<Pair<String, List<ActionCatalog.Spec>>>,
 )
@@ -588,6 +603,9 @@ private fun stepSheetRow(
     val anchor = ctx.anchorOf(spec)
     val view = actionRowView(spec, ctx.current, ctx.boundApp)
     val colors = COUITheme.colorScheme
+    //  **已添加**那一档（见 [StepSheetSpec.added]）：整行灰着、行尾换成「已添加」。
+    //  它先于其它几档 —— 已经在清单里的动作，点进去换一档 / 再落一步都没有意义。
+    val added = spec.token in ctx.added
     //  抽屉递下来的那一份（见 `PageSheet` 的进场定位）。**已选那一行**才挂它。
     val sheetBringIntoView = LocalSheetBringIntoView.current
     return CardRow.Item(
@@ -604,6 +622,10 @@ private fun stepSheetRow(
         //  （见 `CardRow.Item.selected`）。抽屉里原来只有「行首 + 标题上主题色」这一档，
         //  而这一列的每一行都带字形，扫下来很难定位当前是哪一档。
         selected = view.selected,
+        //  **已添加就不能点**（用户口径「已添加的禁用」）：灰字由行组件按 `enabled` 给。
+        enabled = !added,
+        //  灰行被点一下要说出原因 —— 不给的话会落到整页那句（「这一页现在改不了」），答的是另一回事。
+        disabledHint = if (added) I18n.get(Strings.COMMON_COMMANDS_ADDED_HINT) else null,
         modifier =
             Modifier
                 .preciseClickAnchor(anchor)
@@ -620,7 +642,22 @@ private fun stepSheetRow(
         //  行尾那一颗**照画**，不分选中与否：它说的是「点开还有一层」，而选中之后照样点得进去换一档
         //  —— 藏起来那一行看着像死格子（用户反馈：抽屉里选中有二级菜单的项之后，行尾的选择器不见了）。
         //  颜色仍用最弱那一档：行首的对勾才表示「就是这一档」，行尾只是路标（见 `RowEndIcon`）。
-        trailing = view.trailing?.let { end -> { RowEndIcon(icon = end) } },
+        //  已添加那一行**换成小字**：这一格此刻说的是状态，不是「点开还有一层」。
+        trailing =
+            when {
+                added -> {
+                    { AddedTag() }
+                }
+
+                view.trailing != null -> {
+                    val end = view.trailing
+                    { RowEndIcon(icon = end) }
+                }
+
+                else -> {
+                    null
+                }
+            },
         //  振一下由 `land` 统一发，这一层不再振（见本函数的说明）
         vibrate = false,
         onClick = { ctx.onLand(spec, anchor) },

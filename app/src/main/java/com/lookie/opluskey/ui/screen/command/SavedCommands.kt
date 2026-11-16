@@ -32,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -60,6 +59,7 @@ import com.lookie.opluskey.ui.model.text.serialSummarySteps
 import com.lookie.opluskey.ui.model.text.stepIcon
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.TAB_PAGE_SWITCH_MS
+import com.lookie.opluskey.ui.row.PickBox
 import com.lookie.opluskey.ui.state.command.CommandListEditState
 import com.lookie.opluskey.ui.state.command.CommandUiState
 import com.lookie.opluskey.ui.state.command.TileMenu
@@ -71,7 +71,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.Text
@@ -296,10 +295,7 @@ private fun SettingsPage.CommandTileBody(
             //  列表编辑态（见 `CommandListEditState`）里这一格换成**多选框**：与「按键功能」页
             //  那一套一致 —— 勾选框自己不挂点击，整张卡都是它的点击区。
             if (CommandListEditState.editing) {
-                Checkbox(
-                    state = if (cmd.name in CommandListEditState.picked) ToggleableState.On else ToggleableState.Off,
-                    onClick = null,
-                )
+                PickBox(picked = cmd.name in CommandListEditState.picked)
             } else {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

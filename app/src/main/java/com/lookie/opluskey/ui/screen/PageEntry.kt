@@ -28,6 +28,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
@@ -35,6 +36,7 @@ import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.appKeyOf
+import com.lookie.opluskey.core.model.mergeCommandSeeds
 import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.ui.Screen
@@ -67,6 +69,7 @@ import com.lookie.opluskey.ui.screen.variables.VariableScreen
 import com.lookie.opluskey.ui.state.binding.KeyWatchState
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.state.host.installI18nBridge
+import com.lookie.opluskey.ui.state.page.CommandSeed
 import com.lookie.opluskey.ui.state.picker.AppPickerState
 import com.lookie.opluskey.ui.state.picker.PickTarget
 import com.lookie.opluskey.ui.state.picker.PickedDetail
@@ -78,6 +81,7 @@ import com.lookie.opluskey.ui.wire.linkReady
 import com.lookie.opluskey.ui.write.BindingTarget
 import com.lookie.opluskey.ui.write.addStep
 import com.lookie.opluskey.ui.write.replaceStep
+import com.lookie.opluskey.ui.write.saveCommands
 import com.lookie.opluskey.ui.write.write
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
@@ -885,6 +889,63 @@ internal fun SettingsPage.addCommonCommand(action: Action): Boolean {
         ) != CommandsSave.Failed
     XLog.w("常用命令：← ${action.token}（${if (ok) "已落盘" else "没写进去"}）")
     return ok
+}
+
+/**
+ * 把**内置常用命令**补进「自定义命令」与「常用命令」两张表 —— 用户在内置选择窗里点确认时走这一支。
+ *
+ *  ## 两笔写、两个去重
+ *
+ *  1) **命令库**：走 [mergeCommandSeeds]（正文相同 / 同名都跳过），它是「预设补进命令库」那条规则的
+ *     唯一实现。新增了才落盘，没有新增就整段不写 —— 免得每次点确认都把文件重写一遍。
+ *  2) **常用命令**：按 `cmd:<命令名>` 引用去重（清单里已有这一条就不再钉），并受
+ *     [GlobalConfig.MAX_COMMON_COMMANDS] 收口。名字取自**合并后**的命令库，所以「用户早就自己建过
+ *     同一条、名字不同」时钉的是他那条现在的名字，而不会指向一条不存在的命令。
+ *
+ *  顺序是**先命令库、后主配置**：配置写失败时命令仍在命令页可见，只是没钉上；反过来先写配置的话，
+ *  命令库失败会留下指向不存在命令的清单项。
+ *
+ *  @return 有没有出过错（`false` = 命令库写失败，清单那一步没做）
+ */
+internal fun SettingsPage.addBuiltInCommands(seeds: List<CommandSeed>): Boolean {
+    if (seeds.isEmpty()) return false
+    val before = configState.commands.value
+    val merged = mergeCommandSeeds(before, seeds.map { it.command })
+    val added = merged.size - before.size
+    if (added > 0 && saveCommands(merged, "builtin=add=$added") == CommandsSave.Failed) return false
+    //  **按正文在合并后的库里找**：用户可能早就手写过同一条（名字不同），钉的该是他那一条。
+    val bodies = merged.associateBy { it.single.trim() }
+    val cfg = configState.config.value
+    val existing = cfg.global.commonCommands
+    val tokens = existing.mapTo(HashSet()) { it.token }
+    val pins =
+        seeds
+            .asSequence()
+            .mapNotNull { seed -> bodies[seed.command.single.trim()]?.let { it to seed.icon } }
+            .filter { (cmd, _) -> Command.PREFIX + cmd.name !in tokens }
+            .distinctBy { (cmd, _) -> cmd.name }
+            .take((GlobalConfig.MAX_COMMON_COMMANDS - existing.size).coerceAtLeast(0))
+            .map { (cmd, icon) ->
+                CommonCommand(token = Command.PREFIX + cmd.name, showInBinding = true, icon = icon)
+            }.toList()
+    if (pins.isNotEmpty()) {
+        val ok =
+            write(
+                cfg.copy(global = cfg.global.copy(commonCommands = existing + pins)),
+                "common_commands=builtin=${pins.size}",
+            ) != CommandsSave.Failed
+        if (!ok) return false
+    }
+    XLog.w("内置命令：命令库 +$added，常用命令 +${pins.size}（跳过 ${seeds.size - pins.size}）")
+    val skipped = seeds.size - pins.size
+    hint(
+        if (skipped > 0) {
+            I18n.format(Strings.COMMON_COMMANDS_BUILTIN_SKIPPED, pins.size, skipped)
+        } else {
+            I18n.format(Strings.COMMON_COMMANDS_BUILTIN_ADDED, pins.size)
+        },
+    )
+    return true
 }
 
 /**

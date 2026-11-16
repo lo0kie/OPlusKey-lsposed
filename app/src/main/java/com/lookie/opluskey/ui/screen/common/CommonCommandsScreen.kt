@@ -39,6 +39,7 @@ import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.dialog.MenuEntry
 import com.lookie.opluskey.ui.dialog.NameDialog
 import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.dialog.PickerActionDialog
 import com.lookie.opluskey.ui.feedback.Feedback
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
@@ -52,6 +53,7 @@ import com.lookie.opluskey.ui.model.theme.TAB_PAGE_SWITCH_MS
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.PickBox
 import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.TitleCounter
@@ -63,6 +65,7 @@ import com.lookie.opluskey.ui.screen.command.StepSheetFilter
 import com.lookie.opluskey.ui.screen.command.StepSheetSpec
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.screen.replaceCommonCommand
+import com.lookie.opluskey.ui.state.common.CommonCommandsEditState
 import com.lookie.opluskey.ui.style.VisibleAreaCentered
 import com.lookie.opluskey.ui.style.visibleAreaHeight
 import com.lookie.opluskey.ui.write.openAppPickerForCommonCommand
@@ -94,9 +97,12 @@ import kotlinx.coroutines.withContext
 /**
  * 这一页（[com.lookie.opluskey.ui.Screen.COMMON_COMMANDS]）。
  *
- *  三种状态都在同一页上，各有各的落点：
+ *  四种状态都在同一页上，各有各的落点：
  *  · 点一行 → 一层菜单（修改 / 重命名 / 图标 / 显示在按键绑定页 / 删除）；
- *  · 右下角那颗 → 抽屉（复用命令页那一支，与「额外动作」同一套过滤）；
+ *  · 顶栏那颗「编辑 / 完成」→ 编辑态：点一行是**勾选**，勾了东西右下角滑进「固定 / 取消固定」
+ *    与「删除」两颗（见 `CommonCommandsEditState`）；
+ *  · 右下角那颗 → **先问来源**（内置常用命令 / 手动选择）：内置那一档开居中的勾选窗，手动那一档
+ *    开抽屉（复用命令页那一支，与「额外动作」同一套过滤）；
  *  · 空清单时给居中的空态（见 [CommonCommandsSection]），别让页面看起来像坏了。
  *
  *  清单为空是**合法状态**（用户把它们全删了），不在这里偷偷回填默认那几条 —— 回填等于否决用户。
@@ -105,6 +111,9 @@ import kotlinx.coroutines.withContext
 internal fun SettingsPage.CommonCommandsScreen(scrollBehavior: ScrollBehavior) {
     val pageEnabled = pageWritable()
     val list = configState.config.value.global.commonCommands
+    //  编辑态（顶栏那颗按钮、行尾勾选框、右下角那两颗共用）—— 页面级那一份
+    val editing = CommonCommandsEditState.editing
+    val pickedCount = CommonCommandsEditState.count
     //  这一页的所有「开着哪一个」与两段动画的时机都在这里（见 `CommonCommandsUiState`）——
     //  摊成六个 `remember` 的话，主函数一半的行数都花在声明上。
     val st = remember { CommonCommandsUiState() }
@@ -133,18 +142,29 @@ internal fun SettingsPage.CommonCommandsScreen(scrollBehavior: ScrollBehavior) {
         }
         //  右下角那颗「添加命令」—— 与「添加按键」同一颗加号（这一下也是「往清单里加一条」）。
         //  位置 / 进出场走全项目那一份（`PageCornerFab`）；只读页上跟着 `pageEnabled` 收起来。
-        PageCornerFab(visible = pageEnabled) {
+        //  **编辑态里它让位**：编辑态在删 / 在固定，不在加 —— 与「按键功能」页那张「添加按键」
+        //  行在编辑态置灰是同一件事，只是这里连位置都交给那两颗。
+        PageCornerFab(visible = pageEnabled && !editing) {
             PageFabButton(
                 onClick = {
                     tickNow()
                     //  加号那一趟永远是「加一条」：上一次「修改」留下的 token 不能带进来
                     st.editingToken = null
-                    st.picking = true
+                    //  先问来源（内置 / 手动），两条路各自开各自的浮层（见 `CommonCommandsSources`）
+                    st.choosing = true
                 },
             ) {
                 PageFabIcon(PageIcons.MenuKeyAdd, contentDescription = null)
             }
         }
+        //  编辑态里**勾了东西才滑进这两颗**（上面「固定 / 取消固定」、下面「删除」）——
+        //  与「按键功能」页那两颗同一套：剩 0 项时自己滑出去，不给「点了没反应」的按钮。
+        CommonCommandsEditFabs(
+            visible = pageEnabled && editing && pickedCount > 0,
+            unpinning = pickedAllPinned(configState.config.value),
+            onToggle = { togglePickedPinned() },
+            onDelete = { st.confirmDeletePicked = true },
+        )
     }
 
     //  四层浮出与两段时机各自一支（见下面那几个函数）—— 主函数只留「页面长什么样」。
@@ -157,9 +177,15 @@ internal fun SettingsPage.CommonCommandsScreen(scrollBehavior: ScrollBehavior) {
         st.renameToken = null
     }
     CommonCommandsRemove(list, st)
+    //  编辑态里的批量删除（勾中的那几条一起走，一次落盘）
+    CommonCommandsBulkRemove(st)
     //  换图标：与命令页那一个选择器（`FluidIconPicker`）同一份，只是写回清单里这一条
     CommonCommandsIcon(st)
     CommonCommandsAdd(list, st)
+    //  加号那一趟的两条去路：内置（居中勾选窗）/ 手动（动作抽屉）
+    CommonCommandsSources(st)
+    //  编辑态里按返回那一问（置位在 `SettingsPage.goBack`）
+    CommonCommandsLeaveEditConfirm()
 }
 
 /**
@@ -267,8 +293,17 @@ private class CommonCommandsUiState {
     /** 移除确认窗开着哪一条。 */
     var removingToken by mutableStateOf<String?>(null)
 
+    /** 批量删除的确认窗开着没有（编辑态那颗「删除」置位，见 `CommonCommandsBulkRemove`）。 */
+    var confirmDeletePicked by mutableStateOf(false)
+
     /** 挑动作那层抽屉开着没有。 */
     var picking by mutableStateOf(false)
+
+    /** 加号那颗开出来的「先问来源」那层窗（内置 / 手动）。 */
+    var choosing by mutableStateOf(false)
+
+    /** 内置常用命令那层勾选窗开着没有（见 `BuiltInCommandsDialog`）。 */
+    var builtin by mutableStateOf(false)
 
     /**
      * 抽屉这一趟是**改哪一条**（`null` = 往清单里加一条）。
@@ -295,17 +330,6 @@ private class CommonCommandsUiState {
      * `anchors` 里就没有它 —— 菜单得有个从零起算的落点，不能拿 `!!`。
      */
     val coldAnchor = PreciseClickState()
-}
-
-/**
- * 确认窗在退场那两百毫秒里要画的那一条（见 [CommonCommandsRemove]）。
- *
- *  关窗是「先清数据、再播退场」：`removingToken` 一空，正文里那个名字就跟着空了 —— 而库的退场
- *  还要走两百毫秒，那一截会闪成「将「」删除」。所以照**最后画过的那一份**画（与 `ModeMenuPopups`
- *  的 `LastPick`、`DonateDialog` 的 `Last` 同一个理由）。只留一个格子就够：标题与正文都由它现算。
- */
-private class LastCommand {
-    var cmd: CommonCommand? = null
 }
 
 /**
@@ -404,9 +428,6 @@ private fun SettingsPage.CommonCommandsIcon(st: CommonCommandsUiState) {
  *
  *  不给提示：这一下之后那一行还会自己退场 —— 再弹一句「已保存」只是噪音；写失败由 `write`
  *  那条共同收尾报。
- *
- *  **确认窗的显隐与内容分两位**：`show` 看这一条在不在，正文照**最后画过的那一条**画（见
- *  `LastCommand`）—— 清数据发生在退场之前，正文跟着变空的话那两百毫秒里会闪成「将「」删除」。
  */
 @Composable
 private fun SettingsPage.CommonCommandsRemove(
@@ -414,14 +435,12 @@ private fun SettingsPage.CommonCommandsRemove(
     st: CommonCommandsUiState,
 ) {
     val target = list.firstOrNull { it.token == st.removingToken }
-    val last = remember { LastCommand() }
-    target?.let { last.cmd = it }
     //  每一笔删除**各自一条协程**：挂在 `LaunchedEffect(leavingTokens)` 上时，240ms 内删第二条
     //  会把第一条那条取消 —— 动画播完了、落盘没发生，下次进页它又回来了。
     val scope = rememberCoroutineScope()
     removeDialog(
         show = target != null,
-        cmd = target ?: last.cmd,
+        cmd = target,
         onDismiss = { st.removingToken = null },
         onRemove = { token ->
             st.removingToken = null
@@ -453,6 +472,59 @@ private fun SettingsPage.CommonCommandsRemove(
 }
 
 /**
+ * 编辑态里的批量删除 —— 勾中的那几条**一起**退场，退场播完再**一次**落盘。
+ *
+ *  时机与落盘理由与单条那条（[CommonCommandsRemove]）完全一致：
+ *   · **一起收进 `leavingTokens`**：`CardList` 按它把每一行收起，播完才真删 —— 直接删是硬消失；
+ *   · **整张清单都被勾上时不等**：那一下整块要变成空态，高度由外层（空态 与 清单）那套交叉过渡
+ *     接管，再等一轮「行收起 + 结算」就是两段串在一起；
+ *   · **确认之后这笔写盘必须落地**：`scope` 随本页离开组合被取消 —— 退场窗口里切页 / 返回，
+ *     写盘就整个不发生了（行已经收起、配置里那几条还在，下次进页它们又出现）。
+ *
+ *  **一次落盘**：勾了几条就写一遍。分几次写会播几条通知，后一条还会把前一条盖掉。
+ *
+ *  退出编辑态在**确认那一刻**就做（勾选随之清空）：那几条的收起已经由 `leavingTokens` 接管，
+ *  留着编辑态只会让用户在退场那两百毫秒里又勾一批。
+ */
+@Composable
+private fun SettingsPage.CommonCommandsBulkRemove(st: CommonCommandsUiState) {
+    val list = configState.config.value.global.commonCommands
+    val scope = rememberCoroutineScope()
+    CommonCommandsDeleteConfirm(
+        show = st.confirmDeletePicked,
+        count = CommonCommandsEditState.count,
+        onDismiss = { st.confirmDeletePicked = false },
+        onConfirm = {
+            st.confirmDeletePicked = false
+            //  **现读一次**：勾选在确认窗开着这期间也可能变（行仍在下面，点得到）
+            val tokens = CommonCommandsEditState.picked
+            if (tokens.isNotEmpty()) {
+                st.leavingTokens = st.leavingTokens + tokens
+                val wait = if (list.size > tokens.size) VISIBILITY_EXIT_MS + ROW_EXIT_SETTLE_MS else 0L
+                CommonCommandsEditState.toggleEditing()
+                scope.launch {
+                    withContext(NonCancellable) {
+                        if (wait > 0) delay(wait)
+                        val cfg = configState.config.value
+                        write(
+                            cfg.copy(
+                                global =
+                                    cfg.global.copy(
+                                        commonCommands = cfg.global.commonCommands.filterNot { it.token in tokens },
+                                    ),
+                            ),
+                            "common_commands=remove=${tokens.size}",
+                        )
+                        st.leavingTokens = st.leavingTokens - tokens
+                    }
+                }
+                hint(I18n.format(Strings.KEYS_DELETED, tokens.size))
+            }
+        },
+    )
+}
+
+/**
  * 添加：抽屉 + **进场时机**。
  *
  *  新行先按「不在场」组合一次，下一帧才翻成在场 —— 初值就是在场的话，`CardList` 那边没有
@@ -478,6 +550,39 @@ private fun SettingsPage.CommonCommandsAdd(
         withFrameNanos { }
         st.enteringToken = null
     }
+}
+
+/**
+ * 加号那颗的**第一层**：「内置常用命令」还是「手动选择」。
+ *
+ *  两条路各自开各自的浮层，形态也不同（用户口径）：
+ *  · **内置** → 居中的勾选窗（[BuiltInCommandsDialog]）：模块自带的那几条，勾完一次性落两张表；
+ *  · **手动** → 底部抽屉（[addSheet]）：从**所有动作**里挑一条，落点只有这张清单。
+ *
+ *  两者不能合并成一个窗：抽屉那一列是全量动作（分组、二级菜单、搜索都在里头），而内置只是四条
+ *  固定候选；混在一起会让「内置」那几条埋进几十行里，也让内置那一趟的「同时写命令库」这个副作用
+ *  变得不可解释。
+ *
+ *  点完就收（[PickerActionDialog] 自己先 `onDismiss` 再回调）：下一层紧跟着开，与行菜单 → 抽屉
+ *  那一趟同一个时序。
+ */
+@Composable
+private fun SettingsPage.CommonCommandsSources(st: CommonCommandsUiState) {
+    PickerActionDialog(
+        show = st.choosing,
+        title = I18n.get(Strings.COMMON_COMMANDS_ADD),
+        labels =
+            listOf(
+                I18n.get(Strings.COMMON_COMMANDS_SOURCE_BUILTIN),
+                I18n.get(Strings.COMMON_COMMANDS_SOURCE_MANUAL),
+            ),
+        onDismiss = { st.choosing = false },
+        onPick = { index ->
+            if (index == 0) st.builtin = true else st.picking = true
+        },
+    )
+    //  内置那一窗与上面那层是两个 `show`：谁也不替谁关，用户从哪一层退都只收自己那一层
+    BuiltInCommandsDialog(show = st.builtin, onDismiss = { st.builtin = false })
 }
 
 /**
@@ -516,14 +621,20 @@ private fun SettingsPage.renameDialog(
 }
 
 /**
- * 移除确认窗 —— `show` 是开关，`cmd` 是**画什么**（两者分开：退场期间 `cmd` 仍是最后画过的那条）。
+ * 移除确认窗 —— 一句标题 + 一句正文 + 「取消 / 删除」两颗按钮。
  *
- *  正文只有一句「把这一条从清单里删除」（用户口径）。**不再补一句「绑定保持原样」**：
- *  移除是摘一条快捷方式，不是撤销一次绑定 —— 多解释一句反而让人以为这里会动绑定。
+ *  正文那一句（用户口径）：**只从常用命令里移除，不会删除源命令**。这是这一问唯一要说清的事 ——
+ *  清单里的一行只是一条快捷方式，摘掉它既不动命令库、也不动已经绑好的那一处；不写这句，用户会
+ *  以为按「删除」等于把那条命令本身删了，于是不敢按。
+ *
+ *  **正文不插命令名**：这句与「是哪一条」无关，是固定的。早先那版插了名字，于是退场那两百毫秒里
+ *  数据先空、正文跟着空成一个空壳（当时为此留了一份「最后画过的」缓存）；不再依赖数据之后，
+ *  那份缓存一并删掉了。
  *
  *  **真删不在这一层**：确认之后把 token 交给调用点，由它先播退场、再从清单里删
  *  （见 `CommonCommandsScreen` 的 `leavingToken`）—— 在这里直接删的话那一行是硬消失。
  *
+ * @param cmd 要摘掉的那一条（`null` = 这一行已经在退场）；只从它身上取 token
  * @param onRemove 确认之后拿这一条的 token
  */
 @Composable
@@ -536,7 +647,7 @@ private fun SettingsPage.removeDialog(
     ConfirmDialog(
         show = show,
         title = I18n.get(Strings.COMMON_COMMANDS_REMOVE_TITLE),
-        summary = I18n.format(Strings.COMMON_COMMANDS_REMOVE_BODY, cmd?.let { commonCommandName(it) }.orEmpty()),
+        summary = I18n.get(Strings.COMMON_COMMANDS_REMOVE_BODY),
         action = I18n.get(Strings.COMMON_COMMANDS_REMOVE),
         onDismiss = onDismiss,
         onConfirm = {
@@ -633,6 +744,13 @@ private fun SettingsPage.addSheet(
                 },
                 onDismiss = onDismiss,
                 filter = StepSheetFilter(excludeTiles = true),
+                //  **已添加查询**（用户口径）：清单里已有的动作在抽屉里灰掉、行尾标「已添加」，
+                //  免得挑完才发现「又是一条重复的」。「修改」那一趟排除被改的那条 ——
+                //  它本就在清单里，灰掉之后就没法把它改回同一个动作了。
+                added =
+                    buildSet {
+                        list.forEach { if (it.token != editing) add(it.token) }
+                    },
             ),
     )
 }
@@ -640,7 +758,10 @@ private fun SettingsPage.addSheet(
 /** 退场动画收尾的余量（毫秒）—— 让「状态落到不在场」与下一次组合错开一帧。 */
 private const val ROW_EXIT_SETTLE_MS = 40L
 
-/** 清单里的一行：点它开菜单（修改 / 改名 / 显不显示 / 删除），行尾给箭头表示「还有一层」。 */
+/**
+ * 清单里的一行：平时点它开菜单（修改 / 改名 / 显不显示 / 删除），行尾给箭头表示「还有一层」；
+ * **编辑态里点它是勾选**，行尾换成勾选框（与「按键功能」页那几行同一套，见 [CommonCommandsEditState]）。
+ */
 @Composable
 private fun SettingsPage.commonCommandRow(
     cmd: CommonCommand,
@@ -648,8 +769,11 @@ private fun SettingsPage.commonCommandRow(
     enabled: Boolean,
     visible: Boolean,
     onOpenMenu: () -> Unit,
-): CardRow =
-    CardRow.Item(
+): CardRow {
+    //  编辑态与勾选集合在这一层直接读（两者都是页面级状态，传进来只会多两个参数）
+    val editing = CommonCommandsEditState.editing
+    val picked = cmd.token in CommonCommandsEditState.picked
+    return CardRow.Item(
         //  进 / 退场由 `CardList` 按这一位播（规格见 `VISIBILITY_ENTER` / `VISIBILITY_EXIT`）
         visible = visible,
         title = commonCommandName(cmd),
@@ -663,6 +787,9 @@ private fun SettingsPage.commonCommandRow(
         //  两者只能挤在同一个槽里（`CardRow` 的行尾要么箭头、要么自有内容），所以这里自己拼一格。
         //  **只标固定、不标未固定**：未固定的那些标题已经压了一档色，再挂一枚「未固定」是把
         //  同一件事说两遍，而且那才是少数（默认是固定的）。
+        //
+        //  编辑态里箭头换成勾选框，但**标签留在原处**：右下角那颗 FAB 干的就是「固定 / 取消固定」，
+        //  看不出哪几条现在固定着，那两颗就无从下手（标题压色那一档太轻，撑不起这个判断）。
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (cmd.showInBinding) {
@@ -674,12 +801,20 @@ private fun SettingsPage.commonCommandRow(
                     )
                     Spacer(Modifier.width(APP_KIND_TAG_GAP))
                 }
-                RowEndIcon()
+                if (editing) {
+                    //  勾选框自己不挂点击：整行都是它的点击区（与「按键功能」页同一个读法）
+                    PickBox(picked = picked, enabled = enabled)
+                } else {
+                    RowEndIcon()
+                }
             }
         },
         modifier = Modifier.preciseClickAnchor(anchor),
-        onClick = onOpenMenu,
+        onClick = {
+            if (editing) CommonCommandsEditState.toggle(cmd.token) else onOpenMenu()
+        },
     )
+}
 
 /**
  * 那一行点开的五项 —— 修改（换成另一个动作）、重命名、图标、在按键绑定页显示、删除。

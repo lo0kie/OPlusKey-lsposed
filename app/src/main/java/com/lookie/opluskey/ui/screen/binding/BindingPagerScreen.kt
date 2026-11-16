@@ -449,17 +449,30 @@ internal fun SettingsPage.bindingBandOf(s: Screen): BandHeight = bands[s]
  * 手势带上那几档的**文案** —— 组合键那两档叫「短按 / 长按」，其余叫「单击 / 双击 / 长按 / 三击 / 四击」。
  *
  *  这套叫法与「组合键」页其余文案一致（`ComboKey` 只有短按 / 长按），不能统一成一套：
- *  组合没有双击，把短按写成「单击」会让人去找那颗并不存在的单击。
+ *  多成员组合没有双击，把短按写成「单击」会让人去找那颗并不存在的单击。
+ *
+ *  **单成员按住组合**是例外：它的手势带上多出成员连击那几档（双击 / 三击 / 单击后长按），
+ *  那几档用本名（与单键那几档是同一件事）。
  */
 internal fun bindingBandLabels(targets: List<BindingTarget>): List<String> =
     if (targets.firstOrNull() is BindingTarget.Combo) {
-        //  组合那一页**只有手势这两档**：触发方式（等窗口 / 先按住第一颗 / 先按住第二颗）不占
+        //  组合那一页**只有手势这几档**：触发方式（等窗口 / 先按住第一颗 / 先按住第二颗）不占
         //  页签，它是 ⋮ 菜单里那一行（见 `ComboEditMenu`）。
         targets.map { target ->
-            if (target.gesture == GestureTrigger.LongPress) {
-                I18n.get(Strings.COMBO_LONG)
-            } else {
-                I18n.get(Strings.COMBO_SHORT)
+            when (val g = target.gesture) {
+                //  短按在组合页上一直叫「短按」（不叫「单击」）：同一档，但主语是这一组
+                is GestureTrigger.Click -> {
+                    if (g.count == 1) I18n.get(Strings.COMBO_SHORT) else gestureLabel(g)
+                }
+
+                GestureTrigger.LongPress -> {
+                    I18n.get(Strings.COMBO_LONG)
+                }
+
+                //  成员连击那几档（双击 / 三击 / 单击后长按）用本名
+                else -> {
+                    gestureLabel(g)
+                }
             }
         }
     } else {
@@ -476,7 +489,10 @@ internal fun bindingBandLabels(targets: List<BindingTarget>): List<String> =
  *  在编的那一档刚被删掉那一帧回「短按一档」：那一帧整页正在往下退（见 [bindingTargetsOf] 的
  *  `null` 分支），页数与目标数对得上就行，不在这里判「该不该退」。
  */
-internal fun SettingsPage.comboGestureSlots(): List<GestureTrigger> = GestureTrigger.comboSlots(editingComboOrNull()?.hasLong ?: true)
+internal fun SettingsPage.comboGestureSlots(): List<GestureTrigger> {
+    val combo = editingComboOrNull()
+    return GestureTrigger.comboSlots(combo?.hasLong ?: true, combo?.memberGestures)
+}
 
 /** 在编的那一档组合（`null` = 没在编 / 刚被删）—— 三处判据都从这一支取。 */
 private fun SettingsPage.editingComboOrNull() =

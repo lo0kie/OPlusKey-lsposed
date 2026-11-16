@@ -489,20 +489,19 @@ object ConfigProfiles {
      *
      * ## 空白 = 什么算空白
      *
-     *  按键绑定全回默认（无操作）、没有组合键、没有场景表、命令库也是空的 —— 这是一副「还没
-     *  配过」的配置（用户口径「新建配置应该是一份空配置」），切过去就能从头配。
+     *  一切按出厂来：按键绑定全回默认（无操作）、没有组合键、没有场景表、命令库为空，
+     *  **全局设置也不照搬**（模块总闸 / 语言 / 配色 / 振动 / 提示 / 判定参数 / 接口…全回出厂）。
      *
-     *  但**本机的全局设置跟着带过来**（模块总闸 / 语言 / 配色 / 振动 / 判定参数…）：那几位是
-     *  「这台机器怎么用」，不是「这一套绑定怎么配」。新配置一上来就把模块关掉、界面换成英文，
-     *  不是任何人想要的结果；「已确认免责协议」同理，不该被一次新建抹掉。
+     *  只有三样跟着带过来：**主开关**（[GlobalConfig.enabled]）与**两个免责确认**
+     *  （[disclaimerAccepted] / [commandDisclaimerAccepted]）。前者的意思是「这台机器要不要用
+     *  这个模块」，不是「这一套绑定怎么配」—— 新配置一上来把模块关掉，用户读到的就是「模块坏了」；
+     *  后者是用户已经点过同意，换一套配置不该再问一遍。
      *
-     *  **「常用命令」那张清单不带**：它记的是一条条 `cmd:` / `app:` 之类的**动作引用**，属于
-     *  「这一套绑定」（与 `keys` 同一档）。带过来的后果不是「多几行」而是**指向空** ——
-     *  新配置的命令库是空的，清单里那几条 `cmd:common.*` 全成了没有正文的名字，点下去也不执行
-     *  （用户口径「常用命令也要跟着切换配置走」）。
-     *
-     *  **收集来的自定义键不带**：那几颗键属于「这一套绑定」，换一份配置就该从头收集
-     *  （用户口径：新配置里不该还留着上一份的键）。
+     *  为什么 `global` 其余几位不再照搬（原先整段 copy）：那一段看着像「这台机器怎么用」，实际混着
+     *  「这一套怎么判」—— 单击延迟、组合窗口、接口选择都在里头。只挑「机器级」的几位抄过去，
+     *  剩下几位回到出厂，得到的是一份「一半抄来、一半空白」的配置，比全空白更难解释；
+     *  而且语言 / 主题回出厂之后，界面按系统语言与配色走，这才是「刚装上」的样子（用户口径：
+     *  只带主开关与两个免责）。
      *
      * @return 新配置的槽名；名字为空 / 已到上限 / 写盘失败返回 `null`
      */
@@ -521,8 +520,11 @@ object ConfigProfiles {
                 profileId = newProfileId(),
                 profileName = trimmed,
                 profileOrder = order,
-                //  整份全局设置照搬，**只把清单那一位清空**（见上面 KDoc：它跟着绑定走，不跟着机器走）
-                global = (current?.global ?: Config.DEFAULT.global).copy(commonCommands = emptyList()),
+                //  只带主开关，其余全回出厂（见上面 KDoc）
+                global =
+                    Config.DEFAULT.global.copy(
+                        enabled = current?.global?.enabled ?: Config.DEFAULT.global.enabled,
+                    ),
                 disclaimerAccepted = current?.disclaimerAccepted ?: false,
                 commandDisclaimerAccepted = current?.commandDisclaimerAccepted ?: false,
             )

@@ -154,6 +154,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Photo
 import io.github.lyxnx.compose.ui.tablericons.outline.PhotoVideo
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.Pin
+import io.github.lyxnx.compose.ui.tablericons.outline.Pinned
+import io.github.lyxnx.compose.ui.tablericons.outline.PinnedOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Plane
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPlay
@@ -400,6 +402,8 @@ internal object FluidIcons {
             "photovideo" to TablerIcons.Outline.PhotoVideo,
             "pictureinpictureon" to TablerIcons.Outline.PictureInPictureOn,
             "pin" to TablerIcons.Outline.Pin,
+            "pinned" to TablerIcons.Outline.Pinned,
+            "pinnedoff" to TablerIcons.Outline.PinnedOff,
             "plane" to TablerIcons.Outline.Plane,
             "playerpause" to TablerIcons.Outline.PlayerPause,
             "playerplay" to TablerIcons.Outline.PlayerPlay,
@@ -492,6 +496,7 @@ internal object FluidIcons {
             "powermenu" to DrawnIcons.PowerMenu,
             "flashlight" to DrawnIcons.Flashlight,
             "brandcoolapk" to DrawnIcons.BrandCoolapk,
+            "pickring" to DrawnIcons.PickRing,
         )
 
     /** 按 id 取；认不出返回 null（旧配置里没写图标就是这条）。 */

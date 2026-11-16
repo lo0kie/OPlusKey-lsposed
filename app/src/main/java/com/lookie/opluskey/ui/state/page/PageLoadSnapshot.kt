@@ -10,10 +10,7 @@ import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
-import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.GlobalConfig
-import com.lookie.opluskey.core.model.mergeCommandSeeds
 import com.lookie.opluskey.core.rom.DeviceSupport
 
 /**
@@ -87,16 +84,13 @@ internal fun readPageLoadSnapshot(context: Context): PageLoadSnapshot =
     try {
         val loadedConfig = loadConfigOrReadOnly()
         val commandLoad = loadCommandsOrReadOnly()
-        //  补预设会改两份文件（命令库 + 主配置里的「常用命令」清单），所以放在两份都读完之后。
-        val seeded = seedPresets(loadedConfig, commandLoad)
-        val commands = seeded.commands
 
         // 一次读全：逐项各读一遍会把同一个文件 open + parse 好几遍（同 [UiState.readPrefs] 的注释）。
         val prefs = UiState.readPrefs()
 
         PageLoadSnapshot(
-            configRead = ConfigRead(seeded.config, readOnly = loadedConfig.readOnly, recovered = loadedConfig.recovered),
-            commands = commands,
+            configRead = loadedConfig,
+            commands = commandLoad.commands,
             commandsReadOnly = commandLoad.readOnly,
             prefs = prefs,
             linkBaseline =
@@ -173,144 +167,30 @@ internal class ConfigRead(
     val recovered: Boolean = false,
 )
 
-/** 命令库读盘结果 —— 只读位与 `seed` 标记要和命令表一起往上传。 */
+/** 命令库读盘结果 —— 只读位要和命令表一起往上传。 */
 private class CommandLoad(
     val commands: List<Command>,
     val readOnly: Boolean,
-    val seed: Int,
 )
 
 /** 读命令库，同上（三态与只读位）。 */
 private fun loadCommandsOrReadOnly(): CommandLoad =
     when (val l = CommandLibrary.loadState()) {
         is CommandLibrary.Load.Ok -> {
-            CommandLoad(l.commands, readOnly = false, seed = l.seed)
+            CommandLoad(l.commands, readOnly = false)
         }
 
         CommandLibrary.Load.Absent -> {
             XLog.w("还没有命令库文件（首装 / 刚清过数据）—— 用空表，可以写回")
-            CommandLoad(emptyList(), readOnly = false, seed = 0)
+            CommandLoad(emptyList(), readOnly = false)
         }
 
         CommandLibrary.Load.Unreadable -> {
             // 这条必须是 w：它是「命令库为什么进只读」的唯一判据行
             XLog.w("命令库读不懂 ⇒ 命令库进只读，本次不许写回（否则会把用户的命令覆盖掉）")
-            CommandLoad(emptyList(), readOnly = true, seed = 0)
+            CommandLoad(emptyList(), readOnly = true)
         }
     }
-
-/** 补齐之后的两份结果。 */
-private class Seeded(
-    val config: Config,
-    val commands: List<Command>,
-)
-
-/**
- * 一次性的预设补齐 —— **一次性**由命令库文件里的 `seed` 标记记住。
- *
- *  做三件事，且都只在这一次发生：
- *  1) 把预设按普通 `Command` 补进命令库（名字、正文、root 开态都照预设）；
- *  2) 把库里**同正文**的那几条的 root 位按预设修正一次（旧标记补进来的命令是另一份开态）；
- *  3) 按 `cmd:<命令名>` 钉进「常用命令」清单（品牌字形一并带上），于是「自定义命令」页、
- *     绑定页那段与「常用命令」页都能看到它们 —— 而正文只有命令库一份。
- *
- *  用户之后改 / 删命令走命令页；删掉一条命令会连同它的清单引用一起摘掉，`seed` 标记保证
- *  被删掉的那条不会被下一次进设置页又补回来。`seed` 到位之后这里**一次都不再写**，
- *  所以用户改过的 root 位不会被下一次进页覆盖。
- *
- *  写盘顺序是**先命令库、后主配置**：配置写失败时命令仍然在命令页可见，只是没钉上；
- *  反过来先写配置的话，命令库失败会留下指向不存在命令的清单项。
- *
- *  任何一份读不懂、或调用方在非 IO 线程，都不写（调用方保证在 IO 线程，见 `ui/chrome/PageTabBand`）。
- */
-private fun seedPresets(
-    read: ConfigRead,
-    lib: CommandLoad,
-): Seeded =
-    //  **不许把异常漏给 `readPageLoadSnapshot`**：那边一兜底就是「两份都只读」，
-    //  一次补齐失败不该把整页变成写不了。
-    runCatching {
-        if (read.readOnly || lib.readOnly || lib.seed >= CommandLibrary.SEED_VERSION) {
-            return@runCatching Seeded(read.config, lib.commands)
-        }
-        val seeds = builtInCommandSeeds()
-        val byBody = seeds.associateBy { it.command.single.trim() }
-        val merged = mergeCommandSeeds(lib.commands, seeds.map { it.command })
-        //  同正文的命令已经存在（旧标记补进来的）时，按预设把 root 开态修正一次；
-        //  已经开了 Shizuku 的不动 —— 那一档下 root 位本来就不参与执行。
-        val upgraded =
-            merged.map { cmd ->
-                val seed = byBody[cmd.single.trim()] ?: return@map cmd
-                if (!cmd.viaShizuku && cmd.root != seed.command.root) cmd.copy(root = seed.command.root) else cmd
-            }
-        if (!CommandLibrary.save(upgraded)) {
-            XLog.w("预设命令：写命令库失败，本次按原表（${lib.commands.size} 条）走")
-            return@runCatching Seeded(read.config, lib.commands)
-        }
-        val added = upgraded.size - lib.commands.size
-        if (added > 0) {
-            XLog.w("预设命令：按标准自定义命令补进命令库 $added 条（现在 ${upgraded.size} 条）")
-        }
-        val fixed = merged.zip(upgraded).count { (before, after) -> before != after }
-        if (fixed > 0) XLog.w("预设命令：按之前的开态修正 $fixed 条命令的 root 位")
-        val pinned = withPinnedPresets(read.config, upgraded, seeds)
-        val config =
-            when {
-                pinned === read.config -> {
-                    read.config
-                }
-
-                ConfigStore.write(pinned) -> {
-                    val count = pinned.global.commonCommands.size - read.config.global.commonCommands.size
-                    XLog.w("预设命令：这 $count 条已钉进「常用命令」清单")
-                    pinned
-                }
-
-                else -> {
-                    XLog.w("预设命令：命令已补进命令库，但「常用命令」清单没写成；可在命令页手动钉")
-                    read.config
-                }
-            }
-        Seeded(config, upgraded)
-    }.getOrElse {
-        XLog.w("预设命令：补齐时抛了异常，本次按原表走", it)
-        Seeded(read.config, lib.commands)
-    }
-
-/**
- * 把预设钉进「常用命令」清单 —— 只存一条 `cmd:<命令名>` 引用，不复制命令正文。
- *
- *  按**正文**在合并后的命令库里找那一条（用户可能早就自己建过同一条，名字不同）：
- *  找到就用它现在的名字钉；找不到（同名冲突导致预设没进来）就不钉，免得指向别的命令。
- *  `SEED_VERSION` 保证这件事只做一次 —— 用户之后从清单里移除某条，不会再被钉回来。
- *
- *  清单已到上限、或对应 token 已经有时跳过；返回同一个 [config] 实例表示「没有改动」。
- */
-private fun withPinnedPresets(
-    config: Config,
-    commands: List<Command>,
-    seeds: List<CommandSeed>,
-): Config {
-    val existing = config.global.commonCommands
-    if (existing.size >= GlobalConfig.MAX_COMMON_COMMANDS) {
-        XLog.w("预设命令：常用命令清单已到上限（${GlobalConfig.MAX_COMMON_COMMANDS}），这次不钉")
-        return config
-    }
-    val tokens = existing.mapTo(HashSet()) { it.token }
-    val bodies = commands.associateBy { it.single.trim() }
-    val pins =
-        seeds
-            .asSequence()
-            .mapNotNull { seed -> bodies[seed.command.single.trim()]?.let { it to seed.icon } }
-            .filter { (cmd, _) -> Command.PREFIX + cmd.name !in tokens }
-            .distinctBy { (cmd, _) -> cmd.name }
-            .take(GlobalConfig.MAX_COMMON_COMMANDS - existing.size)
-            .map { (cmd, icon) ->
-                CommonCommand(token = Command.PREFIX + cmd.name, showInBinding = true, icon = icon)
-            }.toList()
-    if (pins.isEmpty()) return config
-    return config.copy(global = config.global.copy(commonCommands = existing + pins))
-}
 
 /**
  * 盘上那份模块包的更新时间 —— 判「某个进程跑的是不是这一份」的那把尺子（见 [PageLoadSnapshot.installedAt]）。

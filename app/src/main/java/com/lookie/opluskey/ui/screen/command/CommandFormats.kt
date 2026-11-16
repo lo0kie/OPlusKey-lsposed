@@ -31,9 +31,9 @@ import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.text.COMMAND_FORMAT_LINES
 import com.lookie.opluskey.ui.model.theme.CommandFormatLine
 import com.lookie.opluskey.ui.state.command.CommandUiState
+import com.lookie.opluskey.ui.style.AppDivider
 import com.lookie.opluskey.ui.style.tinted
 import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -116,7 +116,7 @@ internal fun SettingsPage.CommandFormatsCard(
                 //  FORMAT_ICON_GAP`），与左列写法那一列对齐；右端仍按行的外扩那一档让回来，
                 //  线跟着外扩会顶到卡片边上，与卡片自己的边线打架。
                 if (index > 0) {
-                    HorizontalDivider(
+                    AppDivider(
                         Modifier.padding(
                             start = FORMAT_ROW_INSET + FORMAT_ROW_ICON + FORMAT_ICON_GAP,
                             end = FORMAT_ROW_INSET,

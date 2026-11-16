@@ -600,6 +600,31 @@ data class ComboKey(
      *  取值一律走 `Config.comboHoldFixedWindowStartFor`。
      */
     val holdFixedWindowStart: Boolean? = null,
+    /**
+     * **成员连击**：按住首键不放，那颗**唯一成员键**在窗口内连击（双击 / 三击 / 四击 /
+     * 单击后长按）—— 动作落在**这一档组合自己**的这几格，与成员键单键的多击**完全解耦**。
+     *
+     *  只在 `mode == MODE_HOLD` 且 `followers.size == 1`（首键 + 一颗成员）时有意义：多成员时
+     *  「哪一颗连击」没有定义。窗口与判定时机**复用按住组合已有的配置**（[holdFixedWindowStart]
+     *  决定固定起点还是逐次等、[holdWindowMs] / [holdFollowerMs] 决定窗口长度），不再为它另开
+     *  一套窗口字段（用户口径：窗口用按住组合的固定窗口起点和等待窗口）。
+     *
+     *  开关与动作分两格（与单键 `doubleClickOn` / `extraClicksOn` 同一族）：关掉只是不判定、
+     *  不派发，配过的动作原样留着，再打开回来。
+     *
+     *  这一条就是**双击**那一档（`memberDouble`）；3 击起的几档是下面那张表。
+     */
+    val memberDouble: Action = Action.None,
+    val memberDoubleOn: Boolean = true,
+    /** 成员第 3 击起的几档（键 = 击数，值 = 动作）。 */
+    val memberClicks: Map<Int, Action> = emptyMap(),
+    /** 开着哪几档成员多击（第 3 击起）。 */
+    val memberClicksOn: Set<Int> = emptySet(),
+    /** 成员「单击后长按」那一档（成员第一击抬手后，窗口内再按下并按住）。 */
+    val memberClickThenLong: Action = Action.None,
+    val memberClickThenLongOn: Boolean = false,
+    /** 成员「单击后长按」自己的长按阈值 —— 与这一档普通长按 [longPressMs] 分开。 */
+    val memberClickThenLongPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
 ) : OwnSettings,
     LongPressParams {
     /** 这一档现在算不算数 —— 关掉了、或成员不足两键（配置文件被手改坏）都不算。 */
@@ -644,6 +669,21 @@ data class ComboKey(
         get() = if (isHold) keys.drop(1) else emptyList()
 
     /**
+     * **成员连击**那套开关 —— 只在「按住档 + 只有一颗成员」时有意义，其余回 `null`
+     * （等待组合 / 多成员组合没有「哪一颗成员连击」这一说）。
+     *
+     *  界面按它拼手势带（`GestureTrigger.comboSlots` 的第二个参数），判定侧按它决定
+     *  那颗成员键的连击链数到第几击。
+     */
+    val memberGestures: MemberGestures?
+        get() =
+            if (isHold && followers.size == 1) {
+                MemberGestures(memberDoubleOn, memberClicksOn, memberClickThenLongOn)
+            } else {
+                null
+            }
+
+    /**
      * [trigger] 这一档的动作。
      *
      *  组合只认单击 / 长按两档（[COMBO_SLOTS]）：双击与第 3 击起那些档位在这一层没有槽位，
@@ -655,14 +695,34 @@ data class ComboKey(
      */
     fun actionOf(trigger: GestureTrigger): Action =
         when (trigger) {
-            is GestureTrigger.Click -> if (trigger.count == 1) single else Action.None
+            is GestureTrigger.Click -> {
+                when (trigger.count) {
+                    1 -> single
 
-            GestureTrigger.LongPress -> long
+                    //  第 2 击起 = **成员连击**（按住首键、那颗唯一成员键连击）：
+                    //  关着时恒回「无操作」（与单键 `doubleClickOn` / `extraClicksOn` 同一族）。
+                    2 -> if (memberDoubleOn) memberDouble else Action.None
 
-            GestureTrigger.Release -> longRelease
+                    else -> if (trigger.count in memberClicksOn) memberClicks[trigger.count] ?: Action.None else Action.None
+                }
+            }
 
-            //  组合没有「单击后长按」：它的两段都建立在单键连击上（见 [COMBO_SLOTS]）
-            GestureTrigger.ClickThenLong, GestureTrigger.ClickThenLongRelease -> Action.None
+            GestureTrigger.LongPress -> {
+                long
+            }
+
+            GestureTrigger.Release -> {
+                longRelease
+            }
+
+            //  「单击后长按」= 成员连击的那一档（成员第一击抬手后、窗口内再按下并按住）。
+            GestureTrigger.ClickThenLong -> {
+                if (memberClickThenLongOn) memberClickThenLong else Action.None
+            }
+
+            GestureTrigger.ClickThenLongRelease -> {
+                Action.None
+            }
         }
 
     /**

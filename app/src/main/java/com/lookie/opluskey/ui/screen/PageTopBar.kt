@@ -50,6 +50,7 @@ import com.lookie.opluskey.ui.screen.command.CommandHeaderReset
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
 import com.lookie.opluskey.ui.screen.command.branchOwnerLabel
 import com.lookie.opluskey.ui.screen.command.branchOwnerNames
+import com.lookie.opluskey.ui.screen.common.CommonCommandsHeaderEdit
 import com.lookie.opluskey.ui.screen.home.HomeHeaderMenu
 import com.lookie.opluskey.ui.screen.variables.VariableHeaderAdd
 import com.lookie.opluskey.ui.state.binding.ComboEditState
@@ -470,9 +471,30 @@ private fun SettingsPage.PageActions(
             KeysHeaderEdit()
         }
 
+        // 「常用命令」页那颗「编辑 / 完成」：同一颗按钮、同一套账 —— 进编辑态之后勾选，
+        //  右下角换成「固定 / 取消固定」与「删除」两颗（见 `CommonCommandsHeaderEdit`）。
+        Screen.COMMON_COMMANDS -> {
+            CommonCommandsHeaderEdit()
+        }
+
         // 「自定义变量」页那颗「新建」：这一页唯一的加法入口（原先在右下角那颗 FAB 上）
         Screen.VARIABLES -> {
             VariableHeaderAdd()
+        }
+
+        // 「更多选项」/「按键设置」/「独立设置」三页各一颗「重置」（`eraser`）——
+        //  重置的是**这一页上的那几项**，不是整个模块（那一档正门在首页 ⋮ 里）。
+        //  三处共用同一个组件，只是范围不同（见 `ResetScope`）。
+        Screen.ABOUT -> {
+            HeaderReset(ResetScope.ABOUT)
+        }
+
+        Screen.GENERAL -> {
+            HeaderReset(ResetScope.GENERAL)
+        }
+
+        Screen.KEY_SETTINGS -> {
+            HeaderReset(ResetScope.KEY_SETTINGS)
         }
 
         // 「变量操作」页顶栏没有动作：那一页只剩「挑一步」（挑完点页里那颗 FAB 落盘）。

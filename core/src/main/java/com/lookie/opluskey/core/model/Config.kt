@@ -102,13 +102,13 @@ data class KeyConfig(
      * **窗口从什么时候开始算** —— 两种判定时机，页面上那颗「固定窗口起点」开着
      * 等于这里 `false`（界面态与存储位相反，取反在 `BindingSettings` 那一行）。
      *
-     *  ## `false` = 固定窗口起点（默认）
+     *  ## `false` = 固定窗口起点
      *
      *  窗口在**第一击抬手**那一刻开始，之后每一击的抬手都不再延长它：一个窗口内数到的几击
      *  算一次触发。窗口到点、或数到这颗键配的最高档，就开始判。
      *  按下时按住多久都不吃掉窗口预算（起点是抬手，不是按下）。
      *
-     *  ## `true` = 每次松手重新起算
+     *  ## `true` = 每次松手重新起算（默认）
      *
      *  每次**抬手**都把窗口推到「此刻 + [multiWaitMs]」：只要还在按，判定就一直往后延。
      *  最后一次按下之后再等满一个窗口没有新的按下，就按实际击数判。
@@ -118,7 +118,7 @@ data class KeyConfig(
      *  数到最高档（[judgeCap]）都**当场判**，不再等窗口 —— 已经收够了，窗口里只可能是
      *  超出档位的第 N+1 下。
      */
-    val waitMultiWindow: Boolean = false,
+    override val waitMultiWindow: Boolean = true,
     /**
      * 「逐次等满」那一档的窗口（毫秒）—— **与 [doubleClickMs] 分开**。
      *
@@ -209,7 +209,7 @@ data class KeyConfig(
      *
      *  判定侧要靠它决定抬手那一刻发不发 `ClickThenLongRelease`：场景表不广播，它自己算不出来。
      */
-    val sceneChainRelease: Boolean = false,
+    override val sceneChainRelease: Boolean = false,
     /**
      * **系统场景** —— 一张顺序表，一块 = 一组条件 + 完整的三档手势（[SceneRule]）。
      *
@@ -255,7 +255,7 @@ data class KeyConfig(
      *  表（[double]）本身**不动**：关掉再打开，之前配好的动作原样回来（与 [extraClicksOn] 同一条）。
      *  **不跟随** [useOwnSettings]：这颗键开着哪几档手势是它自己的形态。
      */
-    val doubleClickOn: Boolean = true,
+    override val doubleClickOn: Boolean = true,
     /**
      * **哪几档多击开着**（第 3 击起，元素即击数：`{3}` / `{3,4}` / `{4}`）—— 逐档一个开关。
      *
@@ -286,7 +286,7 @@ data class KeyConfig(
      *
      *  同样**不跟随** [useOwnSettings]（理由同 [extraClicksOn]）。
      */
-    val clickThenLongOn: Boolean = false,
+    override val clickThenLongOn: Boolean = false,
     /** 「单击后长按」绑定什么 —— 只在 [clickThenLongOn] 开着时算数。 */
     val clickThenLong: Action = Action.None,
     /**
@@ -295,10 +295,10 @@ data class KeyConfig(
      *  为什么分开：两段式里第二次按住的起点，用户往往希望比普通长按更短（因为已经先点了一下）。
      *  共用一位的话，调短这一档会把普通长按也一起改短。
      */
-    val clickThenLongPressMs: Int = DEFAULT_LONG_PRESS_MS,
+    override val clickThenLongPressMs: Int = DEFAULT_LONG_PRESS_MS,
     /** 「单击后长按」按住期间**连续触发**（与 [longRepeat] 各自一份）。 */
     val clickThenLongRepeat: Boolean = false,
-    val clickThenLongRepeatIntervalMs: Int = DEFAULT_REPEAT_INTERVAL_MS,
+    override val clickThenLongRepeatIntervalMs: Int = DEFAULT_REPEAT_INTERVAL_MS,
     /** 连续触发时每次重复都振动（与 [longRepeatVibrate] 各自一份）。 */
     val clickThenLongRepeatVibrate: Boolean = false,
     /**
@@ -309,8 +309,8 @@ data class KeyConfig(
      */
     val clickThenLongIsSerial: Boolean = false,
     /** 「单击后长按」**松手时**再执行一个动作（与 [longRelease] 各自一份）。 */
-    val clickThenLongReleaseOn: Boolean = false,
-    val clickThenLongRelease: Action = Action.None,
+    override val clickThenLongReleaseOn: Boolean = false,
+    override val clickThenLongRelease: Action = Action.None,
     /**
      * 宿主算好的**最高绑定击数**（含场景里绑的那几档）—— **只由宿主算好、随配置广播带过来**
      * （同 [longIsSerial] 那一套）。
@@ -324,7 +324,9 @@ data class KeyConfig(
      */
     val judgeClicks: Int = 0,
 ) : OwnSettings,
-    LongPressParams {
+    //  判定侧（`GestureDetector`）读的就是这一份窄视图：`KeyConfig` 是它主要的实现
+    //  （按住组合的成员连击是第二份，见 `ClickChainParams` 的 KDoc）。
+    ClickChainParams {
     fun actionOf(gesture: Gesture): Action = actionOf(gesture.trigger())
 
     /**
@@ -493,7 +495,7 @@ data class KeyConfig(
      *  收成一个属性而不是让注入侧自己 `if`：这条判据有两处读者（排窗 `scheduleDoubleWindow`
      *  与到点判定），各写一遍的话「排窗按 300、到点按 400」这种错位只会表现成偶发的手感异常。
      */
-    val clickWindowMs: Int
+    override val clickWindowMs: Int
         get() =
             if (waitMultiWindow) {
                 multiWaitMs.takeIf { it > FOLLOW_DOUBLE_CLICK_MS } ?: doubleClickMs
@@ -537,7 +539,7 @@ data class KeyConfig(
      *  [clicksForJudge] 仍然要取大：三击 / 四击那种「只在场景里绑了动作」的配置，
      *  档位开关可能没开，但那一档真要执行。
      */
-    val judgeCap: Int
+    override val judgeCap: Int
         get() =
             maxOf(
                 if (doubleClickOn) 2 else 1,
@@ -663,7 +665,7 @@ data class KeyConfig(
      *  与 [longActionExists] 同一个用途（松手那一档要看它），区别只是档位不同。
      *  注入侧场景表是空的，所以那一边只认直接绑定 —— 场景接管的松手由宿主侧判。
      */
-    val clickThenLongActionExists: Boolean
+    override val clickThenLongActionExists: Boolean
         get() =
             clickThenLong.isBound ||
                 sceneChain ||
@@ -707,7 +709,7 @@ data class KeyConfig(
      *  写成属性而不是让判定侧现拼：`GestureDetector` 里那一处 `if` 原本已经几个条件，
      *  再加一条就顶破 detekt 的复杂度上限 —— 而这条口径本来也只该有一份。
      */
-    val longRepeats: Boolean
+    override val longRepeats: Boolean
         get() = longRepeat && !longFireOnRelease && !longIsSerial && !longIsVoiceMemory
 
     /**
@@ -717,7 +719,7 @@ data class KeyConfig(
      *  多条命令与灵感语音都不重复：理由与长按那一档一字不差（见 [longRepeats]）。
      *  界面那一侧读同一份规则（`repeatBlockedReason`），两处不许各判一套。
      */
-    val clickThenLongRepeats: Boolean
+    override val clickThenLongRepeats: Boolean
         get() =
             clickThenLongRepeat &&
                 !clickThenLongIsSerial &&
@@ -806,8 +808,8 @@ data class KeyConfig(
     }
 
     companion object {
-        /** 「单击延迟」的默认值（毫秒）。 */
-        const val DEFAULT_DOUBLE_CLICK_MS = 300
+        /** 「单击延迟」的默认值（毫秒）—— 150：与四格组合窗口的出厂值同一档，人手节奏一致。 */
+        const val DEFAULT_DOUBLE_CLICK_MS = 150
 
         /**
          * 多击的**第一档**（第 3 击起；1 / 2 落在 [single] / [double]）与界面排在后面的那几档。
@@ -831,8 +833,13 @@ data class KeyConfig(
         /** 广播里那串 `"3,4"` → 打开的档位集合（`fieldValues()` 的逆）。 */
         fun clicksOnOf(text: String): Set<Int> = clicksOnOf(text.split(',').mapNotNull { it.trim().toIntOrNull() })
 
-        /** 双击窗口下限 —— 100ms 比「两次完整按压 + 抬手」的物理最短时间还短，是给用户留的余量档。 */
-        const val MIN_DOUBLE_CLICK_MS = 100
+        /**
+         * 等待窗口的下限 —— **50ms**：六根窗口滑杆（单击延迟、多击窗口、组合四格）共用这一档。
+         *
+         *  实测「一起按」两颗键的相差在 0~40ms（谁先上报看硬件），50 刚好盖住那段抖动；
+         *  再往下调就几乎是「必须精确同时按」，组合键会挑手。
+         */
+        const val MIN_DOUBLE_CLICK_MS = 50
         const val MAX_DOUBLE_CLICK_MS = 1000
 
         /**
@@ -1031,8 +1038,8 @@ data class GlobalConfig(
      *  （见 `KeyConfig.fieldValues(global)`）。
      */
     val doubleClickMs: Int = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
-    /** 公共设置里的**判定时机**（`false` = 固定窗口起点，`true` = 每次松手重新起算）。 */
-    val waitMultiWindow: Boolean = false,
+    /** 公共设置里的**判定时机**（`false` = 固定窗口起点，`true` = 每次松手重新起算；默认后者）。 */
+    val waitMultiWindow: Boolean = true,
     /** 公共设置里的**等待窗口**（0 = 跟随 [doubleClickMs]，见 `KeyConfig.multiWaitMs`）。 */
     val multiWaitMs: Int = KeyConfig.FOLLOW_DOUBLE_CLICK_MS,
     override val vibrate: Boolean,
@@ -1369,7 +1376,8 @@ data class GlobalConfig(
          *  出厂 **150**：四格（等待组合的整串 / 相邻两颗、按住组合的整串 / 后续成员）出厂同一个数，
          *  与 [DEFAULT_COMBO_HOLD_FOLLOWER_MS] 对齐 —— 四格量的都是一件事「人手按下相邻两颗的间隔」，
          *  出厂给两个不同的数只会让同一次按法在换格之后手感变了。
-         *  下限 20：再短就几乎是「必须精确同时按」，组合键会挑手。
+         *  下限 **50**（与 [KeyConfig.MIN_DOUBLE_CLICK_MS] 同一档）：六根窗口滑杆的下限统一，
+         *  再短就几乎是「必须精确同时按」，组合键会挑手。
          *
          *  上限放到 1000（原 300）：这个数同时管「算不算凑齐」与「第一颗键等多久才回落单击」，
          *  手慢的人 / 三颗的组合 / 需要先按住再补另一颗的场景，300ms 明显不够。放宽的代价是
@@ -1377,7 +1385,7 @@ data class GlobalConfig(
          *
          *  **四格共用这三档**：四格里量的都是「人手的节奏」，没有哪一格需要另一套边界。
          */
-        const val COMBO_WINDOW_MIN_MS = 20
+        const val COMBO_WINDOW_MIN_MS = 50
         const val DEFAULT_COMBO_WINDOW_MS = 150
         const val COMBO_WINDOW_MAX_MS = 1000
 
@@ -1397,11 +1405,12 @@ data class GlobalConfig(
          *  出厂 100：实测「一起按」两颗键相差 0~40ms（谁先上报看硬件），而真要按住一颗再补
          *  另一颗，人手一般在 150ms 以上 —— 100 落在中间，两边都不误伤。
          *
-         *  下限 40：再短就已经盖不住「一起按」的抖动（那正是这一位要分开的那一半）。
+         *  下限 **50**（与 [KeyConfig.MIN_DOUBLE_CLICK_MS] 同一档）：再短就已经盖不住「一起按」的抖动
+         *  （那正是这一位要分开的那一半）。
          *  上限 500 与组合长按阈值同量级：调得比那颗键自己的长按还宽时，它早就先判出长按、
          *  按住那条本来就作废了 —— 留这么宽只是不拦手改的配置。
          */
-        const val COMBO_HOLD_MIN_MIN_MS = 40
+        const val COMBO_HOLD_MIN_MIN_MS = 50
         const val DEFAULT_COMBO_HOLD_MIN_MS = 100
         const val COMBO_HOLD_MIN_MAX_MS = 500
 
@@ -1746,6 +1755,25 @@ data class Config(
      */
     fun comboHoldFixedWindowStartFor(combo: ComboKey): Boolean =
         comboField(combo, combo.holdFixedWindowStart, global.comboHoldFixedWindowStart)
+
+    /**
+     * 这一档的**成员连击参数** —— 按住首键、那颗唯一成员键连击时，判定侧（`GestureDetector`）
+     * 按这一份判。窗口与判定时机**复用按住组合已有的配置**（独立设置优先，见
+     * [comboWindowsFor] / [comboHoldFixedWindowStartFor]），不为成员连击另开一套窗口字段。
+     *
+     *  只在 `mode == MODE_HOLD` 且 `followers.size == 1` 时有意义；多成员组合上连击没有判据，
+     *  调用方不该问它（判定侧在 [ComboDetector] 里先按这一条拦掉）。
+     *
+     *  语义映射（组合 → 单键连击链）：
+     *  · [comboHoldFixedWindowStartFor] `true`（固定起点）→ 连击链 `waitMultiWindow = false`，
+     *    窗口用 [ComboWindows.hold]；`false`（逐次等）→ `waitMultiWindow = true`，窗口用
+     *    [ComboWindows.holdFollower] —— 两边命名正好相反。
+     */
+    fun comboMemberChain(combo: ComboKey): ClickChainParams {
+        val windows = comboWindowsFor(combo)
+        val fixed = comboHoldFixedWindowStartFor(combo)
+        return MemberChainView(combo, if (fixed) windows.hold else windows.holdFollower, !fixed)
+    }
 
     /**
      * 这一组**自己存着**的「首键要先按住多久」（毫秒）—— 与 [comboStoredWindowsFor] 同一条：

@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.LocalTick
+import com.lookie.opluskey.ui.model.icon.DrawnIcons
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.page.ROW_END_ICON_SIZE
@@ -39,12 +40,13 @@ import com.lookie.opluskey.ui.model.page.ROW_START_ICON_GAP
 import com.lookie.opluskey.ui.model.page.ROW_TITLE_INSET
 import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_DARK_ALPHA
-import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT
-import com.lookie.opluskey.ui.model.theme.isDarkScheme
 import com.lookie.opluskey.ui.style.AnimatedColumn
+import com.lookie.opluskey.ui.style.AppDivider
+import com.lookie.opluskey.ui.style.AppHeavyDivider
+import io.github.lyxnx.compose.ui.tablericons.TablerIcons
+import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentColors
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
@@ -53,8 +55,6 @@ import io.github.suqi8.coui.kmp.basic.CardColors
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
-import io.github.suqi8.coui.kmp.basic.DropdownDefaults
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
@@ -311,7 +311,8 @@ internal fun CardList(
             // 分隔线与行本身一起进出场（见各行的 `visible`）—— 所以它们必须同在一个块里
             val block: @Composable ColumnScope.() -> Unit = {
                 // 首行之上不画线；其余每一行之前一条（左端从**标题最左处**起，右端与卡片内边距对齐）。
-                //  这一行自己要求「加深带」时换成通栏那一档（见 [HeavyDivider]）。
+                //  颜色与粗细不在这里定 —— 全项目只有 `ui/style/Dividers.kt` 那一处（[AppDivider]）。
+                //  这一行自己要求「加深带」时换成通栏那一档（[AppHeavyDivider]）。
                 //
                 //  **「首行」按此刻**还在场的**那几行算**（`shown`），不是按物理位次 `index`：
                 //  上面那些行藏起来之后，这一行就是卡片的第一行，再给它画一条线，卡片顶上会多出
@@ -319,9 +320,9 @@ internal fun CardList(
                 //  它前面的「按键之间的等待」只对等窗口那一档出现）。
                 if (index in shown && index != shown.firstOrNull()) {
                     if (row.wantsHeavyDivider) {
-                        HeavyDivider()
+                        AppHeavyDivider()
                     } else {
-                        HorizontalDivider(
+                        AppDivider(
                             Modifier.padding(
                                 start = if (hasIconColumn) ROW_TITLE_INSET else DividerDefaults.CardInset,
                                 end = DividerDefaults.CardInset,
@@ -384,23 +385,6 @@ private val CardRow.wantsHeavyDivider: Boolean
             is CardRow.Switch -> false
             is CardRow.Custom -> false
         }
-
-/**
- * 卡片里「这一组 / 下一组」之间那条**加深带** —— 与浮层菜单组间那条同一档（同两个 alpha、
- * 同一档粗细），两处读起来才是同一种分隔。
- */
-@Composable
-private fun HeavyDivider() {
-    HorizontalDivider(
-        thickness = DropdownDefaults.PopupGroupDividerThickness,
-        color =
-            if (COUITheme.colorScheme.isDarkScheme) {
-                Color.Black.copy(alpha = MENU_GROUP_LINE_DARK_ALPHA)
-            } else {
-                Color.Black.copy(alpha = MENU_GROUP_LINE_LIGHT_ALPHA)
-            },
-    )
-}
 
 /** 这一行会不会时有时无（`null` = 一直在）—— 三种行同一条判定。 */
 private fun CardRow.visible(): Boolean? =
@@ -751,6 +735,45 @@ internal fun RowEndIcon(
         contentDescription = null,
         modifier = Modifier.size(ROW_END_ICON_SIZE),
         tint = tint,
+    )
+}
+
+/**
+ * 行尾那一格换成**勾选框**（编辑态）—— 两档都是圆：没勾是手绘的细圆环（[DrawnIcons.PickRing]，
+ * 图标库那颗 `circle` 笔画 2.0，压在行尾比实心那档重）、勾上是实心圆带勾（`circle-check-filled`）。
+ *
+ * ## 为什么不用库的 `Checkbox`
+ *
+ *  库那颗自带 48dp 触达区、按下去还有一圈涟漪与缩放动画：塞进行尾会把整行撑高，与平时那颗
+ *  箭头（[RowEndIcon]，24dp）对不齐 —— 进出编辑态时行高会跳一下。而这几处**整行都是点击区**
+ *  （勾选框自己 `onClick = null`），它只需要一个字形，不需要第二个点击目标。
+ *
+ *  所以走与 [RowEndIcon] 同一格尺寸：箭头与勾选框在行里占同一处，切换时不跳。
+ *
+ * ## 颜色
+ *
+ *  勾上是主色（与「选中的那一项」同一个读法）、没勾是次要那档、整页不可写时是禁用色。
+ *  字形本身不表达「不可按」，所以禁用要在这里换色 —— 否则那颗勾选框看起来照样能按。
+ *
+ * @param picked 勾上了没有
+ * @param enabled 这一页现在能不能改（整页闸门关着时勾选框跟着压暗）
+ */
+@Composable
+internal fun PickBox(
+    picked: Boolean,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    Icon(
+        if (picked) TablerIcons.Filled.CircleCheck else DrawnIcons.PickRing,
+        contentDescription = null,
+        modifier = modifier.size(ROW_END_ICON_SIZE),
+        tint =
+            when {
+                !enabled -> COUITheme.colorScheme.disabledOnSecondaryVariant
+                picked -> COUITheme.colorScheme.primary
+                else -> COUITheme.colorScheme.onSurfaceVariantSummary
+            },
     )
 }
 

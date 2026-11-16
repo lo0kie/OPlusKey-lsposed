@@ -246,8 +246,9 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                                 max = GlobalConfig.COMBO_HOLD_MIN_MAX_MS,
                                 value = source.holdMinMs,
                                 default = source.holdMinDefault,
-                                //  10ms 一档：40~500 之间 47 档，够细也够短
-                                step = 10,
+                                //  50ms 一档：50~500 之间 10 档 —— 这一位只判「按住够不够久」，
+                                //  粗档够用；`dragStep` 默认跟 `step` 走，拖动也是同一格
+                                step = 50,
                                 enabled = source.enabled,
                                 disabledHint = source.disabledHint,
                                 valueText = { "$it ms" },

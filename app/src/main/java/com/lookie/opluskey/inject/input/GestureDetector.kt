@@ -3,6 +3,7 @@ package com.lookie.opluskey.inject.input
 import android.os.Handler
 import android.os.SystemClock
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ClickChainParams
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.ComboWindows
 import com.lookie.opluskey.core.model.GestureTrigger
@@ -86,7 +87,7 @@ internal class GestureDetector(
      * 第四个参数是「长按连续触发」的重复派发标记：只有长按会重复，
      * 重复那几次不能当新的一次按键（据此跳过振动反馈）。
      */
-    private val onGesture: (KeyId, GestureTrigger, KeyConfig, Boolean) -> Unit,
+    private val onGesture: (KeyId, GestureTrigger, ClickChainParams, Boolean) -> Unit,
     /**
      * 「屏幕黑着的话，这段时间里别让 CPU 睡」—— 熄屏排双击窗口时用（见类注释「熄屏也判双击」）。
      *
@@ -211,13 +212,13 @@ internal class GestureDetector(
     fun onRomGesture(
         id: KeyId,
         gesture: GestureTrigger,
-        config: KeyConfig,
+        config: ClickChainParams,
     ) = synchronized(lock) { onRomGestureLocked(id, gesture, config) }
 
     private fun onRomGestureLocked(
         id: KeyId,
         gesture: GestureTrigger,
-        config: KeyConfig,
+        config: ClickChainParams,
     ) {
         reset(id)
         // 判据级（与「双击」「长按」那几行同一档）：这条是「ROM 换了码 / 码的含义变了」时
@@ -229,13 +230,13 @@ internal class GestureDetector(
     /** 一次按键按下。 */
     fun onKeyDown(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
         now: Long = SystemClock.elapsedRealtime(),
     ) = synchronized(lock) { onKeyDownLocked(id, config, now) }
 
     private fun onKeyDownLocked(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
         now: Long,
     ) {
         val p = pending(id)
@@ -356,13 +357,13 @@ internal class GestureDetector(
     /** 一次按键抬起。 */
     fun onKeyUp(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
         now: Long = SystemClock.elapsedRealtime(),
     ) = synchronized(lock) { onKeyUpLocked(id, config, now) }
 
     private fun onKeyUpLocked(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
         now: Long,
     ) {
         val p = pending(id)
@@ -504,7 +505,7 @@ internal class GestureDetector(
      */
     private fun fireChainResult(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
     ) {
         val p = pending(id)
         val firedClicks = p.clicks
@@ -533,7 +534,7 @@ internal class GestureDetector(
      */
     private fun fireClicks(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
         clicks: Int,
     ) {
         if (clicks == 2 && !config.doubleClickOn) {
@@ -580,7 +581,7 @@ internal class GestureDetector(
 
     private fun scheduleLongPress(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
     ) {
         // 这一枪属于哪一次按下：`pressAt` 就是那一次按下的时刻（`onKeyDown` 写、`reset` 清）。
         // 到点时它变了（中途又按过一次）或清零了（抬手 / 重置过）⇒ 这一枪作废；
@@ -637,7 +638,7 @@ internal class GestureDetector(
      */
     private fun shotDecision(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
     ): Int {
         val p = pending(id)
         var chained = false
@@ -674,7 +675,7 @@ internal class GestureDetector(
      */
     private fun fireChained(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
     ) {
         XLog.w("${id.label}：单击后长按")
         dispatch(id, GestureTrigger.ClickThenLong, config, repeat = false)
@@ -691,7 +692,7 @@ internal class GestureDetector(
      */
     private fun fireLong(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
         downAt: Long,
     ) {
         // 「松手才触发」（`longFireOnRelease`）：到点只把这一按标成长按，**不派发** ——
@@ -735,7 +736,7 @@ internal class GestureDetector(
      */
     private fun scheduleRepeat(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
         intervalMs: Int,
         trigger: GestureTrigger,
     ) {
@@ -790,7 +791,7 @@ internal class GestureDetector(
      */
     private fun scheduleReleaseFallback(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
         downAt: Long,
     ) {
         cancelReleaseFallback(id)
@@ -834,7 +835,7 @@ internal class GestureDetector(
     /** 抬手后开一个双击窗口：窗口内没有第二次按下就补一次单击。 */
     private fun scheduleDoubleWindow(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
     ) {
         // 排窗用的窗口长度在排窗这一刻定格，不再到点重读 `doubleClickMs`
         // （那一读会读到用户中途改过的新值，与 `p.doubleWindowAt` 的口径对不上）。
@@ -913,7 +914,7 @@ internal class GestureDetector(
      */
     private fun finishLong(
         id: KeyId,
-        config: KeyConfig,
+        config: ClickChainParams,
     ) {
         val p = pending(id)
         //  与兜底那一枪同一把锁：谁先到谁负责，另一侧看得到这个结论（见 [scheduleReleaseFallback]）
@@ -962,7 +963,7 @@ internal class GestureDetector(
     private fun dispatch(
         id: KeyId,
         gesture: GestureTrigger,
-        config: KeyConfig,
+        config: ClickChainParams,
         repeat: Boolean,
     ) {
         // 链路自检的**端到端实证**：真判出一个手势就记一笔。
@@ -1028,6 +1029,15 @@ internal data class DetectorBinds(
      *  按住档的成员接收窗口按它取。装配方接 `ConfigChannel.windowsFor`。
      */
     val windowsFor: (ComboKey) -> ComboWindows? = { null },
+    /**
+     * 这一档的**成员连击参数** —— 按住首键、唯一成员键连击时，连击链按这一份判
+     *  （`Config.comboMemberChain`）。`null` = 这档不支持成员连击（不是按住档 / 不止一颗成员 /
+     *  成员连击一档都没开）。
+     *
+     *  装配方接 `ConfigChannel` 的成员连击查询；判定逻辑仍在 `GestureDetector`（见
+     *  `ComboDetector` 里那个成员连击实例）。
+     */
+    val memberChainFor: (ComboKey) -> ClickChainParams? = { null },
 ) {
     /**
      * 「首键松手后仍执行它自己的长按」那一档的两个回调。
