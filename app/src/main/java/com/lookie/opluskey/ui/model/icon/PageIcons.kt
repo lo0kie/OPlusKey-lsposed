@@ -5,7 +5,6 @@ import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
-import com.lookie.opluskey.ui.model.theme.AppTheme
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
@@ -40,6 +39,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Circle
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
+import io.github.lyxnx.compose.ui.tablericons.outline.Clock
 import io.github.lyxnx.compose.ui.tablericons.outline.Clock24
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockBolt
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPause
@@ -47,6 +47,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ClockPlay
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockStop
 import io.github.lyxnx.compose.ui.tablericons.outline.CloudSearch
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
+import io.github.lyxnx.compose.ui.tablericons.outline.ColorFilter
 import io.github.lyxnx.compose.ui.tablericons.outline.ColorSwatch
 import io.github.lyxnx.compose.ui.tablericons.outline.Contrast
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceAirpods
@@ -102,9 +103,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Notes
 import io.github.lyxnx.compose.ui.tablericons.outline.Opacity
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
-import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.Photo
+import io.github.lyxnx.compose.ui.tablericons.outline.PhotoOff
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.Pin
 import io.github.lyxnx.compose.ui.tablericons.outline.Pinned
@@ -137,17 +138,18 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.SortAscendingShapes
+import io.github.lyxnx.compose.ui.tablericons.outline.SortDescendingShapes
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber2
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber3
 import io.github.lyxnx.compose.ui.tablericons.outline.Stack2
+import io.github.lyxnx.compose.ui.tablericons.outline.StepInto
 import io.github.lyxnx.compose.ui.tablericons.outline.Sun
 import io.github.lyxnx.compose.ui.tablericons.outline.SunMoon
 import io.github.lyxnx.compose.ui.tablericons.outline.Table
 import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
 import io.github.lyxnx.compose.ui.tablericons.outline.TestPipe
-import io.github.lyxnx.compose.ui.tablericons.outline.TextSize
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Tooltip
 import io.github.lyxnx.compose.ui.tablericons.outline.Trash
@@ -466,29 +468,39 @@ internal object PageIcons {
     /** 「更多选项」页「语言」—— `world`（地球：用地球表示语言）。 */
     val Language: ImageVector get() = TablerIcons.Outline.World
 
-    /** 「更多选项」页「系统配色」—— `palette`（这一行改的是配色）。 */
-    val ThemeMonet: ImageVector get() = TablerIcons.Outline.Palette
+    /**
+     * 「外观」卡「使用 Monet 配色」—— `color-filter`（三个交叠的圆）。
+     *
+     *  取色这件事本身：这一行把整套色板交给系统按壁纸生成的那一套，字形就是「从几个色里挑
+     *  出一整套」。与旁边「主题」那颗 `sun-moon` 分得开 —— 一颗管深浅、一颗管配色。
+     */
+    val MonetColors: ImageVector get() = TablerIcons.Outline.ColorFilter
 
     /**
-     * 强调色那一行的色块 —— **按主题选**（色块本身是手绘的，见 `PaletteIcons`）：
-     *  · Monet：四格色阶（[PaletteIcons.Swatch]）—— 那一档是系统按壁纸生成**一整套**色，
-     *    色块要读得出「一整套」，四档透明度正好是同一套色的色阶；
-     *  · 其余主题档：**一个整块**（[PaletteIcons.Block]）—— 那一档只有「强调色」这一个颜色被换掉
+     * 强调色那一行的色块 —— **按用不用 Monet 配色选**（色块本身是手绘的，见 `PaletteIcons`）：
+     *  · 开了 `GlobalConfig.monetColors`：四格色阶（[PaletteIcons.Swatch]）—— 那是系统按壁纸
+     *    生成**一整套**色，色块要读得出「一整套」，四档透明度正好是同一套色的色阶；
+     *  · 关着：**一个整块**（[PaletteIcons.Block]）—— 那时只有「强调色」这一个颜色被换掉
      *    （底子仍是 COUI 的），画成四格会读成「四块互不相干的色」。
      *
      *  当前生效的那一行行首**换成对勾**（见 `PageMenuPopup.kt` 的 `MenuRow`），但颜色仍是这一套的色
      *  —— 「是哪一套色」由对勾的颜色给，不靠那块形状。
      */
-    fun accentSwatch(theme: AppTheme): ImageVector = if (theme == AppTheme.MONET) PaletteIcons.Swatch else PaletteIcons.Block
+    fun accentSwatch(monet: Boolean): ImageVector = if (monet) PaletteIcons.Swatch else PaletteIcons.Block
 
-    /** 「外观」卡「页面缩放」—— `zoom-in`（放大镜加号：这一行是缩放）。 */
+    /** 「外观」卡「界面缩放」—— `zoom-in`（放大镜加号：这一行是缩放）。 */
     val ZoomIn: ImageVector get() = TablerIcons.Outline.ZoomIn
-
-    /** 「外观」卡「跟随系统显示大小」—— `text-size`（大小 A→A）。 */
-    val TextSize: ImageVector get() = TablerIcons.Outline.TextSize
 
     /** 「外观」卡「使用预测返回手势」—— `hand-finger-left`（指尖朝左：那一行是返回手势）。 */
     val PredictiveBack: ImageVector get() = TablerIcons.Outline.HandFingerLeft
+
+    /**
+     * 「外观」卡「减少界面图标」—— `photo-off`（一张打了斜线的图）。
+     *
+     *  「少画点图」这件事直接用「图被划掉」表达，比 `eye-off` 那类更贴：收的是卡片行首那些
+     * **图形**，不是整行内容的显隐。
+     */
+    val ReduceIcons: ImageVector get() = TablerIcons.Outline.PhotoOff
 
     /** 「更多选项」页「界面颜色」—— `sun-moon`（一半日一半月：深浅由这一行定）。 */
     val Theme: ImageVector get() = TablerIcons.Outline.SunMoon
@@ -820,6 +832,25 @@ internal object PageIcons {
      */
     val StepReorder: ImageVector get() = TablerIcons.Outline.SortAscendingShapes
 
+    //  ── 组合列「更多」菜单里那三档排序（用户指定字形）──
+    //
+    //  三颗摆在同一张菜单里，要能一眼分开「按什么排」：
+    //  时钟讲**时间**，两组「长短块 + 箭头」讲**先后**，箭头朝向区分哪一种在前。
+
+    /**
+     * 「不排序」—— `clock`（一只钟）。
+     *
+     *  这一档的排序键是**创建时间**（副标题写着「按创建时间」），所以用钟而不是排序箭头：
+     *  另外两行都在比先后，这一行比的是「谁先被建出来」。
+     */
+    val SortByCreated: ImageVector get() = TablerIcons.Outline.Clock
+
+    /** 「有顺序在前」—— `sort-descending-shapes`（箭头朝下：先到的那一头排在上方）。 */
+    val SortOrderedFirst: ImageVector get() = TablerIcons.Outline.SortDescendingShapes
+
+    /** 「不分前后顺序在前」—— `sort-ascending-shapes`。 */
+    val SortUnorderedFirst: ImageVector get() = TablerIcons.Outline.SortAscendingShapes
+
     /** 「振动反馈」行的行首 —— `DeviceMobileVibration`（手机 + 两道声波）。 */
     val Vibrate: ImageVector get() = TablerIcons.Outline.DeviceMobileVibration
 
@@ -883,6 +914,17 @@ internal object PageIcons {
      *  「这一行是文字设置」。不用 `notes` / `pencil`：前者是捐赠名单那颗，后者是「编辑命令」。
      */
     val ToastTemplate: ImageVector get() = TablerIcons.Outline.AlignLeft
+
+    /**
+     * 「多条命令逐条提示」行的行首 —— `step-into` **逆时针转 90°**（用户指定）。
+     *
+     *  原字形是一支朝下的箭头落进底下那条托，说的是「一步一步往下走」；转成横向之后
+     *  读作「一条链上按顺序一段一段过去」。与 [CommandToast]（气泡）分工：那一颗讲
+     *  「提示这件事」，这一颗讲「每条步骤各念一句」。
+     */
+    val StepNotice: ImageVector by lazy {
+        rotatedIcon("StepNotice", TablerIcons.Outline.StepInto, -90f)
+    }
 
     /**
      * 提示条的前置图标**默认档** —— `alert-circle`（圈里一个感叹号）。

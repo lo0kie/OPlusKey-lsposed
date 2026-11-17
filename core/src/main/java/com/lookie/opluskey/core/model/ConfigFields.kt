@@ -227,6 +227,9 @@ object ConfigFields {
     const val KEY_TOAST_NOTIFY_EXTRA = "key_toast_notify"
     const val KEY_TOAST_TEMPLATE_EXTRA = "key_toast_template"
 
+    /** 「多条命令逐条提示」的逐键那一格（`KeyConfig.stepNotice`）。 */
+    const val KEY_STEP_NOTICE_EXTRA = "key_step_notice"
+
     const val LANGUAGE_EXTRA = "language"
     const val COLOR_OS_API_EXTRA = "color_os_api"
 
@@ -463,6 +466,9 @@ object ConfigFields {
     /** 这颗键自己的提示文案模板 —— 只在 [F_OWN_SETTINGS] 开着时算数。 */
     val F_KEY_TOAST_TEMPLATE = Field(KEY_TOAST_TEMPLATE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_TOAST_TEMPLATE))
 
+    /** 这颗键自己的「多条命令逐条提示」—— 只有落盘那一列（注入侧不弹提示，同 [F_KEY_TOAST_NOTIFY]）。 */
+    val F_KEY_STEP_NOTICE = Field(null, Kind.Bool(GlobalConfig.DEFAULT_STEP_NOTICE))
+
     /** 长按绑的是不是串行命令 —— **只有广播那一列**，见 [LONG_SERIAL_EXTRA] 的说明。 */
     val F_LONG_SERIAL = Field(LONG_SERIAL_EXTRA, Kind.Bool(false))
 
@@ -583,6 +589,7 @@ object ConfigFields {
             F_KEY_TOAST_FLUID,
             F_KEY_TOAST_NOTIFY,
             F_KEY_TOAST_TEMPLATE,
+            F_KEY_STEP_NOTICE,
             F_LONG_SERIAL,
             F_SCENE_RELEASE,
             F_SCENE_LONG,
@@ -641,6 +648,13 @@ object ConfigFields {
      */
     val F_TOAST_TEMPLATE = Field(null, Kind.Text(GlobalConfig.DEFAULT_TOAST_TEMPLATE))
 
+    /**
+     * 多条命令**逐条提示**（每条步骤各念一句；关着时整条只念一句命令名）。
+     *
+     *  只有落盘那一列：念不念、念什么全在宿主执行侧，注入侧不参与。
+     */
+    val F_STEP_NOTICE = Field(null, Kind.Bool(GlobalConfig.DEFAULT_STEP_NOTICE))
+
     /** 界面语言。 */
     val F_LANGUAGE = Field(LANGUAGE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_LANGUAGE))
 
@@ -658,6 +672,14 @@ object ConfigFields {
      *  注入侧不读它（那边没有界面），广播里也就不必带。
      */
     val F_THEME = Field(null, Kind.Text(GlobalConfig.DEFAULT_THEME))
+
+    /**
+     * 使用 Monet 配色 —— **只有落盘那一列**：换的是这个页面自己的整套色板，注入侧不读它。
+     *
+     *  与 [F_THEME] 分成两格：深浅与配色各占一行（界面上也是两行），组合起来才有四种样子。
+     *  拆之前它压在 [F_THEME] 的值里（`light_monet` 那种），一个字段读不出来两件事。
+     */
+    val F_MONET_COLORS = Field(null, Kind.Bool(GlobalConfig.DEFAULT_MONET_COLORS))
 
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
     val F_COLOR_OS_API = Field(COLOR_OS_API_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COLOR_OS_API))
@@ -713,12 +735,6 @@ object ConfigFields {
                 GlobalConfig.COMBO_PAIR_MAX_MS,
             ),
         )
-
-    /**
-     * 「跟随系统显示大小」—— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：
-     * 它只决定这个页面自己那棵树的密度，注入侧没有界面、不读它。
-     */
-    val F_FOLLOW_DISPLAY_SIZE = Field(null, Kind.Bool(GlobalConfig.DEFAULT_FOLLOW_DISPLAY_SIZE))
 
     /**
      * 组合键：**按住那两档里起点键要先按住多久**（毫秒）。
@@ -778,7 +794,7 @@ object ConfigFields {
         Field(COMBO_HOLD_FIXED_WINDOW_START_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START))
 
     /**
-     * 页面缩放（百分比）—— 同样只有落盘那一列。上下限就是滑杆两端（[GlobalConfig.PAGE_SCALE_MIN]
+     * 界面缩放（百分比）—— 同样只有落盘那一列。上下限就是滑杆两端（[GlobalConfig.PAGE_SCALE_MIN]
      * ~ [GlobalConfig.PAGE_SCALE_MAX]）：手改文件写进 10 或 900 会被这一层钳回来。
      */
     val F_PAGE_SCALE =
@@ -799,6 +815,22 @@ object ConfigFields {
      * 注入侧不读它（它也不认识界面）。
      */
     val F_SHOW_COMMON_COMMANDS = Field(null, Kind.Bool(GlobalConfig.DEFAULT_SHOW_COMMON_COMMANDS))
+
+    /**
+     * 「减少界面图标」—— **只有落盘那一列**：卡片行画不画行首那颗字形是页面自己的事，
+     * 判定与执行都不读（页面级通过 `LocalReduceRowIcons` 递给每一行）。
+     */
+    val F_REDUCE_ICONS = Field(null, Kind.Bool(GlobalConfig.DEFAULT_REDUCE_ICONS))
+
+    /**
+     * 组合两列的排列次序（`GlobalConfig.waitComboSort` / `holdComboSort`）—— **只有落盘那一列**：
+     * 那是页面自己的显示偏好，判定与执行都不读。
+     *
+     *  存文本 id（见 `GlobalConfig.SORT_BY_CREATED` 那一组）：枚举在界面层，
+     * 与 [F_PALETTE] / [F_THEME] 同一条。
+     */
+    val F_WAIT_COMBO_SORT = Field(null, Kind.Text(GlobalConfig.DEFAULT_COMBO_SORT))
+    val F_HOLD_COMBO_SORT = Field(null, Kind.Text(GlobalConfig.DEFAULT_COMBO_SORT))
 
     //  —— 公共设置里的「单击」三项 ——
     //
@@ -854,9 +886,11 @@ object ConfigFields {
             F_VIBRATE_STRENGTH,
             F_TOAST_ON_RUN,
             F_TOAST_NOTIFY,
+            F_STEP_NOTICE,
             F_LANGUAGE,
             F_PALETTE,
             F_THEME,
+            F_MONET_COLORS,
             F_COLOR_OS_API,
             F_MINI_WINDOW_ANIM,
             F_COMBO_WAIT_WINDOW_MS,
@@ -868,10 +902,12 @@ object ConfigFields {
             F_COMBO_STARTER_KEEP_LONG,
             F_COMBO_FIXED_WINDOW_START,
             F_COMBO_HOLD_FIXED_WINDOW_START,
-            F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
             F_ICON_TINT_SEED,
             F_SHOW_COMMON_COMMANDS,
+            F_REDUCE_ICONS,
+            F_WAIT_COMBO_SORT,
+            F_HOLD_COMBO_SORT,
             F_GLOBAL_DETAILED_KEY_SETTINGS,
         )
 

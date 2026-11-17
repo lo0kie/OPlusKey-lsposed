@@ -168,6 +168,8 @@ data class KeyConfig(
     override val toastNotify: Boolean = GlobalConfig.DEFAULT_TOAST_NOTIFY,
     /** 这颗键自己的提示文案模板（空串 = 默认那句）—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
+    /** 这颗键自己的「多条命令逐条提示」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val stepNotice: Boolean = GlobalConfig.DEFAULT_STEP_NOTICE,
     /**
      * 长按绑的是不是「多条命令」（`cmd:<名字>` 且命令库里那条是串行命令）。
      * 只由宿主算好、随配置广播带过来（`ConfigFields.LONG_SERIAL_EXTRA`），注入侧不自己算：
@@ -783,6 +785,7 @@ data class KeyConfig(
                 ConfigFields.F_KEY_TOAST_FLUID to toastFluid,
                 ConfigFields.F_KEY_TOAST_NOTIFY to toastNotify,
                 ConfigFields.F_KEY_TOAST_TEMPLATE to toastTemplate,
+                ConfigFields.F_KEY_STEP_NOTICE to stepNotice,
                 ConfigFields.F_LONG_SERIAL to longIsSerial,
                 ConfigFields.F_SCENE_RELEASE to sceneRelease,
                 //  「这一档有没有人配」（= 场景里的 [sceneChain]）由宿主现算、随广播带过来，
@@ -1018,6 +1021,7 @@ data class KeyConfig(
                 toastFluid = v.bool(ConfigFields.F_KEY_TOAST_FLUID),
                 toastNotify = v.bool(ConfigFields.F_KEY_TOAST_NOTIFY),
                 toastTemplate = v.text(ConfigFields.F_KEY_TOAST_TEMPLATE),
+                stepNotice = v.bool(ConfigFields.F_KEY_STEP_NOTICE),
                 longIsSerial = v.bool(ConfigFields.F_LONG_SERIAL),
                 sceneRelease = v.bool(ConfigFields.F_SCENE_RELEASE),
                 scenes = scenes,
@@ -1136,6 +1140,14 @@ data class GlobalConfig(
      */
     override val toastNotify: Boolean = DEFAULT_TOAST_NOTIFY,
     /**
+     * 多条命令**逐条提示** —— 开着时每条步骤各念一句，关着时整条只念一句命令名。
+     *
+     *  只在「执行时提示」不是「不提示」时有意义（界面上也跟着它显隐）；读它的是宿主执行侧
+     *  （`GestureExec.noticeIfNeeded` 只负责把 spec 交下去），所以与 [toastTemplate] 同一条：
+     *  **只走落盘这一列**。
+     */
+    override val stepNotice: Boolean = DEFAULT_STEP_NOTICE,
+    /**
      * 「执行时提示」那一句的**文案模板** —— `$key` / `$gesture` / `$action` 三段，以及 `$action`
      *  拆开的 `$parent` / `$name` / `$state`，都可自由摆放与增删（见 `ToastNotice`）。
      *  默认就是拆分之前那句 `侧键 - 单击 → 手电筒`。
@@ -1168,25 +1180,27 @@ data class GlobalConfig(
      */
     val theme: String = DEFAULT_THEME,
     /**
-     * **跟随系统显示大小** —— 关掉后模块页面按**出厂标准**的密度与字号渲染。
+     * **使用 Monet 配色** —— 整页底子、卡片、强调色那一整套换成系统按壁纸生成的那套色。
      *
-     *  为什么要这一档：系统的「显示大小 / 字体大小」调到最大时，本模块那些按 dp 定死的行高、
-     *  52dp 的格子、单行标题都会挤在一起（标题被省略号吃掉、副标题顶到下一行）—— 用户要么
-     *  把系统调回去，要么就只能忍着。这一档让人**只让模块页面**保持标准大小。
+     *  只影响**配色**，不碰深浅：深浅仍由 [theme] 三档决定，所以「深色 + Monet」这种搭配
+     *  现在表达得出来、界面上也有位置（外观卡里紧挨着「主题」那一行的开关）。
      *
-     *  实现：关掉时页面根上 provide 一份 `Density`，取 `Resources.getSystem()` 那份**未被
-     *  应用层覆盖**的 `displayMetrics`（系统配置，不含「显示大小」那层改写），字号固定 1.0。
-     *  默认开 —— 不改变任何人的现状。
+     *  它换了的是**整套**色板（`PagePalette.colorsOf` 走库的权威实现），所以页面上凡是
+     *  「按 Monet 换个底」的地方都要读它（`LocalMonetColors`）—— 顶栏、浮层菜单、输入框、
+     *  首页状态卡、命令格子的选中态各有一处。
+     *
+     *  界面上读得最多的是它、注入侧完全不认识，所以**只有落盘那一列**、不进广播。
      */
-    val followDisplaySize: Boolean = DEFAULT_FOLLOW_DISPLAY_SIZE,
+    val monetColors: Boolean = DEFAULT_MONET_COLORS,
     /**
-     * **页面缩放**（百分比，[PAGE_SCALE_MIN] ~ [PAGE_SCALE_MAX]）。
+     * **界面缩放**（百分比，[PAGE_SCALE_MIN] ~ [PAGE_SCALE_MAX]）—— 页面大小**只由它一个**说了算。
      *
-     *  只在 [followDisplaySize] 为假时生效（那一根滑杆也只在那时出现）：跟随系统时页面大小
-     *  由系统那一档说了算，再乘一个缩放会让两处都能调、谁也不清楚最后是多少。
+     *  页面不再跟随系统的「显示大小」：那一档随 ROM / 机型给出的大小差别太大，模块那些按 dp
+     *  定死的行高与格子一旦被系统放大就挤在一起；而系统那一档又不可能只对模块这一页生效。
+     *  于是这里只认**宿主那一份密度**当基准（100% = 宿主页面的标准大小），要多大由用户自己调。
      *
      *  实现：把页面根上那份 `Density.density` 乘上 `pageScale / 100`（见 `PageContent`）——
-     *  只改模块这一棵页面树，宿主的顶栏 / 状态栏不动。
+     *  dp 与 sp 一起缩，只改模块这一棵页面树，宿主的顶栏 / 状态栏不动。
      */
     val pageScale: Int = DEFAULT_PAGE_SCALE,
     /**
@@ -1205,6 +1219,33 @@ data class GlobalConfig(
      *  默认开：装上就看得见，嫌占地方再关（关的入口在「按键设置」页）。
      */
     val showCommonCommands: Boolean = DEFAULT_SHOW_COMMON_COMMANDS,
+    /**
+     * **减少界面图标** —— 开着时卡片行行首那些**字形**一律不画。
+     *
+     *  留着的只有「图标就是内容」的三处：**应用图标**（行首那一格自己画的 `startIcon`）、
+     *  **网格**与**候选抽屉**（后者经 `CardRow.Item.keepIcon`）—— 抽屉里那颗图是这一步的身份，
+     *  收掉之后只剩一串字，扫不起来。按键列表、组合两列、序号图标都照收。
+     *
+     *  菜单行跟着收，但**选中那一档的对勾从行首挪到行尾**（否则选中态一点记号都没有）。
+     *
+     *  纯显示项：只在界面层读（`LocalReduceRowIcons`），所以**只有落盘那一列**、不进广播。
+     *  默认关：不改变任何人的现状。
+     */
+    val reduceIcons: Boolean = DEFAULT_REDUCE_ICONS,
+    /**
+     * 「等待组合」那一列的**排列次序**（取值见 [SORT_BY_CREATED] 那一组）。
+     *
+     *  存的是**字符串 id**、不存枚举：三档对应的枚举在界面层（`ui/model/page/ComboSort`），
+     *  `:core` 的 classpath 里没有 `:app`，共用层不该认识「有哪几种排法」——
+     *  与 [palette] / [theme] 同一条，手改文件写进不认识的 id 时这一层原样收下、
+     *  界面侧读不到就落回「不排序」。
+     *
+     *  它是**这一份配置自己的显示偏好**（跟着配置文件走），只在界面层读，
+     *  所以**只有落盘那一列**、不进广播。
+     */
+    val waitComboSort: String = DEFAULT_COMBO_SORT,
+    /** 「按住组合」那一列的排列次序 —— 与 [waitComboSort] 同一套，两列各一份。 */
+    val holdComboSort: String = DEFAULT_COMBO_SORT,
     /**
      * 「常用命令」那张清单 —— **只由用户自己收录**，模块不预置任何条目。
      *
@@ -1329,15 +1370,19 @@ data class GlobalConfig(
                 ConfigFields.F_TOAST_FLUID to toastFluid,
                 ConfigFields.F_TOAST_NOTIFY to toastNotify,
                 ConfigFields.F_TOAST_TEMPLATE to toastTemplate,
+                ConfigFields.F_STEP_NOTICE to stepNotice,
                 ConfigFields.F_LANGUAGE to language,
                 ConfigFields.F_PALETTE to palette,
                 ConfigFields.F_THEME to theme,
+                ConfigFields.F_MONET_COLORS to monetColors,
                 ConfigFields.F_COLOR_OS_API to colorOsApi,
                 ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
-                ConfigFields.F_FOLLOW_DISPLAY_SIZE to followDisplaySize,
                 ConfigFields.F_PAGE_SCALE to pageScale,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
+                ConfigFields.F_REDUCE_ICONS to reduceIcons,
+                ConfigFields.F_WAIT_COMBO_SORT to waitComboSort,
+                ConfigFields.F_HOLD_COMBO_SORT to holdComboSort,
                 ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS to doubleClickMs,
                 ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to waitMultiWindow,
                 ConfigFields.F_GLOBAL_MULTI_WAIT_MS to multiWaitMs,
@@ -1391,6 +1436,9 @@ data class GlobalConfig(
         /** [GlobalConfig.toastNotify] 的默认值：**关**（新装仍然是「不提示」，与之前一致）。 */
         const val DEFAULT_TOAST_NOTIFY = false
 
+        /** [GlobalConfig.stepNotice] 的默认值：**关**（一条命令链只念一句，与之前一致）。 */
+        const val DEFAULT_STEP_NOTICE = false
+
         /**
          * [GlobalConfig.toastTemplate] 的默认值 —— 与拆分之前那句话**逐字一致**，
          * 老配置没有这一项时补的也是它（见 `ToastNotice.DEFAULT_TEMPLATE`）。
@@ -1421,24 +1469,34 @@ data class GlobalConfig(
          */
         const val DEFAULT_PALETTE = "default"
 
-        /** [GlobalConfig.theme] 的三档 —— 与界面层 `AppTheme` 的 code 一一对应。 */
+        /**
+         * [GlobalConfig.theme] 的三档 —— 与界面层 `AppTheme` 的 code 一一对应。
+         *
+         *  只管**深浅**（跟随系统 / 浅色 / 深色）。用不用 Monet 配色是另一格
+         *  （[GlobalConfig.monetColors]）：两件事各占一行，深浅与配色就能自由组合。
+         *
+         *  v90 之前这里是六档（`monet` / `light_monet` / `dark_monet` 三档把搭配写死在一个值里）——
+         *  拆分时那三个旧值由 `ConfigDto` 读进来那一刻翻成「三档 + 配色开关」，见那边的注释。
+         */
         const val THEME_AUTO = "auto"
-
-        /** 跟随系统，但**整页用系统那套 Monet 配色**（底色 / 卡片 / 强调色全换）。 */
-        const val THEME_MONET = "monet"
         const val THEME_LIGHT = "light"
         const val THEME_DARK = "dark"
 
         /** [GlobalConfig.theme] 的默认值：跟随系统。 */
         const val DEFAULT_THEME = THEME_AUTO
 
+        /**
+         * [GlobalConfig.monetColors] 的默认值：**关**（底子照旧是 COUI 那一套，不改变任何人的现状）。
+         *
+         *  默认关的另一个理由：Monet 是「系统按壁纸生成一整套色」，没壁纸取色的机器上它退化成
+         *  一个灰蓝 —— 主动打开的人自己那一档才有意义。
+         */
+        const val DEFAULT_MONET_COLORS = false
+
         /** [GlobalConfig.colorOsApi] 的默认值：默认开启。 */
         const val DEFAULT_COLOR_OS_API = true
 
-        /** 「跟随系统显示大小」的默认值 —— 开（与升级前的行为一致）。 */
-        const val DEFAULT_FOLLOW_DISPLAY_SIZE = true
-
-        /** 页面缩放的三档：下限 / 出厂值 / 上限（百分比）。 */
+        /** 界面缩放的三档：下限 / 出厂值 / 上限（百分比）。 */
         const val PAGE_SCALE_MIN = 70
 
         /** 随机图标配色：`0` = 关（默认），其余值当种子用。 */
@@ -1446,6 +1504,20 @@ data class GlobalConfig(
 
         /** [GlobalConfig.showCommonCommands] 的默认值 —— 默认露出（装上就看得到）。 */
         const val DEFAULT_SHOW_COMMON_COMMANDS = true
+
+        /** [GlobalConfig.reduceIcons] 的默认值：**关**（图标照旧画，不改变任何人的现状）。 */
+        const val DEFAULT_REDUCE_ICONS = false
+
+        /**
+         * 组合列表那两列的排序三档 —— 与界面层 `ComboSort` 的 code 一一对应。
+         *
+         *  **不排序 = 创建先后**（`cfg.combos` 自己的次序），所以它也是默认档：
+         *  没进过这一页的配置不该被读出一种「排过」的样子。
+         */
+        const val SORT_BY_CREATED = "created"
+        const val SORT_ORDERED_FIRST = "ordered"
+        const val SORT_UNORDERED_FIRST = "unordered"
+        const val DEFAULT_COMBO_SORT = SORT_BY_CREATED
 
         /** [GlobalConfig.detailedKeySettings] 的默认值 —— 默认只显示常用项。 */
         const val DEFAULT_DETAILED_KEY_SETTINGS = false
@@ -1567,17 +1639,22 @@ data class GlobalConfig(
                 toastFluid = v.bool(ConfigFields.F_TOAST_FLUID),
                 toastNotify = v.bool(ConfigFields.F_TOAST_NOTIFY),
                 toastTemplate = v.text(ConfigFields.F_TOAST_TEMPLATE),
+                stepNotice = v.bool(ConfigFields.F_STEP_NOTICE),
                 language = v.text(ConfigFields.F_LANGUAGE),
                 palette = v.text(ConfigFields.F_PALETTE),
                 theme = v.text(ConfigFields.F_THEME),
+                monetColors = v.bool(ConfigFields.F_MONET_COLORS),
                 colorOsApi = v.bool(ConfigFields.F_COLOR_OS_API),
                 miniWindowAnim = v.bool(ConfigFields.F_MINI_WINDOW_ANIM),
-                followDisplaySize = v.bool(ConfigFields.F_FOLLOW_DISPLAY_SIZE),
                 // 与 vibrateStrength 同一档：手改文件写进越界值，在这一层就钳回滑杆两端
                 pageScale = v.number(ConfigFields.F_PAGE_SCALE).coerceIn(PAGE_SCALE_MIN, PAGE_SCALE_MAX),
                 // 与 pageScale 同一档：手改文件写进负数在这一层钳回「关」
                 iconTintSeed = v.number(ConfigFields.F_ICON_TINT_SEED).coerceAtLeast(0),
                 showCommonCommands = v.bool(ConfigFields.F_SHOW_COMMON_COMMANDS),
+                reduceIcons = v.bool(ConfigFields.F_REDUCE_ICONS),
+                //  与 palette / theme 同一档：不认识的 id 在这一层原样收下，界面侧落回「不排序」
+                waitComboSort = v.text(ConfigFields.F_WAIT_COMBO_SORT),
+                holdComboSort = v.text(ConfigFields.F_HOLD_COMBO_SORT),
                 // 公共设置里的「单击」三项（只落盘，见 `F_GLOBAL_DOUBLE_CLICK_MS` 那一段）
                 doubleClickMs = v.number(ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS),
                 waitMultiWindow = v.bool(ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW),

@@ -792,7 +792,10 @@ internal object GestureExec {
                 gesture = gestureLabel,
                 template = own.toastTemplate,
                 channel = channel,
-                fallback = what.sentence,
+                //  跑完了却一个字都没打印时念这一句 —— 不回落到命令名：那位开关的用处就是
+                //  换掉名字，名字原样回来就成了「开了跟没开一样」（`settings put` 这类命令
+                //  成功时本来就不打印）。
+                noOutput = I18n.get(Strings.COMMAND_OUTPUT_DONE),
                 token = action.token,
                 identity = FluidCard.identityOf(cmd.root, cmd.viaShizuku),
             )

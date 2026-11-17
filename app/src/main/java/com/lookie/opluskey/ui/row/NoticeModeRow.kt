@@ -58,7 +58,7 @@ internal fun noticeModeLabel(mode: NoticeMode): String =
  *  **必须把锚点挂在这一行上**（[Modifier.preciseClickAnchor]）：浮层菜单弹在按下那一点，
  *  不记锚点时菜单只能退到默认位置 —— 与「关于」页那几行（语言 / 配色 / 导出）同一个做法。
  *
- * @param mode 当前那一档（只用于副标题；行尾固定是 selector）
+ * @param mode 当前那一档（写在行尾）；选择器固定跟在它后面
  * @param anchor 这一行的触点锚点，即菜单那一份 `MenuState.anchor`
  * @param disabledHint 这一行灰着的说法（独立设置那份与整页不同，所以由调用方递进来）
  */
@@ -73,12 +73,11 @@ internal fun SettingsPage.noticeModeRow(
     CardRow.Item(
         title = I18n.get(Strings.HOME_TOAST_TITLE),
         icon = PageIcons.CommandToast,
-        summary = noticeModeLabel(mode),
         enabled = enabled,
         disabledHint = disabledHint,
-        //  禁用时行尾那颗一并压暗 —— 由 `CardRow` 这一层给（`RowEndIcon` 读 `LocalRowEnabled`），
-        //  调用点不判颜色。
-        trailing = { RowEndIcon(PageIcons.Selector) },
+        //  禁用时行尾那一整组（当前档 + 选择器）一并压暗 —— 由 [RowEndSummary] / `RowEndIcon`
+        //  读 `LocalRowEnabled` 自己取色，调用点不判颜色。
+        trailing = { RowEndSummary(noticeModeLabel(mode)) },
         modifier = Modifier.preciseClickAnchor(anchor),
         onClick = onClick,
     )

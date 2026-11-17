@@ -130,7 +130,13 @@ internal fun SettingsPage.ExpandableRow(
     val iconTint by animateColorAsState(tintTarget, COLOR_TRANSITION_SPEC, label = "ExpandableRowIcon")
     BasicComponent(
         onClick = toggle,
-        startAction = { ExpandableRowIcon(spec.icon, iconTint) },
+        //  「减少界面图标」开着时行首那一格不画（与 `CardRow` 那几支同一条，见 `LocalReduceRowIcons`）
+        startAction =
+            if (LocalReduceRowIcons.current) {
+                null
+            } else {
+                { ExpandableRowIcon(spec.icon, iconTint) }
+            },
         endActions =
             if (expanded || overflowed) {
                 {
@@ -509,7 +515,8 @@ private const val SWITCH_SETTLE_MS = 500L
  *  置灰时那个「为什么点不了」的原因**优先于**这两句，由调用点写成 `reason ?: …` 的两份
  *  （见 `LongRepeatCard`）。
  *
- * @param icon 行首图标。同一张卡里几行都给图标，标题才会对齐（见 `ActionIcons` 里那条账）
+ * @param icon 行首图标。同一张卡里几行都给图标，标题才会对齐（见 `ActionIcons` 里那条账）；
+ *   `null` = 这一行不画（「减少界面图标」开着时 `CardRow` 那一层就这么给）
  * @param summaryOn 开关**开着**时的副标题
  * @param summaryOff 开关**关着**时的副标题
  * @param enabled false ⇒ 整行置灰、不吃点击。标题 / 副标题 / 开关由库负责，**行首图标由这里负责**
@@ -527,7 +534,7 @@ internal fun SwitchRow(
     /** 副标题（`null` = 这一行不画副标题，只留标题与开关）。 */
     summaryOn: String?,
     summaryOff: String?,
-    icon: ImageVector,
+    icon: ImageVector?,
     checked: Boolean,
     position: CardListPosition,
     enabled: Boolean = true,
@@ -584,13 +591,16 @@ internal fun SwitchRow(
                 cardListPosition = position,
                 insideMargin = BasicComponentDefaults.InsideMargin,
                 startAction = {
-                    Icon(
-                        icon,
-                        contentDescription = null,
-                        tint = iconColor,
-                        //  与 `CardRow` 那颗行首图标同一档：补上库少给的那 8dp（见 [ROW_START_ICON_GAP]）
-                        modifier = Modifier.padding(end = ROW_START_ICON_GAP),
-                    )
+                    //  「减少界面图标」开着时这一格整块不画（`icon` 由 `CardRow` 那一层给 `null`）
+                    if (icon != null) {
+                        Icon(
+                            icon,
+                            contentDescription = null,
+                            tint = iconColor,
+                            //  与 `CardRow` 那颗行首图标同一档：补上库少给的那 8dp（见 [ROW_START_ICON_GAP]）
+                            modifier = Modifier.padding(end = ROW_START_ICON_GAP),
+                        )
+                    }
                 },
                 // `enabled = false` 由 COUI 负责：标题与副标题走 `disabledColor`、行尾开关跟着灰
                 enabled = enabled,

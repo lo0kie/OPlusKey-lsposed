@@ -7,9 +7,11 @@ import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.present.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.core.present.comboLabel
+import com.lookie.opluskey.core.present.comboMemberSeparator
+import com.lookie.opluskey.core.present.comboOrderedAgain
+import com.lookie.opluskey.core.present.comboOrderedBetween
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.hint
@@ -43,43 +45,61 @@ internal const val MAX_COMBOS = 9
 internal fun comboModeTotal(keyCount: Int): Int = 1 + keyCount.coerceAtLeast(0)
 
 /**
- * 按住那一档那句话的**模板** —— 「按住 [首键] 后再按 [后续…]」。
+ * 按住那一档那句话的**模板** —— 「按住 [首键] 按 [后续…]」，顶栏与标题那一档念「后」。
  *
- *  后续成员各占一个槽、之间用 [COMBO_PAIR_SEPARATOR] 连起来（与等待组合的
- *  `A × B` 同一个分隔符）。成员数不定，所以这是一支函数而不是一条写死的文案：
+ *  后续成员各占一个槽、之间用 [comboMemberSeparator] 连起来（与等待组合的
+ *  `A 和 B` 同一个分隔符）。成员数不定，所以这是一支函数而不是一条写死的文案：
  *  模板里的槽数必须与调用点传进来的名字数一致，否则多出来的那几颗会被静默丢掉
  *  （`HintText.plain()` 只按顺序填）。
  *
  *  文案本身只写 `%1$s` / `%2$s` 两个段：首键一段、后续那一段再按颗数展开。
  *
  * @param followers 后续成员的个数（按住档 = `keys.size - 1`）
- * @param separator 后续成员之间的分隔符 —— 默认「×」（一起按下）；按顺序触发那一档传「→」
- *   （`COMBO_ORDER_SEPARATOR`，见 `ComboTitle` 里那一支）。
+ * @param separator 后续成员之间的连接词 —— 默认「和」（一起按下）；顺序选择器那几行传「再」
+ *   （`comboOrderedAgain`）—— 那几行的用处就是让人认出「这是哪一种先后」，不念出来分不开
+ * @param holdThen 首键之后那个词用「后」（`true`，与列表行标题同一句 `A按住后 B 和 C`）
+ *   还是模板自带的「按」（`false`）
  */
 internal fun holdSentenceTemplate(
     followers: Int,
-    separator: String = COMBO_PAIR_SEPARATOR,
+    separator: String = comboMemberSeparator,
+    holdThen: Boolean = false,
 ): String {
     val slots = List(followers.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $separator ")
-    return I18n
-        .get(Strings.COMBO_MODE_HOLD)
+    val template =
+        I18n.get(
+            if (holdThen) Strings.COMBO_MODE_HOLD_ORDERED else Strings.COMBO_MODE_HOLD,
+        )
+    return template
         .replace("%1\$s", CHIP_SLOT)
         .replace("%2\$s", slots)
 }
 
 /**
- * 等待组合那句话的模板 —— 成员连起来（`A × B`），后面接同一句「后等另一颗」。
+ * 等待组合那句话的模板 —— 成员连起来（`A 和 B`），后面接同一句「后等另一颗」。
  *
  *  与 [holdSentenceTemplate] 同一个形状：文案里只有一个 `%s`（那一串成员），按颗数展开。
  *  原先那句写的是「按下 %s 或 %s」—— 三颗时第三个名字会被丢掉，而「或」在两颗以上也不对
  *  （它们是**一起**按的，不是二选一）。
  */
 internal fun waitSentenceTemplate(count: Int): String {
-    val slots = List(count.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $COMBO_PAIR_SEPARATOR ")
+    val slots = List(count.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $comboMemberSeparator ")
     return I18n.get(Strings.COMBO_MODE_WAIT).replace(CHIP_SLOT, slots)
 }
 
-//  `COMBO_PAIR_SEPARATOR` / `comboLabel` / `keyName` 已挪到 `core/model/KeyNames.kt`：
+/**
+ * 按顺序的等待组合 —— 「A 后 B 再 C」的模板（每个名字一个槽）。
+ *
+ *  第一颗与第二颗之间「后」，第二颗之后每一颗前面「再」；与 [waitSentenceTemplate] 的「和」
+ *  分开写，因为两颗以上时连接词不只一个。
+ */
+internal fun orderedWaitSentenceTemplate(count: Int): String {
+    if (count <= 1) return CHIP_SLOT
+    val head = CHIP_SLOT + " " + comboOrderedBetween + " " + CHIP_SLOT
+    return head + List((count - 2).coerceAtLeast(0)) { " " + comboOrderedAgain + " " + CHIP_SLOT }.joinToString("")
+}
+
+//  `comboMemberSeparator` / `comboLabel` / `keyName` 已挪到 `core/model/KeyNames.kt`：
 //  除了 UI（`ui/write/BindingTarget.kt` 的停用提示、顶栏副标题、列表行），**执行时提示**
 //  （`host/GestureExec.kt`）也要念键名，而 `host` 不许认识 `ui`（那条边由
 //  `tools/audit-coupling.py` 核）—— 一份实现要给两侧共用，只能落在两边都许引的 `core`。
@@ -462,9 +482,9 @@ internal fun SettingsPage.writeNewCombo(
                 I18n
                     .get(Strings.COMBO_ALL_MODES_ADDED)
                     .replace("%1\$d", count.toString())
-                    .format(names.joinToString(COMBO_PAIR_SEPARATOR))
+                    .format(names.joinToString(comboMemberSeparator))
             } else {
-                I18n.get(Strings.COMBO_ADDED).format(names.joinToString(COMBO_PAIR_SEPARATOR))
+                I18n.get(Strings.COMBO_ADDED).format(names.joinToString(comboMemberSeparator))
             }
         hint(notice, slot = HINT_SLOT_COMBO)
     }
@@ -487,7 +507,7 @@ internal fun SettingsPage.removeCombo(id: String): Boolean {
     if (write(cfg.copy(combos = cfg.combos.filterNot { it.id == id }), "combo_del=$id") !=
         CommandsSave.Failed
     ) {
-        val names = comboKeyNames(cfg, combo).joinToString(COMBO_PAIR_SEPARATOR)
+        val names = comboKeyNames(cfg, combo).joinToString(comboMemberSeparator)
         hint(I18n.get(Strings.COMBO_REMOVED).format(names), slot = HINT_SLOT_COMBO)
         return true
     }
@@ -523,7 +543,7 @@ internal fun SettingsPage.setComboEnabled(
     val cfg = configState.config.value
     val combo = cfg.combos.firstOrNull { it.id == id } ?: return
     if (combo.enabled == on) return
-    //  这一档的用户认得出的名字（`侧键 × 音量 +`）：日志与「要不要把键也开」那一问都用它
+    //  这一档的用户认得出的名字（`侧键 和 音量 +`）：日志与「要不要把键也开」那一问都用它
     val label = comboLabel(cfg, combo)
     //  **启用之前先看成员键**（与按键列表那颗开关、绑定页 ⋯ 菜单同一套口径）：
     //  直接写 `enabled=true` 会留下一份「配置说启用、列表说停用」的状态 ——
@@ -531,7 +551,7 @@ internal fun SettingsPage.setComboEnabled(
     if (on && !comboEnableAllowed(cfg, combo, label)) return
     XLog.w("组合键：${if (on) "启用" else "停用"} $id（$label）")
     if (updateCombo(id, "enabled=${if (on) 1 else 0}") { it.copy(enabled = on) }) {
-        val names = comboKeyNames(cfg, combo).joinToString(COMBO_PAIR_SEPARATOR)
+        val names = comboKeyNames(cfg, combo).joinToString(comboMemberSeparator)
         val base =
             if (on) {
                 I18n.get(Strings.COMBO_ENABLED)

@@ -1728,13 +1728,10 @@ object Strings {
     /** 「更多选项」页「外观」那一卡：界面颜色（跟随系统 / 浅色 / 深色）。 */
     const val MORE_THEME = "more.theme"
 
-    /** 「跟随系统显示大小」那一行（开关）—— 只有标题，没有副标题。 */
-    const val MORE_FOLLOW_DISPLAY_SIZE = "more.follow_display_size"
-
     /** 「随机图标配色」那一行（外观卡）—— 只有标题，没有副标题。 */
     const val MORE_RANDOM_ICON_TINT = "more.random_icon_tint"
 
-    /** 「页面缩放」那一行（只在「跟随系统显示大小」关掉时出现）—— 只有标题。 */
+    /** 「界面缩放」那一行（滑杆，外观卡）—— 只有标题。 */
     const val MORE_PAGE_SCALE = "more.page_scale"
 
     /**
@@ -1760,17 +1757,6 @@ object Strings {
     const val MORE_DETAILED_KEY_SETTINGS_TITLE = "more.detailed_key_settings_title"
 
     const val MORE_THEME_AUTO = "more.theme_auto"
-
-    /** 「跟随系统 (Monet)」—— 跟随系统，且整页用系统那套壁纸取色。 */
-    const val MORE_THEME_MONET = "more.theme_monet"
-
-    /**
-     * 菜单里 Monet 那一行的**子标题**（`Monet`）—— 标题只写「跟随系统」。
-     *
-     *  那一行与上一档（纯跟随系统）标题本来就该一样，差别只在「用不用壁纸取色」；
-     *  把说明塞进标题会把一行字拉长，也让两行在标题上看不出是同一件事的两档。
-     */
-    const val MORE_THEME_MONET_TAG = "more.theme_monet_tag"
     const val MORE_THEME_LIGHT = "more.theme_light"
     const val MORE_THEME_DARK = "more.theme_dark"
     const val MORE_SIGNATURE_DEBUG = "more.signature_debug"
@@ -2146,4 +2132,34 @@ object Strings {
     const val COMBO_INTERVAL_FIXED_WINDOW_TITLE = "combo.interval_fixed_window_title"
 
     const val COMBO_INTERVAL_MULTI_FIXED_WINDOW_TITLE = "combo.interval_multi_fixed_window_title"
+
+    const val COMMAND_OUTPUT_DONE = "command.output_done"
+
+    const val COMBO_MEMBER_SEPARATOR = "combo.member_separator"
+
+    const val COMBO_ORDERED_BETWEEN = "combo.ordered_between"
+
+    const val HOME_TOAST_STEP_NOTICE_TITLE = "home.toast_step_notice_title"
+
+    const val COMBO_ORDERED_AGAIN = "combo.ordered_again"
+
+    const val COMBO_MODE_HOLD_ORDERED = "combo.mode_hold_ordered"
+
+    const val COMBO_ORDER_LTR = "combo.order_ltr"
+
+    const val COMBO_ORDER_LTR_HOLD = "combo.order_ltr_hold"
+
+    const val COMBO_SORT_CREATED = "combo.sort_created"
+
+    const val COMBO_SORT_CREATED_DESC = "combo.sort_created_desc"
+
+    const val COMBO_SORT_ORDERED_FIRST = "combo.sort_ordered_first"
+
+    const val COMBO_SORT_UNORDERED_FIRST = "combo.sort_unordered_first"
+
+    const val COMBO_SORT_TITLE = "combo.sort_title"
+
+    const val MORE_REDUCE_ICONS = "more.reduce_icons"
+
+    const val MORE_MONET_COLORS = "more.monet_colors"
 }

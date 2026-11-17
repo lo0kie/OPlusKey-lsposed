@@ -29,9 +29,8 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.feedback.LocalTick
-import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.style.EmphasisText
-import com.lookie.opluskey.ui.style.LocalAppTheme
+import com.lookie.opluskey.ui.style.LocalMonetColors
 import com.lookie.opluskey.ui.style.displayWidth
 import io.github.suqi8.coui.kmp.basic.Button
 import io.github.suqi8.coui.kmp.basic.ButtonDefaults
@@ -299,7 +298,7 @@ private const val DIALOG_NEGATIVE_MONET_ALPHA = 0.7f
 @Composable
 private fun negativeFill(): Color {
     val scheme = COUITheme.colorScheme
-    return if (LocalAppTheme.current == AppTheme.MONET) {
+    return if (LocalMonetColors.current) {
         scheme.secondaryContainer.copy(alpha = DIALOG_NEGATIVE_MONET_ALPHA)
     } else {
         scheme.onSurface.copy(alpha = DIALOG_NEGATIVE_FILL_ALPHA)
@@ -310,7 +309,7 @@ private fun negativeFill(): Color {
 @Composable
 private fun negativeText(): Color {
     val scheme = COUITheme.colorScheme
-    return if (LocalAppTheme.current == AppTheme.MONET) {
+    return if (LocalMonetColors.current) {
         scheme.onSecondaryContainer
     } else {
         scheme.onSurface

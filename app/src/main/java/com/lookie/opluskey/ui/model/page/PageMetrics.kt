@@ -50,11 +50,20 @@ internal val HEADER_FULL_ICON_SIZE = 20.dp
 internal val FROSTED_BLUR_RADIUS = 24.dp
 
 /**
- * 浮层菜单面板的圆角 —— 库 `ListPopupContent` 的 `PopupCornerRadius`（12dp，对应 COUI
- * `couiRoundCornerM`），库内是 internal，这里照抄一份只为**磨砂取样收边**：那一层圆角**不裁子级**，
- * 不自己收边的话糊出来的方块会盖过面板的圆角。
+ * 所有卡片与格子的圆角 —— 16dp（库默认 12dp）。
+ *
+ *  收在一处：行卡片、首页那张激活卡、动作格子、已保存命令卡、「支持的命令格式」卡
+ *  与格子的焦点圈都按它画。分散写时改一处就漏一处，同一个页面里会出现两种弧。
  */
-internal val POPUP_PANEL_RADIUS = 12.dp
+internal val CARD_CORNER = 16.dp
+
+/**
+ * 浮层菜单面板的圆角 —— 16dp（库默认 12dp，由补丁 `0016` 开出来的 `cornerRadius` 参数改写）。
+ *
+ *  库面板自己与它的投影都按传入的这一圈画，磨砂取样与描边照抄同一档；库没有改之前，
+ *  外面单独放大只会在四角露出面板之外的尖角（真机口径「菜单有猫耳」）。
+ */
+internal val POPUP_PANEL_RADIUS = 16.dp
 
 /**
  * 浮层菜单面板那圈描边的线宽 —— 1dp，与顶栏圆键那一圈同宽。

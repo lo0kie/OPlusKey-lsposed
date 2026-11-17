@@ -24,6 +24,7 @@ import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.input.hideIme
@@ -34,6 +35,14 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.layout.DialogDefaults
 import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.theme.COUITheme
+
+/**
+ * 弹窗面板的圆角 —— 24dp（库默认 19dp）。
+ *
+ *  弹窗比页内卡片（16dp）再大一档：它离内容更远、面积更小，同一档圆角会显得方。
+ *  库按这个值裁面板与磨砂，描边 / 底色那几层用的 `RectangleShape` 由它收边。
+ */
+private val DIALOG_CORNER = 24.dp
 
 /**
  * 项目自己的弹窗外壳 —— **面板 + 居中标题 + 正文槽**，库只管宿主、压暗、进出场与圆角。
@@ -151,6 +160,8 @@ internal fun SettingsPage.FrostedDialog(
         //  「OverlayDialog → 居中呈现（大屏）」），手机上一律拿不到「页面正中的窗口」。
         //  不传这一位的调用点维持库的默认（底部滑入），需要居中的自己打开。
         largeScreen = centered,
+        //  比库默认的 19dp 再大一号：全项目弹窗同一档，卡片与菜单那一档（16dp）之上、不显得钝。
+        cornerRadius = DIALOG_CORNER,
         onDismissRequest = onDismiss,
         onDismissFinished = onDismissFinished,
     ) {

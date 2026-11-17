@@ -69,31 +69,32 @@ internal enum class PagePalette(
 }
 
 /**
- * 某一档配色 + 某一档主题在某个深浅下对应的整套色板（`COUITheme(colors = …)` 的入参）。
+ * 开了 / 不开 Monet 配色时，某一档强调色在某个深浅下对应的整套色板（`COUITheme(colors = …)` 的入参）。
  *
  * ## 两条路，一条换整套、一条只换强调色
  *
- *  · **主题 = 跟随系统 (Monet)**：底子与强调色**整套**交给库的权威实现（[platformDynamicColors] /
- *    [ThemeController]）—— 那是按 MD3 的 HCT tone 映射生成的，容器色 / 前景色都是配好对的一组，
- *    **不再手搓**。默认档 = 系统那套原样（含系统选的调色风格与 colorSpec）；选了预设色 =
- *    按那个种子重推整套，调色风格**固定 Fidelity**（系统的 TONAL_SPOT 会把种子色压成灰蓝，
- *    与默认档分不出来），colorSpec 按 SDK 取（见 [monetColorSpec]）。
- *  · **其余主题档**：底子是 COUI 固定的 `LIGHT_SCHEME` / `DARK_SCHEME`，**只换强调色那一族**
- *    （[withAccent]）—— 浅色 / 深色主题的底色、卡片、文字、分隔线不跟着染，只有主色那一族
- *    按「强调色」那一行变。这一档的 `primaryContainer` 语义是 COUI 自己的（主色本身），
- *    不套 MD3 的 tone 90 / 30。
+ *  · **开了「使用 Monet 配色」**（`GlobalConfig.monetColors`）：底子与强调色**整套**交给库的权威
+ *    实现（[platformDynamicColors] / [ThemeController]）—— 那是按 MD3 的 HCT tone 映射生成的，
+ *    容器色 / 前景色都是配好对的一组，**不再手搓**。默认档 = 系统那套原样（含系统选的调色风格与
+ *    colorSpec）；选了预设色 = 按那个种子重推整套，调色风格**固定 Fidelity**（系统的 TONAL_SPOT
+ *    会把种子色压成灰蓝，与默认档分不出来），colorSpec 按 SDK 取（见 [monetColorSpec]）。
+ *  · **关着**：底子是 COUI 固定的 `LIGHT_SCHEME` / `DARK_SCHEME`，**只换强调色那一族**
+ *    （[withAccent]）—— 底色、卡片、文字、分隔线不跟着染，只有主色那一族按「强调色」那一行变。
+ *    这一档的 `primaryContainer` 语义是 COUI 自己的（主色本身），不套 MD3 的 tone 90 / 30。
+ *
+ *  深浅（跟随系统 / 浅色 / 深色）走 [night]，与这条分支**正交**：两件事各由一个参数说。
  */
 @Composable
 internal fun colorsOf(
     night: Boolean,
     palette: PagePalette,
-    theme: AppTheme,
+    monet: Boolean,
     context: Context,
 ): Colors {
-    //  Monet 那一档整套走系统 / 种子取色；其余档是 COUI 底子 + 只换强调色族。
+    //  开了 Monet 就整套走系统 / 种子取色；关着是 COUI 底子 + 只换强调色族。
     val base =
         when {
-            theme != AppTheme.MONET -> {
+            !monet -> {
                 (if (night) DARK_SCHEME else LIGHT_SCHEME).withAccent(palette.seed(context), night)
             }
 
@@ -117,7 +118,7 @@ internal fun colorsOf(
                 ).currentColors()
             }
         }
-    logSchemeOnce(theme, palette, night, base)
+    logSchemeOnce(monet, palette, night, base)
     return base
 }
 
@@ -131,13 +132,13 @@ private var lastSchemeLog: String? = null
  *  最终主色算出来是多少。每次重组都打会把这个信息埋掉，所以只在**组合变了**的时候打。
  */
 private fun logSchemeOnce(
-    theme: AppTheme,
+    monet: Boolean,
     palette: PagePalette,
     night: Boolean,
     colors: Colors,
 ) {
     val line =
-        "页面配色：主题=${theme.code} 强调色=${palette.id} 深色=$night" +
+        "页面配色：Monet=$monet 强调色=${palette.id} 深色=$night" +
             " 主色=#${"%06X".format(colors.primary.toArgb() and 0xFFFFFF)}"
     if (line == lastSchemeLog) return
     lastSchemeLog = line

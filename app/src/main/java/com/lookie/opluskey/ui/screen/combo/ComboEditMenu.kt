@@ -25,10 +25,10 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
-import com.lookie.opluskey.core.present.COMBO_ORDER_SEPARATOR
-import com.lookie.opluskey.core.present.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.core.present.comboLabel
+import com.lookie.opluskey.core.present.comboMemberSeparator
+import com.lookie.opluskey.core.present.comboOrderedAgain
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.HEADER_ACTION_GAP
@@ -342,9 +342,9 @@ private val LINE_GAP = 6.dp
 /**
  * 几档组合，一档一行、水平居中。
  *
- *  两类写法分开（与组合列表同一套）：等待组合是一串名字（`A × B`），按住组合是一句话
- *  （`按住 A 后再按 B`）—— 只摆一串名字读不出「谁先按住」，而那正是那一档的判据。
- *  有序档的分隔符是「→」（先后），不分顺序是「×」（一起按下），与列表行同一个判据。
+ *  两类写法分开（与组合列表同一套）：等待组合是一串名字（`A 和 B`），按住组合是一句话
+ *  （`按住 A 按 B`）—— 只摆一串名字读不出「谁先按住」，而那正是那一档的判据。
+ *  有序档念「A 后 B 再 C」（先后），不分顺序是「A 和 B」（一起按下），与列表行同一个判据。
  *
  * @param cfg 取键名用（成员键被删掉的那种畸形配置由 `comboKeyNames` 兜底）
  */
@@ -362,7 +362,8 @@ internal fun ComboNameLines(
     ) {
         combos.forEach { combo ->
             val names = comboKeyNames(cfg, combo)
-            val separator = if (combo.ordered) COMBO_ORDER_SEPARATOR else COMBO_PAIR_SEPARATOR
+            val ordered = combo.ordered
+            val holdSeparator = if (ordered) comboOrderedAgain else comboMemberSeparator
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -370,7 +371,7 @@ internal fun ComboNameLines(
             ) {
                 if (combo.isHold) {
                     ChipSentence(
-                        template = holdSentenceTemplate(names.size - 1, separator),
+                        template = holdSentenceTemplate(names.size - 1, holdSeparator),
                         names = names,
                         style = style,
                         color = color,
@@ -378,8 +379,18 @@ internal fun ComboNameLines(
                         //  只摆得动盒子、摆不动盒子里的字 —— 按住组合那几档得在这里点名居中
                         textAlign = TextAlign.Center,
                     )
+                } else if (ordered) {
+                    //  「A 后 B 再 C」：第一颗与第二颗之间「后」，之后每颗前面「再」——
+                    //  与纯文字那几处（`comboLabel` / `comboTitleText`）同一个念法。
+                    ChipSentence(
+                        template = orderedWaitSentenceTemplate(names.size),
+                        names = names,
+                        style = style,
+                        color = color,
+                        textAlign = TextAlign.Center,
+                    )
                 } else {
-                    NameFlow(names = names, style = style, color = color, separator = separator)
+                    NameFlow(names = names, style = style, color = color)
                 }
             }
         }

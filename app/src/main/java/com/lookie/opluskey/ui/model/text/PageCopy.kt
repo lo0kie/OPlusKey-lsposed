@@ -478,27 +478,17 @@ internal fun paletteLabel(palette: PagePalette): String =
     }
 
 /**
- * 界面颜色那三档在界面上叫什么 —— 「界面颜色」那一行的副标题与它那一层菜单共用这一份。
+ * 三档各自的**深浅说法**（跟随系统 / 浅色 / 深色）—— 菜单标题、卡片副标题与回执共用这一份。
  *
  *  与 [languageLabel] 同一个理由：[AppTheme] 上只留 `code`（原样进配置文件）。
+ *  **配色不进这里**：用不用 Monet 是紧挨着的那一行开关（外观卡），说它的话由那一行自己说
+ *  —— 深浅与配色是两件事，塞进同一句就得分清谁管谁。
  */
-internal fun themeLabel(theme: AppTheme): String =
-    when (theme) {
-        AppTheme.AUTO -> I18n.get(Strings.MORE_THEME_AUTO)
-        AppTheme.MONET -> I18n.get(Strings.MORE_THEME_MONET)
-        AppTheme.LIGHT -> I18n.get(Strings.MORE_THEME_LIGHT)
-        AppTheme.DARK -> I18n.get(Strings.MORE_THEME_DARK)
-    }
-
-/**
- * 主题菜单里那一行的**标题** —— 与 [themeLabel] 只差 Monet 那一档。
- *
- *  那一档的「Monet」是一句补充说明，挂进标题会把一行字拉长，也让相邻两档在标题上
- *  看不出是同一件事的两档（都是「跟随系统」）。所以标题只留「跟随系统」，
- *  说明挪到子标题（[themeTag]）。卡片那一行的副标题仍用 [themeLabel] —— 那一格只有一行字，
- *  拆开就没地方放「Monet」了。
- */
-internal fun themeTitle(theme: AppTheme): String = if (theme == AppTheme.MONET) I18n.get(Strings.MORE_THEME_AUTO) else themeLabel(theme)
-
-/** 主题菜单里那一行的**子标题** —— 只有 Monet 那一档有。 */
-internal fun themeTag(theme: AppTheme): String? = if (theme == AppTheme.MONET) I18n.get(Strings.MORE_THEME_MONET_TAG) else null
+internal fun themeTitle(theme: AppTheme): String =
+    I18n.get(
+        when (theme.fixedDark) {
+            null -> Strings.MORE_THEME_AUTO
+            false -> Strings.MORE_THEME_LIGHT
+            true -> Strings.MORE_THEME_DARK
+        },
+    )

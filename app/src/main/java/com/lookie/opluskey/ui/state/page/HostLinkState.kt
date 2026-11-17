@@ -11,8 +11,8 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.OwnSettings
-import com.lookie.opluskey.core.present.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.core.present.comboKeyNames
+import com.lookie.opluskey.core.present.comboMemberSeparator
 import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.model.text.LinkNotice
@@ -441,9 +441,9 @@ internal sealed interface SettingsTarget {
         override fun disabledReason(config: Config): HintText? {
             val combo = config.combos.firstOrNull { it.id == id } ?: return null
             if (combo.enabled) return null
-            //  用用户认得出的名字（`侧键 × 音量 +`），不是 `cmb1` 那种内部 id ——
+            //  用用户认得出的名字（`侧键 和 音量 +`），不是 `cmb1` 那种内部 id ——
             //  组合多颗时压成一串，提示条里念得出来就够（它不按颗分开排）。
-            val names = comboKeyNames(config, combo).joinToString(COMBO_PAIR_SEPARATOR)
+            val names = comboKeyNames(config, combo).joinToString(comboMemberSeparator)
             return HintText(I18n.get(Strings.COMBO_DISABLED_ITEM).format(names))
         }
     }

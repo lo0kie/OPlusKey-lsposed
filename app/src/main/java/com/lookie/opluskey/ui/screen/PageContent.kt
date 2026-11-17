@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui.screen
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.res.Resources
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,6 +51,7 @@ import com.lookie.opluskey.ui.model.theme.PAGE_COVER_DIM
 import com.lookie.opluskey.ui.model.theme.PAGE_TRANSITION
 import com.lookie.opluskey.ui.model.theme.PagePalette
 import com.lookie.opluskey.ui.model.theme.colorsOf
+import com.lookie.opluskey.ui.row.LocalReduceRowIcons
 import com.lookie.opluskey.ui.row.LocalSwitchPositions
 import com.lookie.opluskey.ui.screen.binding.bindingTargetsOf
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
@@ -65,6 +65,7 @@ import com.lookie.opluskey.ui.state.page.CONFIG_IN_FLIGHT_GRACE_MS
 import com.lookie.opluskey.ui.state.page.UiState
 import com.lookie.opluskey.ui.style.LocalAppTheme
 import com.lookie.opluskey.ui.style.LocalIconTint
+import com.lookie.opluskey.ui.style.LocalMonetColors
 import com.lookie.opluskey.ui.style.SyncToHost
 import com.lookie.opluskey.ui.style.appTextStyles
 import com.lookie.opluskey.ui.wire.disabledClickReason
@@ -107,37 +108,28 @@ internal fun SettingsPage.PageContent() {
     //  系统配色：配置里存的是 id 字符串（共用层不认识色板清单），认不出就落回默认档。
     //  读的是 `configState.config`，所以选完色当场重组、整页配色跟着换 —— 不需要重进页面。
     val palette = PagePalette.ofId(configState.config.value.global.palette)
-    //  主题档也在这里读：`MONET` 那一档整页换底子（见 `colorsOf`）
+    //  深浅那一档（跟随系统 / 浅色 / 深色）也在这里读：它决定 `night` 与状态栏的明暗。
     val theme = AppTheme.ofCode(configState.config.value.global.theme)
+    //  用不用 Monet 配色是**另一格**（外观卡里紧挨着「主题」那一行的开关）：开了整页换那套
+    //  系统按壁纸生成的色板（见 `colorsOf`），与深浅正交。
+    val monet = configState.config.value.global.monetColors
 
-    // 「跟随系统显示大小」：**开着**时把整棵页面树换成系统那份 `Density`，关着时保持宿主这一份。
+    // 页面大小只由「界面缩放」一档决定，**不再跟随系统的「显示大小」**：
+    //  基准取宿主这一份 `LocalDensity`（宿主 Activity 的 resources，即本页 100% 时的样子），
+    //  再乘 `pageScale / 100`。系统那一档（`Resources.getSystem().displayMetrics`）随 ROM /
+    //  机型差得太多，而它又不可能只对模块这一页生效 —— 所以不参与这里的计算。
     //
-    //  真机（PLK110，显示大小调大：`wm density` = Override 476 / Physical 560）量出来的方向是：
-    //   · `LocalDensity.current`（宿主 Activity 的 resources）= **560**，即页面本来就不随系统的
-    //     「显示大小」变 —— 宿主那份 Configuration 里密度还是物理值；
-    //   · `Resources.getSystem().displayMetrics` = **476**，系统全局配置，跟着「显示大小」走。
-    //  所以「跟随」= 用系统那份，「不跟随」= 保持现状（宿主那份）。第一版写反了，真机一拨就看出来。
-    //
-    //  字号同样取系统那份的 `fontScale`（「字体大小」那一档也一起跟随）。
+    //  乘的是 `Density.density` ⇒ dp 与 sp 一起缩（字号也跟着变，这才是「缩放」而不是「只缩间距」）；
+    //  字号那一半仍取宿主这份的 `fontScale`（系统的「字体大小」照旧跟随）。
     //  只包这一棵页面树：宿主自己的顶栏 / 状态栏不归我们管，也不该跟着变。
-    //
-    // 「页面缩放」在这条基准上再乘一档（只在**不跟随**时生效，那一根滑杆也只在那时出现）：
-    //  跟随开着时页面大小由系统那一档说了算，再乘一个缩放等于两处都能调、谁也说不清最后是多少。
-    //  乘的是 `Density.density` ⇒ dp 与 sp 一起缩（字号也跟着变，这才是「缩放」而不是「只缩间距」）。
     val global = configState.config.value.global
     val hostDensity = LocalDensity.current
-    val systemDensity =
-        remember {
-            val res = Resources.getSystem()
-            Density(res.displayMetrics.density, res.configuration.fontScale)
-        }
     val pageDensity =
-        remember(hostDensity, systemDensity, global.followDisplaySize, global.pageScale) {
-            val base = if (global.followDisplaySize) systemDensity else hostDensity
-            val factor = if (global.followDisplaySize) 1f else global.pageScale / 100f
+        remember(hostDensity, global.pageScale) {
+            val factor = global.pageScale / 100f
             // 100% 时原样返回：否则每重组一次都会换一个新 `Density` 实例，
             //  下面那层 `CompositionLocalProvider` 就得把整棵页面树重画一遍。
-            if (factor == 1f) base else Density(base.density * factor, base.fontScale)
+            if (factor == 1f) hostDensity else Density(hostDensity.density * factor, hostDensity.fontScale)
         }
     //  提示条那一层（`popupHost`）是 **SubcomposeLayout 另起的子组合**，读不到页面级的窗口 inset
     //  （同一个坑见 `LocalHeaderBoxHeight` 那条注释：在那里 `error()` 过一次）。在 `popupHost`
@@ -145,12 +137,12 @@ internal fun SettingsPage.PageContent() {
     //  系统状态栏的时间与电量。所以在这一层（页面级、Scaffold 之外）读好，按 Dp 传下去。
     //
     //  **必须用 `pageDensity` 换算**：这个 Dp 是在 `LocalDensity provides pageDensity` 那一层里
-    //  被消费的（提示条自己那层）。用宿主密度算、再在页面密度下转回像素，开了「页面缩放」之后
-    //  就差一个倍率（跟随系统字号时更明显）。
+    //  被消费的（提示条自己那层）。用宿主密度算、再在页面密度下转回像素，开了「界面缩放」之后
+    //  就差一个倍率。
     val statusBarTop = with(pageDensity) { WindowInsets.statusBars.getTop(this).toDp() }
     val iconTint = rememberIconTint(global.iconTintSeed, night)
     COUITheme(
-        colors = colorsOf(night, palette, theme, LocalContext.current),
+        colors = colorsOf(night, palette, monet, LocalContext.current),
         //  **折行规则一处声明、全页生效**（见 `appTextStyles`）：这一份 `TextStyles` 就是
         //  COUI 的「默认文本样式」—— 不传 `style` 的 `Text` 拿它的 `main`，显式传
         //  `COUITheme.textStyles.xxx` 的也拿它的另一格，库里二十多个组件同源。
@@ -161,8 +153,10 @@ internal fun SettingsPage.PageContent() {
         CompositionLocalProvider(
             LocalDensity provides pageDensity,
             //  浮层（菜单 / 确认弹窗）自己定底色，不吃 `COUITheme.surface`：它们要知道这一页
-            //  处在哪一档，Monet 那一档才跟着系统取色（见 `LocalAppTheme` 与 `popupSurfaceColor`）
+            //  处在哪一档，Monet 那一档才跟着系统取色（见 `LocalAppTheme` / `LocalMonetColors`
+            //  与 `popupSurfaceColor`）
             LocalAppTheme provides theme,
+            LocalMonetColors provides monet,
             LocalNavigationEventDispatcherOwner provides navOwner,
             //  禁用态那几格点一下要说明原因（见 `ui/feedback/DisabledHint.kt`）：
             //  提示怎么弹、以及「整页现在为什么改不了」，都从页面这一层传下去 ——
@@ -182,6 +176,9 @@ internal fun SettingsPage.PageContent() {
             LocalTick provides remember { { tickNow() } },
             //  图标配色（见上面那段）：关着时是恒 `null` 的一支
             LocalIconTint provides iconTint,
+            //  「减少界面图标」：卡片行行首那颗字形画不画，由这一层递给每一行
+            //  （应用图标那种自己画的与网格不受影响，见 `LocalReduceRowIcons`）
+            LocalReduceRowIcons provides global.reduceIcons,
             //  开关「上一次落定的位置」：页面级一份，供开关行在被重建时复位（见 `LocalSwitchPositions`）
             LocalSwitchPositions provides remember { mutableMapOf<String, Boolean>() },
             //  禁用态被点一下要说的话：库里所有可点控件（`BasicComponent` / `IconButton` /

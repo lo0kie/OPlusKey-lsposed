@@ -15,7 +15,7 @@ package com.lookie.opluskey.core.model
  *  执行时提示，那一颗自己又关回去了」）。按字段合并之后，**只有手指真点到的那一项会变**，
  *  别的项有多旧都不影响。
  */
-enum class OwnField { USE_OWN, COLOR_OS, VIBRATE, VIBRATE_ON_NONE, STRENGTH, MODE, TEMPLATE }
+enum class OwnField { USE_OWN, COLOR_OS, VIBRATE, VIBRATE_ON_NONE, STRENGTH, MODE, TEMPLATE, STEP_NOTICE }
 
 /** 用 [src] 里那一项的值替换自己这一项（其余字段不动）。 */
 fun OwnSettingsValues.withField(
@@ -56,6 +56,10 @@ fun OwnSettingsValues.withField(
         OwnField.TEMPLATE -> {
             copy(toastTemplate = src.toastTemplate)
         }
+
+        OwnField.STEP_NOTICE -> {
+            copy(stepNotice = src.stepNotice)
+        }
     }
 
 /**
@@ -73,6 +77,7 @@ data class OwnSettingsValues(
     override val toastFluid: Boolean,
     override val toastNotify: Boolean,
     override val toastTemplate: String,
+    override val stepNotice: Boolean,
 ) : OwnSettings {
     override val useOwnSettings: Boolean get() = useOwn
 }
@@ -89,6 +94,7 @@ fun OwnSettings.values(): OwnSettingsValues =
         toastFluid = toastFluid,
         toastNotify = toastNotify,
         toastTemplate = toastTemplate,
+        stepNotice = stepNotice,
     )
 
 /**
@@ -121,6 +127,7 @@ fun KeyConfig.withOwn(values: OwnSettingsValues): KeyConfig =
         toastFluid = values.toastFluid,
         toastNotify = values.toastNotify,
         toastTemplate = values.toastTemplate,
+        stepNotice = values.stepNotice,
     )
 
 /** 把这份值落到一组组合键上 —— 与上面那份一字不差。 */
@@ -135,4 +142,5 @@ fun ComboKey.withOwn(values: OwnSettingsValues): ComboKey =
         toastFluid = values.toastFluid,
         toastNotify = values.toastNotify,
         toastTemplate = values.toastTemplate,
+        stepNotice = values.stepNotice,
     )

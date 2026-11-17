@@ -791,6 +791,16 @@ internal val SettingsPage.pageBackgroundColor: Int
  */
 internal val LocalAppTheme = staticCompositionLocalOf { AppTheme.AUTO }
 
+/**
+ * 这一页现在用不用 **Monet 配色**（`GlobalConfig.monetColors`）——
+ * 「整套色板换成系统按壁纸生成的那一套」这一位。
+ *
+ *  与 [LocalAppTheme] 分两个 CompositionLocal（那边只有深浅）：深浅与配色是两件事，
+ *  合成一个值就得再造一个「深浅 + 配色」的枚举 —— 那正是 v90 拆掉的东西。
+ *  同样是页面级提供、取不到时按关处理（= 传统那套 COUI 配色）。
+ */
+internal val LocalMonetColors = staticCompositionLocalOf { false }
+
 internal fun SettingsPage.colorsFor(night: Boolean) = if (night) DARK_SCHEME else LIGHT_SCHEME
 
 /**
@@ -901,13 +911,6 @@ internal fun SettingsPage.syncNight(from: String): Boolean {
  *  宿主自己的顶栏与状态栏也跟着深 —— 否则页面深、周围一圈浅，比不提供这一档更难看。
  */
 internal fun SettingsPage.effectiveNight(): Boolean =
-    when (AppTheme.ofCode(configState.config.value.global.theme)) {
-        AppTheme.AUTO -> systemNight()
-
-        // Monet 也是「跟随系统」：深浅同样跟着系统走，只是配色换成系统那套（见 `colorsOf`）
-        AppTheme.MONET -> systemNight()
-
-        AppTheme.LIGHT -> false
-
-        AppTheme.DARK -> true
-    }
+    //  固定深浅那四档自己说了算，其余（跟随系统 / 跟随系统 + Monet）落到系统那一档；
+    //  Monet 只换配色，不碰深浅（见 `AppTheme.fixedDark`）
+    AppTheme.ofCode(configState.config.value.global.theme).fixedDark ?: systemNight()

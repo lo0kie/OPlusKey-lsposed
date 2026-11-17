@@ -19,6 +19,8 @@ import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.switchNotice
 import com.lookie.opluskey.ui.feedback.switchToNotice
 import com.lookie.opluskey.ui.feedback.writeAndNotice
+import com.lookie.opluskey.ui.model.page.ComboSort
+import com.lookie.opluskey.ui.model.page.comboSortLabel
 import com.lookie.opluskey.ui.model.text.WindowLabel
 import com.lookie.opluskey.ui.model.text.fixedWindowStartTitle
 import com.lookie.opluskey.ui.model.text.languageLabel
@@ -69,6 +71,19 @@ internal fun SettingsPage.setVibrateOnNone(on: Boolean) =
         I18n.get(Strings.HOME_VIBRATE_ON_NONE_TITLE),
         on,
     ) { it.copy(vibrateOnNone = on) }
+
+/**
+ * 切「**多条命令逐条提示**」—— 一条多条命令跑起来时，每一步各念一句（关着时整条链只念一句命令名）。
+ *
+ *  只在「执行时提示」不是「不提示」时有意义（界面上那一行也跟着它显隐），所以它没有任何闸门：
+ *  值照存，执行侧不看就等于没开。
+ */
+internal fun SettingsPage.setStepNotice(on: Boolean) =
+    toggleGlobal(
+        "step_notice=${if (on) 1 else 0}",
+        I18n.get(Strings.HOME_TOAST_STEP_NOTICE_TITLE),
+        on,
+    ) { it.copy(stepNotice = on) }
 
 /**
  * 切**公共设置里的判定时机**（`GlobalConfig.waitMultiWindow`）—— 落的是「固定窗口起点」的反面。
@@ -145,10 +160,73 @@ internal fun SettingsPage.setLanguage(code: String) {
 }
 
 /**
+ * 切「**减少界面图标**」—— 卡片行行首那些字形是否收起（应用图标与网格不收）。
+ *
+ *  纯显示项：写盘之后整页重组，`PageContent` 那一层把新值顺着 `LocalReduceRowIcons` 递下去，
+ *  不需要退出重进。
+ */
+internal fun SettingsPage.setReduceIcons(on: Boolean) =
+    toggleGlobal(
+        "reduce_icons=${if (on) 1 else 0}",
+        I18n.get(Strings.MORE_REDUCE_ICONS),
+        on,
+    ) { it.copy(reduceIcons = on) }
+
+/**
+ * 切「**使用 Monet 配色**」—— 整页那套色板换不换成系统按壁纸生成的那一套。
+ *
+ *  与「主题」那三档正交（见 [GlobalConfig.monetColors]）：拨完写盘、整页重组，
+ *  `PageContent` 那一层当场用新色板画，不需要退出重进。
+ */
+internal fun SettingsPage.setMonetColors(on: Boolean) =
+    toggleGlobal(
+        "monet_colors=${if (on) 1 else 0}",
+        I18n.get(Strings.MORE_MONET_COLORS),
+        on,
+    ) { it.copy(monetColors = on) }
+
+/**
+ * 写组合列表某一列的**排列次序** —— 两列各一格（`GlobalConfig.waitComboSort` / `holdComboSort`）。
+ *
+ *  **跟着配置文件走**：换一份配置就换一套显示偏好，与配色 / 语言同一档。
+ *  排的是显示次序（`cfg.combos` 自己不动），所以写的是全局那一位、不是任何一档组合。
+ *
+ *  回执放在组合那一位（[HINT_SLOT_COMBO]）：这一页的高亮位本来就在那一档上，
+ *  换个排序再另开一条提示列没有意义。
+ *
+ * @param hold `true` = 「按住组合」那一列
+ * @param sort 挑中的那一档（写它的 `code`）
+ */
+internal fun SettingsPage.setComboSort(
+    hold: Boolean,
+    sort: ComboSort,
+) {
+    val cfg = configState.config.value
+    val next =
+        if (hold) {
+            cfg.copy(global = cfg.global.copy(holdComboSort = sort.code))
+        } else {
+            cfg.copy(global = cfg.global.copy(waitComboSort = sort.code))
+        }
+    writeAndNotice(
+        next,
+        "combo_sort hold=${if (hold) 1 else 0} ${sort.code}",
+        slot = HINT_SLOT_COMBO,
+    ) {
+        //  主语是**那一列的名字**（等待组合 / 按住组合）—— 排序这件事没有自己的行标题，
+        //  回执不说清是哪一列就等于没说改了什么
+        switchToNotice(
+            I18n.get(if (hold) Strings.COMBO_SECTION_HOLD else Strings.COMBO_SECTION_WAIT),
+            comboSortLabel(sort),
+        )
+    }
+}
+
+/**
  * 切「系统场景在首键按下时固定」**公共那一档** —— 同一参数还有每组的落点
  * （`ComboKey.sceneOnStarter`，见 `Config.comboSceneOnStarterFor`：独立设置开着时那一组自己说了算）。
  *
- *  回执位与其它组合项一致（`HINT_SLOT_COMBO`）：同一个开关在这两处各拨一下，屏幕上始终是
+ *  回执位与其它组合项一致（[HINT_SLOT_COMBO]）：同一个开关在这两处各拨一下，屏幕上始终是
  *  那一条在改字，而不是两条叠着。
  */
 internal fun SettingsPage.setComboSceneOnStarter(on: Boolean) {
@@ -344,12 +422,11 @@ internal fun SettingsPage.setToastTemplate(template: String) {
     )
 }
 
-// 「页面怎么显示」这一族的写入口：**跟随系统显示大小** + **页面缩放** + **界面振动反馈**
-// + **显示常用命令**。
+// 「页面怎么显示」这一族的写入口：**界面缩放** + **界面振动反馈** + **显示常用命令**。
 //
-//  这几项改的是页面自己的呈现（`global.followDisplaySize` / `global.pageScale` 在「更多选项」的
-//  「外观」卡里成对出现，缩放那一行还跟着开关一起进出场；`global.uiVibrate` 管页面自己振不振；
-//  `global.showCommonCommands` 决定绑定页那一段露不露），与上面那批「按键怎么执行」的全局开关不是一类。
+//  这几项改的是页面自己的呈现（`global.pageScale` 是页面大小的唯一一档；`global.uiVibrate`
+//  管页面自己振不振；`global.showCommonCommands` 决定绑定页那一段露不露），
+//  与上面那批「按键怎么执行」的全局开关不是一类。
 
 /**
  * 切**界面振动反馈**（`GlobalConfig.uiVibrate`）—— 点行 / 拨开关 / 拖滑杆那一下的触觉。
@@ -397,7 +474,7 @@ internal fun SettingsPage.setPredictiveBack(on: Boolean) {
 }
 
 /**
- * 写**页面缩放**（百分比）。
+ * 写**界面缩放**（百分比）—— 页面大小的唯一一档（语义见 [GlobalConfig.pageScale]）。
  *
  *  返回「写盘成没成」—— 滑杆失败时要拨回原值（见 `SliderRow` 的 `commit`）。
  */
@@ -422,21 +499,6 @@ internal fun SettingsPage.setRandomIconTint(on: Boolean) {
     writeAndNotice(cfg.copy(global = cfg.global.copy(iconTintSeed = seed)), "icon_tint_seed=$seed") {
         switchNotice(I18n.get(Strings.MORE_RANDOM_ICON_TINT), on)
     }
-}
-
-/**
- * 切「跟随系统显示大小」（外观那一行）。
- *
- *  两档的语义见 [GlobalConfig.followDisplaySize]：开 = 用系统那份密度（页面随系统「显示大小」
- *  一起放大缩小）；关 = 保持宿主那一份，再由 [setPageScale] 单独调。
- */
-internal fun SettingsPage.setFollowDisplaySize(on: Boolean) {
-    val cfg = configState.config.value
-    if (cfg.global.followDisplaySize == on) return
-    writeAndNotice(
-        cfg.copy(global = cfg.global.copy(followDisplaySize = on)),
-        "follow_display_size=${if (on) 1 else 0}",
-    ) { switchNotice(I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE), on) }
 }
 
 /**

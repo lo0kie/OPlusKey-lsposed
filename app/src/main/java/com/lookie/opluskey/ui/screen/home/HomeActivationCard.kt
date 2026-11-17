@@ -37,9 +37,9 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.appVersionLabel
 import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.CARD_CORNER
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.text.CHECKING_HINT
-import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT
@@ -49,7 +49,7 @@ import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.screen.linkSettled
 import com.lookie.opluskey.ui.state.host.UpdateState
 import com.lookie.opluskey.ui.style.AppDivider
-import com.lookie.opluskey.ui.style.LocalAppTheme
+import com.lookie.opluskey.ui.style.LocalMonetColors
 import com.lookie.opluskey.ui.wire.blockedReason
 import com.lookie.opluskey.ui.wire.linkFacts
 import com.lookie.opluskey.ui.wire.linkReady
@@ -327,7 +327,8 @@ private const val ACTIVATION_NEUTRAL_MARK_ALPHA = 0.10f
  * 卡片底色里掺多少强调色 —— **Monet 与非 Monet 两套数**，因为两套色板的「底」不是一个起点。
  *
  *  · **Monet**：`surfaceContainer` 本身就带一层壁纸的色相，掺 8% 已经看得出是「有颜色的卡」；
- *    再高整块就偏深（真机口径「底色颜色太深了」）。这一档不动。
+ *    再高整块就偏深（真机口径「底色颜色太深了」）。这一档不动 —— 浅色下觉得暗，是判定曾经
+ *    按「主题档」猜配色、把「浅色 + Monet」错当成非 Monet 掺了 26%（见调用点）。
  *  · **非 Monet**：底是 COUI 那套中性灰白，一点色相都没有 —— 掺进去的色相要先把它「染出来」，
  *    才谈得上浓淡。这一档早先按 Monet 的 8% 试过（那是「灰里透一点蓝」），16% 也只到
  *    「看得出是强调色的卡片」，在真机上仍是**浅灰卡**（用户口径「非 monet 下首页卡片底色太淡」）：
@@ -445,7 +446,10 @@ internal fun SettingsPage.HomeActivationCard(ui: HomeUiState) {
     // 配色按「档」算一次，再让几个角色各自过渡：状态换档那一刻不该硬切。
     //  底色 / 标题 / 说明 / 水印都带过渡 —— 水印是一颗 112dp 的大字形，硬换色比字还显眼；
     //  提示行首那颗 18dp 的小图标不带（它只在有提示时才出现，本来就没有「上一档」可比）。
-    val palette = state.paletteOf(COUITheme.colorScheme, monet = LocalAppTheme.current == AppTheme.MONET)
+    //  **按「用不用 Monet 配色」这一位判**（`LocalMonetColors`），与深浅那三档无关：
+    //  深色 + Monet、浅色 + Monet 同样吃 Monet 那套配色；拿深浅去猜会把它们错当成非 Monet
+    //  （浅色下于是掺了 26%，整块发暗）。
+    val palette = state.paletteOf(COUITheme.colorScheme, monet = LocalMonetColors.current)
     val container by animateColorAsState(palette.container, COLOR_TRANSITION_SPEC, label = "ActivationContainer")
     val titleColor by animateColorAsState(palette.title, COLOR_TRANSITION_SPEC, label = "ActivationTitle")
     val detailColor by animateColorAsState(palette.detail, COLOR_TRANSITION_SPEC, label = "ActivationDetail")
@@ -462,6 +466,7 @@ internal fun SettingsPage.HomeActivationCard(ui: HomeUiState) {
         // 卡自己的内边距**清零**：这一块的留白按「一整块」给（见 [ACTIVATION_CONTENT_PADDING]），
         //  叠上库那份行内边距会变成两层，文字离卡边比下面的卡片远一截。
         insideMargin = PaddingValues(0.dp),
+        cornerRadius = CARD_CORNER,
         //  内容色跟着标题走：它只影响按压指示（库的分隔线读主题，不读这里），
         //  而标题色正是这一档「文字该是什么色」的唯一口径。
         colors = CardDefaults.defaultColors(color = container, contentColor = shown.title),
@@ -531,7 +536,7 @@ private fun SettingsPage.ActivationBody(
 ) {
     Box(
         // 水印要能被卡片圆角裁掉一角 —— 库的卡不裁子级，这里自己收一次边
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(CardDefaults.CornerRadius)),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(CARD_CORNER)),
     ) {
         //  水印**不参与定尺寸**（`matchParentSize` 的子级是父级量完之后才量的）：它 112dp 高，
         //  比这一块的内容还高，直接当兄弟摆会把卡片撑高 —— 表现出来就是「下面多出一截空」，

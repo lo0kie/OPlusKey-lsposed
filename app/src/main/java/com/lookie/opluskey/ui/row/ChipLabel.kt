@@ -28,11 +28,11 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.lookie.opluskey.core.present.COMBO_PAIR_SEPARATOR
+import com.lookie.opluskey.core.present.comboMemberSeparator
 import com.lookie.opluskey.ui.feedback.HintText
+import com.lookie.opluskey.ui.model.page.CARD_CORNER
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.style.tinted
-import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.squircle.squircleBorder
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -190,12 +190,12 @@ internal fun ChipLegend(
  *
  *  ## 分隔符跟在前一个名字后面
  *
- *  `×` 作为**前一个名字的尾巴**参与换行，而不是独立一项：独立一项时换行会让某一行以 `×` 开头，
- *  读起来像漏了一个名字。跟在前一个后面，行尾最多出现一个 `×`，方向是清楚的。
+ *  分隔符作为**前一个名字的尾巴**参与换行，而不是独立一项：独立一项时换行会让某一行以分隔符
+ *  开头，读起来像漏了一个名字。跟在前一个后面，行尾最多出现一个分隔符，方向是清楚的。
  *
  *  @param style / @param color 名字那一档的样式与颜色
  *  @param leading 排在最前面的那一项（场景条件的「前台应用 - 」）；它同样参与换行
- *  @param separator 名字之间的分隔符 —— 默认「×」（一起按下）；按顺序触发那一档传「→」
+ *  @param separator 名字之间的分隔符 —— 默认「和」（一起按下）；按顺序触发那一档传「→」
  */
 @Composable
 internal fun NameFlow(
@@ -204,7 +204,7 @@ internal fun NameFlow(
     color: Color,
     modifier: Modifier = Modifier,
     leading: (@Composable () -> Unit)? = null,
-    separator: String = COMBO_PAIR_SEPARATOR,
+    separator: String = comboMemberSeparator,
 ) {
     FlowRow(
         modifier = modifier,
@@ -221,7 +221,7 @@ internal fun NameFlow(
                 if (at < names.lastIndex) {
                     Text(
                         //  **符号两边各带一个空格**：与纯文本那几处（`comboLabel` / `comboTitleText`）
-                        //  同一个写法 —— 一处「A×B」、一处「A × B」摆在一起就是两种排法。
+                        //  同一个写法 —— 一处「A和B」、一处「A 和 B」摆在一起就是两种排法。
                         //  间距全靠这个空格给（原先另有一档 6dp 的 padding，两者叠加会太松）。
                         text = " $separator ",
                         //  与名字**同档样式**：分隔符比名字大一号时，读起来像「小名字夹在大字里」
@@ -414,7 +414,7 @@ internal fun TileFocusRing(focused: Boolean) {
             .squircleBorder(
                 width = 2.dp,
                 color = ringColor,
-                cornerRadius = CardDefaults.CornerRadius,
+                cornerRadius = CARD_CORNER,
             ),
     )
 }

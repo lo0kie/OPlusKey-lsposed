@@ -21,7 +21,6 @@ import com.lookie.opluskey.ui.model.target.AuthorTarget
 import com.lookie.opluskey.ui.model.target.FeedbackTarget
 import com.lookie.opluskey.ui.model.text.languageLabel
 import com.lookie.opluskey.ui.model.text.paletteLabel
-import com.lookie.opluskey.ui.model.text.themeTag
 import com.lookie.opluskey.ui.model.text.themeTitle
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.PagePalette
@@ -164,10 +163,13 @@ internal fun SettingsPage.LanguageMenu(
 }
 
 /**
- * 「界面颜色」那一行的菜单（跟随系统 / 跟随系统 (Monet) / 浅色 / 深色）。
+ * 「主题」那一行的菜单 —— 三档：跟随系统 / 浅色 / 深色。
  *
  *  与 [LanguageMenu] 同一套：各档全列出来、当前那一档打勾、点别的档才写配置。
  *  各档各有各的字形 —— 共用一颗的话菜单里几行长得一模一样（语言那边踩过同一个坑）。
+ *
+ *  这一层**只有深浅**：用不用 Monet 配色是外观卡里紧挨着的那一行开关（`setMonetColors`），
+ *  不进这个菜单 —— 深浅与配色是两件事，混进同一个单选框就得为每种搭配列一行。
  */
 @Composable
 internal fun SettingsPage.ThemeMenu(
@@ -180,12 +182,9 @@ internal fun SettingsPage.ThemeMenu(
                 .map { theme ->
                     MenuEntry.Row(
                         title = themeTitle(theme),
-                        //  Monet 那一档的说明放在子标题（标题只写「跟随系统」，与上一档同一句）
-                        summary = themeTag(theme),
                         icon =
                             when (theme) {
                                 AppTheme.AUTO -> PageIcons.ThemeAuto
-                                AppTheme.MONET -> PageIcons.ThemeMonet
                                 AppTheme.LIGHT -> PageIcons.ThemeLight
                                 AppTheme.DARK -> PageIcons.ThemeDark
                             },
@@ -441,15 +440,12 @@ private fun SettingsPage.profileRows(
  *  行首是**这一套的色块**（[PageIcons.accentSwatch]，颜色由 `iconTint` 给的那个种子色），
  *  于是「蓝 / 绿 / 橙 / 紫 / 玫红」不用读字也分得出来。
  *
- *  色块形状跟主题走：Monet 那一档整页按系统取色，色块画成四格色阶；其余档只有一个强调色，
- *  画成**一个整块** —— 四格在那几档会被读成「四块不同的色」。
- *
- * @param currentTheme 只用来选色块形状（见 `PageIcons.accentSwatch`）
+ *  色块形状跟**用不用 Monet 配色**走：开了整页按系统取色，色块画成四格色阶；关着只有一个
+ *  强调色，画成**一个整块** —— 四格在那几档会被读成「四块不同的色」。
  */
 @Composable
 internal fun SettingsPage.PaletteMenu(
     ui: AboutUiState,
-    currentTheme: AppTheme,
     currentPalette: PagePalette,
 ) {
     val context = LocalContext.current
@@ -459,7 +455,7 @@ internal fun SettingsPage.PaletteMenu(
                 .map { palette ->
                     MenuEntry.Row(
                         title = paletteLabel(palette),
-                        icon = PageIcons.accentSwatch(currentTheme),
+                        icon = PageIcons.accentSwatch(configState.config.value.global.monetColors),
                         // 行首那块色就是这一套的强调色（「系统取色」那一档现取系统强调色）
                         iconTint = palette.seed(context),
                         selected = palette == currentPalette,

@@ -277,13 +277,31 @@ object ConfigCodec {
      *       档位要不要按先后落与「多久之内落完」是两件事，窗口只有一套。
      *       老文件里残留的这几位按未知键丢掉，取值回落到共用那四格 + 两颗开关。
      *
+     *  86 = **多条命令逐条提示**：`GlobalDto` / `KeyDto` / `ComboDto` 各多了 `step_notice`
+     *       （缺键 ⇒ `false` = 整条链只念一句命令名，与这一位出现之前一致）。
+     *
+     *  87 = **组合两列的排列次序**：`GlobalDto` 多了 `wait_combo_sort` / `hold_combo_sort`
+     *       （文本 id，缺键 ⇒ `created` = 按创建先后，与这一位出现之前一致）。
+     *
+     *  88 = **减少界面图标**：`GlobalDto` 多了 `reduce_icons`（缺键 ⇒ `false` = 图标照旧画）。
+     *
+     *  89 = **「跟随系统显示大小」删掉**（页面大小只由「界面缩放」一档说了算）：
+     *       `GlobalDto` 少这一位；老文件里那个键由 `ignoreUnknownKeys` 丢掉。无行为迁移 ——
+     *       页面原先「跟随」还是「不跟随」，读进来都按同一条算（宿主密度 × 缩放）。
+     *
+     *  90 = **「使用 Monet 配色」拆成独立一格**：`GlobalDto` 多了 `monet_colors`
+     *       （缺键 ⇒ `false`）。深浅那三档同时收回成 `auto` / `light` / `dark`
+     *       —— 老文件里 `monet` / `light_monet` / `dark_monet` 三个值由 `ConfigDto` 读进来那一刻
+     *       翻成「三档 + 这一位」（见那边的 `legacyThemeCode` / `legacyThemeMonet`），
+     *       所以用户原来选的那一档不会丢。
+     *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
      *  不抬版本的话，`version == VERSION` 那一支会拿新 DTO 去校旧文件，**每一份已有配置都当场
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 85
+    const val VERSION = 90
 
     /**
      * 「提示走流体云」由「可选增强」变成「默认落点」的那一版 —— 迁移只看「文件是不是比它旧」。

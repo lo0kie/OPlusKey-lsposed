@@ -1,13 +1,18 @@
 package com.lookie.opluskey.ui.screen.combo
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.TextUnit
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -16,28 +21,32 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.core.present.comboOrderSummary
-import com.lookie.opluskey.core.present.comboTitleText
+import com.lookie.opluskey.core.present.comboTitleParts
 import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.MenuState
 import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.dialog.rememberMenuState
 import com.lookie.opluskey.ui.feedback.DisabledStateWithPick
 import com.lookie.opluskey.ui.feedback.keyStateLabel
 import com.lookie.opluskey.ui.model.icon.DrawnIcons
 import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.ComboSort
+import com.lookie.opluskey.ui.model.page.comboSortLabel
+import com.lookie.opluskey.ui.model.page.comboSortSummary
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SectionTitleClick
-import com.lookie.opluskey.ui.row.TitleCounter
+import com.lookie.opluskey.ui.row.SectionTitleTrailingMore
 import com.lookie.opluskey.ui.row.rememberRowIconColor
 import com.lookie.opluskey.ui.state.binding.ComboEditState
 import com.lookie.opluskey.ui.state.binding.KeysEditState
+import com.lookie.opluskey.ui.write.setComboSort
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -67,7 +76,13 @@ internal fun SettingsPage.ComboListSection(
     hold: Boolean,
 ) {
     val filterKey = if (hold) ComboEditState.holdFilter else ComboEditState.waitFilter
+    //  排序跟着配置文件走（`GlobalConfig.waitComboSort` / `holdComboSort`）——
+    //  换一份配置就换一套显示偏好，与配色 / 语言同一档
+    val sort =
+        ComboSort.ofCode(if (hold) cfg.global.holdComboSort else cfg.global.waitComboSort)
     val menu = rememberMenuState()
+    //  行尾那颗「更多」的菜单（排序）—— 与筛选菜单各一份：一个是「看哪几组」，一个是「怎么排」
+    val sortMenu = rememberMenuState()
 
     Column {
         SectionTitle(
@@ -75,10 +90,18 @@ internal fun SettingsPage.ComboListSection(
             //  锚点挂在**这一行小标题**上（不是整列）：菜单弹在点标题那一点，不与下面的卡片混在一起
             modifier = Modifier.preciseClickAnchor(menu.anchor),
             click = SectionTitleClick.Menu(expanded = menu.open) { menu.show() },
-            //  行尾是**已用 / 上限**（与「命令名称」那行同一个 `TitleCounter`）：
-            //  标题本身是筛选入口（筛了某颗键时它显示的是那颗键的名字），计数只报「共配了几档 / 上限」，
+            //  行尾是**「更多」+ 已用 / 上限**：计数与「命令名称」那行同一个 `TitleCounter`，
+            //  几何与「命令详情 / 命令步骤」那两个小标题同一份（`SectionTitleTrailingMore`）。
+            //  点标题仍是筛选（筛了某颗键时它显示的是那颗键的名字），计数只报「共配了几档 / 上限」，
             //  与筛选无关 —— 否则筛一下就变成「已用 2 / 上限 9」，读起来像丢了几组。
-            trailing = { TitleCounter(cfg.combos.count { it.isHold == hold }, MAX_COMBOS) },
+            trailing = {
+                SectionTitleTrailingMore(
+                    anchor = sortMenu.anchor,
+                    onMenu = sortMenu::show,
+                    length = cfg.combos.count { it.isHold == hold },
+                    max = MAX_COMBOS,
+                )
+            },
         )
         val rows = comboRows(cfg, writable, filterKey, hold)
         //  「添加组合按键」是这一列的**最后一行**（用户口径：与列表拼在一起，不另起卡）。
@@ -93,12 +116,59 @@ internal fun SettingsPage.ComboListSection(
             menu.dismiss()
         }
     }
+    comboSortMenu(sortMenu, current = sort) { picked -> setComboSort(hold, picked) }
+}
+
+/**
+ * 那一列小标题行尾「更多」里的三档排序 —— 形状与「命令步骤」那张菜单同一套
+ * （一层菜单 + 一段带标题的候选，`MenuEntry.Section` 负责标题与行距）。
+ *
+ *  三档是**互斥的显示次序**（[ComboSort]），打勾的是现在这一档；挑完就收。
+ *  菜单标题就写「排序」：它是从那一列的小标题点开的，这一层不必再把列名说一遍。
+ */
+@Composable
+private fun SettingsPage.comboSortMenu(
+    state: MenuState,
+    current: ComboSort,
+    onPick: (ComboSort) -> Unit,
+) {
+    fun row(
+        sort: ComboSort,
+        icon: ImageVector,
+    ): MenuEntry.Row =
+        MenuEntry.Row(
+            //  说法与副标题都读 `ComboSort` 那一份（菜单与回执共用，见 `comboSortLabel`）
+            title = comboSortLabel(sort),
+            summary = comboSortSummary(sort),
+            icon = icon,
+            selected = sort == current,
+            onPick = {
+                //  先收菜单再写：换排序会整列重排，留着菜单会闪一帧旧序
+                state.dismiss()
+                onPick(sort)
+            },
+        )
+    PageMenu(state) {
+        listOf(
+            MenuEntry.Section(
+                title = I18n.get(Strings.COMBO_SORT_TITLE),
+                rows =
+                    listOf(
+                        //  「不排序」= 创建顺序：副标题「按创建时间」由 `comboSortSummary` 给
+                        row(ComboSort.CREATED, PageIcons.SortByCreated),
+                        row(ComboSort.ORDERED_FIRST, PageIcons.SortOrderedFirst),
+                        row(ComboSort.UNORDERED_FIRST, PageIcons.SortUnorderedFirst),
+                    ),
+            ),
+        )
+    }
 }
 
 /**
  * 这张卡的每一行 —— 一档组合一行（**不含**「添加组合按键」，那一行由调用点接在末尾）。
  *
- *  每行的内容在 [comboRow] 里：这一层只负责「筛掉不合的、按顺序摆」。可能一行都不剩。
+ *  每行的内容在 [comboRow] 里：这一层只负责「按 [ComboSort] 排、筛掉不合的」。
+ *  可能一行都不剩。
  *
  *  编辑态（见 [KeysEditState]）里与按键列表同一套：行尾换成多选框、点一行是勾选而不是进编辑页；
  *  「添加组合按键」那一行禁用（编辑态在改「已有哪几组」，不是加一组）。
@@ -106,22 +176,32 @@ internal fun SettingsPage.ComboListSection(
 private fun SettingsPage.comboRows(
     cfg: Config,
     writable: Boolean,
-    /** 只看含这颗键的组合（`null` = 全部）—— 行首的「第几组」仍按**全部**里的位置算。 */
+    /** 只看含这颗键的组合（`null` = 全部）—— 行首的「第几组」仍按**排序后整列**里的位置算。 */
     filter: String?,
     /** 这一列是「按住组合」还是「等待组合」（另一类的行不画在这一列里）。 */
     hold: Boolean,
 ): List<CardRow> =
     buildList {
+        val sort =
+            ComboSort.ofCode(if (hold) cfg.global.holdComboSort else cfg.global.waitComboSort)
         //  **段内独立编号**（用户口径）：两列各自的「第几组」从 1 数起 ——
         //  按 `cfg.combos` 的全局位次给号，按住那一列会从「等待组合的条数 + 1」开始，
         //  看着像前面缺了好几组（行首那颗数字图标本来就只在告「这是这一列的第几个」）。
-        var seq = 0
-        cfg.combos.forEach { combo ->
-            if (combo.isHold != hold) return@forEach
-            //  序号**先取**再判筛选：这一列的编号是「它在全列里排第几」，筛掉几行不该让它重排
-            //  （KDoc 里那句「仍按全部里的位置算」说的就是这里）。
-            val index = seq++
-            if (filter != null && filter !in combo.keys) return@forEach
+        //  编号跟着**改后的次序**走：序号若还按创建顺序给，排完之后行首会读成「3 / 1 / 2」。
+        //  `sortedBy` 是稳定排序，同一档里仍是创建先后。
+        val column =
+            cfg.combos
+                .filter { it.isHold == hold }
+                .let { list ->
+                    when (sort) {
+                        ComboSort.CREATED -> list
+                        ComboSort.ORDERED_FIRST -> list.sortedBy { if (it.ordered) 0 else 1 }
+                        ComboSort.UNORDERED_FIRST -> list.sortedBy { if (it.ordered) 1 else 0 }
+                    }
+                }
+        column.forEachIndexed { index, combo ->
+            //  序号**先取**再判筛选：这一列的编号是「它在整列里排第几」，筛掉几行不该让它重排。
+            if (filter != null && filter !in combo.keys) return@forEachIndexed
             add(comboRow(cfg, combo, index, writable))
         }
     }
@@ -141,14 +221,14 @@ private fun SettingsPage.comboRow(
     val off = cfg.comboOff(combo)
     return CardRow.Item(
         title = comboLabel(cfg, combo),
-        //  标题由 [ComboTitle] 画（纯文字：`侧键 × 音量 +` / `按住 …后再按 …`）——
+        //  标题由 [ComboTitle] 画（纯文字：`侧键 和 音量 +` / `按住 …后 …`）——
         //  `title` 那一份仍给着，供无障碍 / 其它只取字符串的通道用。
         titleContent = { ComboTitle(cfg, combo, writable) },
         //  **副标题只写一个状态**（用户口径）：停用那一档写「已停用」，其余写顺序
-        //  （`comboOrderSummary`：按顺序的那一档念「A → B → C」，不分顺序的没有副标题）。
+        //  （`comboOrderSummary`：按顺序写「先 A 后 B 再 C」，不分顺序写「不分顺序」）。
         //  两者不拼接 —— 这一格本来就只放一句，拼起来会把标题挤掉一截；而且停用时顺序也无意义。
         //  动作摘要仍然不写：一列下来全是小字、每行还都不一样长，扫一眼只能看见一片灰。
-        summary = keyStateLabel(enabled = !off, comboOnly = false) ?: comboOrderSummary(combo),
+        summary = keyStateLabel(enabled = !off, comboOnly = false) ?: comboOrderSummary(cfg, combo),
         summaryMaxLines = 1,
         //  行首用**第几组**的数字图标（1~9，与 `MAX_COMBOS` 同一档，用户口径）：一列下来能数清现在有几组，
         //  与首页「按键」卡那几颗自定义键同一套写法（`menuKeyNumber`）。
@@ -195,10 +275,18 @@ private fun SettingsPage.comboRow(
 }
 
 /**
- * 组合行标题 —— **一行纯文字**：`侧键 × 音量 +` / `按住 侧键 后再按 音量 +`。
+ * 组合行标题 —— **一行纯文字**：`侧键 和 音量 +` / `侧键按住后 音量 +`。
  *
- *  那句话由 `comboTitleText` 拼，句式与 `comboLabel` 同一条（按顺序那一档用「→」，
- *  不分顺序用「×」）。**换行交给 `Text` 自己**：装不下才折行、再不行省略号。
+ *  那句话由 [comboTitleParts] 分段给：两档都**不区分顺序**（等待档「和」、按住档「后」），
+ *  按不按先后写在那一行的副标题里（`comboOrderSummary`）。**换行交给文本自己**：
+ *  装不下才折行、再不行省略号。
+ *
+ *  ## 只有连接词小一号
+ *
+ *  键名按标题那一档画，`按住` / `后` / `和` 这些**不是名字的字**缩到 [COMBO_CONNECTOR_SCALE]：
+ *  一列下来眼睛先扫到的是几颗键的名字，连接词退成一层薄薄的语法（用户口径）。
+ *  比例**乘在标题自己的字号上**，所以适配页面的字号缩放与系统字号：写死一个 sp 值，
+ *  放大字号之后连接词会显得越来越小。
  */
 @Composable
 private fun SettingsPage.ComboTitle(
@@ -210,15 +298,34 @@ private fun SettingsPage.ComboTitle(
     //  取色走全项目那一份（`rememberRowIconColor`：启用色 / 禁用色两档 + 统一过渡），
     //  不在这一页再抄一遍两色。
     val color by rememberRowIconColor(enabled = writable, label = "ComboTitle")
-    Text(
-        text = comboTitleText(cfg, combo),
-        style = COUITheme.textStyles.headline1,
-        fontWeight = FontWeight.Medium,
-        color = color,
+    val style = COUITheme.textStyles.headline1
+    val connectorSize =
+        style.fontSize
+            .takeIf { it.isSp }
+            ?.let { it * COMBO_CONNECTOR_SCALE }
+            ?: TextUnit.Unspecified
+    //  分段拼：键名照原样，连接词套一段小字号。**不给段之间留空** —— 空格已经写在连接词那一段里，
+    //  再插一次会让「侧键按住后 …」里每处都多一个空格。
+    val text =
+        buildAnnotatedString {
+            comboTitleParts(cfg, combo).forEach { part ->
+                if (part.isKeyName) {
+                    append(part.text)
+                } else {
+                    withStyle(SpanStyle(fontSize = connectorSize)) { append(part.text) }
+                }
+            }
+        }
+    BasicText(
+        text = text,
+        style = style.copy(color = color, fontWeight = FontWeight.Medium),
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
     )
 }
+
+/** 连接词相对标题字号的缩放 —— 只退一小档：再往下（0.85 及以下）真机上读着偏碎，与名字脱成两层。 */
+private const val COMBO_CONNECTOR_SCALE = 0.95f
 
 /** 「添加组合按键」—— 清单的**最后一行**（与清单同卡）；编辑态里**禁用**而不是退场（与「添加按键」同一口径）。 */
 private fun SettingsPage.addComboRow(
@@ -272,7 +379,7 @@ private fun SettingsPage.addComboRow(
  *
  *  **键名不套方框**（用户口径：只有一个键名时不要框起来）：这一行后面只跟一个名字，
  *  前面那个 ` - ` 已经把它与标题分开了，再套一对 `[ ]` 只是多一层噪声。
- *  两颗以上连起来那一档（`[ 侧键 ]×[ 电量 + ]`）仍然要框 —— 那里框是为了把两个名字分开。
+ *  两颗以上连起来那一档（`[ 侧键 ]和[ 电量 + ]`）仍然要框 —— 那里框是为了把两个名字分开。
  */
 internal fun SettingsPage.comboListTitle(
     cfg: Config,

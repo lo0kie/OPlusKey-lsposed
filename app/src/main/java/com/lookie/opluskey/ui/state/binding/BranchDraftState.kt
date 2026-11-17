@@ -311,6 +311,9 @@ internal object KeyWatchState {
  *
  *  为什么放在页面级（`object`）而不是 `remember` 在页面里：编辑页与列表页是**两个 Screen**，
  *  压栈 / 出栈都会重建组合，参数又带不进 `Screen` 枚举（它是个无参枚举）。
+ *
+ *  **排序不在这里**：它跟着配置文件走（`GlobalConfig.waitComboSort` / `holdComboSort`），
+ *  与这里的「这一趟想看哪几组」不是一件事。
  */
 internal object ComboEditState {
     /** 正在编辑哪一档组合（`null` = 没有）。 */

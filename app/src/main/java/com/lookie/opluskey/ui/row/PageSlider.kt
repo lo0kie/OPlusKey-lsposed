@@ -137,6 +137,8 @@ private fun SettingsPage.SliderRowBody(
     // 拖动触觉与「点轨道跳值」共用同一条通道（`rememberTick`）：判据只有系统静音，
     //  与模块的「振动反馈」开关无关（完整口径见 `tickNow`）。
     val sliderIconColor by rememberRowIconColor(spec.enabled, icon = spec.icon, label = "SliderIcon")
+    //  「减少界面图标」开着时行首那颗不画，滑杆也不必再让出那一格
+    val reduceIcons = LocalReduceRowIcons.current
     // 文字三档色，与库的 `BasicComponentDefaults.titleColor()` / `summaryColor()`、
     // 以及 `SliderPreference` 里给当前值用的那一档**同源**（它们那个 `color(enabled)`
     // 是库的内部成员，取不到，所以自己按 `enabled` 选）。
@@ -167,21 +169,27 @@ private fun SettingsPage.SliderRowBody(
         //  行首图标要自己管颜色：库只给**它自己画的东西**按 `enabled` 上色，
         // `startAction` 槽位原样渲染 —— 不给的话 `enabled = false` 会「字灰了、图标还亮着」
         // （与 [ArrowPreference] 那一行同一个坑）。
-        startAction = {
-            Icon(
-                spec.icon,
-                contentDescription = null,
-                tint = sliderIconColor,
-                modifier =
-                    Modifier
-                        //  补上库少给的那 8dp，图标两侧留白才一样宽（见 [ROW_START_ICON_GAP]）
-                        .padding(end = ROW_START_ICON_GAP)
-                        //  库只把图标居中在标题与摘要那一块上，底下的滑杆不算进 `rowHeight`
-                        //  （见 [SLIDER_ICON_SINK]）：往下坐半个「文本块以下」的高度，中心才落在整行内容上。
-                        //  走 `offset` 而不是 `padding` —— 后者会改量出来的尺寸，父级按新高度重新居中，只挪到一半。
-                        .offset(y = SLIDER_ICON_SINK),
-            )
-        },
+        //  「减少界面图标」开着时这一格不画：滑杆跟着回到行内边距（见 [SliderTrack] 那一处）
+        startAction =
+            if (reduceIcons) {
+                null
+            } else {
+                {
+                    Icon(
+                        spec.icon,
+                        contentDescription = null,
+                        tint = sliderIconColor,
+                        modifier =
+                            Modifier
+                                //  补上库少给的那 8dp，图标两侧留白才一样宽（见 [ROW_START_ICON_GAP]）
+                                .padding(end = ROW_START_ICON_GAP)
+                                //  库只把图标居中在标题与摘要那一块上，底下的滑杆不算进 `rowHeight`
+                                //  （见 [SLIDER_ICON_SINK]）：往下坐半个「文本块以下」的高度，中心才落在整行内容上。
+                                //  走 `offset` 而不是 `padding` —— 后者会改量出来的尺寸，父级按新高度重新居中，只挪到一半。
+                                .offset(y = SLIDER_ICON_SINK),
+                    )
+                }
+            },
         // 行尾**不再站一列**：当前值挪到主标题那一行的右侧（见 [SliderRowTexts]）。
         //  这不是纯排版偏好 —— 行尾那一列会把「摘要」挤窄，而摘要是这一行唯一的长句
         //  （「按住超过这么久才算长按」那种），挤窄之后它比标题还早折行。
@@ -337,8 +345,8 @@ private fun SliderTrack(
         modifier =
             Modifier
                 .fillMaxWidth()
-                // 行首图标把滑杆也挤开（见 [SLIDER_ICON_INSET]）
-                .padding(start = SLIDER_ICON_INSET)
+                // 行首图标把滑杆也挤开（见 [SLIDER_ICON_INSET]）；图标收起来时这一段也收掉
+                .padding(start = if (LocalReduceRowIcons.current) 0.dp else SLIDER_ICON_INSET)
                 // 库的轨道两端各内缩 `height × 0.2`（见 [SLIDER_EDGE_BLEED]）—— 补掉这一截，
                 // 可见轨道才与上面的标题 / 摘要同一个左右边界。挂在 padding **之后**：
                 // 量到的是「已经让开图标」的那条宽度，撑出去的部分压在行内边距上。
@@ -395,7 +403,7 @@ internal fun TrackSlider(
     //  · 空段上那一档（`keyPointColor`）压在**轨道底色**上 —— 库给浅色的是 `#F2F2F2`，
     //    而 `sliderBackground` 是 5% 黑压在卡片上，合成出来**正好也是 `#F2F2F2`**：
     //    同一个颜色，于是「出厂默认值」那个圆点只要落在滑块右边就整个消失
-    //    （页面缩放滑杆默认 100%、拖到 70% 时那一格就在白区里，看不见）。
+    //    （界面缩放滑杆默认 100%、拖到 70% 时那一格就在白区里，看不见）。
     //  **取前景色（`onSurface`）、按固定不透明度画，不再从 `sliderBackground` 的 alpha 推**：
     //  「同色 × 4」这条路只在库那套自带色板下成立（那边 `sliderBackground` 是 5% / 10% 的
     //  前景色）；Monet 那一档整套 `Colors` 是库按系统配色另算的，`sliderBackground` 在那里是

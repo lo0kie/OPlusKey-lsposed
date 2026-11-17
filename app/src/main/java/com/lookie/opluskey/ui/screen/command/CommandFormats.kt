@@ -27,9 +27,11 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.page.CARD_CORNER
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.text.COMMAND_FORMAT_LINES
 import com.lookie.opluskey.ui.model.theme.CommandFormatLine
+import com.lookie.opluskey.ui.row.LocalReduceRowIcons
 import com.lookie.opluskey.ui.state.command.CommandUiState
 import com.lookie.opluskey.ui.style.AppDivider
 import com.lookie.opluskey.ui.style.tinted
@@ -96,8 +98,10 @@ internal fun SettingsPage.CommandFormatsCard(
 ) {
     val lines = COMMAND_FORMAT_LINES
     val style = COUITheme.textStyles.footnote1
+    //  「减少界面图标」开着时行首那颗图例记号不画（见 [FormatRow]）
+    val reduceIcons = LocalReduceRowIcons.current
     val labelColumn = rememberLabelColumnWidth(lines, style)
-    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN), cornerRadius = CARD_CORNER) {
         Column(
             // 上下只给 8dp：每行固定 [FORMAT_ROW_TOUCH]（32dp）高，小字本身约 17dp，
             // 字与行上下边天然各留约 7.5dp —— 加上 8dp ≈ 左右那 16dp 一档。
@@ -115,10 +119,15 @@ internal fun SettingsPage.CommandFormatsCard(
                 //  分隔线**左端只到文字**：起点缩进到图标 + 图标间距之后（`FORMAT_ROW_ICON +
                 //  FORMAT_ICON_GAP`），与左列写法那一列对齐；右端仍按行的外扩那一档让回来，
                 //  线跟着外扩会顶到卡片边上，与卡片自己的边线打架。
+                //
+                //  「减少界面图标」开着时这一行不画图（见 [FormatRow]），起点就回到行的内缩，
+                //  否则线左边会多出一段悬空的缩进。
                 if (index > 0) {
                     AppDivider(
                         Modifier.padding(
-                            start = FORMAT_ROW_INSET + FORMAT_ROW_ICON + FORMAT_ICON_GAP,
+                            start =
+                                FORMAT_ROW_INSET +
+                                    if (reduceIcons) 0.dp else FORMAT_ROW_ICON + FORMAT_ICON_GAP,
                             end = FORMAT_ROW_INSET,
                         ),
                     )
@@ -181,13 +190,16 @@ private fun FormatRow(
         //  行首那颗图标 —— 一行一颗，扫一眼就能分出「这行是哪一种」。
         //  颜色：**跟着「随机图标配色」走**（`tinted()`，按图标名取色 —— 每颗名字不同，
         //  于是各是一色）；那一档关着时退回说明那一档的中性色（它是记号，不是要照抄的内容）。
-        Icon(
-            line.icon,
-            contentDescription = null,
-            modifier = Modifier.size(FORMAT_ROW_ICON),
-            tint = line.icon.tinted() ?: COUITheme.colorScheme.onSurfaceVariantSummary,
-        )
-        Spacer(Modifier.width(FORMAT_ICON_GAP))
+        //  「减少界面图标」开着时这一行只留文字（图标与它后面那段间距一起省掉）
+        if (!LocalReduceRowIcons.current) {
+            Icon(
+                line.icon,
+                contentDescription = null,
+                modifier = Modifier.size(FORMAT_ROW_ICON),
+                tint = line.icon.tinted() ?: COUITheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Spacer(Modifier.width(FORMAT_ICON_GAP))
+        }
         Text(
             text = line.label,
             // 行高固定 32dp、字在里面居中 —— 行盒贴着墨迹（见 `AppTextStyles` 的行高样式），

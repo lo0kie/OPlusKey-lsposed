@@ -615,6 +615,8 @@ private fun stepSheetRow(
         //  **当前这一步**那一行：行首**保留这一档自己的字形**（换成对勾的话，「当前是哪个」
         //  与「这一行是什么」就只剩颜色能分，扫一列下来全是对勾），选中只由主题色说。
         icon = view.icon,
+        //  抽屉里的图标就是这一行的身份（这一步是什么动作）—— 「减少界面图标」也留着
+        keepIcon = true,
         //  未选中时给 `null`，让行组件按启用态走默认那档灰
         iconTint = if (view.selected) colors.primary else null,
         titleTint = if (view.selected) colors.primary else null,

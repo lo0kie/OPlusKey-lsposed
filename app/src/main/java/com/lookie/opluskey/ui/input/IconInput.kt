@@ -38,7 +38,6 @@ import androidx.compose.ui.platform.LocalView
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.page.ROW_ICON_SIZE
-import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.theme.EASING_EMPHASIZED_ACCEL
@@ -46,7 +45,7 @@ import com.lookie.opluskey.ui.model.theme.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.model.theme.isDarkScheme
-import com.lookie.opluskey.ui.style.LocalAppTheme
+import com.lookie.opluskey.ui.style.LocalMonetColors
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.InputViewDefaults
@@ -92,7 +91,7 @@ private const val IME_GUARD_TICK_FRAMES = 6
 @Composable
 internal fun couiInputColors(): SearchBarColors {
     val base = SearchBarDefaults.searchBarColors()
-    if (LocalAppTheme.current != AppTheme.MONET) return base
+    if (!LocalMonetColors.current) return base
     val scheme = COUITheme.colorScheme
     val background = if (scheme.isDarkScheme) scheme.surfaceContainer else scheme.surfaceContainerHighest
     return base.copy(backgroundColor = background)

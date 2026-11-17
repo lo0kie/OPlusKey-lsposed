@@ -114,6 +114,20 @@ internal fun SettingsPage.OwnSettingsCard(
                         onClick = noticeMenu::show,
                     ),
                 )
+                //  「多条命令逐条提示」：与公共页那一颗同一个名字、同一个显隐判据（「不提示」时这一项
+                //  无从谈起）。值取这一档自己那份 —— 显示与写入同源，见文件头那段说明。
+                add(
+                    CardRow.Switch(
+                        title = I18n.get(Strings.HOME_TOAST_STEP_NOTICE_TITLE),
+                        icon = PageIcons.StepNotice,
+                        checked = owner.stepNotice,
+                        enabled = rowsEnabled,
+                        disabledHint = ownHint,
+                        visible = owner.noticeMode != NoticeMode.NONE,
+                    ) {
+                        edit(OwnField.STEP_NOTICE) { v -> v.copy(stepNotice = it) }
+                    },
+                )
                 add(toastTemplateRow(owner, rowsEnabled, ownHint) { editingTemplate = true })
             },
     )

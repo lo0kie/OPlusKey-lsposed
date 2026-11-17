@@ -48,6 +48,7 @@ import com.lookie.opluskey.ui.model.page.STEP_PICKER_MAX_HEIGHT
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.POPUP_FROSTED_ALPHA
 import com.lookie.opluskey.ui.row.AppScrollBar
+import com.lookie.opluskey.ui.row.LocalReduceRowIcons
 import com.lookie.opluskey.ui.row.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.style.AppHeavyDivider
 import com.lookie.opluskey.ui.style.frosted
@@ -277,6 +278,8 @@ internal fun SettingsPage.MenuPopup(
     }
     OverlayListPopup(
         show = show,
+        //  库面板与投影都按这一圈画（见补丁 0016），磨砂与描边的收边才贴得住轮廓。
+        cornerRadius = POPUP_PANEL_RADIUS,
         popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
         preciseClickState = held.click,
         maxHeight = options.maxHeight,
@@ -514,6 +517,9 @@ private fun SettingsPage.MenuRow(
     probe: GestureProbe?,
 ) {
     val tick = rememberTick()
+    //  「减少界面图标」开着时行首那一格整块不画，选中态改由库行尾那颗对勾说
+    //  （见下面 `showCheck` 与 `icon` 两处）。
+    val reduceIcons = LocalReduceRowIcons.current
     // 禁用行被点时先收菜单再说原因（提示条在页面底部、被浮层压着）。
     //  走 CompositionLocal 而不是加参数：`MenuRow` 的签名已经很长了。
     val currentDisabledHint by rememberUpdatedState(row.disabledHint)
@@ -561,6 +567,7 @@ private fun SettingsPage.MenuRow(
             row.enabled,
             row.danger,
             row.selected,
+            reduceIcons,
             row.trailingIcon,
             row.disabledHint,
         ) {
@@ -593,42 +600,50 @@ private fun SettingsPage.MenuRow(
                 // **行尾那一格不画**（`showCheck = false`）：选中态改由**行首图标**换成对勾来表示
                 //  （见下面的 `icon`）。库里那一格是恒画的 —— 一颗 24dp 字形 + 起始间距，未选中时
                 //  只是把它画成透明，**布局上照样占着**，于是每一行右边都挂着一块永远空着的位子。
-                showCheck = false,
+                //
+                //  **「减少界面图标」开着时反过来**（用户口径）：行首不画了，对勾就回到行尾那一格
+                //  （`showCheck = selected`，库自己那颗）；不然选中态没有任何记号。
+                showCheck = reduceIcons && row.selected,
                 // 进下一层那些行（「响铃状态」「选择应用」）的行尾右箭头同样换掉 —— 库默认的
                 // `COUIIcons.Basic.ArrowRight` 也是 COUI 那一套（12x24、描边 1.4），见 [PageIcons.EnterArrow]。
                 //  逐行可换（[MenuEntry.Row.trailingIcon]）：跳页面那些行用「窗口 + 加号」，与网格一致。
                 chevronIcon = row.trailingIcon ?: PageIcons.EnterArrow,
-                icon = { m ->
-                    val base =
-                        m
-                            .height(MENU_ROW_CONTENT_HEIGHT)
-                            .bringIntoViewRequester(bringIntoView)
-                            .then(measureRow)
-                    // 第 0 行兼当「列表滚了没有」的探针：挂在行内容上 —— 滚的是列表**内层**，
-                    // 外层那一圈与浮层窗口自己都不动（见 [GestureProbe.onContentPosition]）。
-                    val tracked =
-                        if (index == 0 && probe != null) {
-                            base.onGloballyPositioned { c -> probe.onContentPosition(c.positionInWindow().y) }
-                        } else {
-                            base
+                icon =
+                    if (reduceIcons) {
+                        null
+                    } else {
+                        { m ->
+                            val base =
+                                m
+                                    .height(MENU_ROW_CONTENT_HEIGHT)
+                                    .bringIntoViewRequester(bringIntoView)
+                                    .then(measureRow)
+                            // 第 0 行兼当「列表滚了没有」的探针：挂在行内容上 —— 滚的是列表**内层**，
+                            // 外层那一圈与浮层窗口自己都不动（见 [GestureProbe.onContentPosition]）。
+                            val tracked =
+                                if (index == 0 && probe != null) {
+                                    base.onGloballyPositioned { c -> probe.onContentPosition(c.positionInWindow().y) }
+                                } else {
+                                    base
+                                }
+                            Box(tracked, contentAlignment = Alignment.Center) {
+                                Icon(
+                                    // 选中那一行：行首这颗**一律**换成对勾（行尾那颗已经关掉了，见上面的 `showCheck`）。
+                                    //  自带颜色的行（系统配色那几行的色块）也换 —— 但**颜色仍用这一行的色**
+                                    //  （`iconTint`，见下面的 `tint`）：对勾的**形状**说「当前是这一项」，
+                                    //  对勾的**颜色**说「是哪一套色」，两条信息都留着
+                                    //  （用户口径：「强调色菜单选中项行首用 checked」）。
+                                    if (row.selected) PageIcons.MenuCheck else row.icon,
+                                    null,
+                                    Modifier.size(MENU_ICON_SIZE),
+                                    //  随机配色只在「能点、不是危险项、不是选中项」时生效：
+                                    //  那三档的颜色各自带语义（灰 / 红 / 主色），染成随机色就丢了意思。
+                                    //  三档合出来的目标见 [rowIconTint]。
+                                    tint = rowIconTint,
+                                )
+                            }
                         }
-                    Box(tracked, contentAlignment = Alignment.Center) {
-                        Icon(
-                            // 选中那一行：行首这颗**一律**换成对勾（行尾那颗已经关掉了，见上面的 `showCheck`）。
-                            //  自带颜色的行（系统配色那几行的色块）也换 —— 但**颜色仍用这一行的色**
-                            //  （`iconTint`，见下面的 `tint`）：对勾的**形状**说「当前是这一项」，
-                            //  对勾的**颜色**说「是哪一套色」，两条信息都留着
-                            //  （用户口径：「强调色菜单选中项行首用 checked」）。
-                            if (row.selected) PageIcons.MenuCheck else row.icon,
-                            null,
-                            Modifier.size(MENU_ICON_SIZE),
-                            //  随机配色只在「能点、不是危险项、不是选中项」时生效：
-                            //  那三档的颜色各自带语义（灰 / 红 / 主色），染成随机色就丢了意思。
-                            //  三档合出来的目标见 [rowIconTint]。
-                            tint = rowIconTint,
-                        )
-                    }
-                },
+                    },
             )
         }
     //  行底交给面板那一层：把行自己的 `containerColor` 抹成透明，浮层那层磨砂才透得出来

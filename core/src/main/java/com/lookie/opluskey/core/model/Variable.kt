@@ -504,6 +504,8 @@ data class ComboKey(
     override val toastNotify: Boolean = GlobalConfig.DEFAULT_TOAST_NOTIFY,
     /** 这一档自己的提示文案模板（空串 = 默认那句）—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
+    /** 这一档自己的「多条命令逐条提示」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val stepNotice: Boolean = GlobalConfig.DEFAULT_STEP_NOTICE,
     /**
      * 这一档的**四个窗口**（毫秒）—— 等待 / 按住 × 固定窗口起点 开 / 关，各存一份。
      *

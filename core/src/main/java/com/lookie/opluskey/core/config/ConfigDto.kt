@@ -246,11 +246,12 @@ internal data class KeyDto(
     /** 这颗键自己的「无操作时振动」。 */
     @SerialName("vibrate_on_none")
     val vibrateOnNone: Boolean? = null,
-    /** 这颗键自己的「执行时提示」/「提示走流体云」/「提示走通知」/「提示文案」。 */
+    /** 这颗键自己的「执行时提示」/「提示走流体云」/「提示走通知」/「提示文案」/「逐条提示」。 */
     val toastOnRun: Boolean? = null,
     val toastFluid: Boolean? = null,
     val toastNotify: Boolean? = null,
     val toastTemplate: String? = null,
+    val stepNotice: Boolean? = null,
     /**
      * **老的「一条规则一个手势」那一列** —— 只读：新写的文件不再写它，读到就迁移（见 [mergeScenes]）。
      *
@@ -395,6 +396,7 @@ internal data class KeyDto(
                 ConfigFields.F_KEY_TOAST_FLUID to (toastFluid ?: GlobalConfig.DEFAULT_TOAST_FLUID),
                 ConfigFields.F_KEY_TOAST_NOTIFY to (toastNotify ?: GlobalConfig.DEFAULT_TOAST_NOTIFY),
                 ConfigFields.F_KEY_TOAST_TEMPLATE to (toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE),
+                ConfigFields.F_KEY_STEP_NOTICE to (stepNotice ?: GlobalConfig.DEFAULT_STEP_NOTICE),
                 //  「哪几档多击开着」也要走这张表：`toValues` 是两条通道共用的入口，
                 //  这里给文本（`Kind` 只有 Bool / Number / Text），与 `fieldValues()` 同一个编码
                 ConfigFields.F_EXTRA_CLICKS to clicksOn.sorted().joinToString(","),
@@ -475,6 +477,7 @@ internal data class KeyDto(
                 toastFluid = key.toastFluid,
                 toastNotify = key.toastNotify,
                 toastTemplate = key.toastTemplate,
+                stepNotice = key.stepNotice,
                 scenes = key.scenes.map { SceneRuleDto.of(it) },
                 extraClicks = key.extraClicks.mapKeys { it.key.toString() }.mapValues { it.value.token },
                 //  写侧一律给具体值：给 `null` 的话下次读回来会走「按表倒推」那条老路
@@ -797,6 +800,7 @@ internal data class ComboDto(
     val toastFluid: Boolean? = null,
     val toastNotify: Boolean? = null,
     val toastTemplate: String? = null,
+    val stepNotice: Boolean? = null,
     /**
      * **这一档自己的**四格窗口（毫秒，等待 / 按住 × 固定窗口起点 开 / 关）；`0` = 没写过 ⇒ 出厂默认。
      *
@@ -934,6 +938,7 @@ internal data class ComboDto(
             toastFluid = toastFluid ?: GlobalConfig.DEFAULT_TOAST_FLUID,
             toastNotify = toastNotify ?: GlobalConfig.DEFAULT_TOAST_NOTIFY,
             toastTemplate = toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE,
+            stepNotice = stepNotice ?: GlobalConfig.DEFAULT_STEP_NOTICE,
             //  **四格窗口**：v74 起分开存。老文件只有一个数（`window_ms`，更老的还有
             //  `fixed_window_ms`）—— 拿它给前三格铺底，第四格留给出厂值。
             //  0 表示没写过（取出厂默认），必须原样留着 —— `clamp` 会把它抬到下限 20，
@@ -1001,6 +1006,7 @@ internal data class ComboDto(
                 toastFluid = combo.toastFluid,
                 toastNotify = combo.toastNotify,
                 toastTemplate = combo.toastTemplate,
+                stepNotice = combo.stepNotice,
                 waitWindowMs = combo.waitWindowMs,
                 waitPairMs = combo.waitPairMs,
                 holdWindowMs = combo.holdWindowMs,
@@ -1094,17 +1100,25 @@ internal data class GlobalDto(
     /** 「执行时提示」的文案模板（见 `GlobalConfig.toastTemplate`）—— 老文件没有这一项，退回默认那句。 */
     @SerialName("toast_template")
     val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
+    /** 多条命令逐条提示 —— 老文件没有这一项，退回默认（关）。 */
+    @SerialName("step_notice")
+    val stepNotice: Boolean = GlobalConfig.DEFAULT_STEP_NOTICE,
     val language: String = GlobalConfig.DEFAULT_LANGUAGE,
     /** 系统配色的 id（见 `GlobalConfig.palette`）—— 老文件没有这一项，取值退回默认档。 */
     val palette: String = GlobalConfig.DEFAULT_PALETTE,
     /** 界面颜色（见 `GlobalConfig.theme`）—— 老文件没有这一项，退回「跟随系统」。 */
     val theme: String = GlobalConfig.DEFAULT_THEME,
+    /**
+     * 使用 Monet 配色（见 `GlobalConfig.monetColors`）—— 老文件没有这一项，退回默认（关）。
+     *
+     *  v89 及以前这一位压在 `theme` 里（`monet` / `light_monet` / `dark_monet` 三个值）；
+     *  那三个值读进来时由 [legacyThemeCode] / [legacyThemeMonet] 翻成「三档 + 这一位」。
+     */
+    @SerialName("monet_colors")
+    val monetColors: Boolean = GlobalConfig.DEFAULT_MONET_COLORS,
     val colorOsApi: Boolean = GlobalConfig.DEFAULT_COLOR_OS_API,
     val miniWindowAnim: Boolean = GlobalConfig.DEFAULT_MINI_WINDOW_ANIM,
-    /** 「跟随系统显示大小」—— 老文件没有这一项，取值退回默认（开）。 */
-    @SerialName("follow_display_size")
-    val followDisplaySize: Boolean = GlobalConfig.DEFAULT_FOLLOW_DISPLAY_SIZE,
-    /** 页面缩放（百分比）—— 老文件没有这一项，退回出厂值 100%。 */
+    /** 界面缩放（百分比）—— 老文件没有这一项，退回出厂值 100%。 */
     @SerialName("page_scale")
     val pageScale: Int = GlobalConfig.DEFAULT_PAGE_SCALE,
     /**
@@ -1150,6 +1164,18 @@ internal data class GlobalDto(
     /** 按键绑定页显不显示「常用命令」那一段 —— 老文件没有这一项，退回默认（显示）。 */
     @SerialName("show_common_commands")
     val showCommonCommands: Boolean = GlobalConfig.DEFAULT_SHOW_COMMON_COMMANDS,
+    /** 「减少界面图标」—— 老文件没有这一项，退回默认（画）。 */
+    @SerialName("reduce_icons")
+    val reduceIcons: Boolean = GlobalConfig.DEFAULT_REDUCE_ICONS,
+    /**
+     * 组合两列的排列次序（文本 id，取值见 `GlobalConfig.SORT_BY_CREATED` 那一组）。
+     *
+     *  **跟着配置文件走**：换一份配置就是换一套显示偏好；老文件没有这一项，退回「不排序」。
+     */
+    @SerialName("wait_combo_sort")
+    val waitComboSort: String = GlobalConfig.DEFAULT_COMBO_SORT,
+    @SerialName("hold_combo_sort")
+    val holdComboSort: String = GlobalConfig.DEFAULT_COMBO_SORT,
     /**
      * 「常用命令」那张用户自己的清单 —— **老文件没有这一项**（`null`）。
      *
@@ -1181,12 +1207,13 @@ internal data class GlobalDto(
                 ConfigFields.F_TOAST_FLUID to toastFluid,
                 ConfigFields.F_TOAST_NOTIFY to toastNotify,
                 ConfigFields.F_TOAST_TEMPLATE to toastTemplate,
+                ConfigFields.F_STEP_NOTICE to stepNotice,
                 ConfigFields.F_LANGUAGE to language,
                 ConfigFields.F_PALETTE to palette,
-                ConfigFields.F_THEME to theme,
+                ConfigFields.F_THEME to legacyThemeCode(theme),
+                ConfigFields.F_MONET_COLORS to (monetColors || legacyThemeMonet(theme)),
                 ConfigFields.F_COLOR_OS_API to colorOsApi,
                 ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
-                ConfigFields.F_FOLLOW_DISPLAY_SIZE to followDisplaySize,
                 ConfigFields.F_PAGE_SCALE to pageScale,
                 ConfigFields.F_COMBO_WAIT_WINDOW_MS to (comboWaitWindowMs ?: legacyWindowMs),
                 ConfigFields.F_COMBO_WAIT_PAIR_MS to (comboWaitPairMs ?: legacyWindowMs),
@@ -1199,6 +1226,9 @@ internal data class GlobalDto(
                 ConfigFields.F_COMBO_STARTER_KEEP_LONG to comboStarterKeepLong,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
+                ConfigFields.F_REDUCE_ICONS to reduceIcons,
+                ConfigFields.F_WAIT_COMBO_SORT to waitComboSort,
+                ConfigFields.F_HOLD_COMBO_SORT to holdComboSort,
                 //  公共设置里的「单击」三项：老文件缺项按默认读（见各自字段的 KDoc）
                 ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS to (doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS),
                 ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to (waitMultiWindow ?: true),
@@ -1220,12 +1250,13 @@ internal data class GlobalDto(
                 toastFluid = g.toastFluid,
                 toastNotify = g.toastNotify,
                 toastTemplate = g.toastTemplate,
+                stepNotice = g.stepNotice,
                 language = g.language,
                 palette = g.palette,
                 theme = g.theme,
+                monetColors = g.monetColors,
                 colorOsApi = g.colorOsApi,
                 miniWindowAnim = g.miniWindowAnim,
-                followDisplaySize = g.followDisplaySize,
                 pageScale = g.pageScale,
                 comboWaitWindowMs = g.comboWaitWindowMs,
                 comboWaitPairMs = g.comboWaitPairMs,
@@ -1238,6 +1269,9 @@ internal data class GlobalDto(
                 comboStarterKeepLong = g.comboStarterKeepLong,
                 iconTintSeed = g.iconTintSeed,
                 showCommonCommands = g.showCommonCommands,
+                reduceIcons = g.reduceIcons,
+                waitComboSort = g.waitComboSort,
+                holdComboSort = g.holdComboSort,
                 //  公共设置里的「单击」三项（v65 起是活字段，不再是 `null`）
                 doubleClickMs = g.doubleClickMs,
                 waitMultiWindow = g.waitMultiWindow,
@@ -1250,6 +1284,29 @@ internal data class GlobalDto(
             )
     }
 }
+
+/**
+ * v89 及以前那三个「带 Monet」的旧主题值 —— 那时深浅与配色压在同一个字符串里。
+ *
+ *  v90 把配色拆成独立一格（`GlobalConfig.monetColors`），于是读老文件时要翻成「三档 + 这一位」：
+ *  不翻的话那三个值在新枚举里认不出、整份配置会掉回「跟随系统 + 不用配色」。
+ */
+private const val LEGACY_THEME_MONET = "monet"
+private const val LEGACY_THEME_LIGHT_MONET = "light_monet"
+private const val LEGACY_THEME_DARK_MONET = "dark_monet"
+
+/** 老主题值 → 三档里的那一档（不认识的、以及三档本身的，原样返回）。 */
+private fun legacyThemeCode(code: String): String =
+    when (code) {
+        LEGACY_THEME_MONET -> GlobalConfig.THEME_AUTO
+        LEGACY_THEME_LIGHT_MONET -> GlobalConfig.THEME_LIGHT
+        LEGACY_THEME_DARK_MONET -> GlobalConfig.THEME_DARK
+        else -> code
+    }
+
+/** 老主题值自己带的那一位「用 Monet 配色」—— 只有那三个旧值会返回 `true`。 */
+private fun legacyThemeMonet(code: String): Boolean =
+    code == LEGACY_THEME_MONET || code == LEGACY_THEME_LIGHT_MONET || code == LEGACY_THEME_DARK_MONET
 
 /** 「常用命令」清单的一项（`global.common_commands`）。 */
 @Serializable

@@ -11,10 +11,11 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.present.COMBO_ORDER_SEPARATOR
-import com.lookie.opluskey.core.present.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.core.present.comboKeyNames
+import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.core.present.comboLabelOf
+import com.lookie.opluskey.core.present.comboMemberSeparator
+import com.lookie.opluskey.core.present.comboOrderedLabelOf
 import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -80,7 +81,7 @@ internal fun SettingsPage.PageTopBar(
     //  所以下面 `PageHeader(...)` 不必再传 `subtitleColor`。
     val subtitleColor = COUITheme.colorScheme.onSurfaceVariantSummary
     //  装**键名**的那几页自己排这一行（[keyNames] / [holdComboChips]）：组合要按颗分开念，
-    //  拼成一整串就很难看出中间那个 `×` / `→` 属于哪两颗。
+    //  拼成一整串就很难看出中间那个「和」/「A 后 B 再 C」属于哪两颗。
     //  其余页仍是纯文字（[pageSubtitle]）：它们装的是句子或应用名。
     val cfg = configState.config.value
     val subtitleContentSlot: (@Composable () -> Unit)? =
@@ -126,7 +127,7 @@ internal fun SettingsPage.PageTopBar(
 
             //  组合键编辑页：那一组还在时才有名字；刚被删掉（退场那一帧）时退回纯文字那句兜底。
             //
-            //  **按住那两档写成一句话**（用户口径「副标题改成和列表一样，按住 A 后再按 B」）：
+            //  **按住那两档写成一句话**（用户口径「副标题改成和列表一样，按住 A 按 B」）：
             //  那两档的判据就是「谁先按住」，只摆一串名字读不出顺序，而顺序正是这两档的区分所在。
             //  与组合列表那一行同一份实现（`ChipSentence`）。
             Screen.COMBO_EDIT -> {
@@ -361,7 +362,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
                 ?: I18n.get(Strings.APP_PICKER_NONE_SELECTED)
         }
 
-        // 组合键编辑页：这一行写**在编哪一组**（`侧键 × 电量 +`）—— 标题只写「组合键」，
+        // 组合键编辑页：这一行写**在编哪一组**（`侧键 和 电量 +`）—— 标题只写「组合键」，
         //  而这一页改的是其中一档，不写就分不出在看哪一组。
         //  那一组刚被删掉（退场那一帧）时没有名字可写，交给下面那句兜底。
         //  实际画的是框（见 [pageSubtitleChips]），这一句同样只兜「没有框」的极端情形。
@@ -369,7 +370,9 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
             val cfg = configState.config.value
             ComboEditState.editingId
                 ?.let { id -> cfg.combos.firstOrNull { it.id == id } }
-                ?.let { comboLabelOf(comboKeyNames(cfg, it)) }
+                //  **用 `comboLabel` 而不是 `comboLabelOf`**：按顺序那一档要念「A 后 B 再 C」，
+                //  只看名字拼不出先后。
+                ?.let { comboLabel(cfg, it) }
                 ?: I18n.get(Strings.COMBO_PICK_KEYS)
         }
 
@@ -553,9 +556,9 @@ private fun SettingsPage.PageBottomBand(
 /**
  * 一串键名 → 顶栏那一行（单行 `body2`，超宽画省略号）。
  *
- * @param ordered 这一串是**按顺序触发**那一档的成员 —— 分隔符换成「→」；
- *   判据与列表行标题、`comboTitleText` 同一条（都看 `ComboKey.ordered`），
- *   免得同组合在顶栏念成「一起按下」、在列表里念成「先后」
+ * @param ordered 这一串是**按顺序触发**那一档的成员 —— 念成「A 后 B 再 C」。
+ *   判据是 `ComboKey.ordered`，与 [comboLabel] 同一条：顶栏这一格**没有副标题**可挂先后，
+ *   先后只能念进这一句（列表行那边由副标题承担，标题一律念「和」）
  */
 private fun keyNames(
     names: List<String>,
@@ -563,10 +566,9 @@ private fun keyNames(
     ordered: Boolean = false,
 ): @Composable () -> Unit =
     {
-        val sep = if (ordered) COMBO_ORDER_SEPARATOR else COMBO_PAIR_SEPARATOR
-        //  分隔符两边留空格：与列表行标题（`comboTitleText`）同一份写法，
-        //  两处摆在一起时不会一处「A×B」、一处「A × B」
-        val namesText = names.joinToString(" $sep ")
+        //  不分顺序两边留空格（与列表行标题同一个写法）；
+        //  按顺序的那句由 `comboOrderedLabelOf` 统一给。
+        val namesText = if (ordered) comboOrderedLabelOf(names) else names.joinToString(" $comboMemberSeparator ")
         Text(
             text = namesText,
             style = COUITheme.textStyles.body2,
@@ -593,14 +595,29 @@ internal fun SettingsPage.editingKeyName(): String =
 /**
  * 「独立设置」页那一行副标题 —— 在改**哪一颗键 / 哪一组组合**。
  *
- *  组合走 `comboLabel`（成员键名连起来，`「侧键」×「电量 +」`）：它才是用户认得出的名字，
+ *  组合走 `comboLabel`（成员键名连起来，`「侧键」和「电量 +」`）：它才是用户认得出的名字，
  *  `cmb1` 只是内部 id，写出来等于什么都没说。单键走 `KeyId.label`（侧键 / 用户起的名字）。
  *
  *  放在这一层而不是 `SettingsTarget` 上：取名字要用 `comboLabel` 与配置里的键名表，
  *  那是界面层的东西，`ui/state` 不该反持。
  */
-internal fun SettingsPage.settingsTargetLabel(target: SettingsTarget): String =
-    comboLabelOf(settingsTargetNames(configState.config.value, target))
+internal fun SettingsPage.settingsTargetLabel(target: SettingsTarget): String {
+    val cfg = configState.config.value
+    return when (target) {
+        is SettingsTarget.Key -> {
+            keyName(target.id)
+        }
+
+        is SettingsTarget.Combo -> {
+            cfg.combos
+                .firstOrNull { it.id == target.id }
+                //  **组合走 `comboLabel`**：按顺序那一档要念「A 后 B 再 C」，只拼成员名读不出先后。
+                ?.let { comboLabel(cfg, it) }
+                // 那一组刚被删掉（退场那一帧）：报 id 总比空串强，页面自己会退
+                ?: comboLabelOf(listOf(target.id))
+        }
+    }
+}
 
 /**
  * 同一个东西的**成员键名**（一档组合有几颗就是几个名字）—— 需要逐个上样式的调用点用它。
@@ -632,18 +649,16 @@ internal fun settingsTargetNames(
     }
 
 /**
- * **按住**那一档的副标题 —— 一句话「按住 A 后再按 B」。
+ * **按住**那一档的副标题 —— 一句话「A按住后 B」/「A按住后 B 和 C」。
  *
- *  那两档的判据就是「谁先按住」：只摆一串 `A × B` 读不出顺序，而顺序正是这两档的区分所在。
- *  与组合列表那一行是同一份实现（`ChipSentence`）：语序在模板里、名字在 `Text` 里，
- *  区别只是这里没有整列对齐那件事（这一行是一句话）。
+ *  与组合列表那一行的标题**逐字相同**（`comboTitleText`）：语序在模板里（首键之后念「后」）、
+ *  名字在 `Text` 里，区别只是这边按颗分开渲染、那边是一整串文字。
  *
  *  三处顶栏共用这一支：组合编辑页、「按键设置」里那一档组合的独立设置 —— 它们说的是同一档组合，
  *  不该两种念法。
  *
- *  **后续成员之间的分隔符跟着 `ordered` 走**（与等待那一档同一条判据）：不分顺序「×」、
- *  按顺序「→」—— 后者与首键那句「后再按」是同一层意思，念成「按住 A 后再按 B × C」
- *  会让人以为 B 与 C 要同时按下去。
+ *  **这一句不表达先后**（不分顺序与按顺序长得一样）：先后在列表行的副标题里
+ *  （`comboOrderSummary`），而顶栏这一格只有一句话的位置，不再为它换连接词。
  *
  * @param color 这一行的字色 —— 恒定是库那档次要色（`subtitleColor`，停用与否都不压暗）
  */
@@ -656,11 +671,7 @@ private fun holdComboChips(
         val names = comboKeyNames(cfg, combo)
         //  首键就是 `keys` 第一位（迁移之后老配置也已是这个形状），不再需要「要不要倒过来」
         ChipSentence(
-            template =
-                holdSentenceTemplate(
-                    names.size - 1,
-                    if (combo.ordered) COMBO_ORDER_SEPARATOR else COMBO_PAIR_SEPARATOR,
-                ),
+            template = holdSentenceTemplate(names.size - 1, holdThen = true),
             names = names,
             style = COUITheme.textStyles.body2,
             color = color,

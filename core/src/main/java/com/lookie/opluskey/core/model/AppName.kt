@@ -194,6 +194,14 @@ interface OwnSettings {
 
     /** 这一档自己的提示文案模板（空串 = 用默认那句，口径同 `GlobalConfig.toastTemplate`）。 */
     val toastTemplate: String
+
+    /**
+     * 这一档自己的「**多条命令逐条提示**」—— 只在 [useOwnSettings] 开着时算数。
+     *
+     *  开着时，一条「多条命令」跑起来**每一步各念一句**（那一步在做什么）；关着时整条链
+     *  只念一句命令名。只对多条命令有意义：单条命令念的是它自己的输出或命令名，与它无关。
+     */
+    val stepNotice: Boolean
 }
 
 /**

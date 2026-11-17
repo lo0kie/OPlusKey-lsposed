@@ -37,8 +37,8 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.CARD_CORNER
 import com.lookie.opluskey.ui.model.page.ROW_ICON_SIZE
-import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT
@@ -50,7 +50,7 @@ import com.lookie.opluskey.ui.row.TileFocusRing
 import com.lookie.opluskey.ui.row.rememberRowIconColor
 import com.lookie.opluskey.ui.row.scenarioEntry
 import com.lookie.opluskey.ui.style.AnimatedFade
-import com.lookie.opluskey.ui.style.LocalAppTheme
+import com.lookie.opluskey.ui.style.LocalMonetColors
 import com.lookie.opluskey.ui.style.appCardColors
 import com.lookie.opluskey.ui.write.BindingTarget
 import com.lookie.opluskey.ui.write.openBranchesFor
@@ -163,7 +163,7 @@ internal fun SettingsPage.ActionTile(
     //  非 Monet 那几档一律 `onSurfaceVariantSummary`（`0x66000000` / `0x66FFFFFF`）：那一档是压在
     //  中性底子上标定出来的弱化色，换成强调色会在浅色底上糊成一片蓝。
     val mutedBase =
-        if (LocalAppTheme.current == AppTheme.MONET && selected) {
+        if (LocalMonetColors.current && selected) {
             scheme.primary.copy(alpha = MONET_MUTED_ALPHA)
         } else {
             scheme.onSurfaceVariantSummary
@@ -230,6 +230,7 @@ internal fun SettingsPage.ActionTile(
                     // ⇒ [BindingList] 那个 `onPreviewKeyEvent` 一次都不会被调用。
                     // 顺序不能反：`focusRequester` 必须在这个焦点目标**之前**（链上更靠外）。
                     .focusTarget(),
+            cornerRadius = CARD_CORNER,
             //  三档底色与命令卡、卡片列表同一份（见 [appCardColors]）；这一格的内容色是动画值
             colors = appCardColors(contentColor = contentColor),
             // 按压反馈**只要涟漪**：`showIndication` 让 `clickable` 用

@@ -39,6 +39,7 @@ import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.ExpandableRow
 import com.lookie.opluskey.ui.row.ExpandableRowSpec
 import com.lookie.opluskey.ui.row.RowEndIcon
+import com.lookie.opluskey.ui.row.RowEndSummary
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.state.host.UpdateState
 import io.github.suqi8.coui.kmp.basic.CardListPosition
@@ -148,7 +149,7 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         VersionMenu(ui)
         LanguageMenu(ui, currentLang)
         ThemeMenu(ui, currentTheme)
-        PaletteMenu(ui, currentTheme, currentPalette)
+        PaletteMenu(ui, currentPalette)
         // 「配置」卡里中间那两行：切换配置 / 导出配置，都是同一份配置列表的菜单
         ProfileMenu(ui)
         ProfileExportMenu(ui)
@@ -431,9 +432,8 @@ internal fun SettingsPage.MachineCard(
                 add(
                     CardRow.Item(
                         title = I18n.get(Strings.MORE_ABOUT_AUTHOR),
-                        summary = AUTHOR,
                         icon = PageIcons.UserScreen,
-                        trailing = { RowEndIcon(PageIcons.Selector) },
+                        trailing = { RowEndSummary(AUTHOR) },
                         modifier = Modifier.preciseClickAnchor(ui.authorClick),
                         onClick = {
                             ui.showAuthorMenu = true

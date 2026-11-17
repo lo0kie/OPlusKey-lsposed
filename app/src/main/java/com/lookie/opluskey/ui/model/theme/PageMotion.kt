@@ -271,17 +271,20 @@ internal const val QUERY_ROUNDS = 3
 /**
  * 界面颜色的三档 —— 与 `GlobalConfig.theme` 的取值一一对应（那边只存字符串）。
  *
- *  顺序就是菜单里的顺序，也是「从松到紧」的顺序：跟随系统 → 跟随系统(Monet) → 固定浅 → 固定深。
+ *  只管**深浅**：跟随系统 / 固定浅色 / 固定深色。用不用 Monet 配色是另一格
+ *  （`GlobalConfig.monetColors`，外观卡里紧挨着这一行的开关），两件事各占一行、自由组合
+ *  —— 于是「深色 + Monet」这种搭配界面上有位置，配置里也表达得出来。
+ *
+ *  v90 之前这里是六档（三档深浅 × 是否 Monet 挤成一个枚举），拆开之后这个枚举只剩深浅这一位。
  */
 internal enum class AppTheme(
     val code: String,
+    /** 固定深浅；`null` = 跟随系统。 */
+    val fixedDark: Boolean?,
 ) {
-    AUTO(GlobalConfig.DEFAULT_THEME),
-
-    /** 跟随系统，且整页用系统那套 Monet 配色（见 `PagePalette.colorsOf`）。 */
-    MONET(GlobalConfig.THEME_MONET),
-    LIGHT(GlobalConfig.THEME_LIGHT),
-    DARK(GlobalConfig.THEME_DARK),
+    AUTO(GlobalConfig.DEFAULT_THEME, fixedDark = null),
+    LIGHT(GlobalConfig.THEME_LIGHT, fixedDark = false),
+    DARK(GlobalConfig.THEME_DARK, fixedDark = true),
     ;
 
     companion object {

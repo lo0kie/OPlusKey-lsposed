@@ -24,13 +24,13 @@ import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.page.PAGE_TOP_PADDING
-import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.theme.isDarkScheme
 import com.lookie.opluskey.ui.state.page.PageLoadSnapshot
 import com.lookie.opluskey.ui.state.page.readPageLoadSnapshot
 import com.lookie.opluskey.ui.state.signal.BandHeight
-import com.lookie.opluskey.ui.style.LocalAppTheme
+import com.lookie.opluskey.ui.style.LocalMonetColors
+import com.lookie.opluskey.ui.style.syncNight
 import com.lookie.opluskey.ui.wire.primeLocalTag
 import com.lookie.opluskey.ui.wire.publishConfig
 import io.github.suqi8.coui.kmp.basic.TabRowColors
@@ -231,7 +231,7 @@ private fun TabBandSurface(
 @Composable
 private fun tabBandColors(): TabRowColors {
     val scheme = COUITheme.colorScheme
-    if (LocalAppTheme.current != AppTheme.MONET) return TabRowDefaults.tabRowColors()
+    if (!LocalMonetColors.current) return TabRowDefaults.tabRowColors()
     return if (scheme.isDarkScheme) {
         TabRowDefaults.tabRowColors(
             backgroundColor = scheme.surfaceContainer,
@@ -306,6 +306,11 @@ internal fun SettingsPage.applyPageLoad(snapshot: PageLoadSnapshot) {
     // 语言档跟着配置走。放这里而不是 `installI18nBridge()` 那一步：那一步只装订阅、不读配置，
     //  而配置现在是异步读回来的 —— 读回来之后立刻换档，首帧文案才是用户选的那个语言。
     applyLanguage(snapshot.configRead.config.global.language)
+    //  深浅要在整棵页面树组合出来**之前**按新配置定一次：建页那一步只读过系统那一档，
+    //  固定浅色 / 固定深色时它会停在系统那一档上 —— 首帧整页按错的深浅画出来（首页那块大卡
+    //  尤其明显：先是一整块暗色，等下面这条修正跑完才变亮）。放 `loaded = true` 之前，
+    //  页面组合的第一帧就已经是用户选的那一档。
+    syncNight("配置读回")
 
     XLog.w(
         "界面状态：显示全部应用=${snapshot.prefs.showSystemApps}，显示失效=${snapshot.prefs.showUnopenable}",

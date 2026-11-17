@@ -23,7 +23,6 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.present.COMBO_ORDER_SEPARATOR
 import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
@@ -38,7 +37,6 @@ import com.lookie.opluskey.ui.dialog.SinglePickerDialog
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.icon.PageIcons
-import com.lookie.opluskey.ui.row.CHIP_SLOT
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.screen.binding.CollectKeyDialog
@@ -216,7 +214,7 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
         //  已经加过**按顺序**的组合 ⇒ 「不分顺序」那一行点不动：它覆盖所有按法，会与已经定死
         //  先后的那些重叠，判定侧只认配置里靠前那个。已经加过的那几种顺序同样置灰（见下）。
         val usedOrders = remember(cfg.combos, ids) { usedWaitOrders(cfg, ids) }
-        //  所有排列（2 键 2 种、3 键 6 种），每种一个「按 A → B → …」选项
+        //  所有排列（2 键 2 种、3 键 6 种），每种一个「A 后 B 再 C」选项
         val orders = permutationsOf(shownWait)
         SinglePickerDialog(
             show = waitOrder != null,
@@ -674,12 +672,12 @@ private fun SettingsPage.ComboKeysDialog(
 }
 
 /**
- * 顺序选择器里**一种排列**那一行的模板 —— `%s → %s → …`（每颗键一个槽，箭头表先后）。
+ * 顺序选择器里**一种排列**那一行的模板 —— `A 后 B 再 C`（每颗键一个槽，「后 / 再」表先后）。
  *
  *  [PickerOption] 靠 `label` 里的 `%s` 占位符把名字填进去 —— 空串（没有占位符）时名字
  *  一个都塞不进去，表现就是「这一行看不见」。所以排列行必须有这条带占位符的模板。
  */
-private fun orderTemplate(count: Int): String = List(count.coerceAtLeast(1)) { CHIP_SLOT }.joinToString(" $COMBO_ORDER_SEPARATOR ")
+private fun orderTemplate(count: Int): String = orderedWaitSentenceTemplate(count)
 
 /**
  * [n] 颗成员一共有几种按下先后 —— 顺序空间的大小（2 颗 2 种、3 颗 6 种）。

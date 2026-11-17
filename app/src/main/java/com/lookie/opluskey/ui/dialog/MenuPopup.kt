@@ -22,13 +22,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.page.MENU_ICON_SIZE
-import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.POPUP_SURFACE_DARK
 import com.lookie.opluskey.ui.model.theme.POPUP_SURFACE_LIGHT
 import com.lookie.opluskey.ui.model.theme.isDarkScheme
+import com.lookie.opluskey.ui.row.LocalReduceRowIcons
 import com.lookie.opluskey.ui.row.titleWithCount
 import com.lookie.opluskey.ui.style.AppDivider
-import com.lookie.opluskey.ui.style.LocalAppTheme
+import com.lookie.opluskey.ui.style.LocalMonetColors
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.Text
@@ -51,9 +51,17 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 internal fun PopupRowDivider(modifier: Modifier = Modifier) {
     //  颜色与粗细归 `ui/style/Dividers.kt`（[AppDivider]）—— 浮层里那条线与卡片里那条是同一条，
     //  以前这里单独按亮暗主题折算半透明白 / 黑，于是「统一分隔线颜色」时它总会漏在外面。
+    //
+    //  「减少界面图标」开着时行首那一格不再画（见 `LocalReduceRowIcons`），左端就回到面板内边距 ——
+    //  与小标题下面那条线同一条起点，否则线左边会多出一段悬空的缩进。
     AppDivider(
         modifier.padding(
-            start = MENU_TITLE_INSET,
+            start =
+                if (LocalReduceRowIcons.current) {
+                    DropdownDefaults.InsideHorizontalPadding
+                } else {
+                    MENU_TITLE_INSET
+                },
             end = DropdownDefaults.InsideHorizontalPadding,
         ),
     )
@@ -149,7 +157,7 @@ internal fun popupSurfaceColor(): Color {
     //  · 深色：页面底色几乎与面板同深，取它等于「菜单看不见」—— 抬到 `surfaceContainerHighest`
     //    （容器里最亮的一档），才与页面拉开。深色下明暗差就是唯一的分层线索。
     //  其余主题档仍用那两档常量 —— 它们是为 COUI 底子标定的（见 `PageColors`），换色号会走形。
-    if (LocalAppTheme.current == AppTheme.MONET) {
+    if (LocalMonetColors.current) {
         return if (scheme.isDarkScheme) scheme.surfaceContainerHighest else scheme.surface
     }
     return if (scheme.isDarkScheme) {

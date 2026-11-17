@@ -564,6 +564,10 @@ private fun ownSwitchNotice(
             switchToNotice(I18n.get(Strings.HOME_TOAST_TITLE), noticeModeLabel(values.noticeMode))
         }
 
+        OwnField.STEP_NOTICE -> {
+            switchNotice(I18n.get(Strings.HOME_TOAST_STEP_NOTICE_TITLE), values.stepNotice)
+        }
+
         OwnField.STRENGTH, OwnField.TEMPLATE -> {
             null
         }

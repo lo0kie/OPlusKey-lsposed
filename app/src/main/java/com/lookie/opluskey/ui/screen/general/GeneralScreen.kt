@@ -38,6 +38,7 @@ import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.write.setColorOsApi
 import com.lookie.opluskey.ui.write.setMiniWindowAnim
 import com.lookie.opluskey.ui.write.setNoticeMode
+import com.lookie.opluskey.ui.write.setStepNotice
 import com.lookie.opluskey.ui.write.setToastTemplate
 import com.lookie.opluskey.ui.write.setVibrate
 import com.lookie.opluskey.ui.write.setVibrateOnNone
@@ -195,6 +196,20 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                         anchor = noticeMenu.anchor,
                         onClick = noticeMenu::show,
                     ),
+                )
+                //  「多条命令逐条提示」：一条多条命令跑起来时每一步各念一句。
+                //  **只在「执行时提示」不是「不提示」时出现**（整条链都不念的时候，逐不逐条无从谈起）——
+                //  与「提示文案」同一档显隐，走 `visible` 那套进出场，连分隔线一起收。
+                add(
+                    CardRow.Switch(
+                        title = I18n.get(Strings.HOME_TOAST_STEP_NOTICE_TITLE),
+                        icon = PageIcons.StepNotice,
+                        checked = cfg.global.stepNotice,
+                        enabled = pageEnabled,
+                        visible = cfg.global.noticeMode != NoticeMode.NONE,
+                    ) {
+                        setStepNotice(it)
+                    },
                 )
                 add(toastTemplateRow(cfg.global, pageEnabled) { editingToastTemplate = true })
                 // 「前台转小窗时使用动画」：`zoom:mini` 那一下要不要播缩小动画。

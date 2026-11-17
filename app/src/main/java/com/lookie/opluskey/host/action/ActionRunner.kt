@@ -9,6 +9,8 @@ import com.lookie.opluskey.bridge.host.KeyInjector
 import com.lookie.opluskey.bridge.host.RingerController
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.config.VariableStore
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionReading
@@ -305,7 +307,10 @@ internal class ActionRunner(
         val channel = global.noticeMode.effective(global.colorOsApi)
         //  「不提示」就是**什么都不发**：这一档连测试也不念（用户已经说了不要提示），
         //  失败那一侧仍由 `notifyFailure` 照报 —— 那条是「命令没跑成」，不是回执。
-        //  开着时念哪一句由执行侧定：`showOutput` 真念输出、假念命令名（见 `publishOutput`）。
+        //
+        //  **空输出时念哪一句，跟着这一条自己的开关走**：开着念「执行完成」（那位开关的用处
+        //  就是换掉命令名），关着念**命令名**（与按侧键那条路同一个说法 —— 关着就该是名字）。
+        //  这一支原先恒给「执行完成」，于是关着这一位按测试会冒出一句没头没脑的「执行完成」。
         runNotice =
             if (channel == NoticeMode.NONE) {
                 null
@@ -316,15 +321,19 @@ internal class ActionRunner(
                     //  没有键 / 手势上下文，所以模板只用 `$action` —— 用全局模板会念成「 -  → xxx」
                     template = ToastNotice.ACTION,
                     channel = channel,
-                    fallback = cmd.name,
+                    noOutput =
+                        if (cmd.showOutput) {
+                            I18n.get(Strings.COMMAND_OUTPUT_DONE)
+                        } else {
+                            cmd.name
+                        },
                     token = cmd.token,
                     identity = FluidCard.identityOf(cmd.root, cmd.viaShizuku),
                 )
             }
         //  跑的是传进来的这条命令本身（不回库里按名字查，理由见函数头）。
-        //  **「用输出代替命令名」照这条命令自己的开关走**：关着时念的是命令名（那份 `runNotice`
-        //  的 `fallback`），与按侧键同一个读法。这一档不再无条件置真 —— 置真之后，用户在命令
-        //  设置里关掉这一位，按侧键不再念输出、测试却照念，同一条命令两条路两个说法。
+        //  **「用输出代替命令名」照这条命令自己的开关走**：关着时不收行、念的就是上面那份命令名，
+        //  与按侧键同一个读法 —— 同一条命令不会两条路两个说法。
         custom.run(cmd)
     }
 
@@ -593,7 +602,7 @@ internal class ActionRunner(
         }
         //  原样交给 shell（不传 trim 过的）：用户写的空白 / 引号是命令的一部分。
         //  结果怎么给用户看：开了「用输出代替命令名」时，这一趟的输出就是「执行时提示」那句里的
-        //  动作名（见 [publishOutput]）；没开就不收行，念的是 [NoticeSpec.fallback]（命令名）。
+        //  动作名（见 [publishOutput]）；没开就不收行，念的是 [NoticeSpec.noOutput]。
         //  失败那一侧由 [notifyFailure] 报 —— 执行侧不从输出里认任何前缀。
         //
         //  **念不念、念哪一句由 [runNotice] 一处定**：它非空就等于「这一次要有一句回执」——
@@ -604,6 +613,11 @@ internal class ActionRunner(
         //  **参数在这里捕获**：[runNotice] 是本次执行的槽位，`dispatch` 同步走到这里之后，
         //  异步的 `onDone` 只认这一份，不会被下一次按键覆盖。
         val plan = runNotice
+        //  这一条有没有报过失败 —— 只影响「没输出时念不念」那一支：失败已经有它自己那句
+        //  （[notifyFailure]），再念一句「执行完成」就是两条消息里有一条是假的。
+        val failed =
+            java.util.concurrent.atomic
+                .AtomicBoolean(false)
         //  要显示结果时才收行（`Collections.synchronizedList`：读线程写、`onDone` 读）
         val lines =
             if (!showOutput) {
@@ -613,7 +627,10 @@ internal class ActionRunner(
             }
         ShellRunner.exec(
             command = command,
-            onFailure = ::notifyFailure,
+            onFailure = { failure ->
+                failed.set(true)
+                notifyFailure(failure)
+            },
             onLine = { line -> lines?.add(line) },
             //  「以 root 执行」是**每条命令自己的**开关（见 `Command.root`）；内置的 `shell:` 动作没有
             //  这个开关，一直按默认走（`su`）。`su` 起不来就报失败，不退回 `sh`（见 `ShellRunner.startProcess`）。
@@ -621,7 +638,7 @@ internal class ActionRunner(
             //  跑完（含起进程失败 / 被拒 / 超时）回执一次 —— 有间隔的多条命令靠它推进下一步。
             //  **先报输出、再回执**：回执会推进下一步，反过来的话这一步的尾巴会落进下一步之后。
             onDone = {
-                plan?.let { publishOutput(it, lines) }
+                plan?.let { publishOutput(it, lines, ok = !failed.get()) }
                 settle()
             },
             //  Shizuku 那一路要 bind 模块进程的执行服务，需要宿主 Context
@@ -639,10 +656,14 @@ internal class ActionRunner(
      *  手势、走不走流体云。与「就地发」那条（`GestureExec.noticeIfNeeded`）读的是同一个出口 ——
      *  命令这一位只负责「念什么」，不另起一条落点。
      *
-     *  ## 输出为空时回落到命令名
+     *  ## 输出为空时念「执行完成」，不回落到命令名
      *
-     *  `ls /nonexistent >/dev/null` 这种「跑成功了但没说话」不该念出一条空提示：那一档回落到
-     *  [NoticeSpec.fallback]（命令名），于是它与没开这一位时长得一样。失败那一侧另有 [notifyFailure]。
+     *  `settings put` / `am force-stop` 这类命令成功时**一个字都不打印**，而这一位开关的用处正是
+     *  换掉那句命令名 —— 名字原样回来就成了「开了跟没开一样」（真机反馈：无线调试那条一直念
+     *  命令名、其余几条正常，区别只在它没有输出）。
+     *
+     *  失败那一侧不念（[ok] 为假）：[notifyFailure] 已经报过一条，再来一句「执行完成」是假话。
+     *  有输出时照旧念输出，成没成都念 —— 那串字本身可能正是出错原因。
      *
      *  ## 为什么要 `handler.post`
      *
@@ -650,14 +671,20 @@ internal class ActionRunner(
      *  回主线程再发，与项目里其它「池线程跑完回来报一句」的地方同一条做法。
      *
      * @param lines 读输出那条线程攒下的行（可能为空表：命令什么都没打印）
+     * @param ok 这一条跑成功了没有（`false` = 已经报过失败，这一句不再补）
      */
     private fun publishOutput(
         plan: NoticeSpec,
         lines: List<String>?,
+        ok: Boolean,
     ) {
         val output = lines?.joinToString("\n")?.trim().orEmpty()
-        val said = output.ifEmpty { plan.fallback }
+        //  「没输出」有且只有两种收场：成功 ⇒ 念「执行完成」；失败 ⇒ 一个字都不念（失败那句已经发过）
+        if (output.isEmpty() && !ok) return
+        val said = output.ifEmpty { plan.noOutput }
         if (said.isEmpty()) return
+        //  判据行：下次再问「为什么念的是这一句」时，行数与成败都在这一行里
+        XLog.w("执行时提示：输出 ${lines?.size ?: 0} 行、ok=$ok")
         //  三段（父 / 子 / 状态）都回落成同一句：这一档没有「父动作: 子动作」那种结构，
         //  模板里写了 `$parent` / `$state` 也只该念这一次的输出。
         val reading = ActionReading(sentence = said, parent = null, name = said, state = null)

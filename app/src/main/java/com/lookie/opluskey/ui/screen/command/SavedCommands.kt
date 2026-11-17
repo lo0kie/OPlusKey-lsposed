@@ -46,6 +46,7 @@ import com.lookie.opluskey.ui.feedback.Feedback
 import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.icon.commandIcon
+import com.lookie.opluskey.ui.model.page.CARD_CORNER
 import com.lookie.opluskey.ui.model.page.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.page.ROW_ICON_SIZE
@@ -219,6 +220,7 @@ private fun SettingsPage.CommandTile(
                     // 行高由 [CommandTileRow] 统一定，这里填满行高即可。
                     .fillMaxHeight()
                     .preciseClickAnchor(tilePreciseClick),
+            cornerRadius = CARD_CORNER,
             colors = appCardColors(),
             pressFeedbackType = PressFeedbackType.None,
             showIndication = true,

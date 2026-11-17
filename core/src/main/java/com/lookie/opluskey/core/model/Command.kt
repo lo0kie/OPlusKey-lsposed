@@ -343,7 +343,8 @@ data class Command(
      * 执行完之后，**把这条命令的实际输出当成它的名字**来提示。
      *
      *  `false`（默认）= 提示里念命令名（「执行时提示」那句的 `$action`）；`true` = 念命令的
-     *  标准输出 —— 没有输出时仍回落到命令名（「跑成功了但没说话」不该念出一条空提示）。
+     *  标准输出 —— 跑成功了却一个字都没打印（`settings put` 这类）时念「执行完成」，
+     *  **不回落到命令名**：那位开关的用处正是换掉名字，名字原样回来就成了「开了跟没开一样」。
      *
      *  **这一位只管「念什么」，不管「念不念、在哪念」**：那两件事由「执行时提示」与它所在的
      *  设置页（含独立设置）决定。所以它不带落点、也不带图标 —— 换成输出之后，图标仍按这一档
@@ -627,8 +628,10 @@ class ActionReading(
  *  执行侧拿到什么就发什么，不再回头看配置。
  *
  *  @param channel 这一句往哪儿发（[NoticeMode.NONE] 不会出现在这里 —— 那一档判定侧根本不建 spec）。
- *  @param fallback 输出为空时念的那一段（命令名）。与 [ActionReading] 的回落同一条：
- *    「跑成功了但没说话」不该念出一条空提示。
+ *  @param noOutput 命令跑完了但**一个字都没打印**时念的那一段 —— 由调用方按这一条自己的
+ *    [Command.showOutput] 给：开着是「执行完成」（那位开关的用处就是换掉名字，名字原样回来
+ *    等于开关没生效，`settings put` 这类命令成功时本来就不打印）；关着是命令名（关着就该念名字）。
+ *    失败那一侧另有执行失败的提示，不走这里。
  *  @param token 这一档动作的 token —— 流体云那一档要按它取预渲染的图标。
  *  @param identity 图标名要带的执行身份（`FluidCard.identityOf`）：同一条命令按
  *    sh / root / Shizuku 三档各一张图，空串 = 默认那档。
@@ -638,7 +641,7 @@ class NoticeSpec(
     val gesture: String,
     val template: String,
     val channel: NoticeMode,
-    val fallback: String,
+    val noOutput: String,
     val token: String,
     val identity: String = "",
 )

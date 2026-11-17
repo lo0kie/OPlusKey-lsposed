@@ -59,6 +59,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Circle
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
+import io.github.lyxnx.compose.ui.tablericons.outline.Clock
 import io.github.lyxnx.compose.ui.tablericons.outline.Clock24
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockBolt
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
@@ -68,6 +69,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ClockRecord
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockStop
 import io.github.lyxnx.compose.ui.tablericons.outline.CloudSearch
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
+import io.github.lyxnx.compose.ui.tablericons.outline.ColorFilter
 import io.github.lyxnx.compose.ui.tablericons.outline.ColorSwatch
 import io.github.lyxnx.compose.ui.tablericons.outline.Command
 import io.github.lyxnx.compose.ui.tablericons.outline.Contrast
@@ -151,6 +153,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilAi
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Photo
+import io.github.lyxnx.compose.ui.tablericons.outline.PhotoOff
 import io.github.lyxnx.compose.ui.tablericons.outline.PhotoVideo
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.Pin
@@ -193,12 +196,14 @@ import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCog
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.SortAscendingShapes
+import io.github.lyxnx.compose.ui.tablericons.outline.SortDescendingShapes
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SparkleHighlight
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber2
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber3
 import io.github.lyxnx.compose.ui.tablericons.outline.Stack2
+import io.github.lyxnx.compose.ui.tablericons.outline.StepInto
 import io.github.lyxnx.compose.ui.tablericons.outline.Sun
 import io.github.lyxnx.compose.ui.tablericons.outline.SunLow
 import io.github.lyxnx.compose.ui.tablericons.outline.SunMoon
@@ -307,6 +312,7 @@ internal object FluidIcons {
             "circlecheck" to TablerIcons.Outline.CircleCheck,
             "circlecheck-filled" to TablerIcons.Filled.CircleCheck,
             "click" to TablerIcons.Outline.Click,
+            "clock" to TablerIcons.Outline.Clock,
             "clock24" to TablerIcons.Outline.Clock24,
             "clockbolt" to TablerIcons.Outline.ClockBolt,
             "clockhour4" to TablerIcons.Outline.ClockHour4,
@@ -316,6 +322,7 @@ internal object FluidIcons {
             "clockstop" to TablerIcons.Outline.ClockStop,
             "cloudsearch" to TablerIcons.Outline.CloudSearch,
             "codeplus" to TablerIcons.Outline.CodePlus,
+            "colorfilter" to TablerIcons.Outline.ColorFilter,
             "colorswatch" to TablerIcons.Outline.ColorSwatch,
             "command" to TablerIcons.Outline.Command,
             "contrast" to TablerIcons.Outline.Contrast,
@@ -399,6 +406,7 @@ internal object FluidIcons {
             "pencilai" to TablerIcons.Outline.PencilAi,
             "pencilcog" to TablerIcons.Outline.PencilCog,
             "photo" to TablerIcons.Outline.Photo,
+            "photooff" to TablerIcons.Outline.PhotoOff,
             "photovideo" to TablerIcons.Outline.PhotoVideo,
             "pictureinpictureon" to TablerIcons.Outline.PictureInPictureOn,
             "pin" to TablerIcons.Outline.Pin,
@@ -442,12 +450,14 @@ internal object FluidIcons {
             "settingsplus" to TablerIcons.Outline.SettingsPlus,
             "shizuku" to DrawnIcons.Shizuku,
             "sortascendingshapes" to TablerIcons.Outline.SortAscendingShapes,
+            "sortdescendingshapes" to TablerIcons.Outline.SortDescendingShapes,
             "spacinghorizontal" to TablerIcons.Outline.SpacingHorizontal,
             "sparklehighlight" to TablerIcons.Outline.SparkleHighlight,
             "squarenumber1" to TablerIcons.Outline.SquareNumber1,
             "squarenumber2" to TablerIcons.Outline.SquareNumber2,
             "squarenumber3" to TablerIcons.Outline.SquareNumber3,
             "stack2" to TablerIcons.Outline.Stack2,
+            "stepinto" to TablerIcons.Outline.StepInto,
             "sun" to TablerIcons.Outline.Sun,
             "sunlow" to TablerIcons.Outline.SunLow,
             "sunmoon" to TablerIcons.Outline.SunMoon,

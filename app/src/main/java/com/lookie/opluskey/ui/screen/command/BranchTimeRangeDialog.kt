@@ -23,6 +23,7 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.TimeRange
 import com.lookie.opluskey.core.present.comboKeyNames
+import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.core.present.comboLabelOf
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -377,8 +378,16 @@ internal fun SettingsPage.branchDraftNow(): BranchDraft = branchDraft.now()
  *  **单键不套**（用户口径：只有一个键名时不要方框）：这一行本来就只装一个名字，
  *  套上 `[ ]` 只是多一层噪声 —— 而 `快捷键` 三个字旁边还有副标题的位置说明它是什么。
  */
-internal fun SettingsPage.branchOwnerLabel(): String =
-    comboLabelOf(branchOwnerNames(configState.config.value, branchDraft.comboId, editingKeyName()))
+internal fun SettingsPage.branchOwnerLabel(): String {
+    val cfg = configState.config.value
+    val id = branchDraft.comboId
+    if (id != null) {
+        //  组合走 `comboLabel`：按顺序那一档要念「A 后 B 再 C」，只拼成员名读不出先后
+        cfg.combos.firstOrNull { it.id == id }?.let { return comboLabel(cfg, it) }
+        return comboLabelOf(listOf(id))
+    }
+    return comboLabelOf(listOf(editingKeyName()))
+}
 
 /**
  * 同一个「在编谁」的**成员键名**（一档组合有几颗就是几个名字）—— 顶栏副标题按名单画框。

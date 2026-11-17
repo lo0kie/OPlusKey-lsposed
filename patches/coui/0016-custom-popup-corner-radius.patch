@@ -1,0 +1,109 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
+index 5dfefc4..4cd0834 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
+@@ -1334,6 +1334,8 @@ fun rememberListPopupLayoutInfo(
+  * @param popupLayoutPosition The [PopupLayoutPosition] describing the popup's spawn direction.
+  * @param localTransformOrigin The transform origin local to the content used while scaling.
+  * @param modifier The modifier to be applied to the popup container.
++ * @param cornerRadius The corner radius of the popup container. Defaults to the COUI
++ *   `couiRoundCornerM` (12dp).
+  * @param content The content of the popup.
+  */
+ @Composable
+@@ -1345,10 +1347,11 @@ fun ListPopupContent(
+     popupLayoutPosition: PopupLayoutPosition,
+     localTransformOrigin: TransformOrigin,
+     modifier: Modifier = Modifier,
++    cornerRadius: Dp = PopupCornerRadius,
+     content: @Composable () -> Unit,
+ ) {
+     val backgroundColor = popupSurfaceColor()
+-    val shape = remember { RoundedCornerShape(PopupCornerRadius) }
++    val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
+     //  DropShadowScope 里阴影那几档的单位是 **px**（Float / Offset），而它自己不带
+     // Density —— 转换只能在组合期先用 LocalDensity 做好，块的 lambda 里直接用。
+     val density = LocalDensity.current
+@@ -1389,7 +1392,7 @@ fun ListPopupContent(
+                 )
+             }
+             .graphicsLayer { alpha = alphaProgress() }
+-            .squircleSurface(color = backgroundColor, cornerRadius = PopupCornerRadius),
++            .squircleSurface(color = backgroundColor, cornerRadius = cornerRadius),
+     ) {
+         content()
+     }
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/layout/ListPopupLayout.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/layout/ListPopupLayout.kt
+index b71083f..002dcb2 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/layout/ListPopupLayout.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/layout/ListPopupLayout.kt
+@@ -36,6 +36,7 @@ import androidx.navigationevent.compose.NavigationBackHandler
+ import androidx.navigationevent.compose.rememberNavigationEventState
+ import io.github.suqi8.coui.kmp.basic.ListPopupContent
+ import io.github.suqi8.coui.kmp.basic.ListPopupDefaults
++import io.github.suqi8.coui.kmp.basic.PopupCornerRadius
+ import io.github.suqi8.coui.kmp.basic.PopupPositionProvider
+ import io.github.suqi8.coui.kmp.basic.PreciseClickState
+ import io.github.suqi8.coui.kmp.basic.rememberListPopupLayoutInfo
+@@ -64,6 +65,8 @@ import kotlinx.coroutines.launch
+  *   is cancelled mid-flight (e.g., by [show] toggling back to true).
+  * @param maxHeight The maximum height of the popup.
+  * @param minWidth The minimum width of the popup.
++ * @param cornerRadius The corner radius of the popup container. Defaults to the COUI
++ *   `couiRoundCornerM` (12dp).
+  * @param preciseClickState When non-null and carrying a recorded touch point, the anchor is
+  *   collapsed to that point so the popup opens at the finger (COUI `PreciseClickHelper` plus
+  *   `PopupMenuLocateHelper.setAnchor`). A null state, or one with no point recorded, keeps the
+@@ -82,6 +85,7 @@ internal fun ListPopupLayout(
+     onDismissFinished: (() -> Unit)? = null,
+     maxHeight: Dp? = null,
+     minWidth: Dp = ListPopupDefaults.MinWidth,
++    cornerRadius: Dp = PopupCornerRadius,
+     preciseClickState: PreciseClickState? = null,
+     content: @Composable () -> Unit,
+ ) {
+@@ -265,6 +269,7 @@ internal fun ListPopupLayout(
+                     alphaProgress = { alphaProgress.value * (1f - backProgress.value) },
+                     popupLayoutPosition = layoutInfo.popupLayoutPosition,
+                     localTransformOrigin = layoutInfo.localTransformOrigin,
++                    cornerRadius = cornerRadius,
+                     content = {
+                         CompositionLocalProvider(LocalDismissState provides requestDismiss) {
+                             content()
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/overlay/OverlayListPopup.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/overlay/OverlayListPopup.kt
+index f0366ec..69435b7 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/overlay/OverlayListPopup.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/overlay/OverlayListPopup.kt
+@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.Dp
+ import io.github.suqi8.coui.kmp.basic.ListPopupColumn
+ import io.github.suqi8.coui.kmp.basic.ListPopupDefaults
++import io.github.suqi8.coui.kmp.basic.PopupCornerRadius
+ import io.github.suqi8.coui.kmp.basic.PopupPositionProvider
+ import io.github.suqi8.coui.kmp.basic.PreciseClickState
+ import io.github.suqi8.coui.kmp.layout.ListPopupLayout
+@@ -30,6 +31,8 @@ import io.github.suqi8.coui.kmp.utils.COUIPopupUtils.Companion.PopupLayout
+  * @param onDismissFinished The callback when the [OverlayListPopup] is completely dismissed (after exit animation).
+  * @param maxHeight The maximum height of the [OverlayListPopup]. If null, the height will be calculated automatically.
+  * @param minWidth The minimum width of the [OverlayListPopup].
++ * @param cornerRadius The corner radius of the popup container. Defaults to the COUI
++ *   `couiRoundCornerM` (12dp); pass a larger value when the caller draws its own surface.
+  * @param renderInRootScaffold Whether to render the popup in the root (outermost) Scaffold.
+  *   When true (default), the popup covers the full screen. When false, it renders within the
+  *   current Scaffold's bounds with position compensation.
+@@ -49,6 +52,7 @@ fun OverlayListPopup(
+     onDismissFinished: (() -> Unit)? = null,
+     maxHeight: Dp? = null,
+     minWidth: Dp = ListPopupDefaults.MinWidth,
++    cornerRadius: Dp = PopupCornerRadius,
+     renderInRootScaffold: Boolean = true,
+     preciseClickState: PreciseClickState? = null,
+     content: @Composable () -> Unit,
+@@ -77,6 +81,7 @@ fun OverlayListPopup(
+         onDismissFinished = onDismissFinished,
+         maxHeight = maxHeight,
+         minWidth = minWidth,
++        cornerRadius = cornerRadius,
+         preciseClickState = preciseClickState,
+         content = content,
+     )

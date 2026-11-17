@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.row
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -35,6 +36,7 @@ import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.model.icon.DrawnIcons
 import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.CARD_CORNER
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.page.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.page.ROW_START_ICON_GAP
@@ -118,6 +120,13 @@ internal sealed interface CardRow {
          */
         val summaryMaxLines: Int = ROW_TEXT_MAX_LINES,
         val icon: ImageVector? = null,
+        /**
+         * 「减少界面图标」开着时，这一行**仍然画**行首那颗字形。
+         *
+         *  给「图标就是这一行的身份」的那种列：候选抽屉（这一步是什么动作）—— 收掉之后
+         *  只剩一串字，扫不起来。默认 `false`（跟着那一档一起收）。
+         */
+        val keepIcon: Boolean = false,
         /** 行首那一格自己画（见 KDoc）；非空时优先于 [icon]。 */
         val startIcon: (@Composable () -> Unit)? = null,
         /** 紧跟标题右边的内容（见 KDoc）；`null` = 没有。 */
@@ -125,7 +134,7 @@ internal sealed interface CardRow {
         /**
          * 标题那一块**自己画**；给了就代替 [title] 那颗 `Text`（[titleExtra] 照旧跟在它右边）。
          *
-         *  给「一行里要摆**固定几列**」的那种行：组合按键那一列是「键名 × 键名」，
+         *  给「一行里要摆**固定几列**」的那种行：组合按键那一列是「键名 和 键名」，
          *  两个键名各占一列、分隔符落在列边界上 —— 一列下来才竖着对齐。
          *  拼成一整串字符串做不到这件事：分隔符会跟着前一个名字的长短走（真机反馈
          *  「单独某个名字过长时全部都没对齐」）。
@@ -213,6 +222,8 @@ internal sealed interface CardRow {
         val icon: ImageVector,
         val checked: Boolean,
         val enabled: Boolean = true,
+        /** 同 [Item.keepIcon]：「减少界面图标」开着时这一行仍画行首那颗字形。 */
+        val keepIcon: Boolean = false,
         /** 同 [Item.visible]：非 `null` 时这一行（连分隔线）跟着它进出场。 */
         val visible: Boolean? = null,
         /** 同 [Item.vibrate]：默认振，个别关。 */
@@ -268,6 +279,7 @@ internal fun CardList(
 ) {
     Card(
         modifier = modifier.fillMaxWidth().padding(horizontal = margin),
+        cornerRadius = CARD_CORNER,
         colors = colors ?: CardDefaults.defaultColors(),
     ) {
         //  **行序按「这一行此刻还在（或正赶来）」算** —— 既不是 `rows.size`，也不是 `visible`
@@ -301,7 +313,10 @@ internal fun CardList(
             }
         //  行间那条细线的左起点：这张卡的行首有没有图标那一列 —— 有就缩进到**标题左缘**
         //  （[ROW_TITLE_INSET]），没有就与卡片自己的内边距对齐，别凭空让出一格。
-        val hasIconColumn = rows.any { it.drawsStartIcon }
+        //  「减少界面图标」开着时这一列可能整列都不画（`keepIcon` 那几行除外）：
+        //  线也要跟着回到卡片内边距，否则左边会多出一段悬空的缩进。
+        val reduceIcons = LocalReduceRowIcons.current
+        val hasIconColumn = rows.any { it.drawsStartIcon(reduceIcons) }
         val positionOf =
             shown.withIndex().associate { (order, index) -> index to cardListPositionOf(order, shown.size) }
         rows.forEachIndexed { index, row ->
@@ -368,14 +383,18 @@ internal fun CardList(
  *  写成**计算属性**而不是 `fun drawsStartIcon()`：这三支（含下面两支）都只是「这一行是什么」的
  *  纯读取，没有副作用也不带参数，属性才是它的自然形态（口径与 `CardRow.Item.visible`
  *  那些字段一致）。
+ *
+ *  @param reduceIcons 「减少界面图标」开着没有 —— 开着时只有 `keepIcon` 那几行还算有图标列
  */
-private val CardRow.drawsStartIcon: Boolean
-    get() =
-        when (this) {
-            is CardRow.Switch -> true
-            is CardRow.Item -> icon != null || startIcon != null
-            is CardRow.Custom -> false
-        }
+private fun CardRow.drawsStartIcon(reduceIcons: Boolean): Boolean =
+    when (this) {
+        is CardRow.Switch -> keepIcon || !reduceIcons
+
+        //  `startIcon`（应用图标那种自己画的）从不受这一档影响
+        is CardRow.Item -> startIcon != null || (icon != null && (keepIcon || !reduceIcons))
+
+        is CardRow.Custom -> false
+    }
 
 /** 这一行前面要不要画**加深带**（`false` = 默认那条细线）。 */
 private val CardRow.wantsHeavyDivider: Boolean
@@ -438,7 +457,8 @@ private fun ColumnScope.RowContent(
                     title = row.title,
                     summaryOn = row.summaryOn,
                     summaryOff = row.summaryOff,
-                    icon = row.icon,
+                    //  「减少界面图标」开着时这一格不画（与普通行同一条，见 [LocalReduceRowIcons]）
+                    icon = if (LocalReduceRowIcons.current && !row.keepIcon) null else row.icon,
                     checked = row.checked,
                     position = position,
                     enabled = row.enabled,
@@ -638,7 +658,7 @@ internal fun Modifier.selectedRowRing(selected: Boolean): Modifier {
             RingGeometry(
                 stroke = SELECTED_RING_WIDTH.toPx(),
                 inset = SELECTED_RING_AIR.toPx(),
-                radius = (CardDefaults.CornerRadius - SELECTED_RING_AIR).toPx(),
+                radius = (CARD_CORNER - SELECTED_RING_AIR).toPx(),
             )
         }
     return drawWithContent {
@@ -687,6 +707,16 @@ private val SELECTED_RING_AIR = 2.dp
  *  默认 `true`：不在行里（或调用方明确要亮色）时不影响任何现有调用点。
  */
 internal val LocalRowEnabled = compositionLocalOf { true }
+
+/**
+ * 「**减少界面图标**」—— 页面级给一次（`PageContent` 读 `GlobalConfig.reduceIcons`），
+ * 行按它决定画不画行首那颗**字形**。
+ *
+ *  只收字形，不收**内容**：`startIcon`（应用图标那一格自己画的）照旧画 —— 它是这一行的答案，
+ *  不是装饰；网格里的图也不在这里（那些是格子本身）。默认 `false`（画），
+ *  不在页面里时不影响任何调用点。
+ */
+internal val LocalReduceRowIcons = compositionLocalOf { false }
 
 /**
  * 行尾那颗**指示性图标**（`trailing` / `endActions` 槽里那一颗）—— 全项目只此一份。
@@ -739,6 +769,41 @@ internal fun RowEndIcon(
         modifier = Modifier.size(ROW_END_ICON_SIZE),
         tint = resolved,
     )
+}
+
+/** 「当前值 + 选择器」两段之间的空隙 —— 与行内其余小间距同档，别把行尾挤成一串。 */
+private val ROW_END_SUMMARY_GAP = 6.dp
+
+/**
+ * 行尾那一格写成「**当前值** + 选择器」—— 主题 / 强调色 / 语言 / 执行时提示这几行用。
+ *
+ *  这几行回答的是「现在选的是哪一档」：答案贴在右侧、与行尾那颗选择器同一组，
+ *  读起来是「这一行 → 现在是什么 → 点开还能改」，不必再从标题下面那行副标题抬头找答案。
+ *
+ *  文字与副标题同一档（`body2` + `onSurfaceVariantSummary`）；整行禁用时跟着 [RowEndIcon]
+ *  一起压暗，不另分一套色。
+ */
+@Composable
+internal fun RowEndSummary(text: String) {
+    val rowEnabled = LocalRowEnabled.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(ROW_END_SUMMARY_GAP),
+    ) {
+        Text(
+            text = text,
+            style = COUITheme.textStyles.body2,
+            color =
+                if (rowEnabled) {
+                    COUITheme.colorScheme.onSurfaceVariantSummary
+                } else {
+                    COUITheme.colorScheme.disabledOnSecondaryVariant
+                },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        RowEndIcon(PageIcons.Selector)
+    }
 }
 
 /**
@@ -854,6 +919,9 @@ internal fun ItemSummary(
  *  两者**都要补一档 [ROW_START_ICON_GAP]**：库在 `startAction` 与文字之间只留 8dp，而行内左边距
  *  是 16dp —— 不补的话图标左边看着比右边宽一倍（见那个常量的说明）。两种行首走同一档，
  *  同一张卡里的左缘才对得齐。
+ *
+ *  「减少界面图标」开着时**只有 `startIcon` 还画**：那一格是内容（应用图标、色块），
+ *  通用字形才是可以收掉的装饰（见 [LocalReduceRowIcons]）。
  */
 @Composable
 internal fun cardRowStartAction(
@@ -867,6 +935,7 @@ internal fun cardRowStartAction(
         }
     }
     val glyph = row.icon ?: return null
+    if (LocalReduceRowIcons.current && !row.keepIcon) return null
     return {
         //  字形会随状态换（停用的键换成禁用图标、序号键换成禁用图标那几处）。同位置替换不做
         //  淡入淡出（用户口径）：直接换这颗字形，颜色照旧由状态驱动（[iconTint] 自己走色过渡）。

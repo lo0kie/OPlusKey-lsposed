@@ -23,22 +23,24 @@ import com.lookie.opluskey.ui.feedback.writeAndNotice
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.text.languageLabel
 import com.lookie.opluskey.ui.model.text.paletteLabel
-import com.lookie.opluskey.ui.model.text.themeLabel
+import com.lookie.opluskey.ui.model.text.themeTitle
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.PagePalette
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.RowEndIcon
+import com.lookie.opluskey.ui.row.RowEndSummary
 import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.state.page.deviceModel
 import com.lookie.opluskey.ui.state.page.deviceSupport
 import com.lookie.opluskey.ui.wire.linkChecks
 import com.lookie.opluskey.ui.write.setDetailedKeySettings
-import com.lookie.opluskey.ui.write.setFollowDisplaySize
+import com.lookie.opluskey.ui.write.setMonetColors
 import com.lookie.opluskey.ui.write.setPageScale
 import com.lookie.opluskey.ui.write.setPredictiveBack
 import com.lookie.opluskey.ui.write.setRandomIconTint
+import com.lookie.opluskey.ui.write.setReduceIcons
 import com.lookie.opluskey.ui.write.setUiVibrate
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
@@ -235,9 +237,8 @@ internal fun SettingsPage.ConfigCard(
                 // 「语言」：点开的是一层菜单，行尾给选择器字形（不是右箭头）
                 CardRow.Item(
                     title = I18n.get(Strings.MORE_LANGUAGE),
-                    summary = languageLabel(currentLang),
                     icon = PageIcons.Language,
-                    trailing = { RowEndIcon(PageIcons.Selector) },
+                    trailing = { RowEndSummary(languageLabel(currentLang)) },
                     modifier = Modifier.preciseClickAnchor(ui.langClick),
                     onClick = {
                         ui.showLangMenu = true
@@ -245,10 +246,9 @@ internal fun SettingsPage.ConfigCard(
                 ),
                 CardRow.Item(
                     title = I18n.get(Strings.PROFILE_SWITCH_TITLE),
-                    // 副标题写**当前配置**的名字 —— 与「语言」那一行写当前语言同一档
-                    summary = currentDisplay ?: currentProfileName(),
+                    //  行尾写**当前配置**的名字 —— 与「语言」那一行写当前语言同一档
                     icon = PageIcons.Profiles,
-                    trailing = { RowEndIcon(PageIcons.Selector) },
+                    trailing = { RowEndSummary(currentDisplay ?: currentProfileName()) },
                     modifier = Modifier.preciseClickAnchor(ui.profileClick),
                     onClick = {
                         //  列表是盘上扫出来的（每份要读文件取名字）⇒ 在 IO 上读，读到再弹菜单
@@ -279,7 +279,7 @@ internal fun SettingsPage.ConfigCard(
 }
 
 /**
- * 当前配置在界面上的叫法（「切换配置」那一行的副标题、两个重置确认窗的正文）。
+ * 当前配置在界面上的叫法（「切换配置」那一行行尾、两个重置确认窗的正文）。
  *
  *  **按身份判，不按「名字空不空」判**：名字空的普通配置（位次 ≥ 1，名字被抹过）不是默认那份，
  *  写成「默认配置」会让它与真默认撞名 —— 用户看到的正是「两份默认配置、我这份动不了」。
@@ -294,14 +294,14 @@ internal fun SettingsPage.currentProfileName(): String {
 }
 
 /**
- * 「外观」那张卡 —— 模块页面**自己的样子与手感**：主题、强调色、随机图标配色、跟随系统显示大小
- * （+ 关掉时的页面缩放）、界面振动反馈。这一卡里没有一项碰「按键怎么执行」，
+ * 「外观」那张卡 —— 模块页面**自己的样子与手感**：主题、使用 Monet 配色、强调色、随机图标配色、
+ * 减少界面图标、界面缩放、界面振动反馈。这一卡里没有一项碰「按键怎么执行」，
  * 所以它们与总闸无关，主开关关着时照样能改。
  *
  *  行序：**先深浅、后强调色** —— 深浅定的是整页的明暗，强调色是在它上面挑一个点缀；
  *  反过来摆的话，用户会先去挑颜色，再发现整页明暗变了、那一套色在他刚看到的底色上并不好看。
  *
- *  两行都是同一种交互（点开一层菜单、行尾给选择器、副标题写当前那一档），与上面「配置」卡里的
+ *  两行都是同一种交互（点开一层菜单、行尾写当前那一档再跟一颗选择器），与上面「配置」卡里的
  *  「语言」完全一致 —— 挑「一共五档里的哪一档」这件事，页面上不该有两种形状。
  *
  *  两处都**没有「保存」这一步**：点一下即写盘、整页当场换（`PageContent` 读配置决定配色与深浅）。
@@ -316,28 +316,36 @@ internal fun SettingsPage.AppearanceCard(
     CardList(
         rows =
             listOf(
-                // 第 1 行：主题
+                // 第 1 行：主题 —— 只管深浅（跟随系统 / 浅色 / 深色），配色是下面那一行
                 CardRow.Item(
                     title = I18n.get(Strings.MORE_THEME),
-                    summary = themeLabel(currentTheme),
                     icon = PageIcons.Theme,
-                    trailing = { RowEndIcon(PageIcons.Selector) },
+                    trailing = { RowEndSummary(themeTitle(currentTheme)) },
                     modifier = Modifier.preciseClickAnchor(ui.themeClick),
                     onClick = {
                         ui.showThemeMenu = true
                     },
                 ),
-                // 第 2 行：强调色 —— 副标题写的是**当前那一套的名字**，不是「页面强调色」这种说明句：
+                // 第 2 行：使用 Monet 配色 —— 整页那套色板换不换成系统按壁纸生成的那一套。
+                //  紧挨着「主题」摆：这两行是同一件事的两半（深浅 + 配色），隔开就分家了。
+                //  纯显示项：拨完整页当场重画（`PageContent` 那一层读它算色板），不必重进。
+                CardRow.Switch(
+                    title = I18n.get(Strings.MORE_MONET_COLORS),
+                    icon = PageIcons.MonetColors,
+                    checked = configState.config.value.global.monetColors,
+                    onCheckedChange = { setMonetColors(it) },
+                ),
+                // 第 3 行：强调色 —— 行尾写的是**当前那一套的名字**，不是「页面强调色」这种说明句：
                 //  这一行回答的是「现在是哪一套」，与「语言」那一行同一个口径。
                 //  行首直接摆**当前那一套的色块**（与菜单里那五行同一颗字形、同一个种子色）：
                 //  这一行回答的就是「现在是什么色」，画一颗调色板图标等于把答案藏起来。
                 CardRow.Item(
                     title = I18n.get(Strings.MORE_PALETTE),
-                    summary = paletteLabel(currentPalette),
-                    //  色块按主题选：Monet 那档是四格色阶，其余档是**一个整块**（见 `accentSwatch`）
-                    icon = PageIcons.accentSwatch(currentTheme),
+                    //  色块按「用不用 Monet 配色」选：开了是四格色阶，关着是**一个整块**
+                    //  （见 `accentSwatch`）
+                    icon = PageIcons.accentSwatch(configState.config.value.global.monetColors),
                     iconTint = currentPalette.seed(LocalContext.current),
-                    trailing = { RowEndIcon(PageIcons.Selector) },
+                    trailing = { RowEndSummary(paletteLabel(currentPalette)) },
                     modifier = Modifier.preciseClickAnchor(ui.paletteClick),
                     onClick = {
                         ui.showPaletteMenu = true
@@ -352,19 +360,18 @@ internal fun SettingsPage.AppearanceCard(
                     checked = configState.config.value.global.iconTintSeed != 0,
                     onCheckedChange = { setRandomIconTint(it) },
                 ),
-                // 第 4 行：跟随系统显示大小 —— 关掉后模块页面按出厂标准大小渲染（见 GlobalConfig）
+                // 第 4 行：减少界面图标 —— 卡片行行首那些字形收起（应用图标与网格不收，见
+                //  `LocalReduceRowIcons`）。纯显示项，拨完整页当场重画。
                 CardRow.Switch(
-                    title = I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE),
-                    icon = PageIcons.TextSize,
-                    checked = configState.config.value.global.followDisplaySize,
-                    onCheckedChange = {
-                        setFollowDisplaySize(it)
-                    },
+                    title = I18n.get(Strings.MORE_REDUCE_ICONS),
+                    icon = PageIcons.ReduceIcons,
+                    checked = configState.config.value.global.reduceIcons,
+                    onCheckedChange = { setReduceIcons(it) },
                 ),
-                // 第 5 行：页面缩放 —— **只在「跟随系统显示大小」关掉时出现**（跟着它一起进出场）。
-                //  跟随开着时再摆一根缩放，等于两处都能调页面大小，谁也说不清最后是多少。
-                //  整行另起一支（[PageScaleRow]）：这一卡已经四行了，再平铺下去就数不清行序。
-                CardRow.Custom(visible = !configState.config.value.global.followDisplaySize) { position ->
+                // 第 5 行：界面缩放 —— 页面大小的**唯一**一档（不再跟随系统「显示大小」，
+                //  见 `GlobalConfig.pageScale`）。整行另起一支（[PageScaleRow]）：这一卡已经四行了，
+                //  再平铺下去就数不清行序。
+                CardRow.Custom { position ->
                     PageScaleRow(position)
                 },
                 // 第 6 行：界面振动反馈 —— 点行 / 拨开关 / 拖滑杆那一下的触觉。
@@ -391,7 +398,7 @@ internal fun SettingsPage.AppearanceCard(
     )
 }
 
-/** 「页面缩放」那一行 —— 从 [SettingsPage.AppearanceCard] 里分出来，让那一卡只留行序。 */
+/** 「界面缩放」那一行 —— 从 [SettingsPage.AppearanceCard] 里分出来，让那一卡只留行序。 */
 @Composable
 private fun SettingsPage.PageScaleRow(position: CardListPosition) {
     SliderRow(
@@ -425,7 +432,7 @@ internal fun SettingsPage.setTheme(code: String) {
     writeAndNotice(cfg.copy(global = cfg.global.copy(theme = code)), "theme=$code") {
         switchToNotice(
             I18n.get(Strings.MORE_THEME),
-            themeLabel(AppTheme.ofCode(code)),
+            themeTitle(AppTheme.ofCode(code)),
         )
     }
 }

@@ -16,6 +16,9 @@ import androidx.compose.ui.unit.dp
 //  与 `DrawnIcons` 的分工：那边画图标（一个字形一套坐标），这里只回答「怎么落笔」——
 //  视口恒为 24、描边不填充、圆头圆角、宽度对图标库的 2.0 取齐。
 
+/** 视口中心（24 见方 ⇒ 12）—— 旋转、缩放这类「绕着一个点」的变换用它当支点。 */
+private const val VIEWPORT_CENTER = 12f
+
 /** 这批字形唯一的建造器：24dp 的默认尺寸、24 的视口 —— 与图标库那批同尺。 */
 internal fun vectorBuilder(name: String): ImageVector.Builder =
     ImageVector.Builder(
@@ -164,6 +167,28 @@ private fun ImageVector.Builder.copyPaths(group: VectorGroup) {
             }
         }
     }
+}
+
+/**
+ * 把图标库现成的一颗字形**转一个角度** —— 转完仍是一颗普通 [ImageVector]，行首那一格照常上色。
+ *
+ *  只在「这一颗最贴这件事、只是方向不对」时用：图标库里没有斜向 / 横向的那一版，
+ *  而照着重新画一遍等于把字形的位置挪到我们手里（图标库改了那一颗，这里就悄悄分叉了）。
+ *
+ *  @param degrees 旋转角度，**正数是顺时针**（与 `VectorGroup.rotate` 同一口径）；
+ *    要逆时针就给负数
+ */
+internal fun rotatedIcon(
+    name: String,
+    base: ImageVector,
+    degrees: Float,
+): ImageVector {
+    val builder = vectorBuilder(name)
+    //  绕视口中心转：24 见方的字形绕 (0,0) 转会把整颗甩到框外，只剩一角留在可见区
+    builder.addGroup(rotate = degrees, pivotX = VIEWPORT_CENTER, pivotY = VIEWPORT_CENTER)
+    builder.copyPaths(base.root)
+    builder.clearGroup()
+    return builder.build()
 }
 
 /** 「系统配色」菜单里那两块色块 —— 形状固定，颜色由调用方逐行给。 */
