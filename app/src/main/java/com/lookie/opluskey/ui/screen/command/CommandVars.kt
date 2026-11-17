@@ -38,7 +38,6 @@ import com.lookie.opluskey.ui.wire.appNameOf
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.Variable
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「命令详情」下面那一档**系统状态变量** —— 把系统场景那几档判定当成只读变量写进命令。
 //
@@ -91,15 +90,9 @@ internal fun SettingsPage.CommandVarsCard(
                     //  行尾是 **selector**（「点了要选点什么」）而不是箭头：这一行不进下一层，
                     //  弹的是一层菜单 + 一层选择窗（字形怎么选见 `RowEndIcon` 的说明）
                     trailing = {
-                        RowEndIcon(
-                            PageIcons.Selector,
-                            tint =
-                                if (enabled) {
-                                    COUITheme.colorScheme.onSurfaceVariantActions
-                                } else {
-                                    COUITheme.colorScheme.disabledOnSecondaryVariant
-                                },
-                        )
+                        //  **不自己判灰**：禁用时这颗由 `CardRow` 那一层压暗（`LocalRowEnabled`）——
+                        //  原先这里按 `enabled` 选了两档色，等于把「行能不能点」在行里又算了一遍。
+                        RowEndIcon(PageIcons.Selector)
                     },
                     enabled = enabled,
                     //  浮层按按下的位置弹：锚点必须挂在这一行上（行内自己那颗图标够不着）
@@ -250,7 +243,3 @@ private fun insertVar(
     //  同样不聚焦 —— 这一点与格式卡同一条口径。
     ui.singleScrollRequest++
 }
-
-// 「这一档落点在界面上叫什么 / 行首画哪颗」这两支随「显示执行返回结果」那一行搬到了
-// `CommandPage.kt` 的 `ExecSwitchCard`（`CommandOutput.labelKey` / `.icon`）—— 那一行现在是
-// 「命令设置」那张卡的一行，判据跟着使用者走。

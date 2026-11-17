@@ -10,6 +10,7 @@ import com.lookie.opluskey.bridge.anyTask
 import com.lookie.opluskey.bridge.extOf
 import com.lookie.opluskey.bridge.instanceOf
 import com.lookie.opluskey.core.DEBUG_PROBE
+import com.lookie.opluskey.core.judge.Swipe
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.ComboPlan
@@ -21,7 +22,6 @@ import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.inject.input.ComboDown
 import com.lookie.opluskey.inject.input.ComboSequence
 import com.lookie.opluskey.inject.input.RawInput
-import com.lookie.opluskey.inject.input.Swipe
 import com.lookie.opluskey.inject.input.TouchJudge
 import com.lookie.opluskey.inject.system.ShortcutRead
 

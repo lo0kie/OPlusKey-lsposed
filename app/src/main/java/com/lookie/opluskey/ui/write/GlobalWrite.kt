@@ -9,6 +9,7 @@ import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.NoticeMode
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
@@ -18,7 +19,10 @@ import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.switchNotice
 import com.lookie.opluskey.ui.feedback.switchToNotice
 import com.lookie.opluskey.ui.feedback.writeAndNotice
+import com.lookie.opluskey.ui.model.text.WindowLabel
+import com.lookie.opluskey.ui.model.text.fixedWindowStartTitle
 import com.lookie.opluskey.ui.model.text.languageLabel
+import com.lookie.opluskey.ui.row.noticeModeLabel
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.state.picker.AppPickerState
 import kotlin.random.Random
@@ -212,45 +216,8 @@ internal fun SettingsPage.setComboHoldFixedWindowStart(on: Boolean) {
         "combo_hold_fixed_window_start=${if (on) 1 else 0}",
         slot = HINT_SLOT_COMBO,
     ) {
-        switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE), on)
-    }
-}
-
-/**
- * 切「顺序组合固定窗口」**公共那一档 —— 等待组合那张卡**（`GlobalConfig.comboOrderedFixedWindowStart`）。
- *
- *  顺序组合自己一组窗口（用户口径），所以这颗开关与 [setComboFixedWindowStart] 也是**两个变量**：
- *  拨它只改「按顺序触发」那几档取窗口的方式，不分顺序那一档一格不动。
- *
- *  判定侧读 `Config.comboWindowStartFor`（有序档走这一颗，其余走不分顺序那颗）。
- *  回执位与其它组合项一致（`HINT_SLOT_COMBO`）。
- */
-internal fun SettingsPage.setComboOrderedFixedWindowStart(on: Boolean) {
-    val cfg = configState.config.value
-    writeAndNotice(
-        cfg.copy(global = cfg.global.copy(comboOrderedFixedWindowStart = on)),
-        "combo_ordered_fixed_window_start=${if (on) 1 else 0}",
-        slot = HINT_SLOT_COMBO,
-    ) {
-        switchNotice(I18n.get(Strings.COMBO_ORDERED_FIXED_WINDOW_TITLE), on)
-    }
-}
-
-/**
- * 切「**顺序组合**固定窗口」**公共那一档 —— 按住组合那张卡**
- * （`GlobalConfig.comboOrderedHoldFixedWindowStart`）。
- *
- *  与 [setComboOrderedFixedWindowStart] 是**两个变量**（两张卡各管一种按法）：这一颗只影响
- *  有序的按住组合取窗口的方式。判定侧读 `Config.comboHoldWindowStartFor`。
- */
-internal fun SettingsPage.setComboOrderedHoldFixedWindowStart(on: Boolean) {
-    val cfg = configState.config.value
-    writeAndNotice(
-        cfg.copy(global = cfg.global.copy(comboOrderedHoldFixedWindowStart = on)),
-        "combo_ordered_hold_fixed_window_start=${if (on) 1 else 0}",
-        slot = HINT_SLOT_COMBO,
-    ) {
-        switchNotice(I18n.get(Strings.COMBO_ORDERED_FIXED_WINDOW_TITLE), on)
+        //  回执的名字跟公共那张卡的标题走（那里恒写「多击与顺序…」，见 `WindowLabel`）
+        switchNotice(I18n.get(WindowLabel.INTERVAL_MULTI.fixedWindowStartTitle()), on)
     }
 }
 
@@ -338,26 +305,30 @@ private const val MODULE_ENABLED_SLOT = "module_enabled"
 // 全局配置里「提示 / 反馈」那几项的写回。
 
 /**
- * 切「执行时提示」（执行命令时弹一条 Toast）—— 行点击与开关共用这一个入口。
- * 起从每条命令自己的字段提成全局开关（见 `GlobalConfig.toastOnRun`）；
- * 判定侧在 `host/GestureExec`，宿主进程每次执行现读配置，拨完立刻生效。
- */
-internal fun SettingsPage.setToastOnRun(on: Boolean) =
-    toggleGlobal("toast_on_run=${if (on) 1 else 0}", I18n.get(Strings.HOME_TOAST_TITLE), on) {
-        it.copy(toastOnRun = on)
-    }
-
-/**
- * 切「执行时提示」的**落点**（Toast / 流体云）—— 与 [setToastOnRun] 同一张卡、同一档语义：
- * 只换提示长在哪儿，文案仍是 [setToastTemplate] 那一句。
+ * 切「执行时提示」的**落点**（四档菜单：不提示 / 通知 / Toast / 流体云）—— 一次写完三颗布尔。
  *
- * 判定侧在 `host/GestureExec.noticeIfNeeded`，宿主进程每次执行现读配置，拨完立刻生效。
- * 图标来自**被执行的那个动作**，由界面层预热（`ui/model/icon/ActionCardArt`）。
+ *  四档由 `NoticeMode.of` 从那三颗派生（唯一出口），这里按选中的那一档把它们写成一致的一份：
+ *  手改配置文件写出「通知 + 流体云」那种组合只会在读的时候被折成一档，界面永远只写这一种形状。
+ *
+ *  判定侧在 `host/GestureExec.noticeIfNeeded`，宿主进程每次执行现读配置，选完立刻生效；
+ *  流体云那一档依赖「使用 ColorOS 接口」，关着时执行侧回落 Toast（`NoticeMode.effective`）。
  */
-internal fun SettingsPage.setToastFluid(on: Boolean) =
-    toggleGlobal("toast_fluid=${if (on) 1 else 0}", I18n.get(Strings.HOME_TOAST_FLUID_TITLE), on) {
-        it.copy(toastFluid = on)
+internal fun SettingsPage.setNoticeMode(mode: NoticeMode) {
+    val cfg = configState.config.value
+    writeAndNotice(
+        cfg.copy(
+            global =
+                cfg.global.copy(
+                    toastOnRun = mode != NoticeMode.NONE,
+                    toastNotify = mode == NoticeMode.NOTIFY,
+                    toastFluid = mode == NoticeMode.FLUID,
+                ),
+        ),
+        "notice_mode=${mode.id}",
+    ) {
+        switchToNotice(I18n.get(Strings.HOME_TOAST_TITLE), noticeModeLabel(mode))
     }
+}
 
 /**
  * 写「执行时提示」的文案模板（`$key` / `$gesture` / `$action` 与 `$action` 拆开的三段，见 `ToastNotice`）。
@@ -517,10 +488,11 @@ internal fun SettingsPage.setCommonCommands(
 // 回执共用一条消息（理由见 [HINT_SLOT_BINDING] 的注释）。
 
 /**
- * 改**这一颗键**的一个开关：取配置 → 取键 → 应用 [transform] → 走 [writeAndNotice]。
+ * 改**这一颗键**的一个开关：取配置 → 取键 → 应用 [transform] → 写回并回执。
  *
- *  这一族两个函数的差别只有「改哪个字段 / 日志写什么 / 回执主语是什么」—— 形状收在这里一处。
- *  回执的位固定 [HINT_SLOT_BINDING]（这一族只在「按键绑定」页被调用，那一页共用一条消息）。
+ *  形状收在 `updateKey` 一处（现读配置 / 值没变不落盘 / 只动 `keys[id]`），这里只补两样
+ *  这一族特有的东西：回执的位固定 [HINT_SLOT_BINDING]（「按键绑定」页共用一条消息）、
+ *  回执的标题由调用方给。
  *
  *  **改哪一颗由调用方给**（`keyId`）：原先在这里现取 `KeyWatchState.editing`，那是「按键绑定页
  *  当前选中的那颗」—— 这一族现在也从独立设置页被调用，那一份状态不再代表那一页在改谁。
@@ -534,12 +506,7 @@ internal fun SettingsPage.toggleKeyParam(
     on: Boolean,
     transform: (KeyConfig) -> KeyConfig,
 ) {
-    val cfg = configState.config.value
-    writeAndNotice(
-        cfg.copy(keys = cfg.keys + (keyId to transform(cfg.key(keyId)))),
-        "$what key=${keyId.id}",
-        slot = HINT_SLOT_BINDING,
-    ) { switchNotice(title, on) }
+    updateKey(keyId, what, notice = { switchNotice(title, on) }, slot = HINT_SLOT_BINDING, change = transform)
 }
 
 /**

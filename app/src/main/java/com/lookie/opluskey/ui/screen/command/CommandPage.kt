@@ -19,7 +19,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.core.i18n.I18n
@@ -28,19 +27,15 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.CommandOutput
 import com.lookie.opluskey.host.action.shell.RootGrant
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.dialog.MenuEntry
 import com.lookie.opluskey.ui.dialog.PageMenu
-import com.lookie.opluskey.ui.dialog.rememberMenuState
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.input.IconInputView
 import com.lookie.opluskey.ui.input.InputSpec
-import com.lookie.opluskey.ui.model.icon.FluidIconPicker
-import com.lookie.opluskey.ui.model.icon.FluidIcons
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
@@ -49,7 +44,6 @@ import com.lookie.opluskey.ui.model.text.commandKindLabel
 import com.lookie.opluskey.ui.model.text.isTypingCommandPrefix
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
-import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SectionTitleClick
 import com.lookie.opluskey.ui.row.SectionTitleTrailingMore
@@ -66,9 +60,7 @@ import com.lookie.opluskey.ui.style.VisibleAreaCentered
 import com.lookie.opluskey.ui.style.visibleAreaHeight
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「自定义命令」页的一页（单条 / 多条各一份）—— 从 `CommandScreen.kt` 拆出来。
 //
@@ -551,16 +543,8 @@ private fun SettingsPage.ExecSwitchCard(
 ) {
     val text = form.single.trim()
     val show = remember(text) { Action.parse(text).usesRoot }
-    //  「显示执行返回结果」那一行自己的菜单（与卡里那两档开关各一个锚点：这一行弹的是选择层）
-    val outputMenu = rememberMenuState()
     //  正在探 root（那一次 `su` 可能要等管理器弹框）：只在这一行上禁用，避免连点叠两次探测。
     var pendingRoot by remember { mutableStateOf(false) }
-    //  「提示类型 → 流体云」那一档要先挑一颗胶囊图标（选中即落盘，png 由选择器自己写）
-    var pickingOutputIcon by remember { mutableStateOf(false) }
-    //  流体云是 ColorOS 的能力（Seedling 卡片只有已注册的 seedling 宿主发得出去）：公共设置里
-    //  「使用 ColorOS 接口」关着时那一档置灰，理由用与首页那颗「用流体云提示」同一句。
-    //  读的是**公共那一份**：命令没有独立的接口开关（与执行身份那两行不同）。
-    val fluidAllowed = configState.config.value.global.colorOsApi
     //  编辑已有命令**回填表单之后，先看 root 现在还真的有**：配置里存着「以 root 执行」、
     //  机器上却已经没了 root 时，勾还亮着会让人以为这一档是好的（真按下去只会得到一句失败）。
     //  初值按「有」：进页面前那几帧不先灭一下再亮（探回来才纠正）。
@@ -581,29 +565,15 @@ private fun SettingsPage.ExecSwitchCard(
         CardList(
             rows =
                 listOf(
-                    //  返回结果的落点排在**执行身份之前**：先决定「这条命令跑完，输出给不给看」，
-                    //  再决定「它用哪种身份跑」。两件事都只对 `shell:` 成立（整张卡就在 `show` 里）。
-                    CardRow.Item(
+                    //  这一位排在**执行身份之前**：先决定「这句话念什么」，再决定「它用哪种身份跑」。
+                    //  它只换「念什么」——「念不念、往哪念」在「执行时提示」那一页（含独立设置），
+                    //  所以这里是一颗开关，不是一档落点。
+                    CardRow.Switch(
                         title = I18n.get(Strings.COMMAND_OUTPUT_TITLE),
-                        //  副标题就是**当前那一档的名字**（「不显示」/「提示」/…）—— 这一行要说的
-                        //  「现在把结果送到哪」由它回答，点开才是选别的档。
-                        summary = I18n.get(form.output.labelKey()),
                         icon = PageIcons.CommandOutput,
-                        //  与上面那一行同一个记号：点了要选点什么，不是进下一层
-                        trailing = {
-                            RowEndIcon(
-                                PageIcons.Selector,
-                                tint =
-                                    if (enabled) {
-                                        COUITheme.colorScheme.onSurfaceVariantActions
-                                    } else {
-                                        COUITheme.colorScheme.disabledOnSecondaryVariant
-                                    },
-                            )
-                        },
+                        checked = form.showOutput,
                         enabled = enabled,
-                        modifier = Modifier.preciseClickAnchor(outputMenu.anchor),
-                        onClick = { outputMenu.show() },
+                        onCheckedChange = { form.showOutput = it },
                     ),
                     CardRow.Switch(
                         title = I18n.get(Strings.COMMAND_ROOT_TITLE),
@@ -662,96 +632,7 @@ private fun SettingsPage.ExecSwitchCard(
                 ),
         )
     }
-    //  四档落点：不显示 / 提示 / 通知 / 流体云 —— 单选，选中那一行行首换成对勾（`selected`）
-    PageMenu(state = outputMenu) {
-        listOf(
-            MenuEntry.Section(
-                title = titleWithCount(I18n.get(Strings.COMMAND_OUTPUT_MENU_TITLE), CommandOutput.entries.size),
-                rows =
-                    CommandOutput.entries.map { mode ->
-                        //  **流体云那一行多两样**：行尾是这颗胶囊当前用的图标（选过才有），副标题是
-                        //  它的名字（`FluidIcons` 的 id，如 `flask2`）—— 那一档的图标是用户自己挑的，
-                        //  光一行「流体云」看不出显示的是哪颗字形。
-                        val fluid = mode == CommandOutput.FLUID
-                        MenuEntry.Row(
-                            title = I18n.get(mode.labelKey()),
-                            summary = if (fluid) form.outputIcon.ifEmpty { null } else null,
-                            icon = mode.icon(),
-                            //  行尾那一格**只在「已经挑过图标」时才画**（`PageMenuPopup` 里
-                            //  `hasSubmenu` 决定画不画、`trailingIcon` 决定画什么）：没挑过时什么都不摆 ——
-                            //  这一档的行尾不该冒出一颗默认的进层箭头，那看起来像「点进去还有一页」，
-                            //  而它只是「还没选图标」。
-                            submenu = fluid && form.outputIcon.isNotEmpty(),
-                            trailingIcon =
-                                if (fluid) {
-                                    FluidIcons.of(form.outputIcon)
-                                } else {
-                                    null
-                                },
-                            selected = form.output == mode,
-                            //  流体云那一档随「使用 ColorOS 接口」走：关着时置灰 + 点一下说明原因
-                            //  （判据与首页那颗「用流体云提示」同一个开关、同一句话）
-                            enabled = !fluid || fluidAllowed,
-                            disabledHint =
-                                if (fluid) {
-                                    I18n.get(Strings.HOME_TOAST_FLUID_NEEDS_COLOROS)
-                                } else {
-                                    null
-                                },
-                            onPick = {
-                                outputMenu.dismiss()
-                                //  流体云这一档**先挑图标、挑完才算选中**（关掉选择器就什么都没发生）；
-                                //  其余三档点一下即生效，并把上一档挑的图标**清掉** —— 图标只属于
-                                //  流体云那一档，留着会让下次切回来时显示一颗他以为已经换掉的字形。
-                                if (fluid) {
-                                    pickingOutputIcon = true
-                                } else {
-                                    form.output = mode
-                                    form.outputIcon = ""
-                                }
-                            },
-                        )
-                    },
-            ),
-        )
-    }
-    //  图标选择器：选中那一刻 png 已经写好，这里只记 id 并把落点切成流体云
-    FluidIconPicker(
-        show = pickingOutputIcon,
-        onDismiss = { pickingOutputIcon = false },
-        onPick = { id ->
-            pickingOutputIcon = false
-            form.outputIcon = id
-            form.output = CommandOutput.FLUID
-        },
-    )
 }
-
-/**
- * 这一档落点在界面上叫什么 —— 那一行的小字与菜单行共用这一份。
- *
- *  四档的名字**不复用**「支持的命令格式」卡上那几条（`toast: <文字>` 那种写法）：那几条讲的是
- *  「怎么写」，这里讲的是「送到哪」，读起来是两件事，各自的文案也要各自能改。
- */
-internal fun CommandOutput.labelKey(): String =
-    when (this) {
-        CommandOutput.NONE -> Strings.COMMAND_OUTPUT_NONE
-        CommandOutput.TOAST -> Strings.COMMAND_OUTPUT_TOAST
-        CommandOutput.NOTIFY -> Strings.COMMAND_OUTPUT_NOTIFY
-        CommandOutput.FLUID -> Strings.COMMAND_OUTPUT_FLUID
-    }
-
-/**
- * 菜单里那一行的行首 —— 用**这一档落点自己的**图标（提示 / 通知 / 流体云三颗与「支持的命令格式」
- * 卡同一族），「不显示」用 `eye-off`（闭上了眼睛）。
- */
-private fun CommandOutput.icon(): ImageVector =
-    when (this) {
-        CommandOutput.NONE -> PageIcons.OutputNone
-        CommandOutput.TOAST -> PageIcons.FormatToast
-        CommandOutput.NOTIFY -> PageIcons.FormatNotify
-        CommandOutput.FLUID -> PageIcons.FormatFluid
-    }
 
 /**
  * 单条命令的正文输入（「命令」那一栏）—— **单行**（多行那一档已按用户口径撤掉）。

@@ -500,6 +500,8 @@ data class ComboKey(
     override val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
     /** 这一档自己的「提示走流体云」—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastFluid: Boolean = GlobalConfig.DEFAULT_TOAST_FLUID,
+    /** 这一档自己的「提示走通知」—— 只在 [useOwnSettings] 开着时算数（四档由 [noticeMode] 派生）。 */
+    override val toastNotify: Boolean = GlobalConfig.DEFAULT_TOAST_NOTIFY,
     /** 这一档自己的提示文案模板（空串 = 默认那句）—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
     /**
@@ -601,44 +603,6 @@ data class ComboKey(
      *  取值一律走 `Config.comboHoldFixedWindowStartFor`。
      */
     val holdFixedWindowStart: Boolean? = null,
-    /**
-     * 这一档**顺序组合 · 等待档**的两个窗口（毫秒）—— [ordered] 为真时占掉 [waitWindowMs] /
-     * [waitPairMs] 的位置。
-     *
-     *  顺序组合量的是「按顺序逐颗落下」的间隔，与不分顺序那一档不是同一件事：那一档允许成员
-     *  乱序落下、人手可以挑最好按的那一颗先按；这一档必须按配置的先后落，慢的那一颗决定成败。
-     *  所以这两格**分开存**（用户口径：顺序组合单独一组窗口），由 [orderedFixedWindowStart]
-     *  决定这一刻读哪一格：开 = 整串共用一个，关 = 相邻两颗各一个。
-     *
-     *  **受 `useOwnSettings` 管**，与四格窗口同一条（[WINDOW_FOLLOW_GLOBAL] = 没写过 ⇒ 出厂默认）。
-     *  取值一律走 `Config.comboWindowsFor`（它按 [ordered] 挑这一份）。
-     */
-    val orderedWaitWindowMs: Int = WINDOW_FOLLOW_GLOBAL,
-    /** 顺序组合 · 等待档、固定窗口起点**关**：相邻两颗之间（n 颗整串 = 它 × (n-1)）。 */
-    val orderedWaitPairMs: Int = WINDOW_FOLLOW_GLOBAL,
-    /** 顺序组合 · 按住档、固定窗口起点**开**：后续成员要在首个成员按下后的这个窗口内落完。 */
-    val orderedHoldWindowMs: Int = WINDOW_FOLLOW_GLOBAL,
-    /** 顺序组合 · 按住档、固定窗口起点**关**：后续成员每颗各自往前等多久。 */
-    val orderedHoldFollowerMs: Int = WINDOW_FOLLOW_GLOBAL,
-    /**
-     * 这一档**顺序组合 · 等待档**的固定窗口起点 —— `true` = 从首个成员按下起一个固定窗口；
-     * `false` = 每个成员按下都清掉计时重新等。
-     *
-     *  与 [fixedWindowStart] **是两个变量**（口径与 [orderedWaitWindowMs] 那一组同一条）：
-     *  拨「顺序组合」那一颗不该动不分顺序那一档的取窗口方式。
-     *
-     *  `null` = 还没写过 ⇒ 出厂默认（`GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START`）。
-     *  取值一律走 `Config.comboOrderedFixedWindowStartFor`（判定侧走 `Config.comboWindowStartFor`）。
-     */
-    val orderedFixedWindowStart: Boolean? = null,
-    /**
-     * 这一档**顺序组合 · 按住档**的固定窗口起点 —— 与 [orderedFixedWindowStart] 同一条规则、
-     * **另一个变量**（两张卡各管一种按法）。
-     *
-     *  `null` = 还没写过 ⇒ 出厂默认（`GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START`）。
-     *  取值一律走 `Config.comboOrderedHoldFixedWindowStartFor`。
-     */
-    val orderedHoldFixedWindowStart: Boolean? = null,
     /**
      * **成员连击**：按住首键不放，那颗**唯一成员键**在窗口内连击（双击 / 三击 / 四击 /
      * 单击后长按）—— 动作落在**这一档组合自己**的这几格，与成员键单键的多击**完全解耦**。

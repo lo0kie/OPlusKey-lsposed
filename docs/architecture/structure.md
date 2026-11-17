@@ -63,10 +63,13 @@
 四条硬规矩：
 
 - **`core/` 不依赖任何上层**（它不认识进程、不认识界面）；
-- **`inject/` 只准依赖 `core/model`、`core/rom`、`core/present`、`core/log`、`core/reflect`、`core/wire`**，
+- **`inject/` 只准依赖 `core/model`、`core/rom`、`core/present`、`core/log`、`core/reflect`、`core/wire`、
+  `core/judge`、`core/intercept`**，
   \*\*不准碰 `core/config`**（落盘那包）—— 这样「注入侧读不到配置文件」在**编译期\*\*就成立。
   `core/present` 只装「id / 字典键 / 字形名」这类展示层数据，**不碰界面库**（红线 1 的判据是
   「会不会在 system_server 里被执行」，而注入侧确实要认那些 token 与名字，所以它在允许之列）；
+  `core/judge` / `core/intercept` 同理：它们是**纯判据**（只吃数字与模型数据，不读配置、不碰状态、
+  不调 Android API），搬过来正是为了让判定链有单测可跑（`:app` 没有 test 源集）。
 - **`inject/` 也不准依赖 `ui/` 与 `host/`**：它跑在 `system_server`，与宿主那份 APK 不是同一个类加载器，引用上面两类必然
   `NoClassDefFoundError`（把系统进程拖死）；
 - \*\*`ui/` 与 `host/`
@@ -91,6 +94,9 @@ com.lookie.opluskey
 │   ├── config/               落盘：ModuleFiles（多模块的文件层）/ ConfigStore / ConfigCodec /
 │   │                         CommandLibrary / VariableStore                              ← 只给 host / ui
 │   ├── i18n/                 字典：Strings（键名）/ I18n / DictionaryLoader
+│   ├── judge/                判定算术与归属判据（纯函数）：JudgeMath / ClickChainMath / PairMath /
+│   │                         SwipeMath                                                  ← 注入侧也读
+│   ├── intercept/            拦截侧的归属判据（纯函数）：KeyClaim（归哪一档 / 压到什么时候）← 注入侧也读
 │   ├── wire/                 跨进程线格式：ConfigBroadcast / ModuleWire / PageWire / ComboWire ← 三侧都用
 │   ├── log/ reflect/         XLog / Reflect（日志出口、反射面）
 │   └── seal/ update/         签名派生密钥与容器解密 / 检查更新

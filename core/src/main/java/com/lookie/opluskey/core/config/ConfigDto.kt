@@ -246,9 +246,10 @@ internal data class KeyDto(
     /** 这颗键自己的「无操作时振动」。 */
     @SerialName("vibrate_on_none")
     val vibrateOnNone: Boolean? = null,
-    /** 这颗键自己的「执行时提示」/「提示走流体云」/「提示文案」。 */
+    /** 这颗键自己的「执行时提示」/「提示走流体云」/「提示走通知」/「提示文案」。 */
     val toastOnRun: Boolean? = null,
     val toastFluid: Boolean? = null,
+    val toastNotify: Boolean? = null,
     val toastTemplate: String? = null,
     /**
      * **老的「一条规则一个手势」那一列** —— 只读：新写的文件不再写它，读到就迁移（见 [mergeScenes]）。
@@ -392,6 +393,7 @@ internal data class KeyDto(
                 ConfigFields.F_KEY_VIBRATE_ON_NONE to (vibrateOnNone ?: GlobalConfig.DEFAULT_VIBRATE_ON_NONE),
                 ConfigFields.F_KEY_TOAST_ON_RUN to (toastOnRun ?: GlobalConfig.DEFAULT_TOAST_ON_RUN),
                 ConfigFields.F_KEY_TOAST_FLUID to (toastFluid ?: GlobalConfig.DEFAULT_TOAST_FLUID),
+                ConfigFields.F_KEY_TOAST_NOTIFY to (toastNotify ?: GlobalConfig.DEFAULT_TOAST_NOTIFY),
                 ConfigFields.F_KEY_TOAST_TEMPLATE to (toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE),
                 //  「哪几档多击开着」也要走这张表：`toValues` 是两条通道共用的入口，
                 //  这里给文本（`Kind` 只有 Bool / Number / Text），与 `fieldValues()` 同一个编码
@@ -471,6 +473,7 @@ internal data class KeyDto(
                 vibrateOnNone = key.vibrateOnNone,
                 toastOnRun = key.toastOnRun,
                 toastFluid = key.toastFluid,
+                toastNotify = key.toastNotify,
                 toastTemplate = key.toastTemplate,
                 scenes = key.scenes.map { SceneRuleDto.of(it) },
                 extraClicks = key.extraClicks.mapKeys { it.key.toString() }.mapValues { it.value.token },
@@ -771,29 +774,6 @@ internal data class ComboDto(
     @SerialName("hold_fixed_window_start")
     val holdFixedWindowStart: Boolean? = null,
     /**
-     * 这一档**顺序组合**的四格窗口（毫秒）；`0` = 跟随公共设置。
-     *
-     *  与上面那四格**是两套数**（顺序组合单独一组）：有序档量的是「按配置的先后逐颗落」，
-     *  老文件没有这四位 ⇒ 全 0 ⇒ 跟随公共，与这一位出现之前一致，不需要迁移。
-     */
-    @SerialName("ordered_wait_window_ms")
-    val orderedWaitWindowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
-    @SerialName("ordered_wait_pair_ms")
-    val orderedWaitPairMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
-    @SerialName("ordered_hold_window_ms")
-    val orderedHoldWindowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
-    @SerialName("ordered_hold_follower_ms")
-    val orderedHoldFollowerMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
-    /**
-     * 这一档**顺序组合**的两颗固定窗口起点（等待档 / 按住档）；`null` = 跟随公共设置。
-     *
-     *  与 [fixedWindowStart] / [holdFixedWindowStart] 各自独立 —— 拨顺序组合那一颗不动不分顺序那份。
-     */
-    @SerialName("ordered_fixed_window_start")
-    val orderedFixedWindowStart: Boolean? = null,
-    @SerialName("ordered_hold_fixed_window_start")
-    val orderedHoldFixedWindowStart: Boolean? = null,
-    /**
      * **老的「一条规则一个手势」那一列** —— 只读，读到就迁移（见 [mergeScenes]）；与单键那份同型。
      */
     val rules: List<StateRuleDto> = emptyList(),
@@ -815,6 +795,7 @@ internal data class ComboDto(
     val vibrateOnNone: Boolean? = null,
     val toastOnRun: Boolean? = null,
     val toastFluid: Boolean? = null,
+    val toastNotify: Boolean? = null,
     val toastTemplate: String? = null,
     /**
      * **这一档自己的**四格窗口（毫秒，等待 / 按住 × 固定窗口起点 开 / 关）；`0` = 没写过 ⇒ 出厂默认。
@@ -951,6 +932,7 @@ internal data class ComboDto(
             vibrateOnNone = vibrateOnNone ?: GlobalConfig.DEFAULT_VIBRATE_ON_NONE,
             toastOnRun = toastOnRun ?: GlobalConfig.DEFAULT_TOAST_ON_RUN,
             toastFluid = toastFluid ?: GlobalConfig.DEFAULT_TOAST_FLUID,
+            toastNotify = toastNotify ?: GlobalConfig.DEFAULT_TOAST_NOTIFY,
             toastTemplate = toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE,
             //  **四格窗口**：v74 起分开存。老文件只有一个数（`window_ms`，更老的还有
             //  `fixed_window_ms`）—— 拿它给前三格铺底，第四格留给出厂值。
@@ -973,34 +955,6 @@ internal data class ComboDto(
             ordered = this.ordered,
             fixedWindowStart = fixedWindowStart,
             holdFixedWindowStart = holdFixedWindowStart,
-            //  **顺序组合那一组**：四格与两颗开关各自一份（老文件没有 ⇒ 0 / null ⇒ 跟随公共）。
-            //  0 必须原样留着 —— `clamp` 会把它抬到下限，那就成了「这一组显式设了下限值」。
-            orderedWaitWindowMs =
-                if (orderedWaitWindowMs <= 0) {
-                    ComboKey.WINDOW_FOLLOW_GLOBAL
-                } else {
-                    clamp(ConfigFields.F_COMBO_ORDERED_WAIT_WINDOW_MS, orderedWaitWindowMs)
-                },
-            orderedWaitPairMs =
-                if (orderedWaitPairMs <= 0) {
-                    ComboKey.WINDOW_FOLLOW_GLOBAL
-                } else {
-                    clamp(ConfigFields.F_COMBO_ORDERED_WAIT_PAIR_MS, orderedWaitPairMs)
-                },
-            orderedHoldWindowMs =
-                if (orderedHoldWindowMs <= 0) {
-                    ComboKey.WINDOW_FOLLOW_GLOBAL
-                } else {
-                    clamp(ConfigFields.F_COMBO_ORDERED_HOLD_WINDOW_MS, orderedHoldWindowMs)
-                },
-            orderedHoldFollowerMs =
-                if (orderedHoldFollowerMs <= 0) {
-                    ComboKey.WINDOW_FOLLOW_GLOBAL
-                } else {
-                    clamp(ConfigFields.F_COMBO_ORDERED_HOLD_FOLLOWER_MS, orderedHoldFollowerMs)
-                },
-            orderedFixedWindowStart = orderedFixedWindowStart,
-            orderedHoldFixedWindowStart = orderedHoldFixedWindowStart,
         )
     }
 
@@ -1037,12 +991,6 @@ internal data class ComboDto(
                 ordered = combo.ordered,
                 fixedWindowStart = combo.fixedWindowStart,
                 holdFixedWindowStart = combo.holdFixedWindowStart,
-                orderedWaitWindowMs = combo.orderedWaitWindowMs,
-                orderedWaitPairMs = combo.orderedWaitPairMs,
-                orderedHoldWindowMs = combo.orderedHoldWindowMs,
-                orderedHoldFollowerMs = combo.orderedHoldFollowerMs,
-                orderedFixedWindowStart = combo.orderedFixedWindowStart,
-                orderedHoldFixedWindowStart = combo.orderedHoldFixedWindowStart,
                 scenes = combo.scenes.map { SceneRuleDto.of(it) },
                 useOwnSettings = combo.useOwnSettings,
                 colorOsApi = combo.colorOsApi,
@@ -1051,6 +999,7 @@ internal data class ComboDto(
                 vibrateOnNone = combo.vibrateOnNone,
                 toastOnRun = combo.toastOnRun,
                 toastFluid = combo.toastFluid,
+                toastNotify = combo.toastNotify,
                 toastTemplate = combo.toastTemplate,
                 waitWindowMs = combo.waitWindowMs,
                 waitPairMs = combo.waitPairMs,
@@ -1139,6 +1088,9 @@ internal data class GlobalDto(
     /** 执行时提示走流体云 —— 老文件没有这一项，退回默认（开，见 v63 那次语义迁移）。 */
     @SerialName("toast_fluid")
     val toastFluid: Boolean = GlobalConfig.DEFAULT_TOAST_FLUID,
+    /** 执行时提示走通知 —— 老文件没有这一项，退回默认（关；四档由 `NoticeMode.of` 派生）。 */
+    @SerialName("toast_notify")
+    val toastNotify: Boolean = GlobalConfig.DEFAULT_TOAST_NOTIFY,
     /** 「执行时提示」的文案模板（见 `GlobalConfig.toastTemplate`）—— 老文件没有这一项，退回默认那句。 */
     @SerialName("toast_template")
     val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
@@ -1185,25 +1137,6 @@ internal data class GlobalDto(
     @SerialName("combo_hold_fixed_window_start")
     val comboHoldFixedWindowStart: Boolean = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
     /**
-     * **顺序组合**那一组窗口与两颗开关（`GlobalConfig.comboOrdered*` 那六位）—— 与上面那四格
-     *  + 两颗开关是**两套数**（顺序组合单独一组）。
-     *
-     *  两列都走（落盘 + 广播）：判据在注入侧（`ComboDetector` 按 `Config.comboWindowsFor` 挑这一份）。
-     *  老文件没有这六位 ⇒ 出厂值（固定等 350 / 逐次等 250 与两颗关），与这一位出现之前一致。
-     */
-    @SerialName("combo_ordered_wait_window_ms")
-    val comboOrderedWaitWindowMs: Int = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
-    @SerialName("combo_ordered_wait_pair_ms")
-    val comboOrderedWaitPairMs: Int = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
-    @SerialName("combo_ordered_hold_window_ms")
-    val comboOrderedHoldWindowMs: Int = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
-    @SerialName("combo_ordered_hold_follower_ms")
-    val comboOrderedHoldFollowerMs: Int = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
-    @SerialName("combo_ordered_fixed_window_start")
-    val comboOrderedFixedWindowStart: Boolean = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
-    @SerialName("combo_ordered_hold_fixed_window_start")
-    val comboOrderedHoldFixedWindowStart: Boolean = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
-    /**
      * 按住组合的首键松手后仍执行它自己的长按（见 `GlobalConfig.comboStarterKeepLong`）。
      *
      *  **两列都走**：落盘这一份之外还进配置广播（`ConfigFields.F_COMBO_STARTER_KEEP_LONG`
@@ -1246,6 +1179,7 @@ internal data class GlobalDto(
                 ConfigFields.F_VIBRATE_ON_NONE to vibrateOnNone,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_TOAST_FLUID to toastFluid,
+                ConfigFields.F_TOAST_NOTIFY to toastNotify,
                 ConfigFields.F_TOAST_TEMPLATE to toastTemplate,
                 ConfigFields.F_LANGUAGE to language,
                 ConfigFields.F_PALETTE to palette,
@@ -1262,12 +1196,6 @@ internal data class GlobalDto(
                 ConfigFields.F_COMBO_SCENE_ON_STARTER to comboSceneOnStarter,
                 ConfigFields.F_COMBO_FIXED_WINDOW_START to comboFixedWindowStart,
                 ConfigFields.F_COMBO_HOLD_FIXED_WINDOW_START to comboHoldFixedWindowStart,
-                ConfigFields.F_COMBO_ORDERED_WAIT_WINDOW_MS to comboOrderedWaitWindowMs,
-                ConfigFields.F_COMBO_ORDERED_WAIT_PAIR_MS to comboOrderedWaitPairMs,
-                ConfigFields.F_COMBO_ORDERED_HOLD_WINDOW_MS to comboOrderedHoldWindowMs,
-                ConfigFields.F_COMBO_ORDERED_HOLD_FOLLOWER_MS to comboOrderedHoldFollowerMs,
-                ConfigFields.F_COMBO_ORDERED_FIXED_WINDOW_START to comboOrderedFixedWindowStart,
-                ConfigFields.F_COMBO_ORDERED_HOLD_FIXED_WINDOW_START to comboOrderedHoldFixedWindowStart,
                 ConfigFields.F_COMBO_STARTER_KEEP_LONG to comboStarterKeepLong,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
@@ -1290,6 +1218,7 @@ internal data class GlobalDto(
                 vibrateOnNone = g.vibrateOnNone,
                 toastOnRun = g.toastOnRun,
                 toastFluid = g.toastFluid,
+                toastNotify = g.toastNotify,
                 toastTemplate = g.toastTemplate,
                 language = g.language,
                 palette = g.palette,
@@ -1306,12 +1235,6 @@ internal data class GlobalDto(
                 comboSceneOnStarter = g.comboSceneOnStarter,
                 comboFixedWindowStart = g.comboFixedWindowStart,
                 comboHoldFixedWindowStart = g.comboHoldFixedWindowStart,
-                comboOrderedWaitWindowMs = g.comboOrderedWaitWindowMs,
-                comboOrderedWaitPairMs = g.comboOrderedWaitPairMs,
-                comboOrderedHoldWindowMs = g.comboOrderedHoldWindowMs,
-                comboOrderedHoldFollowerMs = g.comboOrderedHoldFollowerMs,
-                comboOrderedFixedWindowStart = g.comboOrderedFixedWindowStart,
-                comboOrderedHoldFixedWindowStart = g.comboOrderedHoldFixedWindowStart,
                 comboStarterKeepLong = g.comboStarterKeepLong,
                 iconTintSeed = g.iconTintSeed,
                 showCommonCommands = g.showCommonCommands,

@@ -16,12 +16,12 @@ import com.lookie.opluskey.ui.chrome.HeaderIconButton
 import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.row.rememberRowIconColor
 import com.lookie.opluskey.ui.state.page.SettingsTarget
 import com.lookie.opluskey.ui.state.page.SettingsTargetState
 import com.lookie.opluskey.ui.wire.disabledClickReason
 import com.lookie.opluskey.ui.write.write
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 三页顶栏那颗「重置」（`eraser`）：更多选项 / 按键设置 / 独立设置。
 //
@@ -54,17 +54,14 @@ internal enum class ResetScope {
 internal fun SettingsPage.HeaderReset(scope: ResetScope) {
     var asking by remember { mutableStateOf(false) }
     val writable = pageWritable()
+    //  顶栏按钮不给图标上色 ⇒ 禁用态自己给：取全项目那一份两色（启用 / 禁用 + 统一过渡）
+    val resetTint by rememberRowIconColor(enabled = writable, label = "HeaderResetIcon")
     DisabledHint(if (writable) null else disabledClickReason()) {
         HeaderIconButton(onClick = { asking = true }, enabled = writable) {
             Icon(
                 PageIcons.MenuReset,
                 contentDescription = I18n.get(Strings.COMMON_RESET),
-                tint =
-                    if (writable) {
-                        COUITheme.colorScheme.onSurfaceContainer
-                    } else {
-                        COUITheme.colorScheme.disabledOnSecondaryVariant
-                    },
+                tint = resetTint,
             )
         }
     }
@@ -124,6 +121,7 @@ private fun SettingsPage.applyReset(scope: ResetScope) {
                             vibrateOnNone = GlobalConfig.DEFAULT_VIBRATE_ON_NONE,
                             toastOnRun = GlobalConfig.DEFAULT_TOAST_ON_RUN,
                             toastFluid = GlobalConfig.DEFAULT_TOAST_FLUID,
+                            toastNotify = GlobalConfig.DEFAULT_TOAST_NOTIFY,
                             toastTemplate = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
                             miniWindowAnim = GlobalConfig.DEFAULT_MINI_WINDOW_ANIM,
                             // 单击
@@ -146,13 +144,6 @@ private fun SettingsPage.applyReset(scope: ResetScope) {
                             comboStarterKeepLong = GlobalConfig.DEFAULT_COMBO_STARTER_KEEP_LONG,
                             comboFixedWindowStart = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
                             comboHoldFixedWindowStart = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
-                            // 组合：顺序组合那一组（与上面四格 + 两颗开关各一份）
-                            comboOrderedWaitWindowMs = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
-                            comboOrderedWaitPairMs = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
-                            comboOrderedHoldWindowMs = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
-                            comboOrderedHoldFollowerMs = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
-                            comboOrderedFixedWindowStart = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
-                            comboOrderedHoldFixedWindowStart = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
                         ),
                 )
             }
@@ -214,6 +205,7 @@ private fun KeyConfig.ownReset(): KeyConfig =
         vibrateOnNone = GlobalConfig.DEFAULT_VIBRATE_ON_NONE,
         toastOnRun = GlobalConfig.DEFAULT_TOAST_ON_RUN,
         toastFluid = GlobalConfig.DEFAULT_TOAST_FLUID,
+        toastNotify = GlobalConfig.DEFAULT_TOAST_NOTIFY,
         toastTemplate = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
         //  「单击」那张卡：判定时机 + 等待窗口
         //  `waitMultiWindow` 同样没有 `DEFAULT_*` 常量，出厂值就是它在 `KeyConfig` 上的声明（`true`）
@@ -238,23 +230,17 @@ private fun ComboKey.ownReset(): ComboKey =
         vibrateOnNone = GlobalConfig.DEFAULT_VIBRATE_ON_NONE,
         toastOnRun = GlobalConfig.DEFAULT_TOAST_ON_RUN,
         toastFluid = GlobalConfig.DEFAULT_TOAST_FLUID,
+        toastNotify = GlobalConfig.DEFAULT_TOAST_NOTIFY,
         toastTemplate = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
         //  不分顺序那四格
         waitWindowMs = ComboKey.WINDOW_FOLLOW_GLOBAL,
         waitPairMs = ComboKey.WINDOW_FOLLOW_GLOBAL,
         holdWindowMs = ComboKey.WINDOW_FOLLOW_GLOBAL,
         holdFollowerMs = ComboKey.WINDOW_FOLLOW_GLOBAL,
-        //  顺序组合那四格（与上面四格各存各的）
-        orderedWaitWindowMs = ComboKey.WINDOW_FOLLOW_GLOBAL,
-        orderedWaitPairMs = ComboKey.WINDOW_FOLLOW_GLOBAL,
-        orderedHoldWindowMs = ComboKey.WINDOW_FOLLOW_GLOBAL,
-        orderedHoldFollowerMs = ComboKey.WINDOW_FOLLOW_GLOBAL,
         holdMinMs = ComboKey.HOLD_MIN_FOLLOW_GLOBAL,
         //  四个开关：`null` = 没写过
         sceneOnStarter = null,
         starterKeepLong = null,
         fixedWindowStart = null,
         holdFixedWindowStart = null,
-        orderedFixedWindowStart = null,
-        orderedHoldFixedWindowStart = null,
     )

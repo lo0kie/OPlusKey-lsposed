@@ -4,7 +4,6 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.CommandOutput
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.isSerialCommand
@@ -18,6 +17,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import java.util.Locale
 
 /**
  * 自定义命令库的读写：JSON 编解码（kotlinx.serialization）加文件 IO。
@@ -137,8 +137,7 @@ object CommandLibrary {
                     single = dto.single,
                     root = dto.root,
                     viaShizuku = dto.viaShizuku,
-                    output = CommandOutput.fromId(dto.output),
-                    outputIcon = dto.outputIcon,
+                    showOutput = dto.showOutput || legacyOutputOn(dto.output),
                 )
             }
 
@@ -150,11 +149,21 @@ object CommandLibrary {
                     stepDelayMs = dto.stepDelayMs.coerceIn(Command.MIN_STEP_DELAY_MS, Command.MAX_STEP_DELAY_MS),
                     root = dto.root,
                     viaShizuku = dto.viaShizuku,
-                    output = CommandOutput.fromId(dto.output),
-                    outputIcon = dto.outputIcon,
+                    showOutput = dto.showOutput || legacyOutputOn(dto.output),
                 )
             }
         }
+    }
+
+    /**
+     * 老文件里那一格 `output`（`none` / `toast` / `notify` / `fluid`）→ 这一版的布尔。
+     *
+     *  只认「当时确实显示过」：`none` 与缺键都算关。认不出的字面量按关处理 —— 那是手改坏的值，
+     *  当开会让一条从没配过的命令突然开始念输出。
+     */
+    private fun legacyOutputOn(id: String): Boolean {
+        val text = id.trim().lowercase(Locale.ROOT)
+        return text.isNotEmpty() && text != "none"
     }
 
     /** 解析命令库文本，读不懂的条目跳过，绝不抛异常。 */
@@ -456,10 +465,21 @@ internal data class CommandDto(
     val root: Boolean = true,
     /** 是否经 Shizuku 执行（同上：只有 `shell:` 用得上，缺键 ⇒ 不走）。 */
     val viaShizuku: Boolean = false,
-    /** 返回结果显示到哪（`CommandOutput.id`）；缺键 ⇒ 空串 ⇒ 读成「不显示」那一档。 */
+    /**
+     * 执行时用命令的实际输出代替命令名（[Command.showOutput]）；缺键 ⇒ `false`。
+     *
+     *  落点不在这里：「在哪提示」归「执行时提示」那一套设置，这一位只决定念什么。
+     */
+    val showOutput: Boolean = false,
+    /**
+     * **老文件里**「返回结果显示到哪」（`none` / `toast` / `notify` / `fluid`）—— 只读迁移用。
+     *
+     *  这一版之后落点归「执行时提示」，那四档只剩一个信息：这条命令**显示过**输出。
+     *  读的时候非空且不是 `none` 就折成 [showOutput]（见 [CommandLibrary.toCommand]）；
+     *  写侧恒为空串 —— 它会以 `"output": ""` 留在文件里（`encodeDefaults = true` 的口径），
+     *  那是这份 DTO 的一格，不是还在用的配置。
+     */
     val output: String = "",
-    /** 流体云那一档用的图标 id（`FluidIcons`）；缺键 ⇒ 空串 ⇒ 胶囊不带图标。 */
-    val outputIcon: String = "",
 ) {
     companion object {
         fun of(c: Command): CommandDto =
@@ -471,8 +491,7 @@ internal data class CommandDto(
                 stepDelayMs = c.stepDelayMs,
                 root = c.root,
                 viaShizuku = c.viaShizuku,
-                output = c.output.id,
-                outputIcon = c.outputIcon,
+                showOutput = c.showOutput,
             )
     }
 }

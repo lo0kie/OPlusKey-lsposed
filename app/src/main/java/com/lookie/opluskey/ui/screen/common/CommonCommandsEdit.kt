@@ -1,6 +1,5 @@
 package com.lookie.opluskey.ui.screen.common
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -25,7 +24,7 @@ import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.icon.PageIcons
-import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.row.rememberRowIconColor
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.state.common.CommonCommandsEditState
@@ -57,17 +56,8 @@ internal fun SettingsPage.CommonCommandsHeaderEdit() {
             .isEmpty()
     val canEdit = !empty && pageWritable()
     //  字形随编辑态换（编辑 与 完成）：同位置替换**不做淡入淡出**（用户口径），直接换这颗字形；
-    //  颜色仍是状态驱动的过渡（`animateColorAsState`），字形与底色同一次到位。
-    val iconTint by animateColorAsState(
-        targetValue =
-            if (canEdit) {
-                COUITheme.colorScheme.onSurfaceContainer
-            } else {
-                COUITheme.colorScheme.disabledOnSecondaryVariant
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "CommonCommandsEditIcon",
-    )
+    //  颜色仍是状态驱动的过渡（`rememberRowIconColor`：启用 / 禁用两档，全项目一份）。
+    val iconTint by rememberRowIconColor(enabled = canEdit, label = "CommonCommandsEditIcon")
     //  **编辑态里它左边还多一颗「全选」**：一列清单要逐条勾太费事，而「整批固定 / 整批删」
     //  正是这一页最常见的两种用法（与「按键功能」页那颗同一个样式、同一个位置）。
     if (editing) CommonCommandsHeaderSelectAll(canEdit)
@@ -287,14 +277,10 @@ private fun SettingsPage.CommonCommandsHeaderSelectAll(canEdit: Boolean) {
     val every = all.isNotEmpty() && CommonCommandsEditState.picked == all
     //  勾满那一档用**强调色**（与「按键功能」页那颗同一套）：只看图标分不出两档，
     //  文案在无障碍里，眼睛看不到。
-    val iconTint by animateColorAsState(
-        targetValue =
-            when {
-                !canEdit -> COUITheme.colorScheme.disabledOnSecondaryVariant
-                every -> COUITheme.colorScheme.primary
-                else -> COUITheme.colorScheme.onSurfaceContainer
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
+    //  取色走全项目那一份（`rememberRowIconColor`：禁用 > 选中 > 常规，三档一条线）。
+    val iconTint by rememberRowIconColor(
+        enabled = canEdit,
+        selected = every,
         label = "CommonCommandsSelectAllIcon",
     )
     DisabledHint(if (canEdit) null else disabledClickReason()) {

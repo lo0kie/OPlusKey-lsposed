@@ -94,6 +94,21 @@ internal object ShizukuHost {
     fun readGranted(ctx: Context): Boolean = probe(ctx) == ShizukuShellClient.GrantState.GRANTED
 
     /**
+     * 这一轮授权会不会把**本进程**重启掉 —— 后端是 Sui 时为真。
+     *
+     *  Sui 在权限状态一变就 force-stop 请求方，作用是截断旧的 binder 句柄、让应用下次启动拿到
+     *  正确的 backend。真机留痕（12:09:51 发起请求，12:09:53 宿主两个进程一起被杀）：
+     *
+     *      Force stopping com.oplus.gesture appid=10277 user=0: from pid 1860
+     *      Killing 15223:com.oplus.gesture.ui/u0a277 (adj 0): stop com.oplus.gesture due to from pid 1860
+     *
+     *  那个 pid 就是 `sui` 自己（`ps` 里 uid 0 的 `sui`，另有 uid 2000 的 `sui_shell`）。**模块侧拦不住
+     *  它** —— 正编辑着的页面会整个没掉，草稿也一起没。所以界面要在弹框之前就把这句话说出来，
+     *  用户回来才知道该怎么继续（重新打开那个开关）。真 Shizuku 没有这一档：授权按 uid 记，不重启进程。
+     */
+    fun grantRestartsProcess(): Boolean = runCatching { Sui.isSui() }.getOrDefault(false)
+
+    /**
      * 与 [readGranted] 同一件事，但**不把结论压成一个布尔** —— 申请授权那一侧要分档（见
      * [requestGrant]）：「有 Shizuku、只是没授权」才该去弹框；「这台机器上没有可用 Shizuku」
      * 去了也弹不出来，那一轮就是白等。
@@ -337,6 +352,11 @@ internal object ShizukuHost {
                     return@execute
                 }
                 //  请求那一步**必须在主线程**（见函数头）。
+                //  这一行是判据：Sui 那一档下面这一次请求会以「本进程被 force-stop」收场（见
+                //  [grantRestartsProcess]），日志里先把它说清，免得下次按「模块把页面弄没了」查。
+                if (grantRestartsProcess()) {
+                    XLog.w("Shizuku：后端是 Sui —— 授权成功那一下 Sui 会 force-stop 本进程，页面会被重启")
+                }
                 main.post {
                     ShizukuExec.requestGrantBlocking { result -> settle(outcomeOf(result)) }
                 }

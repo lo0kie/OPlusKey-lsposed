@@ -265,13 +265,25 @@ object ConfigCodec {
      *       丢掉之后的表现正是新的口径：开着独立设置而没写过的格子取出厂默认
      *       （见 `docs/changelog/2026-11-17-独立设置去掉播种.md`）。无行为迁移。
      *
+     *  83 = **命令的落点折成一个开关**：`CommandDto` 的 `outputIcon` 删掉、`output` 那一格
+     *       保留为空串（只读迁移），新增 `showOutput` —— 非空且不是 `none` 的老值折成 `true`。
+     *       缺键 ⇒ `false`，与这一位出现之前「不显示」一致；`outputIcon` 由 `ignoreUnknownKeys` 丢掉。
+     *  84 = **「执行时提示」多一档通知**：`GlobalDto` / `KeyDto` / `ComboDto` 各多了 `toast_notify`
+     *       （缺键 ⇒ `false`）。四档由三颗布尔派生（`NoticeMode.of`），老文件读进来逐档不变：
+     *       `on=false` 仍是「不提示」、`on=true + fluid=true` 仍是「流体云」。
+     *
+     *  85 = **顺序组合那一组窗口删掉**（有序无序共用同一套）：v81 加进来的
+     *       `combo_ordered_*` 六位（`GlobalDto`）与 `ComboDto` 的同名六位一并消失 ——
+     *       档位要不要按先后落与「多久之内落完」是两件事，窗口只有一套。
+     *       老文件里残留的这几位按未知键丢掉，取值回落到共用那四格 + 两颗开关。
+     *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
      *  不抬版本的话，`version == VERSION` 那一支会拿新 DTO 去校旧文件，**每一份已有配置都当场
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 82
+    const val VERSION = 85
 
     /**
      * 「提示走流体云」由「可选增强」变成「默认落点」的那一版 —— 迁移只看「文件是不是比它旧」。

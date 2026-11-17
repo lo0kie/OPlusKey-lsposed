@@ -661,37 +661,11 @@ object Strings {
     const val COMBO_FIXED_WINDOW_START_DESC_OFF = "combo.fixed_window_start_desc_off"
 
     /**
-     * 「等待窗口」滑杆（紧接上面那颗开关）—— 这一档等多久。
-     *
-     *  滑杆上挂的是**两格数**（`ComboWindows.wait` / `waitPair`），显示与写入都按那颗开关挑一格：
-     *  开着时管**整串**（从首个成员按下起只等这一个窗口），关着时管**相邻两颗**（每按一颗重新等）。
-     *  那一格是「整串」还是「相邻两颗」由上面那颗开关的副标题说清，滑杆**不画副标题**。
-     *  原先这里还有一根「按键之间的等待」量相邻两颗 —— 那本来是同一件事的第二个旋钮，已删；
-     *  现在它是「关」的那一格，随开关露面。
-     */
-    const val COMBO_FIXED_WINDOW_TITLE = "combo.fixed_window_title"
-
-    /**
      * 「按顺序触发」开关（标题 + 开/关两句说明）—— 等待组合是否要求成员按选键的顺序先后按下。
      */
     const val COMBO_ORDERED_TITLE = "combo.ordered_title"
     const val COMBO_ORDERED_DESC_ON = "combo.ordered_desc_on"
     const val COMBO_ORDERED_DESC_OFF = "combo.ordered_desc_off"
-
-    /**
-     * **顺序组合**那一对窗口行（固定窗口起点开关 + 滑杆）—— 两张卡各摆一对、文案同一套。
-     *
-     *  与上面那两对（不只加在等待组合卡上）是**两套数**：不分顺序那一档允许成员乱序落下，
-     *  顺序组合必须按配置的先后逐颗落。所以顺序组合自己一组窗口，调宽一处不影响另一处。
-     *
-     *  滑杆与它上面那颗开关同一套用法：开着时管**整串**（`orderedWait` / `orderedHold`），
-     *  关着时管**相邻两颗**（`orderedWaitPair` / `orderedHoldFollower`）—— 两格分开存，
-     *  同一时刻只露一根，由开关决定写哪一格。
-     */
-    const val COMBO_ORDERED_FIXED_WINDOW_TITLE = "combo.ordered_fixed_window_title"
-    const val COMBO_ORDERED_FIXED_WINDOW_DESC_ON = "combo.ordered_fixed_window_desc_on"
-    const val COMBO_ORDERED_FIXED_WINDOW_DESC_OFF = "combo.ordered_fixed_window_desc_off"
-    const val COMBO_ORDERED_WINDOW_TITLE = "combo.ordered_window_title"
 
     /** 顺序选择器里「不分顺序」那一行的文案。 */
     const val COMBO_ORDER_ANY = "combo.order_any"
@@ -1592,14 +1566,6 @@ object Strings {
     const val HOME_MINI_ANIM_DESC_ON = "home.mini_anim_desc_on"
     const val HOME_MINI_ANIM_TITLE = "home.mini_anim_title"
     const val HOME_TOAST_TITLE = "home.toast_title"
-
-    /**
-     * 「执行时提示」的**落点**：Toast 还是流体云（只换落点，不换文案）。
-     *
-     *  流体云是 ColorOS 的能力 ⇒ 这一档随「使用 ColorOS 接口」走：接口那一档关掉时置灰并说明
-     *  原因（`_NEEDS_COLOROS`），执行侧也会回落 Toast（见 `GestureExec.noticeIfNeeded`）。
-     */
-    const val HOME_TOAST_FLUID_TITLE = "home.toast_fluid_title"
     const val HOME_TOAST_FLUID_NEEDS_COLOROS = "home.toast_fluid_needs_coloros"
 
     /** 「执行时提示」的**文案模板**：那一行的标题 / 输入框占位 / 弹窗里的占位符说明 / 为空时那句默认。 */
@@ -2153,24 +2119,7 @@ object Strings {
     /** 「提示执行结果」那一行的**行标题** —— 命令跑完之后把标准输出送到哪。 */
     const val COMMAND_OUTPUT_TITLE = "command.output_title"
 
-    /**
-     * 同一件事那层菜单的**小标题**（「提示类型」）—— 与行标题分开说：
-     * 行说的是「这一项管什么」，菜单标题说的是「这一层在挑哪一类东西」（四档落点）。
-     */
-    const val COMMAND_OUTPUT_MENU_TITLE = "command.output_menu_title"
-
-    /** 四档落点（顺序即菜单顺序）：不显示 / 提示 / 通知 / 流体云。 */
-    const val COMMAND_OUTPUT_NONE = "command.output_none"
-
-    const val COMMAND_OUTPUT_TOAST = "command.output_toast"
-
-    const val COMMAND_OUTPUT_NOTIFY = "command.output_notify"
-
-    const val COMMAND_OUTPUT_FLUID = "command.output_fluid"
-
     const val COMMAND_FAILURE_SHELL_NO_SHIZUKU = "command_failure.shell_no_shizuku"
-
-    const val COMMAND_OUTPUT_PREFIX = "command.output_prefix"
 
     const val COMMAND_FAILURE_SHELL_CHANNEL_OFF = "command_failure.shell_channel_off"
 
@@ -2180,9 +2129,21 @@ object Strings {
 
     const val COMBO_HOLD_FIXED_WINDOW_DESC_OFF = "combo.hold_fixed_window_desc_off"
 
-    const val COMBO_ORDERED_HOLD_FIXED_WINDOW_DESC_ON = "combo.ordered_hold_fixed_window_desc_on"
-
-    const val COMBO_ORDERED_HOLD_FIXED_WINDOW_DESC_OFF = "combo.ordered_hold_fixed_window_desc_off"
-
     const val COMBO_MEMBER_WINDOW_SHARE = "combo.member_window_share"
+
+    const val COMMAND_SHIZUKU_SUI_RESTART = "command.shizuku_sui_restart"
+
+    const val HOME_TOAST_MODE_NONE = "home.toast_mode_none"
+
+    const val HOME_TOAST_MODE_NOTIFY = "home.toast_mode_notify"
+
+    const val HOME_TOAST_MODE_TOAST = "home.toast_mode_toast"
+
+    const val HOME_TOAST_MODE_FLUID = "home.toast_mode_fluid"
+
+    const val COMBO_MULTI_FIXED_WINDOW_TITLE = "combo.multi_fixed_window_title"
+
+    const val COMBO_INTERVAL_FIXED_WINDOW_TITLE = "combo.interval_fixed_window_title"
+
+    const val COMBO_INTERVAL_MULTI_FIXED_WINDOW_TITLE = "combo.interval_multi_fixed_window_title"
 }

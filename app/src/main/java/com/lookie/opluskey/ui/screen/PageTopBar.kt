@@ -11,6 +11,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.present.COMBO_ORDER_SEPARATOR
 import com.lookie.opluskey.core.present.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.core.present.comboLabelOf
@@ -98,7 +99,11 @@ internal fun SettingsPage.PageTopBar(
                 if (combo != null && combo.isHold) {
                     holdComboChips(cfg, combo, subtitleColor)
                 } else {
-                    keyNames(settingsTargetNames(cfg, target), subtitleColor)
+                    keyNames(
+                        settingsTargetNames(cfg, target),
+                        subtitleColor,
+                        ordered = combo?.ordered == true,
+                    )
                 }
             }
 
@@ -111,7 +116,11 @@ internal fun SettingsPage.PageTopBar(
                 if (combo != null && combo.isHold) {
                     holdComboChips(cfg, combo, subtitleColor)
                 } else {
-                    keyNames(branchOwnerNames(cfg, branchDraft.comboId, editingKeyName()), subtitleColor)
+                    keyNames(
+                        branchOwnerNames(cfg, branchDraft.comboId, editingKeyName()),
+                        subtitleColor,
+                        ordered = combo?.ordered == true,
+                    )
                 }
             }
 
@@ -134,7 +143,7 @@ internal fun SettingsPage.PageTopBar(
                     }
 
                     else -> {
-                        keyNames(comboKeyNames(cfg, combo), subtitleColor)
+                        keyNames(comboKeyNames(cfg, combo), subtitleColor, ordered = combo.ordered)
                     }
                 }
             }
@@ -535,21 +544,29 @@ private fun SettingsPage.PageBottomBand(
 
 // 副标题装的是**键名**的那几页由 [keyNames] / [holdComboChips] 两支画（就地算，见那里的注释）。
 //
-//  只有「这一行装的是键名」的那几页单独拿出来：单键一颗，组合每颗各一颗、中间一个 `×`。
+//  只有「这一行装的是键名」的那几页单独拿出来：单键一颗，组合每颗各一颗、中间一个分隔符。
 //  其余页仍是纯文字（[pageSubtitle]）：它们装的是句子或应用名，按颗排对它们没有意义。
 //
 //  这一行的字号就是副标题那一档（`body2`），颜色跟着 [PageTopBar] 算好的压暗值走 ——
 //  这一页整片变灰时名字与句子一起暗下去，不会只剩名字还亮着。
 
-/** 一串键名 → 顶栏那一行（单行 `body2`，超宽画省略号）。 */
+/**
+ * 一串键名 → 顶栏那一行（单行 `body2`，超宽画省略号）。
+ *
+ * @param ordered 这一串是**按顺序触发**那一档的成员 —— 分隔符换成「→」；
+ *   判据与列表行标题、`comboTitleText` 同一条（都看 `ComboKey.ordered`），
+ *   免得同组合在顶栏念成「一起按下」、在列表里念成「先后」
+ */
 private fun keyNames(
     names: List<String>,
     color: Color,
+    ordered: Boolean = false,
 ): @Composable () -> Unit =
     {
+        val sep = if (ordered) COMBO_ORDER_SEPARATOR else COMBO_PAIR_SEPARATOR
         //  分隔符两边留空格：与列表行标题（`comboTitleText`）同一份写法，
         //  两处摆在一起时不会一处「A×B」、一处「A × B」
-        val namesText = names.joinToString(" $COMBO_PAIR_SEPARATOR ")
+        val namesText = names.joinToString(" $sep ")
         Text(
             text = namesText,
             style = COUITheme.textStyles.body2,
@@ -624,6 +641,10 @@ internal fun settingsTargetNames(
  *  三处顶栏共用这一支：组合编辑页、「按键设置」里那一档组合的独立设置 —— 它们说的是同一档组合，
  *  不该两种念法。
  *
+ *  **后续成员之间的分隔符跟着 `ordered` 走**（与等待那一档同一条判据）：不分顺序「×」、
+ *  按顺序「→」—— 后者与首键那句「后再按」是同一层意思，念成「按住 A 后再按 B × C」
+ *  会让人以为 B 与 C 要同时按下去。
+ *
  * @param color 这一行的字色 —— 恒定是库那档次要色（`subtitleColor`，停用与否都不压暗）
  */
 private fun holdComboChips(
@@ -635,7 +656,11 @@ private fun holdComboChips(
         val names = comboKeyNames(cfg, combo)
         //  首键就是 `keys` 第一位（迁移之后老配置也已是这个形状），不再需要「要不要倒过来」
         ChipSentence(
-            template = holdSentenceTemplate(names.size - 1),
+            template =
+                holdSentenceTemplate(
+                    names.size - 1,
+                    if (combo.ordered) COMBO_ORDER_SEPARATOR else COMBO_PAIR_SEPARATOR,
+                ),
             names = names,
             style = COUITheme.textStyles.body2,
             color = color,

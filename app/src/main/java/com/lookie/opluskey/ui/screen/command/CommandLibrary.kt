@@ -96,17 +96,16 @@ internal fun SettingsPage.draftCommand(): Command {
     val name = CommandLibrary.sanitizeName(draft.name)
     return when (draft.kind) {
         CommandKind.SINGLE -> {
-            //  **执行身份与结果落点一起带上**：这两档都是「每条命令自己的」，测试要测的就是
-            //  眼前这份草稿 —— 漏传的话现象很具体：勾了「以 Shizuku 执行」也照旧走 su，
-            //  结果那一档不管选哪个都按默认（「不显示」）跑。
+            //  **执行身份与「用输出代替命令名」一起带上**：这几档都是「每条命令自己的」，
+            //  测试要测的就是眼前这份草稿 —— 漏传的话现象很具体：勾了「以 Shizuku 执行」
+            //  也照旧走 su，开关开了也照旧念命令名。
             Command(
                 name = name,
                 kind = CommandKind.SINGLE,
                 single = draft.single.trim(),
                 root = draft.root,
                 viaShizuku = draft.viaShizuku,
-                output = draft.output,
-                outputIcon = draft.outputIcon,
+                showOutput = draft.showOutput,
             )
         }
 

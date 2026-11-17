@@ -180,6 +180,18 @@ interface OwnSettings {
      */
     val toastFluid: Boolean
 
+    /** 这一档自己的「提示走通知」—— 只在 [useOwnSettings] 开着时算数（与 [toastFluid] 互斥，见 [noticeMode]）。 */
+    val toastNotify: Boolean
+
+    /**
+     * 这一档**生效的那一档落点** —— 界面菜单读它显示当前选中项，执行侧读它决定怎么发。
+     *
+     *  唯一出口是 [NoticeMode.of]（三颗布尔 → 四档）：这里只是把这一档自己的那三颗递过去。
+     *  「不提示」不是一个开关，而是 [toastOnRun] 关着这一种状态。
+     */
+    val noticeMode: NoticeMode
+        get() = NoticeMode.of(toastOnRun, toastNotify, toastFluid)
+
     /** 这一档自己的提示文案模板（空串 = 用默认那句，口径同 `GlobalConfig.toastTemplate`）。 */
     val toastTemplate: String
 }
@@ -233,7 +245,29 @@ object FluidCard {
      *  提示气泡里显示成另一个动作的图标，清理旧图时也会把两条当成一条）。所以取 token 的
      *  摘要前 16 位十六进制 —— 仍然定长、仍然只含 `[0-9a-f]`，撞的概率降到可忽略。
      */
-    fun actionNameOf(token: String): String = "$ACTION_PREFIX${digestOf(token)}.png"
+    fun actionNameOf(
+        token: String,
+        identity: String = "",
+    ): String = "$ACTION_PREFIX${digestOf(if (identity.isEmpty()) token else "$token|$identity")}.png"
+
+    /**
+     * 执行身份 → 图标名的那一段后缀（空串 = 默认那档）。
+     *
+     *  **同一条命令按身份分三张图**（sh / root / Shizuku）：图标本身由 `commandIcon` 按
+     *  `root` / `viaShizuku` 挑，而文件名若只认 token，改完开关之后那张旧图会一直留着
+     *  （渲染那边「已经有就不重画」）—— 表现是「换成 Shizuku 了，胶囊还是终端图标」。
+     *
+     *  顺序与 `commandIcon` 的分支一致：Shizuku 优先（执行侧也先判它）。
+     */
+    fun identityOf(
+        root: Boolean,
+        viaShizuku: Boolean,
+    ): String =
+        when {
+            viaShizuku -> "sui"
+            root -> "root"
+            else -> ""
+        }
 
     /** token 的稳定短摘要（12 个十六进制字符）—— 见 [actionNameOf] 里为什么不用 `hashCode`。 */
     private fun digestOf(token: String): String =

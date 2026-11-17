@@ -469,9 +469,11 @@ $state    状态（`打开`）；没有状态时回落到**这一档自己的名
 - 空模板 = 用默认那句；拼完是空白时也退回默认那句 —— 弹一条空 Toast 等于「按了没反应」。
 - 这一项**只有落盘那一列**（`ConfigFields.F_TOAST_TEMPLATE`，与 `F_TOAST_ON_RUN` 同档）：
   提示由宿主执行器在 `host/GestureExec.noticeIfNeeded` 里弹，注入侧不读、也不弹。
-- **与「显示执行返回结果」二选一**：这次动作是自定义命令、且那条命令开了返回结果时，这里不弹
-  —— 回执由命令的 stdout 承担（落点按命令自己的 `output` 档）；没开才回落到这句动作名提示；
-  两个都关就都不弹。判据在 `noticeIfNeeded` 里查命令库那一条的 `output`（命令已删时按「没开」处理，
+- **命令可以把这句里的动作名换成它的输出**（`Command.showOutput`，界面在「命令设置」那张卡）：
+  开着时 `noticeIfNeeded` 不就地发，只把模板与主语打包成 `NoticeSpec` 交给执行侧，等命令跑完
+  在 `ActionRunner.publishOutput` 里拼（输出为空回落到命令名）。**发不发、往哪发都不变**：
+  仍由「执行时提示」与落点那两位决定（公共 / 独立设置），命令这一位只换「念什么」。
+  判据在 `noticeIfNeeded` 里查命令库那一条的 `showOutput`（命令已删时按「没开」处理，
   提示照弹，随后由执行侧报 `NOT_FOUND`）。
 - 键名与手势是**分两段**传进 `noticeIfNeeded` 的（`triggerParts` / `comboParts`）：模板要能只用其中
   一段，先拼成一句再拆回来做不到。日志那边仍拼成「侧键 - 单击」，读的是同一对值。

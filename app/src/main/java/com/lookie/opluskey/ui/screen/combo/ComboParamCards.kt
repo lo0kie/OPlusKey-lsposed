@@ -12,6 +12,9 @@ import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.switchNotice
 import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.text.WindowLabel
+import com.lookie.opluskey.ui.model.text.fixedWindowStartTitle
+import com.lookie.opluskey.ui.model.text.holdWindowLabelOf
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SliderRow
@@ -19,8 +22,6 @@ import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.write.setComboFixedWindowStart
 import com.lookie.opluskey.ui.write.setComboHoldFixedWindowStart
 import com.lookie.opluskey.ui.write.setComboHoldMin
-import com.lookie.opluskey.ui.write.setComboOrderedFixedWindowStart
-import com.lookie.opluskey.ui.write.setComboOrderedHoldFixedWindowStart
 import com.lookie.opluskey.ui.write.setComboSceneOnStarter
 import com.lookie.opluskey.ui.write.setComboStarterKeepLong
 
@@ -45,9 +46,8 @@ import com.lookie.opluskey.ui.write.setComboStarterKeepLong
  *   它自己存着的那份（`Config.comboStoredWindowsFor`，没写过的那几格取出厂默认），**不是**
  *   `comboWindowsFor` 那个「实际生效」值 —— 取生效值的话，拨一下那颗总开关它就从公共值跳到
  *   这一组自己的值，看着像刚拖好的窗口被改了。
+ *   有序无序**共用这一份**：档位要不要按先后落，与「多久之内落完」是两件事。
  * @param windowDefaults 双击滑杆回落的四格：**两份都是出厂默认**（`ComboWindows.DEFAULT`）。
- * @param orderedWindows **顺序组合**那四格，口径与 [windows] 逐条相同（另一组数）。
- * @param orderedWindowDefaults 同 [windowDefaults] —— 顺序组合那一份的回落值。
  * @param holdMinMs 这一根是按住下限（`Config.comboStoredHoldMinFor`）。
  * @param holdMinDefault 同 [windowDefaults]（`GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS`）。
  * @param sceneOnStarter 生效值（`Config.comboSceneOnStarterFor`）—— 开关显示的是「现在按下去会怎样」。
@@ -66,24 +66,11 @@ import com.lookie.opluskey.ui.write.setComboStarterKeepLong
  *   某一组写成功后自己弹一句），卡片不管。
  * @param onStarterKeepLong 同上。
  * @param holdWindowLive 按住那张卡那两行**有没有实际作用**（见 [ComboParamSource.holdWindowLive]）。
- * @param orderedRows 摆不摆第二对窗口行（公共 `true`；独立设置页恒 `false` —— 那一页只有一对）。
  * @param onWaitFixedWindowStart 写等待组合那颗开关 / @param onHoldFixedWindowStart 写按住组合那颗。
- * @param onOrderedWaitFixedWindowStart 写顺序组合那两颗开关（等待那张卡 / 按住那张卡各一颗）。
- *   与上面两颗是**两组变量**：顺序组合自己一组窗口，拨它不动不分顺序那一档。
  */
 internal class ComboParamSource(
     val windows: ComboWindows,
     val windowDefaults: ComboWindows,
-    /**
-     * 这一份来源的**顺序组合**四格窗口（等待 / 按住 × 固定窗口起点 开 / 关）。
-     *
-     *  与 [windows] 是**两套数**（用户口径：顺序组合单独一组）：两张卡各有两对窗口行 ——
-     *  一对给不分顺序那一档、一对给「按顺序触发」那几档。某一组那一份给的是
-     *  `Config.comboStoredOrderedWindowsFor`（与 [windows] 同一条：不看总开关）。
-     */
-    val orderedWindows: ComboWindows,
-    /** 双击滑杆回落的顺序组合四格 —— 口径与 [windowDefaults] 相同。 */
-    val orderedWindowDefaults: ComboWindows,
     val holdMinMs: Int,
     val holdMinDefault: Int,
     val sceneOnStarter: Boolean,
@@ -92,19 +79,16 @@ internal class ComboParamSource(
     val waitFixedWindowStart: Boolean,
     /** 按住组合那张卡的「固定窗口起点」（同上，生效值见 `Config.comboHoldFixedWindowStartFor`）。 */
     val holdFixedWindowStart: Boolean,
-    /** **顺序组合**、等待档的固定窗口起点（这一档自己那份）。 */
-    val orderedWaitFixedWindowStart: Boolean,
-    /** **顺序组合**、按住档的固定窗口起点（这一档自己那份）。 */
-    val orderedHoldFixedWindowStart: Boolean,
     /**
-     * 这一份来源**摆不摆**第二对窗口行（[orderedWaitRows] / [orderedHoldRows]）。
+     * 按住那张卡那颗开关标题的前缀（见 [WindowLabel]）；滑杆同样不带前缀。
      *
-     *  公共设置那片恒为 `true`：公共值是所有档的默认值，没有「这一档是不是顺序组合」可言，
-     *  所以两对都摆（第二对才需要标「顺序组合」把两套数分开）。
-     *  某一档的独立设置页**恒为 `false`** —— 那一页只有一对行，顺序组合的那几档让第一对直接读
-     *  `ordered*` 那一组（见 `comboOwnParams`）：数已经在里面了，再标一句「顺序组合」等于同一件事说两遍。
+     *  公共那一页是 [WindowLabel.INTERVAL_MULTI]（「按键间隔和多击…」）：那里的默认值同时服务
+     *  三颗以上的按住档与两键档。
+     *
+     *  独立设置页只写自己的那一个：两键的按住组合写「多击…」（那两行在那档上只服务成员键
+     *  自己的连击链），其余一律「按键间隔…」—— 有序与不分顺序都算这一类。
      */
-    val orderedRows: Boolean,
+    val holdWindowLabel: WindowLabel,
     /**
      * 按住那张卡那两行（「固定窗口起点」+「等待窗口」）**有没有实际作用**。
      *
@@ -137,25 +121,18 @@ internal class ComboParamSource(
     val onWaitPair: (Int) -> Boolean,
     val onHoldWindow: (Int) -> Boolean,
     val onHoldFollower: (Int) -> Boolean,
-    /** **顺序组合**那四格的写入 —— 与上面四支同形，落点换成各自那一格。 */
-    val onOrderedWaitWindow: (Int) -> Boolean,
-    val onOrderedWaitPair: (Int) -> Boolean,
-    val onOrderedHoldWindow: (Int) -> Boolean,
-    val onOrderedHoldFollower: (Int) -> Boolean,
     val onHoldMin: (Int) -> Boolean,
     val onSceneOnStarter: (Boolean) -> Unit,
     val onStarterKeepLong: (Boolean) -> Unit,
     val onWaitFixedWindowStart: (Boolean) -> Unit,
     val onHoldFixedWindowStart: (Boolean) -> Unit,
-    val onOrderedWaitFixedWindowStart: (Boolean) -> Unit,
-    val onOrderedHoldFixedWindowStart: (Boolean) -> Unit,
 )
 
 /**
- * 「等待组合」那张卡 —— **等窗口**那一条按法的参数，四行：**固定窗口起点** + **等待窗口**，
- *  后面再接**顺序组合**的同名一对（那一对只在「按顺序触发」的档上生效，读的是另一组数）。
- *  **那一对是条件行**（[orderedWaitRows]）：公共设置页两对都摆；某一档的独立设置页**只有一对**
- *  —— 那一档是顺序组合时，唯一那一对直接读 `ordered*` 那一组，不再另标一句「顺序组合」。
+ * 「等待组合」那张卡 —— **等窗口**那一条按法的参数，两行：**固定窗口起点** + **等待窗口**。
+ *
+ *  有序无序**共用这两行**：档位要不要按配置的先后落，与「多久之内落完」是两件事，
+ *  所以只有一套数（用户口径：合并掉原来那对「顺序组合…」行）。
  *
  *  行序与原卡一致：原来第一行那根「按键之间的等待」整行删掉，剩下那一颗开关与那一根窗口
  *  原样留在原位（下面那一根改名叫「等待窗口」）。
@@ -185,7 +162,9 @@ internal fun SettingsPage.WaitComboCard(source: ComboParamSource) {
         rows =
             listOf(
                 CardRow.Switch(
-                    title = I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE),
+                    //  等待组合两种（普通 / 有序）量的是同一件事：两次按下之间的间隔 ⇒ 都写
+                    //  「按键间隔…」；前缀只标在开关这一行，下面那根滑杆不带前缀。
+                    title = I18n.get(WindowLabel.INTERVAL.fixedWindowStartTitle()),
                     summaryOn =
                         I18n.get(Strings.COMBO_FIXED_WINDOW_START_DESC_ON),
                     summaryOff =
@@ -232,82 +211,9 @@ internal fun SettingsPage.WaitComboCard(source: ComboParamSource) {
                         onCommit = if (wholeString) source.onWaitWindow else source.onWaitPair,
                     )
                 },
-                //  —— 顺序组合那一对（用户口径：顺序组合单独一组窗口）——
-                //  与上面两行**同名不同数**：这一对只在「按顺序触发」的那几档上生效
-                //  （`Config.comboWindowsFor` 按 `ordered` 挑这一份）。**独立设置页不摆**
-                //  —— 那一页只有一对，顺序组合的档直接让第一对读它那一组（见 [ComboParamSource.orderedRows]）。
-                *orderedWaitRows(source),
             ),
     )
 }
-
-/**
- * 「等待组合」卡上**第二对窗口行**（顺序组合那一对：固定窗口起点 + 等待窗口）—— 只有
- * [ComboParamSource.orderedRows] 为真时才摆，也就是**只有公共设置那一片**。
- *
- *  独立设置页只有一对：那一档是顺序组合时，第一对直接读 `ordered*` 那一组
- *  （见 `comboOwnParams`）；再摆一对标着「顺序组合」的行只会把同一件事说两遍。
- *  公共那片两对都摆 —— 公共值是所有档的默认值，两套数得分开调。
- */
-private fun SettingsPage.orderedWaitRows(source: ComboParamSource): Array<CardRow> =
-    if (!source.orderedRows) {
-        emptyArray()
-    } else {
-        arrayOf(
-            CardRow.Switch(
-                title = I18n.get(Strings.COMBO_ORDERED_FIXED_WINDOW_TITLE),
-                summaryOn =
-                    I18n.get(Strings.COMBO_ORDERED_FIXED_WINDOW_DESC_ON),
-                summaryOff =
-                    I18n.get(Strings.COMBO_ORDERED_FIXED_WINDOW_DESC_OFF),
-                //  与上面那颗同一颗 `window`：两处管的是同一件事（窗口从哪一刻起算）
-                icon = PageIcons.CollectWindow,
-                checked = source.orderedWaitFixedWindowStart,
-                enabled = source.enabled,
-                disabledHint = source.disabledHint,
-                onCheckedChange = source.onOrderedWaitFixedWindowStart,
-            ),
-            CardRow.Custom { position ->
-                val orderedWhole = source.orderedWaitFixedWindowStart
-                SliderRow(
-                    position = position,
-                    spec =
-                        SliderSpec(
-                            title = I18n.get(Strings.COMBO_ORDERED_WINDOW_TITLE),
-                            //  与上面那一根同一条：这一格管「整串」还是「相邻两颗」由它上面那颗开关说清
-                            icon = PageIcons.ComboWait,
-                            min = GlobalConfig.COMBO_WINDOW_MIN_MS,
-                            //  与上面那一根同一条：上限跟着「当前写哪一格」走
-                            max =
-                                if (orderedWhole) {
-                                    GlobalConfig.COMBO_WINDOW_MAX_MS
-                                } else {
-                                    GlobalConfig.COMBO_PAIR_MAX_MS
-                                },
-                            value =
-                                if (orderedWhole) {
-                                    source.orderedWindows.wait
-                                } else {
-                                    source.orderedWindows.waitPair
-                                },
-                            default =
-                                if (orderedWhole) {
-                                    source.orderedWindowDefaults.wait
-                                } else {
-                                    source.orderedWindowDefaults.waitPair
-                                },
-                            //  与上面那一根同一套步长（理由见那边）
-                            step = 10,
-                            dragStep = 50,
-                            enabled = source.enabled,
-                            disabledHint = source.disabledHint,
-                            valueText = { "$it ms" },
-                        ),
-                    onCommit = if (orderedWhole) source.onOrderedWaitWindow else source.onOrderedWaitPair,
-                )
-            },
-        )
-    }
 
 /**
  * 「按住组合」那张卡 —— **先按住一颗再按另一颗**那两条按法（`MODE_HOLD_FIRST` /
@@ -316,11 +222,7 @@ private fun SettingsPage.orderedWaitRows(source: ComboParamSource): Array<CardRo
  *  1. **固定窗口起点 + 等待窗口**（头两行）：后续成员要在窗口内陆续落完 —— 起点开着时从首个成员
  *     按下起算一个，关着则每颗重新等一个。**与「等待组合」那张卡那一根不是同一个值**：
  *     两档各有自己的一格（`ComboWindows.hold` / `holdFollower`），调宽「按住组合的成员接收」
- *     不会连带拖钝「等待组合的收集」。
- *     **紧接着还有一对同样的行**（顺序组合那一对）：有序的按住档读 `orderedHold` /
- *     `orderedHoldFollower`（`ComboWindows` 里那两格由 `Config.comboWindowsFor` 按 `ordered` 换过来），
- *     与上面这一对互不改写 —— 用户口径是「顺序组合单独一组窗口」。那一对同样是**条件行**
- *     （[orderedHoldRows]）：公共那一片才摆，独立设置页只有一对（顺序组合的档读的就是它那一组）。
+ *     不会连带拖钝「等待组合的收集」。有序无序共用这两行。
  *  2. **首键按住时长**：按住那两档的下限 —— 首键要按满这么久、且还没抬手，第二颗落下才算这一档。
  *     两颗键几乎同时落下（实测相差 0~40ms，谁先上报看硬件）不算「按住」：那种「一起按」归
  *     等窗口那一档，这一行划的正是那条线。上限 500ms 与组合长按阈值同量级：调得比那颗键自己的
@@ -356,11 +258,12 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                     //  **副标题是这一档自己那两句**：按住档的窗口从**第一个成员**按下起算，
                     //  首键按住多久都不计时（`ComboDetector.multiFor` 的 `followers.firstOrNull()`）；
                     //  借用等待卡那两句「第一颗按下就开始计时」会把首键算进去，那是错的。
-                    title = I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE),
-                    summaryOn =
-                        I18n.get(Strings.COMBO_HOLD_FIXED_WINDOW_DESC_ON),
-                    summaryOff =
-                        I18n.get(Strings.COMBO_HOLD_FIXED_WINDOW_DESC_OFF),
+                    //
+                    //  前缀由来源给（见 [ComboParamSource.holdWindowLabel]）：公共那页写
+                    //  「按键间隔和多击…」，独立设置页只写这一档自己那一个。
+                    title = I18n.get(source.holdWindowLabel.fixedWindowStartTitle()),
+                    summaryOn = I18n.get(Strings.COMBO_HOLD_FIXED_WINDOW_DESC_ON),
+                    summaryOff = I18n.get(Strings.COMBO_HOLD_FIXED_WINDOW_DESC_OFF),
                     icon = PageIcons.CollectWindow,
                     checked = source.holdFixedWindowStart,
                     enabled = source.enabled && source.holdWindowLive,
@@ -372,12 +275,20 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                         position = position,
                         spec =
                             SliderSpec(
-                                title = I18n.get(Strings.COMBO_FIXED_WINDOW_TITLE),
+                                //  与上面那颗开关同一套前缀（同一个来源字段）
+                                title = I18n.get(Strings.COMBO_WINDOW_TITLE),
                                 //  这一格管「整串」还是「每颗各自等」由上面那颗开关说清，不另写副标题。
-                                //  **唯一例外**：这一档开着成员连击时，同一个数还被 `Config.comboMemberChain`
+                                //  **例外**：这一档开着成员连击时，同一个数还被 `Config.comboMemberChain`
                                 //  当成「连击的单击窗口」用（起点是抬手，与「成员之间接收」的起点不同）——
                                 //  调它两边一起变，这层耦合得让人看得见。
-                                summary = if (source.memberWindowShare) I18n.get(Strings.COMBO_MEMBER_WINDOW_SHARE) else null,
+                                //  **公共那页不写这句**：那里一份默认值同时服务两类档，
+                                //  只说「成员连击也用它」等于把另一半漏掉。
+                                summary =
+                                    if (source.memberWindowShare && source.holdWindowLabel != WindowLabel.INTERVAL_MULTI) {
+                                        I18n.get(Strings.COMBO_MEMBER_WINDOW_SHARE)
+                                    } else {
+                                        null
+                                    },
                                 icon = PageIcons.ComboWait,
                                 min = GlobalConfig.COMBO_WINDOW_MIN_MS,
                                 //  同「等待组合」那一根：上限按当前那一格取（固定等 1000 / 逐次等 500）
@@ -399,12 +310,6 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                         onCommit = if (wholeString) source.onHoldWindow else source.onHoldFollower,
                     )
                 },
-                //  —— 顺序组合那一对 ——
-                //  与上面两行**同名不同数**：只在「按顺序触发」的按住档上生效。置灰判据与上面
-                //  那两行**同一份**（[ComboParamSource.holdWindowLive]）：同一张卡上上下挨着的
-                //  两对行，一亮一灰只会让人以为是两根不一样的旋钮坏了。**独立设置页不摆** ——
-                //  那一页只有一对，顺序组合的档直接让第一对读它那一组（见 [ComboParamSource.orderedRows]）。
-                *orderedHoldRows(source, windowHint),
                 //  首键按住时长摆在**窗口那两行之后**：先答「成员多快接上」（窗口），再答
                 //  「首键要按住多久才算数」—— 两件都是时序，但后者是「凑成」的门槛，
                 //  放在窗口后面读起来是「窗口定完，门槛在这」。
@@ -461,75 +366,6 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
 }
 
 /**
- * 「按住组合」卡上**第二对窗口行** —— 与 [orderedWaitRows] 同一条：只有
- * [ComboParamSource.orderedRows] 为真时才摆，也就是**只有公共设置那一片**（独立设置页只有一对）。
- *
- *  置灰判据与上面那一对**同一份**（[ComboParamSource.holdWindowLive]）：同一张卡上上下挨着的
- *  两对行，一亮一灰只会让人以为是两根不一样的旋钮坏了 —— 所以把那一句原因递进来共用。
- */
-private fun SettingsPage.orderedHoldRows(
-    source: ComboParamSource,
-    windowHint: String?,
-): Array<CardRow> =
-    if (!source.orderedRows) {
-        emptyArray()
-    } else {
-        arrayOf(
-            CardRow.Switch(
-                //  与上面那一颗同一条：副标题是**按住档**自己那两句（从第一个成员起算），
-                //  不借等待卡那两句（见按住卡那段注释）
-                title = I18n.get(Strings.COMBO_ORDERED_FIXED_WINDOW_TITLE),
-                summaryOn =
-                    I18n.get(Strings.COMBO_ORDERED_HOLD_FIXED_WINDOW_DESC_ON),
-                summaryOff =
-                    I18n.get(Strings.COMBO_ORDERED_HOLD_FIXED_WINDOW_DESC_OFF),
-                icon = PageIcons.CollectWindow,
-                checked = source.orderedHoldFixedWindowStart,
-                enabled = source.enabled && source.holdWindowLive,
-                disabledHint = windowHint,
-                onCheckedChange = source.onOrderedHoldFixedWindowStart,
-            ),
-            CardRow.Custom { position ->
-                val orderedWhole = source.orderedHoldFixedWindowStart
-                SliderRow(
-                    position = position,
-                    spec =
-                        SliderSpec(
-                            title = I18n.get(Strings.COMBO_ORDERED_WINDOW_TITLE),
-                            icon = PageIcons.ComboWait,
-                            min = GlobalConfig.COMBO_WINDOW_MIN_MS,
-                            //  与上面同一条：上限跟着「当前写哪一格」走
-                            max =
-                                if (orderedWhole) {
-                                    GlobalConfig.COMBO_WINDOW_MAX_MS
-                                } else {
-                                    GlobalConfig.COMBO_PAIR_MAX_MS
-                                },
-                            value =
-                                if (orderedWhole) {
-                                    source.orderedWindows.hold
-                                } else {
-                                    source.orderedWindows.holdFollower
-                                },
-                            default =
-                                if (orderedWhole) {
-                                    source.orderedWindowDefaults.hold
-                                } else {
-                                    source.orderedWindowDefaults.holdFollower
-                                },
-                            step = 10,
-                            dragStep = 50,
-                            enabled = source.enabled && source.holdWindowLive,
-                            disabledHint = windowHint,
-                            valueText = { "$it ms" },
-                        ),
-                    onCommit = if (orderedWhole) source.onOrderedHoldWindow else source.onOrderedHoldFollower,
-                )
-            },
-        )
-    }
-
-/**
  * **公共**那一份来源 —— 值读 `GlobalConfig`，写入落到全局配置（没单独设过的组都用它）。
  *
  *  提示由写入那几个函数自己发（`writeAndNotice`）：与页面上其余全局项同一套回执。
@@ -540,9 +376,6 @@ internal fun SettingsPage.comboPublicParams(enabled: Boolean): ComboParamSource 
         windows = cfg.global.windows(),
         //  双击滑杆回落的是**出厂默认** —— 公共页与独立设置页现在是同一份口径
         windowDefaults = ComboWindows.DEFAULT,
-        //  顺序组合那一组：同样是「现值 + 出厂回落」，只是另一组数
-        orderedWindows = cfg.global.orderedWindows(),
-        orderedWindowDefaults = ComboWindows.DEFAULT,
         holdMinMs = cfg.global.comboHoldMinMs,
         holdMinDefault = GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS,
         sceneOnStarter = cfg.global.comboSceneOnStarter,
@@ -550,51 +383,37 @@ internal fun SettingsPage.comboPublicParams(enabled: Boolean): ComboParamSource 
         //  两颗开关、两个变量：等待组合读 `comboFixedWindowStart`，按住组合读 `comboHoldFixedWindowStart`
         waitFixedWindowStart = cfg.global.comboFixedWindowStart,
         holdFixedWindowStart = cfg.global.comboHoldFixedWindowStart,
-        //  顺序组合那两颗同一条：与上面两颗各自独立（拨它不动不分顺序那一档）
-        orderedWaitFixedWindowStart = cfg.global.comboOrderedFixedWindowStart,
-        orderedHoldFixedWindowStart = cfg.global.comboOrderedHoldFixedWindowStart,
-        //  公共这片**两对行都摆**：公共值是所有档的默认值，没有「这一档是不是顺序组合」可言
-        orderedRows = true,
         //  公共这两项算不算法：整份配置里**没有一个用得到它们的按住组合**时，它们不会被任何
         //  判定读到（成员之间接收 ≥3 颗、成员连击两颗就够，见 [ComboParamSource.holdWindowLive]）。
         //  这里看「配置里有没有这样一档」，不看启停 —— 临时停用一档不该让滑杆变灰。
         holdWindowLive = cfg.combos.any { it.isHold && (it.followers.size > 1 || it.memberGestures?.isOn == true) },
         memberWindowShare = cfg.combos.any { it.memberGestures?.isOn == true },
+        //  公共那张按住卡的前缀（只标在「固定窗口起点」那一行上）：那里的默认值同时服务
+        //  「三颗以上的按住档」与「两键档」⇒「按键间隔和多击…」。
+        //  等待那张卡两种档量的是同一件事，恒为「按键间隔…」，不取自这里。
+        holdWindowLabel = WindowLabel.INTERVAL_MULTI,
         enabled = enabled,
         onWaitWindow = { setComboWaitWindow(it) },
         onWaitPair = { setComboWaitPair(it) },
         onHoldWindow = { setComboHoldWindow(it) },
         onHoldFollower = { setComboHoldFollower(it) },
-        //  顺序组合那四格：与上面四支同形，落点换成 `comboOrdered*` 那四格
-        onOrderedWaitWindow = { setComboOrderedWaitWindow(it) },
-        onOrderedWaitPair = { setComboOrderedWaitPair(it) },
-        onOrderedHoldWindow = { setComboOrderedHoldWindow(it) },
-        onOrderedHoldFollower = { setComboOrderedHoldFollower(it) },
         onHoldMin = { setComboHoldMin(it) },
         onSceneOnStarter = { setComboSceneOnStarter(it) },
         onStarterKeepLong = { setComboStarterKeepLong(it) },
         onWaitFixedWindowStart = { setComboFixedWindowStart(it) },
         onHoldFixedWindowStart = { setComboHoldFixedWindowStart(it) },
-        onOrderedWaitFixedWindowStart = { setComboOrderedFixedWindowStart(it) },
-        onOrderedHoldFixedWindowStart = { setComboOrderedHoldFixedWindowStart(it) },
     )
 }
 
 /**
  * **某一组自己**那一份来源 —— 值读这一组的记录（没写过的那几格取出厂默认），写入落回这一组。
  *
- *  四格给的是 `comboStoredWindowsFor` / `comboStoredOrderedWindowsFor` 而不是 `comboWindowsFor`：
+ *  四格给的是 `comboStoredWindowsFor` 而不是 `comboWindowsFor`：
  *  显示与写入同源，拨一下总开关不会跳值。**四格各写各的**（用户口径：独立设置里也正反分别处理）
  *  —— 卡片按当前那格挑一支，于是「开着起点调的那一根」与「关着起点调的那一根」是两个落点，
  *  互不改写。写入成功后自己弹一句回执（位用 [HINT_SLOT_COMBO]，那几行就在这一页上）。
  *
- *  ## 这一页只摆**一对**窗口行
- *
- *  顺序组合的那几档读的是 `ordered*` 那一组数 —— 那一页里它们就是「这一档的窗口」，
- *  不必再标一句「顺序组合」把同一件事说两遍（用户口径）。所以：
- *  · 这一档**是**顺序组合 ⇒ 第一对（也是唯一一对）直接读 `ordered*`、写 `setComboOwnOrdered*`；
- *  · 不是 ⇒ 照旧读 `windows` / `pair` 那四格；
- *  · 第二对（[ComboParamSource.orderedRows]）在独立设置页**恒不摆**，只有公共那一片摆两对。
+ *  有序无序共用这四格：档位要不要按先后落，与「多久之内落完」是两件事。
  */
 internal fun SettingsPage.comboOwnParams(
     combo: ComboKey,
@@ -602,17 +421,12 @@ internal fun SettingsPage.comboOwnParams(
     disabledHint: String?,
 ): ComboParamSource {
     val cfg = configState.config.value
-    //  这一档是「按顺序触发」的那几档吗 —— 决定那一对行读哪一组数、写回哪四个字段
-    val ordered = combo.ordered
-    //  「固定窗口起点」四颗的出厂值（模型上就一个默认值，见 `GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START`）
+    //  「固定窗口起点」两颗的出厂值（模型上就一个默认值，见 `GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START`）
     val fixedStartDefault = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START
     return ComboParamSource(
-        windows = if (ordered) cfg.comboStoredOrderedWindowsFor(combo) else cfg.comboStoredWindowsFor(combo),
+        windows = cfg.comboStoredWindowsFor(combo),
         //  回落值也是**出厂默认**：这一组没写过的那几格 = 出厂那一份（`ComboWindows.DEFAULT`）
         windowDefaults = ComboWindows.DEFAULT,
-        //  顺序组合那一份仍原样带着（公共那一片才摆第二对）；独立设置页里它不被读
-        orderedWindows = cfg.comboStoredOrderedWindowsFor(combo),
-        orderedWindowDefaults = ComboWindows.DEFAULT,
         holdMinMs = cfg.comboStoredHoldMinFor(combo),
         holdMinDefault = GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS,
         //  下面那几颗开关显示的是**这一档自己那份**（没写过 = 出厂默认），**不跟总开关走** ——
@@ -620,41 +434,26 @@ internal fun SettingsPage.comboOwnParams(
         //  与「切换开关只该禁用 / 启用」相冲（口径见 `OwnSettingsCard`）。
         sceneOnStarter = combo.sceneOnStarter ?: GlobalConfig.DEFAULT_COMBO_SCENE_ON_STARTER,
         starterKeepLong = combo.starterKeepLong ?: GlobalConfig.DEFAULT_COMBO_STARTER_KEEP_LONG,
-        //  「按顺序触发」的档第一对读 `ordered*`、其余读不分顺序那两颗 —— 与 `Config.comboWindowStartFor`
-        //  挑的是同一对，只是那边按生效值挑、这边按「这一档自己那份」挑。
-        waitFixedWindowStart = (if (ordered) combo.orderedFixedWindowStart else combo.fixedWindowStart) ?: fixedStartDefault,
-        holdFixedWindowStart = (if (ordered) combo.orderedHoldFixedWindowStart else combo.holdFixedWindowStart) ?: fixedStartDefault,
-        //  顺序组合那两颗同一条（与上面两颗各自独立）
-        orderedWaitFixedWindowStart = combo.orderedFixedWindowStart ?: fixedStartDefault,
-        orderedHoldFixedWindowStart = combo.orderedHoldFixedWindowStart ?: fixedStartDefault,
-        //  独立设置页**只摆一对**：上面那对已经是这一档实际用的数，第二对不出现
-        orderedRows = false,
+        waitFixedWindowStart = combo.fixedWindowStart ?: fixedStartDefault,
+        holdFixedWindowStart = combo.holdFixedWindowStart ?: fixedStartDefault,
         //  这一档用不用得到按住那两行：成员多于一颗（成员之间接收），或成员连击开着（连击窗口）
         //  —— 见 [ComboParamSource.holdWindowLive]
         holdWindowLive = combo.followers.size > 1 || combo.memberGestures?.isOn == true,
         memberWindowShare = combo.memberGestures?.isOn == true,
+        //  独立设置页**只写这一档自己的前缀**：两键的按住组合写「多击…」（那两行只服务
+        //  那颗成员键的连击），其余写「按键间隔…」。判据见 [holdWindowLabelOf]。
+        holdWindowLabel = holdWindowLabelOf(combo),
         enabled = enabled,
         disabledHint = disabledHint,
-        //  四格各一支，落点跟着「这一档是不是顺序组合」走 —— 顺序组合那几档写回 `ordered*` 那四位
-        onWaitWindow = { ms -> if (ordered) setComboOwnOrderedWaitWindow(combo.id, ms) else setComboOwnWaitWindow(combo.id, ms) },
-        onWaitPair = { ms -> if (ordered) setComboOwnOrderedWaitPair(combo.id, ms) else setComboOwnWaitPair(combo.id, ms) },
-        onHoldWindow = { ms -> if (ordered) setComboOwnOrderedHoldWindow(combo.id, ms) else setComboOwnHoldWindow(combo.id, ms) },
-        onHoldFollower = { ms -> if (ordered) setComboOwnOrderedHoldFollower(combo.id, ms) else setComboOwnHoldFollower(combo.id, ms) },
-        onOrderedWaitWindow = { setComboOwnOrderedWaitWindow(combo.id, it) },
-        onOrderedWaitPair = { setComboOwnOrderedWaitPair(combo.id, it) },
-        onOrderedHoldWindow = { setComboOwnOrderedHoldWindow(combo.id, it) },
-        onOrderedHoldFollower = { setComboOwnOrderedHoldFollower(combo.id, it) },
+        onWaitWindow = { ms -> setComboOwnWaitWindow(combo.id, ms) },
+        onWaitPair = { ms -> setComboOwnWaitPair(combo.id, ms) },
+        onHoldWindow = { ms -> setComboOwnHoldWindow(combo.id, ms) },
+        onHoldFollower = { ms -> setComboOwnHoldFollower(combo.id, ms) },
         onHoldMin = { setComboOwnHoldMin(combo.id, it) },
         onSceneOnStarter = { on -> setOwnSceneOnStarter(combo.id, on) },
         onStarterKeepLong = { on -> setOwnStarterKeepLong(combo.id, on) },
-        onWaitFixedWindowStart = { on ->
-            if (ordered) setOwnOrderedFixedWindowStart(combo.id, on) else setOwnFixedWindowStart(combo.id, on)
-        },
-        onHoldFixedWindowStart = { on ->
-            if (ordered) setOwnOrderedHoldFixedWindowStart(combo.id, on) else setOwnHoldFixedWindowStart(combo.id, on)
-        },
-        onOrderedWaitFixedWindowStart = { on -> setOwnOrderedFixedWindowStart(combo.id, on) },
-        onOrderedHoldFixedWindowStart = { on -> setOwnOrderedHoldFixedWindowStart(combo.id, on) },
+        onWaitFixedWindowStart = { on -> setOwnFixedWindowStart(combo.id, on) },
+        onHoldFixedWindowStart = { on -> setOwnHoldFixedWindowStart(combo.id, on) },
     )
 }
 
@@ -728,57 +527,19 @@ private fun SettingsPage.setOwnHoldFixedWindowStart(
     id: String,
     on: Boolean,
 ) {
+    //  回执的名字跟卡片标题走：同一个 `holdWindowLabelOf`（有序 / 两键 / 三颗以上各一种写法）
+    val label =
+        configState.config.value.combos
+            .firstOrNull { it.id == id }
+            ?.let { holdWindowLabelOf(it) }
+            ?: WindowLabel.PLAIN
     val ok =
         updateCombo(id, "hold_fixed_window_start=${if (on) 1 else 0}") {
             it.copy(holdFixedWindowStart = on)
         }
     if (ok) {
         hint(
-            switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE), on),
-            slot = HINT_SLOT_COMBO,
-        )
-    }
-}
-
-/**
- * 写这一组的「**顺序组合**固定窗口」—— **等待组合那张卡**上那一颗（`ComboKey.orderedFixedWindowStart`）。
- *
- *  与 [setOwnFixedWindowStart] 同一个形状，落的是顺序组合那一对里的等待档那一位：
- *  拨它只改这一档有序时取窗口的方式，不分顺序那一档（`fixedWindowStart`）一格不动。
- */
-private fun SettingsPage.setOwnOrderedFixedWindowStart(
-    id: String,
-    on: Boolean,
-) {
-    val ok =
-        updateCombo(id, "ordered_fixed_window_start=${if (on) 1 else 0}") {
-            it.copy(orderedFixedWindowStart = on)
-        }
-    if (ok) {
-        hint(
-            switchNotice(I18n.get(Strings.COMBO_ORDERED_FIXED_WINDOW_TITLE), on),
-            slot = HINT_SLOT_COMBO,
-        )
-    }
-}
-
-/**
- * 写这一组的「**顺序组合**固定窗口」—— **按住组合那张卡**上那一颗
- * （`ComboKey.orderedHoldFixedWindowStart`）。
- *
- *  与 [setOwnOrderedFixedWindowStart] 同一个形状、同一个回执句，但落的是另一个字段。
- */
-private fun SettingsPage.setOwnOrderedHoldFixedWindowStart(
-    id: String,
-    on: Boolean,
-) {
-    val ok =
-        updateCombo(id, "ordered_hold_fixed_window_start=${if (on) 1 else 0}") {
-            it.copy(orderedHoldFixedWindowStart = on)
-        }
-    if (ok) {
-        hint(
-            switchNotice(I18n.get(Strings.COMBO_ORDERED_FIXED_WINDOW_TITLE), on),
+            switchNotice(I18n.get(label.fixedWindowStartTitle()), on),
             slot = HINT_SLOT_COMBO,
         )
     }

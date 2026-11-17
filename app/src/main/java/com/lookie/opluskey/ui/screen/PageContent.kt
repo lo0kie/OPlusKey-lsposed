@@ -55,6 +55,7 @@ import com.lookie.opluskey.ui.model.theme.colorsOf
 import com.lookie.opluskey.ui.row.LocalSwitchPositions
 import com.lookie.opluskey.ui.screen.binding.bindingTargetsOf
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
+import com.lookie.opluskey.ui.screen.command.draftCommand
 import com.lookie.opluskey.ui.screen.command.sceneGesturePage
 import com.lookie.opluskey.ui.screen.home.HomeLinkSelfCheck
 import com.lookie.opluskey.ui.screen.update.UpdateDialog
@@ -279,8 +280,9 @@ private fun SettingsPage.PageEffects(
     DebugChannelBridge()
     LinkCheckBridge()
     //  「执行时提示走流体云」要用动作自己的图标，而图只能在这边画 —— 配置一变就补画新的那几张
-    //  （见 `ui/model/icon/ActionCardArt`）
-    PrewarmActionIcons()
+    //  （见 `ui/model/icon/ActionCardArt`）。**草稿也递进去**：`测试命令` 跑的是草稿，
+    //  它可能带着还没保存的「以 Shizuku 执行」，图名里的身份得按草稿那份算，否则胶囊落到通用图。
+    PrewarmActionIcons(draft = draftCommand())
     // 「自己刚写下去的那一份还在路上」的**到期**：回包一到就提前结束（见 `onInjectReady`），
     //  一直等不到就在宽限期满时摘掉这一位 —— 页面随即按真实结论判「未同步」。
     //  少了这条到期，乐观态会一直挂着，注入侧真出问题时页面上看不出来。

@@ -7,11 +7,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.GlobalConfig
-import com.lookie.opluskey.core.model.KeyConfig
+import com.lookie.opluskey.core.model.NoticeMode
+import com.lookie.opluskey.core.model.OwnField
 import com.lookie.opluskey.core.model.OwnSettings
+import com.lookie.opluskey.core.model.OwnSettingsValues
 import com.lookie.opluskey.core.model.ToastNotice
+import com.lookie.opluskey.core.model.values
+import com.lookie.opluskey.core.model.withNoticeMode
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.NameDialog
 import com.lookie.opluskey.ui.model.icon.PageIcons
@@ -55,10 +58,10 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
  * ## 置灰
  *
  *  总开关关着时，下面那几行整片灰（它们此刻不参与取值，亮着就是在骗人可以调）；
- *  [enabled] 是页面闸门（模块关 / 链路未通 / 只读），它一并管住总开关自己。
+ *  [gate] 是这一页那几道闸（见 [EditGate]），它一并管住总开关自己。
  *
  * @param owner 这一档当前的独立设置（只读；改由 [onWrite] 交回去）
- * @param enabled 页面闸门 —— 关着时三张卡都不吃点击
+ * @param gate 页面的闸门（整页 / 单键手势 / 总开关）—— 卡里不再自己拼这几个条件
  * @param titles 三张卡各自的小标题（见 [OwnCardTitles]）
  * @param onWrite 改完之后的新值 + **这次改的是哪一项**（后者决定调用方只覆盖哪一格，
  *   见 [OwnField]），调用方负责落到自己那段配置上
@@ -66,23 +69,20 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
 @Composable
 internal fun SettingsPage.OwnSettingsCard(
     owner: OwnSettings,
-    enabled: Boolean,
+    gate: EditGate,
     titles: OwnCardTitles,
     onWrite: (OwnSettingsValues, OwnField) -> Unit,
 ) {
     var editingTemplate by remember { mutableStateOf(false) }
+    //  「执行时提示」四档菜单开着没有 —— 与常规页那一份同一套（见 `NoticeModeRow`）
+    val noticeMenu = rememberNoticeModeMenu()
     //  一个小标题带一张卡（与「按键设置」页同构）。间距由 `SectionTitle` 自带，不再自己补间距。
     //  三张卡的标题与「按键设置」页**逐字相同**（同一个字典键）：两页读到的是一套分类，
     //  只是这一页改的是「这一档自己那份」。总开关那张是这一页独有的，所以单独给了个标题。
-    val rowsEnabled = enabled && owner.useOwnSettings
+    val rowsEnabled = gate.ownRows
     //  灰着时点一下该说的话：整页闸门关着 ⇒ `null`（用整页那句：主开关 / 链路 / 只读）；
     //  整页没事、只是这颗总开关没开 ⇒ 说清该先打开哪一项。两张卡共用这一句。
-    val ownHint =
-        if (enabled && !owner.useOwnSettings) {
-            I18n.get(Strings.KEY_SETTINGS_NEED_OWN)
-        } else {
-            null
-        }
+    val ownHint = gate.ownHint
 
     // 每一行都基于「当前这份值」改一位再交回去 —— 形状与 `CardRow` 的开关一致。
     // **顺手写下改的是哪一项**：调用方按它只覆盖那一格（见 [OwnField]）。
@@ -94,7 +94,7 @@ internal fun SettingsPage.OwnSettingsCard(
 
     SectionTitle(titles.master)
     //  总开关**另起一张卡**：它管的是「下面那几张卡算不算数」，不是「调成什么样」。
-    CardList(rows = listOf(useOwnRow(owner, enabled, onWrite)))
+    CardList(rows = listOf(useOwnRow(owner, gate.page, onWrite)))
     SectionTitle(titles.interfaceTitle)
     CardList(rows = listOf(interfaceRow(owner, rowsEnabled, ownHint, ::edit)))
     SectionTitle(titles.behavior)
@@ -104,9 +104,27 @@ internal fun SettingsPage.OwnSettingsCard(
                 add(vibrateRow(owner, rowsEnabled, ownHint, ::edit))
                 add(vibrateOnNoneRow(owner, rowsEnabled, ownHint, ::edit))
                 add(strengthRow(owner, rowsEnabled, ownHint, ::edit))
-                addAll(toastRows(owner, rowsEnabled, ownHint, ::edit) { editingTemplate = true })
+                //  「执行时提示」：四档菜单（不提示 / 通知 / Toast / 流体云），与常规页同一个形状
+                add(
+                    noticeModeRow(
+                        mode = owner.noticeMode,
+                        enabled = rowsEnabled,
+                        anchor = noticeMenu.anchor,
+                        disabledHint = ownHint,
+                        onClick = noticeMenu::show,
+                    ),
+                )
+                add(toastTemplateRow(owner, rowsEnabled, ownHint) { editingTemplate = true })
             },
     )
+    noticeModeMenu(
+        state = noticeMenu,
+        current = owner.noticeMode,
+        enabled = rowsEnabled,
+        colorOsApi = owner.colorOsApi,
+    ) { mode ->
+        edit(OwnField.MODE) { v -> v.withNoticeMode(mode) }
+    }
     OwnTemplateDialog(
         //  窗里编辑的是这一档自己那句 —— 与行尾显示同一个值，否则打开窗先看到一句屏幕上没出现过的文本。
         initial = owner.toastTemplate,
@@ -139,7 +157,7 @@ internal class OwnCardTitles(
 /**
  * 「使用独立设置」那颗总开关 —— 单独一张卡里唯一的一行。
  *
- *  它只吃页面闸门 [enabled]：下面那些行还要再吃它自己（关着就是跟随公共设置）。
+ *  它只吃整页闸门（`EditGate.page`）：下面那些行还要再吃它自己（关着就是跟随公共设置）。
  */
 @Composable
 private fun SettingsPage.useOwnRow(
@@ -267,57 +285,32 @@ private fun SettingsPage.strengthRow(
     }
 
 /**
- * 「执行时提示 + 文案」那两行 —— 文案只在提示开着时出现。
+ * 「提示文案」那一行 —— 文案只在「执行时提示」不是「不提示」时出现。
  *
- * @param show 这一档自己那份 —— 值、可见性（`show.toastOnRun`）与「流体云要不要跟着 ColorOS 走」
- *   都从它取，与写入同源（见 [OwnSettingsCard] 那段说明）。
+ *  菜单那一行（四档）由 [noticeModeRow] 画：常规页与这一页共用同一个形状，
+ *  「流体云能不能选」也由那一份按「使用 ColorOS 接口」判。
+ *
+ * @param show 这一档自己那份 —— 值、可见性（`show.noticeMode`）都从它取，与写入同源
+ *   （见 [OwnSettingsCard] 那段说明）。
  */
 @Composable
-private fun SettingsPage.toastRows(
+private fun SettingsPage.toastTemplateRow(
     show: OwnSettings,
     rowsEnabled: Boolean,
     ownHint: String?,
-    edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
     onEditTemplate: () -> Unit,
-): List<CardRow> =
-    listOf(
-        CardRow.Switch(
-            title = I18n.get(Strings.HOME_TOAST_TITLE),
-            icon = PageIcons.CommandToast,
-            checked = show.toastOnRun,
-            enabled = rowsEnabled,
-            disabledHint = ownHint,
-        ) {
-            edit(OwnField.TOAST) { v -> v.copy(toastOnRun = it) }
-        },
-        CardRow.Switch(
-            title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE),
-            icon = PageIcons.FormatFluid,
-            checked = show.toastFluid,
-            //  流体云是 ColorOS 的能力：这一档随「使用 ColorOS 接口」走，关掉之后由执行侧回落 Toast
-            //  （判据在 `GestureExec.noticeIfNeeded`，这里只是不让人去调一个当前不生效的开关）。
-            enabled = rowsEnabled && show.colorOsApi,
-            disabledHint =
-                if (show.colorOsApi) {
-                    ownHint
-                } else {
-                    I18n.get(Strings.HOME_TOAST_FLUID_NEEDS_COLOROS)
-                },
-            visible = show.toastOnRun,
-        ) {
-            edit(OwnField.FLUID) { v -> v.copy(toastFluid = it) }
-        },
-        CardRow.Item(
-            title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE),
-            //  这一句**不给兜底**：里面带 `$`，兜底审计是按源码字面量逐字比的。
-            summary = show.toastTemplate.ifBlank { I18n.get(Strings.HOME_TOAST_TEMPLATE_DEFAULT) },
-            icon = PageIcons.ToastTemplate,
-            arrow = true,
-            enabled = rowsEnabled,
-            disabledHint = ownHint,
-            visible = show.toastOnRun,
-            onClick = onEditTemplate,
-        ),
+): CardRow =
+    CardRow.Item(
+        title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE),
+        //  这一句**不给兜底**：里面带 `$`，兜底审计是按源码字面量逐字比的。
+        summary = show.toastTemplate.ifBlank { I18n.get(Strings.HOME_TOAST_TEMPLATE_DEFAULT) },
+        icon = PageIcons.ToastTemplate,
+        arrow = true,
+        enabled = rowsEnabled,
+        disabledHint = ownHint,
+        //  「不提示」这一档没有文案可改 —— 与公共页那条同一条口径
+        visible = show.noticeMode != NoticeMode.NONE,
+        onClick = onEditTemplate,
     )
 
 /** 三档强度的说法（弱 / 中 / 强）—— 与公共页同一个映射，越界落到「中」。 */
@@ -374,96 +367,3 @@ private fun SettingsPage.OwnTemplateDialog(
 
 /** 与公共页那一档同一个上限（一整句话，三个占位符摆上就二十来个字符了）。 */
 private const val OWN_TEMPLATE_MAX = 60
-
-/**
- * 把这份值落到一颗键上 —— 字段同名同义，两处 `copy` 只是表不同。
- *
- *  **这里必须把 [OwnSettings] 的每一位都抄到**：漏一位的表现不是报错，而是「那一行拨了
- * 不动」—— 值算对了、也交回来了，写盘时被丢掉，重组后又读回旧值（`vibrateOnNone`
- * 就这么漏过一次）。
- */
-internal fun KeyConfig.withOwn(values: OwnSettingsValues): KeyConfig =
-    copy(
-        useOwnSettings = values.useOwnSettings,
-        colorOsApi = values.colorOsApi,
-        vibrate = values.vibrate,
-        vibrateStrength = values.vibrateStrength,
-        vibrateOnNone = values.vibrateOnNone,
-        toastOnRun = values.toastOnRun,
-        toastFluid = values.toastFluid,
-        toastTemplate = values.toastTemplate,
-    )
-
-/** 把这份值落到一组组合键上 —— 与 [withOwn] 那份一字不差。 */
-internal fun ComboKey.withOwn(values: OwnSettingsValues): ComboKey =
-    copy(
-        useOwnSettings = values.useOwnSettings,
-        colorOsApi = values.colorOsApi,
-        vibrate = values.vibrate,
-        vibrateStrength = values.vibrateStrength,
-        vibrateOnNone = values.vibrateOnNone,
-        toastOnRun = values.toastOnRun,
-        toastFluid = values.toastFluid,
-        toastTemplate = values.toastTemplate,
-    )
-
-// 「独立设置」那份值的载体与「按字段合并」的那一小块 —— 这两样东西**不是界面**：
-// 写回按字段合并的规则只有一份，卡片与页面都用它。
-
-/**
- * 这一页里**被点的那一项** —— 写回时只覆盖它，其余项一律以配置现值为准。
- *
- *  为什么需要它：卡片把整份 [OwnSettingsValues] 交回来，而那份值是**渲染这一帧时**从 `owner`
- *  读的。写盘 → 重组之间只要错开一步，交回来的就是上一帧的整份值 —— 用户点「执行时提示」，
- *  顺带把「使用独立设置」一起写回旧值（真机反馈：「打开独立设置，再点执行时提示，
- *  那一颗自己又关回去了」）。按字段合并之后，**只有手指真点到的那一项会变**，
- *  别的项有多旧都不影响。
- */
-internal enum class OwnField { USE_OWN, COLOR_OS, VIBRATE, VIBRATE_ON_NONE, STRENGTH, TOAST, FLUID, TEMPLATE }
-
-/** 用 [src] 里那一项的值替换自己这一项（其余字段不动）。 */
-internal fun OwnSettingsValues.withField(
-    field: OwnField,
-    src: OwnSettingsValues,
-): OwnSettingsValues =
-    when (field) {
-        OwnField.USE_OWN -> copy(useOwn = src.useOwnSettings)
-        OwnField.COLOR_OS -> copy(colorOsApi = src.colorOsApi)
-        OwnField.VIBRATE -> copy(vibrate = src.vibrate)
-        OwnField.VIBRATE_ON_NONE -> copy(vibrateOnNone = src.vibrateOnNone)
-        OwnField.STRENGTH -> copy(vibrateStrength = src.vibrateStrength)
-        OwnField.TOAST -> copy(toastOnRun = src.toastOnRun)
-        OwnField.FLUID -> copy(toastFluid = src.toastFluid)
-        OwnField.TEMPLATE -> copy(toastTemplate = src.toastTemplate)
-    }
-
-/**
- * 独立设置那份值的**可变载体** —— 界面内部改一位就用它 `copy`，改完整体交回调用方。
- *
- *  为什么不直接用 [OwnSettings]：接口没有 `copy`，逐个回调又会把「改哪个字段」摊成六个参数。
- */
-internal data class OwnSettingsValues(
-    private val useOwn: Boolean,
-    override val colorOsApi: Boolean,
-    override val vibrate: Boolean,
-    override val vibrateStrength: Int,
-    override val vibrateOnNone: Boolean,
-    override val toastOnRun: Boolean,
-    override val toastFluid: Boolean,
-    override val toastTemplate: String,
-) : OwnSettings {
-    override val useOwnSettings: Boolean get() = useOwn
-}
-
-/** 把任一档的独立设置读成可改的那份载体。 */
-internal fun OwnSettings.values(): OwnSettingsValues =
-    OwnSettingsValues(
-        useOwn = useOwnSettings,
-        colorOsApi = colorOsApi,
-        vibrate = vibrate,
-        vibrateStrength = vibrateStrength,
-        vibrateOnNone = vibrateOnNone,
-        toastOnRun = toastOnRun,
-        toastFluid = toastFluid,
-        toastTemplate = toastTemplate,
-    )

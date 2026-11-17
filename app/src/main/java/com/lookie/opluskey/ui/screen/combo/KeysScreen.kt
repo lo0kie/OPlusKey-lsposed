@@ -206,7 +206,7 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
 
     //  等待组合只差最后一步：**按不按顺序、按哪种顺序**（不分顺序一档 + 每种排列各一档）。
     val waitKeys = waitOrder
-    val waitLast = remember { LastHoldOrder() }
+    val waitLast = remember { LastHoldOrder<List<KeyId>>() }
     if (waitKeys != null) waitLast.value = waitKeys
     var waitShown by remember { mutableStateOf(false) }
     if (waitKeys != null && !waitShown) waitShown = true
@@ -287,7 +287,7 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
     //  数据（`holdOrder`）空了只代表「关窗请求」，`modeShown` 等窗自己播完退场再翻下去。
     //  画的内容照**最后画过的那一份**（`LastHoldOrder`），否则退场那两百毫秒里行名会先变空。
     val order = holdOrder
-    val orderLast = remember { LastHoldOrder() }
+    val orderLast = remember { LastHoldOrder<List<KeyId>>() }
     if (order != null) orderLast.value = order
     var modeShown by remember { mutableStateOf(false) }
     //  **合成式而不是 `LaunchedEffect`**：`LaunchedEffect` 要等这一帧画完才跑，而点选那一帧
@@ -344,14 +344,17 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
 
     //  按住组合成员键 ≥ 2 时只差最后一步：**成员之间按不按顺序、按哪种顺序**。
     val memberOrder = holdMemberOrder
-    val memberLast = remember { LastHoldOrder() }
-    if (memberOrder != null) memberLast.value = memberOrder.second
+    val memberLast = remember { LastHoldOrder<Pair<KeyId, List<KeyId>>>() }
+    if (memberOrder != null) memberLast.value = memberOrder
     var memberShown by remember { mutableStateOf(false) }
     if (memberOrder != null && !memberShown) memberShown = true
-    val shownMember = (memberOrder?.second ?: memberLast.value).takeIf { memberShown }
-    if (shownMember != null && memberOrder != null) {
-        val starter = memberOrder.first
-        val followers = shownMember.filter { it.id != starter.id }
+    //  **退场期间这一支还得在组合里**：`show` 一变 false、内容同时消失的话，弹窗是从组合里
+    //  直接被摘掉的 —— 播不出退场动画。所以判据只认「这一窗画过没有」（`memberShown`），
+    //  数据用最后那一份（`memberLast`），与等待档那一支同一个写法。
+    val shownMember = (memberOrder ?: memberLast.value).takeIf { memberShown }
+    if (shownMember != null) {
+        val starter = shownMember.first
+        val followers = shownMember.second.filter { it.id != starter.id }
         val followerIds = followers.map { it.id }
         //  已加过「不分成员顺序」：其它顺序（含它自己）全禁用
         val unorderedTaken =
@@ -395,7 +398,7 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
                 holdMemberOrder = null
                 if (index == 0) {
                     //  不分成员顺序：keys = [首键, ...followers]，ordered = false
-                    comboWriteGuard("添加按住组合") { addCombo(shownMember, starter) != null }
+                    comboWriteGuard("添加按住组合") { addCombo(shownMember.second, starter) != null }
                 } else {
                     //  有序：keys = [首键, ...按该排列的 followers]，ordered = true
                     val orderedFollowers = orders.getOrNull(index - 1)
@@ -436,14 +439,18 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
 }
 
 /**
- * 「触发方式」那一窗退场期间要画的那几颗键（见 [KeysScreen]）。
+ * 「触发方式 / 成员顺序」那几窗退场期间要画的那一份内容（见 [KeysScreen]）。
  *
  *  窗的开关是「数据在不在」，而点中一行时数据**当场**就收了 —— 没有这一格的话，退场那两百
- *  毫秒里行上的键名先变空（「按住  后再按  」）。所以照**最后画过的那一份**画，与
- *  `CommonCommandsScreen` 的 `LastCommand`、`DonateDialog` 的 `Last` 同一个理由。
+ *  毫秒里行上的键名先变空（「按住  后再按  」），更糟的是整支 `if` 跟着塌掉、窗被从组合里
+ *  摘掉（退场动画播不出来）。所以照**最后画过的那一份**画，与 `CommonCommandsScreen` 的
+ *  `LastCommand`、`DonateDialog` 的 `Last` 同一个理由。
+ *
+ *  类型跟各窗的数据走：触发方式 / 等待顺序两窗存的是**键表**，按住成员顺序那一窗多一个首键
+ *  （`Pair<KeyId, List<KeyId>>`）。
  */
-private class LastHoldOrder {
-    var value: List<KeyId>? = null
+private class LastHoldOrder<T> {
+    var value: T? = null
 }
 
 /**

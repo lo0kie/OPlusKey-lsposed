@@ -687,6 +687,9 @@ internal fun switchToNotice(
  *
  *  [notice] 用 lambda 而不是字符串：切语言那一条的名字必须在**写盘之后**取
  *  （[write] 里换了 [I18n.currentLanguage]），先算好的话整句话还是旧语言。
+ *
+ *  @return 与 [write] 同一套三态 —— 拨开关的调用点大多不看，但写回层
+ *    （`updateKey` / `updateCombo`）要把它折成「成没成」交回去
  */
 internal fun SettingsPage.writeAndNotice(
     next: Config,
@@ -703,9 +706,11 @@ internal fun SettingsPage.writeAndNotice(
      */
     chips: () -> List<String> = { emptyList() },
     notice: () -> String,
-) {
-    if (write(next, what) != CommandsSave.Ok) return
+): CommandsSave {
+    val result = write(next, what)
+    if (result != CommandsSave.Ok) return result
     hint(notice(), slot = slot, chips = chips())
+    return result
 }
 
 // UI 触觉反馈的唯一判据是 `PageHaptics.allowed`：只看系统状态（静音不振），模块的「振动反馈」

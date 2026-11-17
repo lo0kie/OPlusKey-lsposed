@@ -9,7 +9,6 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ComboKey
-import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.LongPressEdit
@@ -33,6 +32,7 @@ import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.wire.appNameOf
 import com.lookie.opluskey.ui.write.BindingTarget
 import com.lookie.opluskey.ui.write.openAppPickerForRelease
+import com.lookie.opluskey.ui.write.updateKey
 import com.lookie.opluskey.ui.write.write
 
 // 「长按」那一档的设置卡 —— **单键与组合键共用这一支**。
@@ -455,21 +455,14 @@ private fun SettingsPage.commitCombo(
 }
 
 /**
- * 把这一档的一次改动写回配置 —— **现读一次**再改。
+ * 把这一档的一次改动写回配置 —— **现读一次**再改（见 [updateKey]）。
  *
  *  与这一页其它卡片同一条口径：先拨开关再拖滑杆时，渲染那一帧的 `key` 会把刚写进去的值顶回去。
  */
 private fun SettingsPage.commit(
     id: KeyId,
     change: (KeyConfig) -> KeyConfig,
-): Boolean {
-    val now: Config = configState.config.value
-    val next = change(now.key(id))
-    return write(
-        now.copy(keys = now.keys + (id to next)),
-        "click_then_long key=${id.id}",
-    ) != CommandsSave.Failed
-}
+): Boolean = updateKey(id, "click_then_long", change = change)
 
 /**
  * 「每次触发都振动」被拦下来那一窗的开关 —— 与 `ComboStarterBlocked` 同一套写法。

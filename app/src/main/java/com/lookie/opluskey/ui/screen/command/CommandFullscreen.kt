@@ -284,8 +284,18 @@ internal fun SettingsPage.requestShizukuGrant(onResult: (Boolean) -> Unit = {}) 
     try {
         //  给它一个**足够长的兜底**（不是默认那 3 秒）：这条的意思是「还在问」，收场只该由结果决定 ——
         //  到点自己消失就会在「框还没弹 / 框还开着」的时候先跑掉，看着像「检查完了、什么也没说」。
+        //
+        //  **Sui 那一档换成另一句**：它会在授权成功的那一刻 force-stop 本进程（见
+        //  `ShizukuHost.grantRestartsProcess`），这一页连同草稿一起没掉，等不到任何回执 ——
+        //  能提前说的只有「回来重新打开这个开关」，而不是让用户以为模块崩了。
         hint(
-            I18n.get(Strings.COMMAND_SHIZUKU_CHECKING),
+            I18n.get(
+                if (ShizukuHost.grantRestartsProcess()) {
+                    Strings.COMMAND_SHIZUKU_SUI_RESTART
+                } else {
+                    Strings.COMMAND_SHIZUKU_CHECKING
+                },
+            ),
             slot = HINT_SLOT_COMMAND,
             holdMs = SHIZUKU_CHECK_HINT_FALLBACK_MS,
             //  图标转圈：等授权这件事没有结论可报，能报的只有「还在等」

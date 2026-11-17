@@ -43,6 +43,13 @@ internal object ShizukuExec {
     private const val GRANT_REQUEST_CODE = 1
 
     /**
+     * 失败时回放的 stderr 行数 —— 与 `ShellRunner.SHELL_TAIL_LINES` 同数。
+     *
+     *  再多的行数只会把判据行冲掉：真正有用的那一句（`not exported from uid …`）总在栈顶。
+     */
+    private const val TAIL_LINES = 12
+
+    /**
      * 读子进程输出的两条槽（stdout / stderr 各一条）。
      *
      *  读必须与 `waitForTimeout` **并行**：一路写满 64K 管道就卡死在那条命令上（与
@@ -72,12 +79,17 @@ internal object ShizukuExec {
         command: String,
         onLine: ((String) -> Unit)? = null,
     ): Int {
+        //  stderr 的**尾部**：失败时以 w 回放 —— 与 `sh` 那条（`ShellRunner.logOutputTail`）
+        //  同一档。原先这里传 `null`，[readAll] 只打 `d`（release 里编译期消除）⇒ 走 Shizuku 的
+        //  命令失败时日志里只有一句 `exit=255`，看不出是「activity 不 exported」「找不到类」
+        //  还是命令写错（真机踩过：微信收付款那条反复 255，原因一个字都没有）。
+        val errTail = java.util.Collections.synchronizedList(ArrayDeque<String>())
         val code =
             runCatching {
                 val service = IShizukuService.Stub.asInterface(Shizuku.getBinder())
                 val proc = service.newProcess(arrayOf("sh", "-c", command), null, null)
                 val out = readAll(proc.inputStream, "shizuku> ", onLine)
-                val err = readAll(proc.errorStream, "shizuku! ", null)
+                val err = readAll(proc.errorStream, "shizuku! ", { line -> appendTail(errTail, line) })
                 //  AIDL 这一档的单位是个**字符串**（服务端按 `TimeUnit.valueOf` 认，见
                 //  `ShizukuRemoteProcess.waitForTimeout` 的传法），所以给 `toString()` 而不是枚举。
                 val exited = proc.waitForTimeout(TIMEOUT_SEC, TimeUnit.SECONDS.toString())
@@ -95,7 +107,36 @@ internal object ShizukuExec {
                 FAIL_CODE
             }
         XLog.w("Shizuku：命令结束（exit=$code）")
+        if (code != 0) logErrTail(errTail)
         return code
+    }
+
+    /**
+     * 收一条 stderr 到环形尾部（最多 [TAIL_LINES] 行）。
+     *
+     *  读写不在同一条线程上（读线程写、`exec` 在退出后读），所以调用方给的是
+     *  `Collections.synchronizedList`，这里再套一层同步块取一致的快照。
+     */
+    private fun appendTail(
+        tail: MutableList<String>,
+        line: String,
+    ) {
+        synchronized(tail) {
+            if (tail.size >= TAIL_LINES) tail.removeAt(0)
+            tail.add(line)
+        }
+    }
+
+    /**
+     * 把 stderr 的尾部打出来 —— **只在失败时**：成功那一路它可能是正常告警，刷出来只会盖住判据行。
+     *
+     *  内容不脱敏：它已经是命令自己的输出，脱敏会把 `cmp=…` / `not exported from uid …` 这类
+     *  判据抹掉（命令本身在 `ShellRunner` 那侧已过 `redactCommand`）。
+     */
+    private fun logErrTail(tail: List<String>) {
+        val lines = synchronized(tail) { tail.toList() }
+        if (lines.isEmpty()) return
+        XLog.w("Shizuku 输出（尾 ${lines.size} 行）：\n" + lines.joinToString("\n"))
     }
 
     /**

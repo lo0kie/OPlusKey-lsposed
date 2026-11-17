@@ -24,14 +24,13 @@ import com.lookie.opluskey.ui.screen.command.StepPickerSheet
 import com.lookie.opluskey.ui.screen.command.StepSheetFilter
 import com.lookie.opluskey.ui.screen.command.StepSheetSpec
 import com.lookie.opluskey.ui.screen.command.branchDraftNow
-import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.wire.appNameOf
 import com.lookie.opluskey.ui.write.BindingTarget
 import com.lookie.opluskey.ui.write.openAppPickerForRelease
 import com.lookie.opluskey.ui.write.setGlobalClickWindow
 import com.lookie.opluskey.ui.write.setGlobalWaitMultiWindow
 import com.lookie.opluskey.ui.write.setWaitMultiWindow
-import com.lookie.opluskey.ui.write.write
+import com.lookie.opluskey.ui.write.updateKey
 
 // 「单击」那张卡 —— **公共设置页与「独立设置」页（单键）用的是同一份**。
 //
@@ -104,8 +103,9 @@ internal fun SettingsPage.ClickDelayCard(source: ClickParamSource) {
                         position = position,
                         spec =
                             SliderSpec(
-                                //  标题**统一叫「等待窗口」**（两处逐字相同）：这一根在两种判定时机下
-                                //  写的值不同，但问的是同一件事 —— 「按下去之后等多久」。
+                                //  标题**统一叫「等待窗口」**（不带前缀）：这一根在两种判定时机下
+                                //  写的值不同，但问的是同一件事 —— 「按下去之后等多久」；
+                                //  前缀只标在上面那颗开关上（判的是哪一类时机）。
                                 //  **不画副标题**：两种时机的差别在上面那颗开关的副标题里说清了。
                                 title = I18n.get(Strings.BINDING_WAIT_WINDOW),
                                 icon = PageIcons.ComboWait,
@@ -198,8 +198,14 @@ internal fun SettingsPage.clickKeyParams(
     //  滑杆要显示一个具体值；「用户没动过就不写」这条靠 `SliderRow` 只在拖动时回调。
     //  判定时机那边读的是正向说法 `fixedWindowStart`（存储位 `waitMultiWindow` 是它的反面，
     //  翻的那一次在 core 里，见 `ClickChainParams.fixedWindowStart`）。
+    //
+    //  **只看判定时机，不看「有没有开多击」**：`noMulti` 只决定这一行能不能拖（`enabled` 与那句
+    //  提示）。带上它的话，关掉最后那档多击手势（双击默认开着）会让 `judgeCap` 掉回 1 ⇒ 这里
+    //  改去读 `doubleClickMs`，滑杆数字当场从「多击窗口」跳到「单击延迟」——用户口径
+    //  「切换多击手势时等待窗口的值不该跳」。而且那样显示的还是错的：判定侧用的是
+    //  `clickWindowMs`（`waitMultiWindow` 为真时优先取 `multiWaitMs`），与开没开多击无关。
     val fixedStart = key.fixedWindowStart
-    val multi = !fixedStart && !noMulti
+    val multi = !fixedStart
     val windowValue =
         if (multi) {
             key.multiWaitMs.takeIf { it > KeyConfig.FOLLOW_DOUBLE_CLICK_MS } ?: key.doubleClickMs
@@ -216,10 +222,10 @@ internal fun SettingsPage.clickKeyParams(
             //  **写哪一位要现读一次配置**，不能用上面那个 `multi` 快照：用户刚拨完判定时机、
             //  紧接着拖这一根时，快照还是旧的 —— 按它写就会写到「当前不生效」的那一位上，
             //  表现正是「滑杆拖了、判定一点没变」（真机报过）。
-            //  判据与显示那一侧同一个（`!fixedWindowStart && !noMulti`）：没有多击时这一根写的就是
+            //  判据与显示那一侧同一个（`!fixedWindowStart`）：没有多击时这一根写的就是
             //  单击延迟，写进 `multiWaitMs` 会是一条谁也读不到的账。
             val now = configState.config.value.key(keyId)
-            if (!now.fixedWindowStart && !noMulti) writeMultiWaitMs(keyId, v) else writeDoubleClickMs(keyId, v)
+            if (!now.fixedWindowStart) writeMultiWaitMs(keyId, v) else writeDoubleClickMs(keyId, v)
         },
     )
 }
@@ -228,25 +234,13 @@ internal fun SettingsPage.clickKeyParams(
 internal fun SettingsPage.writeDoubleClickMs(
     keyId: KeyId,
     v: Int,
-): Boolean {
-    val now = configState.config.value
-    return write(
-        now.copy(keys = now.keys + (keyId to now.key(keyId).copy(doubleClickMs = v))),
-        "double_click_ms=$v key=${keyId.id}",
-    ) != CommandsSave.Failed
-}
+): Boolean = updateKey(keyId, "double_click_ms=$v") { it.copy(doubleClickMs = v) }
 
 /** 把「多击窗口」写进**这一颗键**（0 = 跟随单击延迟，滑杆不会写回 0）；`false` = 没写进去。 */
 internal fun SettingsPage.writeMultiWaitMs(
     keyId: KeyId,
     v: Int,
-): Boolean {
-    val now = configState.config.value
-    return write(
-        now.copy(keys = now.keys + (keyId to now.key(keyId).copy(multiWaitMs = v))),
-        "multi_wait_ms=$v key=${keyId.id}",
-    ) != CommandsSave.Failed
-}
+): Boolean = updateKey(keyId, "multi_wait_ms=$v") { it.copy(multiWaitMs = v) }
 
 // 「场景动作」页里**「单击后长按」的松手**那一族 —— 与长按那张卡的松手族同形，行也逐字相同。
 //

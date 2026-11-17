@@ -64,6 +64,7 @@ import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.row.SECTION_TITLE_TRAILING_GLYPH_INSET
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SectionTitleTrailingMore
+import com.lookie.opluskey.ui.row.rememberRowIconColor
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.binding.BranchDraft
 import com.lookie.opluskey.ui.state.binding.NO_FRESH_ROW
@@ -1091,8 +1092,8 @@ internal fun ConditionRowTitle(
     line: ConditionLine,
     enabled: Boolean,
 ) {
-    val scheme = COUITheme.colorScheme
-    val color = if (enabled) scheme.onSurfaceContainer else scheme.disabledOnSecondaryVariant
+    //  两档字色带过渡，取全项目那一份（启用 / 禁用 + 统一过渡），不在这一处再抄一遍
+    val color by rememberRowIconColor(enabled = enabled, label = "ConditionRowTitle")
     val apps = line.apps
     if (apps.isNullOrEmpty()) {
         Text(

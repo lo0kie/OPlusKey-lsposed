@@ -224,6 +224,7 @@ object ConfigFields {
     const val KEY_VIBRATE_STRENGTH_EXTRA = "key_vibrate_strength"
     const val KEY_TOAST_ON_RUN_EXTRA = "key_toast_on_run"
     const val KEY_TOAST_FLUID_EXTRA = "key_toast_fluid"
+    const val KEY_TOAST_NOTIFY_EXTRA = "key_toast_notify"
     const val KEY_TOAST_TEMPLATE_EXTRA = "key_toast_template"
 
     const val LANGUAGE_EXTRA = "language"
@@ -254,19 +255,6 @@ object ConfigFields {
      *  关 = 每颗各自往前一个 `holdFollower`），而注入侧只吃广播。
      */
     const val COMBO_HOLD_FIXED_WINDOW_START_EXTRA = "combo_hold_fixed_window_start"
-
-    /**
-     * **顺序组合**那一组窗口（等待 / 按住 × 固定窗口起点 开 / 关）与它两颗开关。
-     *
-     *  与上面那四格 + 两颗开关是**两套数**（用户口径：顺序组合单独一组）：不分顺序那一档允许
-     *  成员乱序落下，顺序组合必须按配置的先后落。判据同样在注入侧（`ComboDetector`），所以都走广播。
-     */
-    const val COMBO_ORDERED_WAIT_WINDOW_MS_EXTRA = "combo_ordered_wait_window_ms"
-    const val COMBO_ORDERED_WAIT_PAIR_MS_EXTRA = "combo_ordered_wait_pair_ms"
-    const val COMBO_ORDERED_HOLD_WINDOW_MS_EXTRA = "combo_ordered_hold_window_ms"
-    const val COMBO_ORDERED_HOLD_FOLLOWER_MS_EXTRA = "combo_ordered_hold_follower_ms"
-    const val COMBO_ORDERED_FIXED_WINDOW_START_EXTRA = "combo_ordered_fixed_window_start"
-    const val COMBO_ORDERED_HOLD_FIXED_WINDOW_START_EXTRA = "combo_ordered_hold_fixed_window_start"
 
     /**
      * **模块总闸**（首页「启用按键绑定」那一行）—— 与 [ENABLED_EXTRA] 是两件事，别混：
@@ -469,6 +457,9 @@ object ConfigFields {
     /** 这颗键自己的「提示走流体云」—— 只在 [F_OWN_SETTINGS] 开着时算数。 */
     val F_KEY_TOAST_FLUID = Field(KEY_TOAST_FLUID_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_TOAST_FLUID))
 
+    /** 这颗键自己的「提示走通知」—— 只有落盘那一列（与 [F_KEY_VIBRATE_ON_NONE] 同一条：注入侧不弹提示）。 */
+    val F_KEY_TOAST_NOTIFY = Field(null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_NOTIFY))
+
     /** 这颗键自己的提示文案模板 —— 只在 [F_OWN_SETTINGS] 开着时算数。 */
     val F_KEY_TOAST_TEMPLATE = Field(KEY_TOAST_TEMPLATE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_TOAST_TEMPLATE))
 
@@ -590,6 +581,7 @@ object ConfigFields {
             F_KEY_VIBRATE_STRENGTH,
             F_KEY_TOAST_ON_RUN,
             F_KEY_TOAST_FLUID,
+            F_KEY_TOAST_NOTIFY,
             F_KEY_TOAST_TEMPLATE,
             F_LONG_SERIAL,
             F_SCENE_RELEASE,
@@ -636,6 +628,12 @@ object ConfigFields {
      * 换的是宿主执行器把提示交给谁（Toast / 流体云），注入侧两条都不参与。
      */
     val F_TOAST_FLUID = Field(null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_FLUID))
+
+    /**
+     * 执行时提示走通知 —— **只有落盘那一列**（与 [F_TOAST_FLUID] 同理）：
+     * 换的是宿主执行器把提示交给谁（Toast / 流体云 / 通知），注入侧三条都不参与。
+     */
+    val F_TOAST_NOTIFY = Field(null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_NOTIFY))
 
     /**
      * 「执行时提示」那一句的**文案模板**（`$key` / `$gesture` / `$action` 与 `$action` 拆开的三段，
@@ -780,64 +778,6 @@ object ConfigFields {
         Field(COMBO_HOLD_FIXED_WINDOW_START_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START))
 
     /**
-     * **顺序组合**那四格窗口（`GlobalConfig.comboOrderedWaitWindowMs` 那一段，毫秒）。
-     *
-     *  与 [F_COMBO_WAIT_WINDOW_MS] 那一族同一个口径、另一组数：判定在注入侧（`ComboDetector`
-     *  按 `Config.comboWindowsFor` 挑这一份），所以都走广播。
-     */
-    val F_COMBO_ORDERED_WAIT_WINDOW_MS =
-        Field(
-            COMBO_ORDERED_WAIT_WINDOW_MS_EXTRA,
-            Kind.Number(
-                GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
-                GlobalConfig.COMBO_WINDOW_MIN_MS,
-                GlobalConfig.COMBO_WINDOW_MAX_MS,
-            ),
-        )
-
-    val F_COMBO_ORDERED_WAIT_PAIR_MS =
-        Field(
-            COMBO_ORDERED_WAIT_PAIR_MS_EXTRA,
-            Kind.Number(
-                GlobalConfig.DEFAULT_COMBO_PAIR_MS,
-                GlobalConfig.COMBO_WINDOW_MIN_MS,
-                GlobalConfig.COMBO_PAIR_MAX_MS,
-            ),
-        )
-
-    val F_COMBO_ORDERED_HOLD_WINDOW_MS =
-        Field(
-            COMBO_ORDERED_HOLD_WINDOW_MS_EXTRA,
-            Kind.Number(
-                GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
-                GlobalConfig.COMBO_WINDOW_MIN_MS,
-                GlobalConfig.COMBO_WINDOW_MAX_MS,
-            ),
-        )
-
-    val F_COMBO_ORDERED_HOLD_FOLLOWER_MS =
-        Field(
-            COMBO_ORDERED_HOLD_FOLLOWER_MS_EXTRA,
-            Kind.Number(
-                GlobalConfig.DEFAULT_COMBO_PAIR_MS,
-                GlobalConfig.COMBO_WINDOW_MIN_MS,
-                GlobalConfig.COMBO_PAIR_MAX_MS,
-            ),
-        )
-
-    /**
-     * **顺序组合 · 等待档**的固定窗口起点 —— 与 [F_COMBO_FIXED_WINDOW_START] 是**两个变量**。
-     *
-     *  走广播：`ComboDetector` 判有序档取窗口的方式时读它（`Config.comboWindowStartFor`）。
-     */
-    val F_COMBO_ORDERED_FIXED_WINDOW_START =
-        Field(COMBO_ORDERED_FIXED_WINDOW_START_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START))
-
-    /** **顺序组合 · 按住档**的固定窗口起点 —— 与上面那一位同一条规则、**另一个变量**。 */
-    val F_COMBO_ORDERED_HOLD_FIXED_WINDOW_START =
-        Field(COMBO_ORDERED_HOLD_FIXED_WINDOW_START_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START))
-
-    /**
      * 页面缩放（百分比）—— 同样只有落盘那一列。上下限就是滑杆两端（[GlobalConfig.PAGE_SCALE_MIN]
      * ~ [GlobalConfig.PAGE_SCALE_MAX]）：手改文件写进 10 或 900 会被这一层钳回来。
      */
@@ -913,6 +853,7 @@ object ConfigFields {
             F_VIBRATE,
             F_VIBRATE_STRENGTH,
             F_TOAST_ON_RUN,
+            F_TOAST_NOTIFY,
             F_LANGUAGE,
             F_PALETTE,
             F_THEME,
@@ -927,12 +868,6 @@ object ConfigFields {
             F_COMBO_STARTER_KEEP_LONG,
             F_COMBO_FIXED_WINDOW_START,
             F_COMBO_HOLD_FIXED_WINDOW_START,
-            F_COMBO_ORDERED_WAIT_WINDOW_MS,
-            F_COMBO_ORDERED_WAIT_PAIR_MS,
-            F_COMBO_ORDERED_HOLD_WINDOW_MS,
-            F_COMBO_ORDERED_HOLD_FOLLOWER_MS,
-            F_COMBO_ORDERED_FIXED_WINDOW_START,
-            F_COMBO_ORDERED_HOLD_FIXED_WINDOW_START,
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
             F_ICON_TINT_SEED,

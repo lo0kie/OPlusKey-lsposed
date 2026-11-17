@@ -2,6 +2,15 @@ package com.lookie.opluskey.inject.input
 
 import android.os.Handler
 import android.os.SystemClock
+import com.lookie.opluskey.core.judge.ChainStep
+import com.lookie.opluskey.core.judge.PressEntry
+import com.lookie.opluskey.core.judge.ReleaseStep
+import com.lookie.opluskey.core.judge.chainStep
+import com.lookie.opluskey.core.judge.fireCount
+import com.lookie.opluskey.core.judge.longShotIsChained
+import com.lookie.opluskey.core.judge.longShotStillWaiting
+import com.lookie.opluskey.core.judge.pressEntry
+import com.lookie.opluskey.core.judge.releaseStep
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ClickChainParams
 import com.lookie.opluskey.core.model.ComboKey
@@ -241,8 +250,12 @@ internal class GestureDetector(
     ) {
         val p = pending(id)
 
+        //  这一次按下走哪一支 —— 窗口内接着数 / 上一次的窗口过期没跑到 / 全新一轮。
+        //  判据收在 `core/judge/ClickChainMath.pressEntry`：`:core:test` 里钉着「差 1ms」那种边界。
+        val entry = pressEntry(now, p.sawFirstRelease, p.doubleWindowAt)
+
         // 窗口内又来一次按下 → 连击链 +1；数到这颗键配的最高档就地派发（双击就是这一档的 n=2）
-        if (p.sawFirstRelease && now <= p.doubleWindowAt) {
+        if (entry == PressEntry.CONTINUE) {
             val maxClicks = config.judgeCap
             p.clicks += 1
             //  每一击都要刷新按下时刻：`onKeyUp` 那条「按住 Xms」判据（与「立即触发单击」的
@@ -257,60 +270,65 @@ internal class GestureDetector(
             //  按「有动作」判的话，第二击会落到下面「数到封顶」那一支 ⇒ 报 `Click(2)` ⇒
             //  执行侧对没有动作的档逐级回退 ⇒ **退成单击命令**（用户口径：
             //  「单击后长按为无操作后，执行手势会触发单击命令」，2026-11-15）。
-            if (p.clicks == 2 && config.clickThenLongOn) {
-                if (p.clicks < maxClicks) {
+            //  第几击之后该收哪一支，判据收在 `core/judge/ClickChainMath.chainStep`
+            when (chainStep(p.clicks, maxClicks, config.clickThenLongOn)) {
+                ChainStep.CHAINED_WAITING -> {
                     //  后面还有第 3 击要等（三击 / 四击）：照原样继续等，只是顺手把长按枪排上。
                     //  到点时若仍停在第 2 击 ⇒ 判单击后长按；已经数到第 3 击 ⇒ 那一枪自己作废
-                    //  （判据见 scheduleLongPress 的 `clicks <= 2`）。
+                    //  （判据见 `longShotStillWaiting` 的 `clicks <= 2`）。
                     XLog.w("${id.label}：第 2 击（这颗键配到第 $maxClicks 击，也可以按住变长按）")
                     p.sawFirstRelease = false
                     p.doubleWindowAt = 0L
                     p.longPressAt = now + config.clickThenLongPressMs
                     scheduleLongPress(id, config)
-                    return
                 }
-                //  这一击就是链的最后一击（没配三击 / 四击）：抬手 ⇒ 双击，按住 ⇒ 单击后长按。
-                //  **不能 reset**（会摘掉刚排上的长按枪），状态自己手工收：`doubleFired` 让抬手
-                //  派发 `Click(2)`，`longPressFired` 由那一枪到点置上后抬手走 finishLong。
-                XLog.w("${id.label}：第 2 击（也可以按住变长按）")
-                p.sawFirstRelease = false
-                p.doubleWindowAt = 0L
-                p.doubleFired = true
-                p.longPressAt = now + config.clickThenLongPressMs
-                scheduleLongPress(id, config)
-                return
+
+                ChainStep.CHAINED_FINAL -> {
+                    //  这一击就是链的最后一击（没配三击 / 四击）：抬手 ⇒ 双击，按住 ⇒ 单击后长按。
+                    //  **不能 reset**（会摘掉刚排上的长按枪），状态自己手工收：`doubleFired` 让抬手
+                    //  派发 `Click(2)`，`longPressFired` 由那一枪到点置上后抬手走 finishLong。
+                    XLog.w("${id.label}：第 2 击（也可以按住变长按）")
+                    p.sawFirstRelease = false
+                    p.doubleWindowAt = 0L
+                    p.doubleFired = true
+                    p.longPressAt = now + config.clickThenLongPressMs
+                    scheduleLongPress(id, config)
+                }
+
+                ChainStep.KEEP_WAITING -> {
+                    //  还没到最高档：继续等下一击。**不 reset、也不再排长按枪**（连击中不会变长按）。
+                    //  两种判定时机在这一步的差别：收集多击的窗口从**首击按下**起算、不因这一下
+                    //  而延长（所以保留 `doubleWindowAt`）；逐次等则由抬手重新起算（先清掉，
+                    //  抬手那一刻再排）。
+                    XLog.w("${id.label}：第 ${p.clicks} 击（这颗键配到第 $maxClicks 击）")
+                    p.sawFirstRelease = false
+                    if (!config.fixedWindowStart) p.doubleWindowAt = 0L
+                }
+
+                ChainStep.FIRE -> {
+                    //  **数到这一档的最大多击手势就当场判**，两种判定时机**都是**这个行为
+                    //  （用户口径：「窗口内收集到视为触发」关着时也一样）。
+                    //  已经收够档位了，再等窗口不会多出任何东西 —— 窗口里只可能是第 N+1 下，
+                    //  而它已经超出这颗键配的档位（`judgeCap` 之外那几下本来就要夹回去）。
+                    // 「判出手势」这几行是验收判据链的第二环（见 AGENTS.md 二、1.2）——
+                    // 必须是 W：注入侧的 i/d 在 LSPosed 日志页里看不到。
+                    XLog.w(if (p.clicks == 2) "${id.label}：双击" else "${id.label}：${p.clicks} 击")
+                    val firedClicks = p.clicks
+                    reset(id)
+                    // reset 会把这个标记与击数一起清掉，所以在 reset 之后再置位：
+                    // 这一下的抬手属于连击链的最后一击，`onKeyUp` 要据此**派发**（而不是再开窗口）。
+                    p.doubleFired = true
+                    p.clicks = firedClicks
+                    //  **派发挪到抬手**（见 onKeyUp 的 doubleFired 那一支）。原来在这里当场派发，
+                    //  真机踩到两条：
+                    //   · ROM 的组合键窗口：电源键按着的时候注入音量键，`PhoneWindowManager` 会把它当
+                    //     「电源 + 音量」那一手（真机日志 `handleKeyGestureEvent: gestureType=56`
+                    //     紧跟 `mIsPowerKeyDown = true`）整条吞掉 —— 表现就是「自定义电源键双击绑定
+                    //     系统按键，一点反应都没有」；
+                    //   · 触发键自己还按着就注入，本身就容易和这对键的组合语义打架。
+                    //  代价只是把这一下推迟到抬手（几十毫秒），手感上看不出来。
+                }
             }
-            //  **数到这一档的最大多击手势就当场判**，两种判定时机**都是**这个行为
-            //  （用户口径：「窗口内收集到视为触发」关着时也一样）。
-            //  已经收够档位了，再等窗口不会多出任何东西 —— 窗口里只可能是第 N+1 下，
-            //  而它已经超出这颗键配的档位（`judgeCap` 之外那几下本来就要夹回去）。
-            if (p.clicks < maxClicks) {
-                //  还没到最高档：继续等下一击。**不 reset、也不再排长按枪**（连击中不会变长按）。
-                //  两种判定时机在这一步的差别：收集多击的窗口从**首击按下**起算、不因这一下
-                //  而延长（所以保留 `doubleWindowAt`）；逐次等则由抬手重新起算（先清掉，
-                //  抬手那一刻再排）。
-                XLog.w("${id.label}：第 ${p.clicks} 击（这颗键配到第 $maxClicks 击）")
-                p.sawFirstRelease = false
-                if (!config.fixedWindowStart) p.doubleWindowAt = 0L
-                return
-            }
-            // 「判出手势」这几行是验收判据链的第二环（见 AGENTS.md 二、1.2）——
-            // 必须是 W：注入侧的 i/d 在 LSPosed 日志页里看不到。
-            XLog.w(if (p.clicks == 2) "${id.label}：双击" else "${id.label}：${p.clicks} 击")
-            val firedClicks = p.clicks
-            reset(id)
-            // reset 会把这个标记与击数一起清掉，所以在 reset 之后再置位：
-            // 这一下的抬手属于连击链的最后一击，`onKeyUp` 要据此**派发**（而不是再开窗口）。
-            p.doubleFired = true
-            p.clicks = firedClicks
-            //  **派发挪到抬手**（见 onKeyUp 的 doubleFired 那一支）。原来在这里当场派发，
-            //  真机踩到两条：
-            //   · ROM 的组合键窗口：电源键按着的时候注入音量键，`PhoneWindowManager` 会把它当
-            //     「电源 + 音量」那一手（真机日志 `handleKeyGestureEvent: gestureType=56`
-            //     紧跟 `mIsPowerKeyDown = true`）整条吞掉 —— 表现就是「自定义电源键双击绑定
-            //     系统按键，一点反应都没有」；
-            //   · 触发键自己还按着就注入，本身就容易和这对键的组合语义打架。
-            //  代价只是把这一下推迟到抬手（几十毫秒），手感上看不出来。
             return
         }
 
@@ -318,9 +336,9 @@ internal class GestureDetector(
         //  这时不能直接往下重置 —— `doubleWindowAt` 一清，那颗迟到的枪到点就判「属于上一次按压」
         //  直接作废（见那个 shot 的 `stale` 分支），前一次的单击就此丢掉：连点两下只出一次动作。
         //  所以先把它**当场补派发**掉、把枪摘了，再按新的一下重置。
-        //  判据三位：首击已抬手（`sawFirstRelease`）、窗口已排（非 0）、且已过期。
-        if (p.sawFirstRelease && p.doubleWindowAt != 0L && now > p.doubleWindowAt) {
-            val pendingClicks = p.clicks.coerceAtLeast(1).coerceAtMost(config.judgeCap)
+        //  判据见 `pressEntry` 的 CATCH_UP 那一支：首击已抬手、窗口已排、且已过期。
+        if (entry == PressEntry.CATCH_UP) {
+            val pendingClicks = fireCount(p.clicks, config.judgeCap)
             p.doubleWindowRunnable?.let { handler.removeCallbacks(it) }
             p.doubleWindowRunnable = null
             p.sawFirstRelease = false
@@ -402,74 +420,83 @@ internal class GestureDetector(
             }
         cancelLongPressShot(id)
 
-        // 长按已在按下期间触发过 —— 抬手不再重复判单击（判据是 longPressFired，不是 longPressAt）
-        if (longPressed) {
-            // 长按这一档在抬手时还要做什么（松手才触发 / 松手再执行另一个动作 / 只清状态）
-            finishLong(id, config)
-            return
-        }
-
-        // 双击已经判过 —— 这次抬手是双击的第二下：**到这里才派发**（理由见 onKeyDown 里那段）。
-        // 也不能再开一个单击窗口，否则 `doubleClickMs` 之后会补一次单击，双击变成「双击 + 单击」两下
-        if (p.doubleFired) {
-            fireChainResult(id, config)
-            return
-        }
-
-        //  **后面没有档位要等** ⇒ 抬手当场判单击，不排窗口。
-        //
-        //  `judgeCap` 按**档位开关**算（`doubleClickOn` / `extraClicksOn` / `clickThenLongOn`）：
-        //  三样都关着时它就是 1，那个窗口里只可能等来「第二下」，而第二下没有动作可执行 ——
-        //  等它纯粹是把单击推迟一个窗口。
-        //  反过来，**多击开关开着时这一支不成立**：单击就要等满窗口（用户口径「开了就要等，
-        //  不想等就把它关掉」—— 关掉之后第二下按下就是新的一轮）。
-        //
-        //  参与组合的那一份等待不在这里：`HeldPresses` 已经按组合窗口等过了（那颗键的按下
-        //  是窗口结束后才补发进来的），所以这里不必再压一次。
-        //
-        //  长按那一档不受影响：`longPressFired` 在上面已经判过了（长按有动作时会更早 return）；
-        //  长按**没绑**动作时这一支直接 `reset` 把枪摘掉 —— 按住什么都不做，抬手就是单击。
-        if (config.judgeCap <= 1 && p.clicks <= 1) {
-            reset(id)
-            XLog.w("${id.label}：单击（后面没有多击手势要等）")
-            dispatch(id, GestureTrigger.Click(1), config, repeat = false)
-            return
-        }
-
         //  **两种判定时机在这里分叉**（用户口径，两者差别必须明显）。两种都从**抬手**
         //  起算（按下时按住多久都不吃掉窗口预算），差别只在**后续的抬手刷不刷新它**：
         //  · 固定窗口起点（`fixedWindowStart`）：只在**第一击抬手**排一次，之后
         //    每一击抬手都不延长 —— 一个窗口内收集到几击就算几击。
         //  · 每次松手重新起算（`fixedWindowStart` 为假）：每次抬手都把截止推到「此刻 + 一个窗口」。
-        if (config.fixedWindowStart) {
-            if (p.doubleWindowAt != 0L) {
-                //  首击已经排过窗口：还在窗口里就交给那一枪，过期了当场按实际击数判
-                if (now < p.doubleWindowAt) return
-                val fired = p.clicks.coerceAtLeast(1).coerceAtMost(config.judgeCap)
+        //
+        //  这一支走哪一条，判据收在 `core/judge/ClickChainMath.releaseStep`；
+        //  分支的顺序就是优先级：长按收尾压过一切，连击链收线次之，再往下才轮到排窗口。
+        when (
+            releaseStep(
+                longPressFired = longPressed,
+                doubleFired = p.doubleFired,
+                clicks = p.clicks,
+                cap = config.judgeCap,
+                fixedWindowStart = config.fixedWindowStart,
+                windowAt = p.doubleWindowAt,
+                now = now,
+            )
+        ) {
+            // 长按已在按下期间触发过 —— 抬手不再重复判单击（判据是 longPressFired，不是 longPressAt）
+            ReleaseStep.FINISH_LONG -> {
+                // 长按这一档在抬手时还要做什么（松手才触发 / 松手再执行另一个动作 / 只清状态）
+                finishLong(id, config)
+            }
+
+            // 双击已经判过 —— 这次抬手是双击的第二下：**到这里才派发**（理由见 onKeyDown 里那段）。
+            // 也不能再开一个单击窗口，否则 `doubleClickMs` 之后会补一次单击，双击变成「双击 + 单击」两下
+            ReleaseStep.FIRE_CHAIN -> {
+                fireChainResult(id, config)
+            }
+
+            //  **后面没有档位要等** ⇒ 抬手当场判单击，不排窗口。
+            //
+            //  `judgeCap` 按**档位开关**算（`doubleClickOn` / `extraClicksOn` / `clickThenLongOn`）：
+            //  三样都关着时它就是 1，那个窗口里只可能等来「第二下」，而第二下没有动作可执行 ——
+            //  等它纯粹是把单击推迟一个窗口。
+            //  反过来，**多击开关开着时这一支不成立**：单击就要等满窗口（用户口径「开了就要等，
+            //  不想等就把它关掉」—— 关掉之后第二下按下就是新的一轮）。
+            //
+            //  参与组合的那一份等待不在这里：`HeldPresses` 已经按组合窗口等过了（那颗键的按下
+            //  是窗口结束后才补发进来的），所以这里不必再压一次。
+            //
+            //  长按那一档不受影响：`longPressFired` 在上面已经判过了（长按有动作时会更早走 FINISH_LONG）；
+            //  长按**没绑**动作时这一支直接 `reset` 把枪摘掉 —— 按住什么都不做，抬手就是单击。
+            ReleaseStep.SINGLE_NOW -> {
+                reset(id)
+                XLog.w("${id.label}：单击（后面没有多击手势要等）")
+                dispatch(id, GestureTrigger.Click(1), config, repeat = false)
+            }
+
+            //  首击已经排过窗口、而它还没到：交给那一枪
+            ReleaseStep.STILL_WAITING -> {
+                //  什么都不做 —— 窗口到点由 `scheduleDoubleWindow` 那一枪收尾
+            }
+
+            //  那个窗口已经到点、那一枪却没跑到：当场按实际击数判
+            ReleaseStep.FIRE_EXPIRED -> {
+                val fired = fireCount(p.clicks, config.judgeCap)
                 reset(id)
                 XLog.w(if (fired == 1) "${id.label}：单击（窗口已结束）" else "${id.label}：$fired 击（窗口已结束）")
                 fireClicks(id, config, fired)
-                return
             }
-            //  首击抬手：从这里起算一个完整窗口
-            val fixedWindow = config.clickWindowMs.toLong()
-            p.doubleWindowMs = fixedWindow
-            p.doubleWindowAt = now + fixedWindow
-            keepAwakeForWindow(id, fixedWindow)
-            scheduleDoubleWindow(id, config)
-            return
-        }
 
-        // `sawFirstRelease` 在上面那段临界区里已经置上了（与长按枪互斥的那一笔）
-        // 窗口长度在这一刻定格（见 Pending.doubleWindowMs）：排窗用的窗口与到点判定用的窗口
-        // 必须是同一个数，否则中途改「等待窗口」会让两者悄悄变成两个数。
-        // **取 `clickWindowMs` 而不是 `doubleClickMs`**：逐次等读的是那一档自己的
-        //  「多击窗口」（判据收在 `KeyConfig.clickWindowMs`，两处读者共用）。
-        val window = config.clickWindowMs.toLong()
-        p.doubleWindowMs = window
-        p.doubleWindowAt = now + window
-        keepAwakeForWindow(id, window)
-        scheduleDoubleWindow(id, config)
+            //  从这次抬手起算一个窗口 —— 固定窗口起点的首击、以及逐次等那一档的每一次抬手
+            ReleaseStep.START_WINDOW -> {
+                // `sawFirstRelease` 在上面那段临界区里已经置上了（与长按枪互斥的那一笔）
+                // 窗口长度在这一刻定格（见 Pending.doubleWindowMs）：排窗用的窗口与到点判定用的窗口
+                // 必须是同一个数，否则中途改「等待窗口」会让两者悄悄变成两个数。
+                // **取 `clickWindowMs` 而不是 `doubleClickMs`**：逐次等读的是那一档自己的
+                //  「多击窗口」（判据收在 `KeyConfig.clickWindowMs`，两处读者共用）。
+                val window = config.clickWindowMs.toLong()
+                p.doubleWindowMs = window
+                p.doubleWindowAt = now + window
+                keepAwakeForWindow(id, window)
+                scheduleDoubleWindow(id, config)
+            }
+        }
     }
 
     /**
@@ -645,10 +672,11 @@ internal class GestureDetector(
         var missReason: String? = null
         val fire =
             synchronized(p) {
-                val stillWaiting = p.longPressAt != 0L && !p.sawFirstRelease && p.clicks <= 2
+                //  三条栅栏收在 `core/judge/ClickChainMath.longShotStillWaiting`
+                val stillWaiting = longShotStillWaiting(p.longPressAt, p.sawFirstRelease, p.clicks)
                 if (stillWaiting) {
                     //  与上面那一支同一判据：开关开着就归这一档（动作是无操作时不执行，但不许退化成单击）
-                    chained = config.clickThenLongOn && p.clicks >= 2
+                    chained = longShotIsChained(config.clickThenLongOn, p.clicks)
                     p.longPressAt = 0L
                     p.longPressFired = true
                     true
@@ -898,7 +926,7 @@ internal class GestureDetector(
                             //  **夹回这颗键配到的最高档**：抬手那一刻 `clicks` 理论上不会超上限
                             //  （到档就判了），但补发的 DOWN/UP 可能乱序 —— 夹一下，
                             //  派发到一档没有动作的击数等于「按了三下什么都没发生」。
-                            fire = p.clicks.coerceAtLeast(1).coerceAtMost(config.judgeCap)
+                            fire = fireCount(p.clicks, config.judgeCap)
                             p.sawFirstRelease = false
                             p.doubleWindowAt = 0L
                         }

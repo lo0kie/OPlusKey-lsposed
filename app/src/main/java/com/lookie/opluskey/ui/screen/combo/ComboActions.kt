@@ -680,24 +680,6 @@ internal fun SettingsPage.setComboHoldFollower(ms: Int): Boolean =
     setComboPublicWindow("hold_follower_ms", ms, pair = true) { g, v -> g.copy(comboHoldFollowerMs = v) }
 
 /**
- * 下面四支写**顺序组合**那一组窗口（与上面四格分开存，用户口径：顺序组合单独一组）。
- *
- *  判定侧按 `Config.comboWindowsFor` 挑这一份（`combo.ordered` 为真时读它），所以这两根滑杆
- *  只管「按顺序触发」的那几档；不分顺序那一档仍读上面那四格。
- */
-internal fun SettingsPage.setComboOrderedWaitWindow(ms: Int): Boolean =
-    setComboPublicWindow("ordered_wait_window_ms", ms) { g, v -> g.copy(comboOrderedWaitWindowMs = v) }
-
-internal fun SettingsPage.setComboOrderedWaitPair(ms: Int): Boolean =
-    setComboPublicWindow("ordered_wait_pair_ms", ms, pair = true) { g, v -> g.copy(comboOrderedWaitPairMs = v) }
-
-internal fun SettingsPage.setComboOrderedHoldWindow(ms: Int): Boolean =
-    setComboPublicWindow("ordered_hold_window_ms", ms) { g, v -> g.copy(comboOrderedHoldWindowMs = v) }
-
-internal fun SettingsPage.setComboOrderedHoldFollower(ms: Int): Boolean =
-    setComboPublicWindow("ordered_hold_follower_ms", ms, pair = true) { g, v -> g.copy(comboOrderedHoldFollowerMs = v) }
-
-/**
  * 写**这一组自己**的某一格窗口（毫秒）—— 四支写函数共用的形状。
  *
  *  与 [setComboPublicWindow] 不是同一个落点：那个写公共那一档（没单独设过的组都用它），
@@ -756,30 +738,6 @@ internal fun SettingsPage.setComboOwnHoldFollower(
     id: String,
     ms: Int,
 ): Boolean = setComboOwnWindow(id, "hold_follower_ms", ms, pair = true) { c, v -> c.copy(holdFollowerMs = v) }
-
-/** 这一组自己的「**顺序组合**、等待档、起点开」那一格 —— 见 [setComboOwnWindow]。 */
-internal fun SettingsPage.setComboOwnOrderedWaitWindow(
-    id: String,
-    ms: Int,
-): Boolean = setComboOwnWindow(id, "ordered_wait_window_ms", ms) { c, v -> c.copy(orderedWaitWindowMs = v) }
-
-/** 这一组自己的「**顺序组合**、等待档、起点关」那一格 —— 见 [setComboOwnWindow]。 */
-internal fun SettingsPage.setComboOwnOrderedWaitPair(
-    id: String,
-    ms: Int,
-): Boolean = setComboOwnWindow(id, "ordered_wait_pair_ms", ms, pair = true) { c, v -> c.copy(orderedWaitPairMs = v) }
-
-/** 这一组自己的「**顺序组合**、按住档、起点开」那一格 —— 见 [setComboOwnWindow]。 */
-internal fun SettingsPage.setComboOwnOrderedHoldWindow(
-    id: String,
-    ms: Int,
-): Boolean = setComboOwnWindow(id, "ordered_hold_window_ms", ms) { c, v -> c.copy(orderedHoldWindowMs = v) }
-
-/** 这一组自己的「**顺序组合**、按住档、起点关」那一格 —— 见 [setComboOwnWindow]。 */
-internal fun SettingsPage.setComboOwnOrderedHoldFollower(
-    id: String,
-    ms: Int,
-): Boolean = setComboOwnWindow(id, "ordered_hold_follower_ms", ms, pair = true) { c, v -> c.copy(orderedHoldFollowerMs = v) }
 
 /**
  * 写**这一组自己**的「首键要先按住多久」（毫秒）—— 按住手势的下限。

@@ -19,7 +19,6 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.CommandOutput
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.mapActions
@@ -240,9 +239,8 @@ internal fun SettingsPage.draftToLibrary(form: CommandForm = commandDraft.draft.
                     root = if (Action.parse(body).usesRoot) form.root else Command.DEFAULT_ROOT,
                     //  同一条判据：`shell:` 之外那个开关根本不给用户看，也就不落盘
                     viaShizuku = Action.parse(body).usesRoot && form.viaShizuku,
-                    output = if (Action.parse(body).usesRoot) form.output else CommandOutput.DEFAULT,
-                    //  图标与落点同一条判据：`shell:` 之外这一档不参与，也就不落盘
-                    outputIcon = if (Action.parse(body).usesRoot) form.outputIcon else "",
+                    //  同一条判据：这一位只换「念什么」，`shell:` 之外没有输出可换
+                    showOutput = Action.parse(body).usesRoot && form.showOutput,
                 )
             }
 

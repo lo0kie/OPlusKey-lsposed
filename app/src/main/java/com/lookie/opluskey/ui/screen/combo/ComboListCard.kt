@@ -1,6 +1,5 @@
 package com.lookie.opluskey.ui.screen.combo
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -28,12 +27,12 @@ import com.lookie.opluskey.ui.feedback.DisabledStateWithPick
 import com.lookie.opluskey.ui.feedback.keyStateLabel
 import com.lookie.opluskey.ui.model.icon.DrawnIcons
 import com.lookie.opluskey.ui.model.icon.PageIcons
-import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SectionTitleClick
 import com.lookie.opluskey.ui.row.TitleCounter
+import com.lookie.opluskey.ui.row.rememberRowIconColor
 import com.lookie.opluskey.ui.state.binding.ComboEditState
 import com.lookie.opluskey.ui.state.binding.KeysEditState
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
@@ -70,9 +69,11 @@ internal fun SettingsPage.ComboListSection(
     val filterKey = if (hold) ComboEditState.holdFilter else ComboEditState.waitFilter
     val menu = rememberMenuState()
 
-    Column(Modifier.preciseClickAnchor(menu.anchor)) {
+    Column {
         SectionTitle(
             text = comboListTitle(cfg, filterKey, hold),
+            //  锚点挂在**这一行小标题**上（不是整列）：菜单弹在点标题那一点，不与下面的卡片混在一起
+            modifier = Modifier.preciseClickAnchor(menu.anchor),
             click = SectionTitleClick.Menu(expanded = menu.open) { menu.show() },
             //  行尾是**已用 / 上限**（与「命令名称」那行同一个 `TitleCounter`）：
             //  标题本身是筛选入口（筛了某颗键时它显示的是那颗键的名字），计数只报「共配了几档 / 上限」，
@@ -206,16 +207,9 @@ private fun SettingsPage.ComboTitle(
     writable: Boolean,
 ) {
     //  两档标题色带过渡：整页闸门一拨，这一列与同一页其它行一起变灰 / 恢复，别只有这里硬切。
-    val color by animateColorAsState(
-        targetValue =
-            if (writable) {
-                COUITheme.colorScheme.onSurfaceContainer
-            } else {
-                COUITheme.colorScheme.disabledOnSecondaryVariant
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "ComboTitle",
-    )
+    //  取色走全项目那一份（`rememberRowIconColor`：启用色 / 禁用色两档 + 统一过渡），
+    //  不在这一页再抄一遍两色。
+    val color by rememberRowIconColor(enabled = writable, label = "ComboTitle")
     Text(
         text = comboTitleText(cfg, combo),
         style = COUITheme.textStyles.headline1,

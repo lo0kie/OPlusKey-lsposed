@@ -12,24 +12,27 @@ import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
+import com.lookie.opluskey.core.model.OwnField
+import com.lookie.opluskey.core.model.OwnSettingsValues
+import com.lookie.opluskey.core.model.values
+import com.lookie.opluskey.core.model.withField
+import com.lookie.opluskey.core.model.withOwn
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_OWN_SETTINGS
 import com.lookie.opluskey.ui.feedback.switchNotice
+import com.lookie.opluskey.ui.feedback.switchToNotice
 import com.lookie.opluskey.ui.feedback.writeAndNotice
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.EditGate
 import com.lookie.opluskey.ui.row.OwnCardTitles
-import com.lookie.opluskey.ui.row.OwnField
 import com.lookie.opluskey.ui.row.OwnSettingsCard
-import com.lookie.opluskey.ui.row.OwnSettingsValues
 import com.lookie.opluskey.ui.row.SectionTitle
-import com.lookie.opluskey.ui.row.values
-import com.lookie.opluskey.ui.row.withField
-import com.lookie.opluskey.ui.row.withOwn
+import com.lookie.opluskey.ui.row.noticeModeLabel
 import com.lookie.opluskey.ui.screen.combo.HoldComboCard
 import com.lookie.opluskey.ui.screen.combo.WaitComboCard
 import com.lookie.opluskey.ui.screen.combo.comboOwnParams
@@ -39,6 +42,7 @@ import com.lookie.opluskey.ui.screen.combo.waitCombosUsing
 import com.lookie.opluskey.ui.screen.settingsTargetLabel
 import com.lookie.opluskey.ui.state.page.SettingsTarget
 import com.lookie.opluskey.ui.state.page.SettingsTargetState
+import com.lookie.opluskey.ui.write.updateKey
 import com.lookie.opluskey.ui.write.write
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
@@ -83,7 +87,15 @@ internal fun SettingsPage.KeySettingsScreen(
         //  亮着就是在骗人「还能调」。留那一行是因为**关回来**得走它（关不掉就成了死路）。
         //  判据与绑定页那一族同一份（`bindingTargetStopped`），两处各判一遍迟早漂。
         //  只有单键有这一位：组合目标（`SettingsTarget.Combo`）不进这一支。
-        val comboOnly = target is SettingsTarget.Key && cfg.key(target.id).comboOnly
+        //
+        //  **这一页那几道闸一次算清**（见 `EditGate`）：整页闸门 / 这颗键还判不判单键手势 /
+        //  这一档用不用自己的独立设置。下面每一行只挑自己那一档，不再各自拼条件。
+        val gate =
+            EditGate(
+                page = pageEnabled,
+                keyGestures = !(target is SettingsTarget.Key && cfg.key(target.id).comboOnly),
+                ownOn = owner.useOwnSettings,
+            )
 
         //  —— 多击那两颗开关（只有单键有）——
         //  **放在最顶部**：它们决定这一页下面那个「总开关」能管到几档 —— 多击是这一档存不存在，
@@ -99,7 +111,7 @@ internal fun SettingsPage.KeySettingsScreen(
             ExtraClicksCard(
                 target = target,
                 cfg = cfg,
-                enabled = pageEnabled,
+                gate = gate,
             )
         }
 
@@ -111,7 +123,7 @@ internal fun SettingsPage.KeySettingsScreen(
             SectionTitle(I18n.get(Strings.KEY_SETTINGS_MULTI_CLICK))
             MemberClicksCard(
                 combo = memberCombo,
-                enabled = pageEnabled,
+                enabled = gate.page,
             )
         }
 
@@ -125,7 +137,7 @@ internal fun SettingsPage.KeySettingsScreen(
             //  「只参与非首键的按住组合」时整张卡灰掉：接口 / 振动 / 提示都是**单键按下去那一下**的行为，
             //  这颗键不判单键手势，它们一次也用不上。灰着点一下落到页面那句原因上
             //  （`disabledClickReason` 的 comboOnly 那一支），卡片里不必再写一句。
-            enabled = pageEnabled && !comboOnly,
+            gate = gate,
             titles = ownCardTitles(),
         ) { values, field -> commitOwnField(target, values, field) }
 
@@ -136,7 +148,7 @@ internal fun SettingsPage.KeySettingsScreen(
         //  没有可判的东西。卡片与公共设置页是同一份（`ClickDelayCard`），只是状态源换成这颗键。
         if (target is SettingsTarget.Key) {
             SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK))
-            ClickDelayCard(clickKeyParams(target.id, pageEnabled && !comboOnly))
+            ClickDelayCard(clickKeyParams(target.id, gate.keyRows))
         }
 
         //  —— 多击手势那两颗开关 ——
@@ -152,8 +164,7 @@ internal fun SettingsPage.KeySettingsScreen(
             ComboParamCards(
                 target = target,
                 cfg = cfg,
-                enabled = pageEnabled,
-                ownOn = owner.useOwnSettings,
+                gate = gate,
             )
         }
     }
@@ -181,25 +192,21 @@ internal fun SettingsPage.KeySettingsScreen(
 private fun SettingsPage.ExtraClicksCard(
     target: SettingsTarget.Key,
     cfg: Config,
-    enabled: Boolean,
+    gate: EditGate,
 ) {
     val key = cfg.key(target.id)
-    //  「只参与非首键的按住组合」开着时，这张卡里**只有那一行自己还能动**：以下几档都是单键手势，
-    //  这颗键不判单键手势 ⇒ 配了也没处执行。留中间这三行亮着，用户会以为「多击还能用」。
-    //  点一下会落到页面那句原因上（`disabledClickReason` 的 comboOnly 那一支），不必在这重写。
-    val restEnabled = enabled && !key.comboOnly
     CardList(
         rows =
             listOf(
                 //  「只参与非首键的按住组合」排在这一族的最前面：它决定这颗键**还算不算一颗单键** ——
                 //  开着时下面那几档配了也没处执行（绑定页整页灰，见 `bindingTargetEnabled`）。
-                comboOnlyRow(target, key, enabled),
+                comboOnlyRow(target, key, gate.page),
                 //  双击排在三击上面：档位由少到多，与绑定页的页序（单击 / 双击 / 长按 / 三击）同一方向。
                 //  它是**基础档**（默认开），与三击 / 四击那种「要自己要」的档位只是同一张卡里的邻居。
-                doubleClickOnRow(target, key, restEnabled),
-                extraClickRow(target, key, COUNT3, restEnabled),
-                extraClickRow(target, key, COUNT4, restEnabled),
-                clickThenLongRow(target, key, restEnabled),
+                doubleClickOnRow(target, key, gate.keyRows),
+                extraClickRow(target, key, COUNT3, gate.keyRows),
+                extraClickRow(target, key, COUNT4, gate.keyRows),
+                clickThenLongRow(target, key, gate.keyRows),
             ),
     )
 }
@@ -344,12 +351,11 @@ private fun SettingsPage.comboOnlyRow(
             }
 
             else -> {
-                val keyNow = cfgNow.key(target.id)
-                val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(comboOnly = on)))
-                val what = "own_settings target=${settingsTargetLabel(target)} combo_only=${if (on) 1 else 0}"
-                writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
-                    switchNotice(I18n.get(Strings.BINDING_COMBO_ONLY), on)
-                }
+                updateKey(
+                    target.id,
+                    "combo_only=${if (on) 1 else 0}",
+                    notice = { switchNotice(I18n.get(Strings.BINDING_COMBO_ONLY), on) },
+                ) { it.copy(comboOnly = on) }
             }
         }
     }
@@ -373,14 +379,11 @@ private fun SettingsPage.clickThenLongRow(
         checked = key.clickThenLongOn,
         enabled = enabled,
     ) { on ->
-        //  与上面两行同一条：现读一次再改这一格，只动这一位
-        val cfgNow = configState.config.value
-        val keyNow = cfgNow.key(target.id)
-        val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(clickThenLongOn = on)))
-        val what = "own_settings target=${settingsTargetLabel(target)} click_then_long=${if (on) 1 else 0}"
-        writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
-            switchNotice(I18n.get(Strings.SETTING_CLICK_THEN_LONG), on)
-        }
+        updateKey(
+            target.id,
+            "click_then_long=${if (on) 1 else 0}",
+            notice = { switchNotice(I18n.get(Strings.SETTING_CLICK_THEN_LONG), on) },
+        ) { it.copy(clickThenLongOn = on) }
     }
 
 /**
@@ -405,14 +408,11 @@ private fun SettingsPage.doubleClickOnRow(
         checked = key.doubleClickOn,
         enabled = enabled,
     ) { on ->
-        //  与上面几行同一条：现读一次再改这一格，只动这一位
-        val cfgNow = configState.config.value
-        val keyNow = cfgNow.key(target.id)
-        val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(doubleClickOn = on)))
-        val what = "own_settings target=${settingsTargetLabel(target)} double_click=${if (on) 1 else 0}"
-        writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
-            switchNotice(I18n.get(Strings.SETTING_CLICK2), on)
-        }
+        updateKey(
+            target.id,
+            "double_click=${if (on) 1 else 0}",
+            notice = { switchNotice(I18n.get(Strings.SETTING_CLICK2), on) },
+        ) { it.copy(doubleClickOn = on) }
     }
 
 /**
@@ -440,26 +440,25 @@ private fun SettingsPage.extraClickRow(
         checked = on,
         enabled = enabled,
     ) { checked ->
-        //  **现读一次配置**再改这一格（与「组合」那两行同一条口径）：这颗开关下面
-        //  就是那张卡，先拨开关再点卡里的项，用渲染那一帧的 `cfg` 会把卡片刚写进去的值顶回去。
-        val cfgNow = configState.config.value
-        val keyNow = cfgNow.key(target.id)
-        //  只动这一档，另一档原样留着（两行各管各的）。
-        val clicksOn = if (checked) keyNow.extraClicksOn + count else keyNow.extraClicksOn - count
-        //  表（`extraClicks`）不动：关掉只是「不显示、不判定、不执行」，再打开原样回来 ——
-        //  清表等于把用户配过的动作悄悄扔掉。
-        val cfgNext =
-            cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(extraClicksOn = clicksOn)))
-        val what =
-            "own_settings target=${settingsTargetLabel(target)} " +
-                "click$count=${if (checked) 1 else 0} 全档=${clicksOn.sorted()}"
         val title =
             if (count == COUNT3) {
                 I18n.get(Strings.SETTING_CLICK3)
             } else {
                 I18n.get(Strings.SETTING_CLICK4)
             }
-        writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) { switchNotice(title, checked) }
+        //  只动这一档，另一档原样留着（两行各管各的）。
+        //  表（`extraClicks`）不动：关掉只是「不显示、不判定、不执行」，再打开原样回来 ——
+        //  清表等于把用户配过的动作悄悄扔掉。
+        updateKey(
+            target.id,
+            "click$count=${if (checked) 1 else 0}",
+            notice = { switchNotice(title, checked) },
+        ) { key ->
+            key.copy(
+                extraClicksOn =
+                    if (checked) key.extraClicksOn + count else key.extraClicksOn - count,
+            )
+        }
     }
 }
 
@@ -488,21 +487,15 @@ private val COUNT4: Int = KeyConfig.DEFAULT_EXTRA_CLICKS.last()
 private fun SettingsPage.ComboParamCards(
     target: SettingsTarget.Combo,
     cfg: Config,
-    enabled: Boolean,
-    ownOn: Boolean,
+    gate: EditGate,
 ) {
     val combo = cfg.combos.firstOrNull { it.id == target.id } ?: return
     //  这几项也吃上面那颗总开关：关着时它们是**公共设置**那一份，改也改不动 ——
     //  亮着却改不改都没差别，读起来就是「这一页坏了」。
-    val rowsEnabled = enabled && ownOn
     //  灰着时说明是哪一道闸：总开关关着时说「先打开」，页面闸门关着时留空（用整页那句）。
-    //  各行共用这一句 —— 同一个原因不该在几个地方各算一遍。
-    val needOwnHint =
-        if (enabled && !ownOn) {
-            I18n.get(Strings.KEY_SETTINGS_NEED_OWN)
-        } else {
-            null
-        }
+    //  各行共用这一句 —— 同一个原因不该在几个地方各算一遍（判据见 `EditGate`）。
+    val rowsEnabled = gate.comboRows
+    val needOwnHint = gate.ownHint
     val source = comboOwnParams(combo, rowsEnabled, needOwnHint)
     //  两种触发方式是**互斥的**，所以只摆这一组自己那一张。
     if (combo.isWait) {
@@ -566,12 +559,9 @@ private fun ownSwitchNotice(
             )
         }
 
-        OwnField.TOAST -> {
-            switchNotice(I18n.get(Strings.HOME_TOAST_TITLE), values.toastOnRun)
-        }
-
-        OwnField.FLUID -> {
-            switchNotice(I18n.get(Strings.HOME_TOAST_FLUID_TITLE), values.toastFluid)
+        OwnField.MODE -> {
+            //  「执行时提示」是一格四档，回执说「执行时提示 → 通知」；与常规页那一份同一个说法
+            switchToNotice(I18n.get(Strings.HOME_TOAST_TITLE), noticeModeLabel(values.noticeMode))
         }
 
         OwnField.STRENGTH, OwnField.TEMPLATE -> {

@@ -23,7 +23,6 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.CommandOutput
 import com.lookie.opluskey.core.present.commandExecIdentity
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.FrostedDialog
@@ -124,7 +123,7 @@ private fun SettingsPage.CommandDetailBody(cmd: Command) {
         //  判据（哪一档有这一句、两条通道谁优先）只在 `commandExecIdentity` 一处 ——
         //  网格格子的小字读的也是它，两处各写一遍时同一条命令会念成两种执行方式。
         val identity = commandExecIdentity(cmd)
-        val hasOutput = cmd.output != CommandOutput.NONE
+        val hasOutput = cmd.showOutput
         if (identity != null) {
             Text(
                 text = identity,
@@ -134,11 +133,11 @@ private fun SettingsPage.CommandDetailBody(cmd: Command) {
             //  下面紧跟着提示类型那一行时两行贴紧一档（同一组属性）；否则与正文留正常那一档。
             Spacer(Modifier.height(if (hasOutput) DETAIL_META_GAP else DETAIL_HEAD_GAP))
         }
-        //  「显示执行返回结果」选中的那一档 —— 与执行身份同一处（都在正文上面）：
-        //  它说的同样是「这条命令跑起来是什么样」，而不是正文的一部分。`不显示` 不占一行。
+        //  「用输出代替命令名」开着的那一行 —— 与执行身份同一处（都在正文上面）：
+        //  它说的同样是「这条命令跑起来是什么样」，而不是正文的一部分。关着不占一行。
         if (hasOutput) {
             Text(
-                text = I18n.format(Strings.COMMAND_OUTPUT_PREFIX, I18n.get(cmd.output.labelKey())),
+                text = I18n.get(Strings.COMMAND_OUTPUT_TITLE),
                 style = COUITheme.textStyles.body2,
                 color = COUITheme.colorScheme.onSurfaceVariantSummary,
             )

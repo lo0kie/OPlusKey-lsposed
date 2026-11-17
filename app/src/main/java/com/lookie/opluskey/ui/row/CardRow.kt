@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -499,10 +501,16 @@ private fun ItemRow(
             //  行尾那一格在「箭头 / 自有控件 / 空」三档之间**就地换控件**（编辑态把箭头换成多选框、
             //  只读时收起箭头都走这里）。同位置换组件**不做淡入淡出**（用户口径：替换动画一律去掉，
             //  内容原地变），箭头与多选框同尺寸 ⇒ 盒宽不变，右侧不会「啪」地换一块，标题也不会被推一下。
-            when {
-                row.trailing != null -> row.trailing.invoke()
-                row.arrow -> RowEndIcon(tint = arrowTint)
-                else -> Unit
+            //
+            //  **这一格也要知道整行现在能不能点**：箭头那支由本层自己算色，而 `trailing` 是调用方
+            //  画的东西 —— 不把状态递下去，行灰着、行尾那颗选择器却还亮着（`RowEndIcon` 读
+            //  [LocalRowEnabled] 自己压暗；别的自定义内容想要同一套读它即可，不该由每个调用点各自判）。
+            CompositionLocalProvider(LocalRowEnabled provides row.enabled) {
+                when {
+                    row.trailing != null -> row.trailing.invoke()
+                    row.arrow -> RowEndIcon(tint = arrowTint)
+                    else -> Unit
+                }
             }
         },
         cardListPosition = position,
@@ -669,6 +677,18 @@ private val SELECTED_RING_WIDTH = 2.dp
 private val SELECTED_RING_AIR = 2.dp
 
 /**
+ * 这一行**现在能不能点** —— 行尾那类「调用方自己画的」内容从这里取状态。
+ *
+ *  为什么要有它：`enabled = false` 时，库只给**它自己画的东西**上禁用色（标题 / 副标题 / 开关），
+ *  行首图标由本层按 [CardRow.Item.iconTint] 那套算，而 `trailing` 是调用方塞进来的组件 ——
+ *  本层既不是它的作者、也不该去猜它的形状。于是把状态递下去，由组件自己决定怎么压暗：
+ *  [RowEndIcon] 读它换禁用色，别的自定义内容（文字 / 勾选框）想统一也读它。
+ *
+ *  默认 `true`：不在行里（或调用方明确要亮色）时不影响任何现有调用点。
+ */
+internal val LocalRowEnabled = compositionLocalOf { true }
+
+/**
  * 行尾那颗**指示性图标**（`trailing` / `endActions` 槽里那一颗）—— 全项目只此一份。
  *
  * ## 为什么收在这里
@@ -694,19 +714,30 @@ private val SELECTED_RING_AIR = 2.dp
  *  它表示「点这一行还有下一层」，不是动作本身。要更强的读法（比如已选中）由调用方自己传
  *  [tint]，**不要**在这里加分支。
  *
+ *  **禁用态自动压暗**：整行 `enabled = false` 时换成 `disabledOnSecondaryVariant` —— 这一档
+ *  同样不该由调用点各记一遍（原来 `trailing` 槽没人管，「字灰了、行尾那颗还亮着」）。
+ *  调用方传了 [tint] 就以它为准（那是「这一行图标本身在表达颜色」的那几处）。
+ *
  * @param icon 字形。默认「进入下一层」的箭头
- * @param tint 颜色。默认最弱那一档
+ * @param tint 颜色；`null` = 按整行的启用态取（见上）
  */
 @Composable
 internal fun RowEndIcon(
     icon: ImageVector = PageIcons.EnterArrow,
-    tint: Color = COUITheme.colorScheme.onSurfaceVariantActions,
+    tint: Color? = null,
 ) {
+    val rowEnabled = LocalRowEnabled.current
+    val resolved =
+        tint ?: if (rowEnabled) {
+            COUITheme.colorScheme.onSurfaceVariantActions
+        } else {
+            COUITheme.colorScheme.disabledOnSecondaryVariant
+        }
     Icon(
         icon,
         contentDescription = null,
         modifier = Modifier.size(ROW_END_ICON_SIZE),
-        tint = tint,
+        tint = resolved,
     )
 }
 

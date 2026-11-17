@@ -1,36 +1,17 @@
 package com.lookie.opluskey.inject.input
 
 import android.view.MotionEvent
+import com.lookie.opluskey.core.judge.Swipe
+import com.lookie.opluskey.core.judge.swipeAccepted
+import com.lookie.opluskey.core.judge.swipeDirection
 import com.lookie.opluskey.core.log.XLog
-import kotlin.math.abs
-
-/**
- * 一段滑动 —— 只有几何与时间，**不含**「这是哪个手势、该干什么」（那是它上面那一层的事）。
- *
- * @param durationMs 按下到抬起的时长
- * @param samples 这一段收到了多少条 MOVE（判定余量够不够看它；真机点按约 0~2 条）
- */
-internal data class Swipe(
-    val direction: Direction,
-    val dxPx: Float,
-    val dyPx: Float,
-    val distancePx: Float,
-    val durationMs: Long,
-    val samples: Int,
-) {
-    /** 方向按**主轴**分四档 —— 斜着划也算它偏得多的那一轴。 */
-    enum class Direction { UP, DOWN, LEFT, RIGHT }
-
-    /** 平均速度（px/ms）—— 快扫与慢拖的区别，判定阈值之外由调用方自己定。 */
-    val speedPxPerMs: Float get() = if (durationMs <= 0) 0f else distancePx / durationMs
-
-    override fun toString(): String =
-        "${direction.name} 位移 ${distancePx.toInt()}px（dx=${dxPx.toInt()}, dy=${dyPx.toInt()}）" +
-            " 用时 ${durationMs}ms / $samples 条移动"
-}
 
 /**
  * 单指滑动的判定器 —— 纯逻辑：喂 [RawInput]，吐 [Swipe] 或 `null`。
+ *
+ *  结果类型 [Swipe] 与两句判据（[swipeDirection] / [swipeAccepted]）住在 `core/judge`：
+ *  它们跟数字与几何有关，与采集点无关，搬过去才能被 `:core:test` 钉住。
+ *  留在这里的只有「这一段跟到哪了」那点状态。
  *
  * ## 边界（都是判定，不是参数）
  *
@@ -146,10 +127,10 @@ internal class SwipeJudge(
         val dy = t.peakY - t.startY
         val distance = t.peakDistanceFrom(t.peakX, t.peakY)
         //  点按（还在 slop 里）/ 慢拖（超过上限）/ 指针换了：三种都不产出，
-        //  也不许假装成「零距离的滑动」交给上层的动作表去匹配。
-        if (!samePointer || distance < slopPx || duration > maxDurationMs) return null
+        //  也不许假装成「零距离的滑动」交给上层的动作表去匹配（三条判据见 `swipeAccepted`）。
+        if (!swipeAccepted(samePointer, distance, slopPx, duration, maxDurationMs)) return null
         return Swipe(
-            direction = directionOf(dx, dy),
+            direction = swipeDirection(dx, dy),
             dxPx = dx,
             dyPx = dy,
             distancePx = distance,
@@ -162,17 +143,6 @@ internal class SwipeJudge(
         if (track != null) XLog.d { "滑动判定：这一段作废 —— $reason" }
         track = null
     }
-
-    /** 主轴在哪一轴就报哪一档；正好 45° 归横向（两轴相等时取谁本来就没有依据，固定下来即可）。 */
-    private fun directionOf(
-        dx: Float,
-        dy: Float,
-    ): Swipe.Direction =
-        if (abs(dx) >= abs(dy)) {
-            if (dx > 0) Swipe.Direction.RIGHT else Swipe.Direction.LEFT
-        } else {
-            if (dy > 0) Swipe.Direction.DOWN else Swipe.Direction.UP
-        }
 
     /** 一段的累计状态 —— 只活在 [SwipeJudge] 里，判定结束即丢。 */
     private class Track(

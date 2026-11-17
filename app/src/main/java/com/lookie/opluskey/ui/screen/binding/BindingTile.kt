@@ -142,14 +142,11 @@ internal fun SettingsPage.ActionTile(
     //  **不能用 `onTertiaryContainer`**：那是压在三段容器（`tertiaryContainer`）底上的前景色，
     //  而这张卡的底始终是 `surfaceContainer`，两者不是一对；Monet 那一档它还是三级色相
     //  （与主色不是一个色族），选中格的标题会变成别的颜色（真机反馈「选中后标题取色不对」）。
-    val contentColor by animateColorAsState(
-        targetValue =
-            when {
-                !enabled -> scheme.disabledOnSecondaryVariant
-                selected -> scheme.primary
-                else -> scheme.onSurfaceContainer
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
+    //  两档色（+ 选中那一档）取全项目那一份：禁用优先于选中，选中走 `primary`，
+    //  过渡参数统一 —— 不在这一格再抄一遍三档判据。
+    val contentColor by rememberRowIconColor(
+        enabled = enabled,
+        selected = selected,
         label = "TileContent",
     )
     //  标题下面那行**小字**的配色（应用名 / 入口格档位 / 命令间隔），可用/禁用切换带过渡。

@@ -14,7 +14,6 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KsuCompat
-import com.lookie.opluskey.core.model.OutputSink
 import com.lookie.opluskey.core.wire.ModuleWire
 
 internal class CustomCommandRunner(
@@ -25,10 +24,13 @@ internal class CustomCommandRunner(
      *  单条命令按它自己那两个开关给；多条命令的每一步按**被引用那条命令**的开关给
      *  （裸步骤按多条命令自己存的那两位）。
      *
-     *  第三参 = **跑完之后**回调一次（不论成败、也不论「根本没跑」）—— 只在有步骤间隔的多条命令里
+     *  第四参 = **跑完之后要不要用实际输出代替命令名**（`Command.showOutput`）：只有单条命令读
+     *  它自己那一位；多条命令的每一步都传假（步骤没有各自的开关）。
+     *
+     *  第五参 = **跑完之后**回调一次（不论成败、也不论「根本没跑」）—— 只在有步骤间隔的多条命令里
      *  给：那时下一步要**等这一步真的结束**才排（见 [runSteps]）。`null` = 不用回执。
      */
-    private val execShell: (String, Boolean, Boolean, OutputSink, (() -> Unit)?) -> Unit,
+    private val execShell: (String, Boolean, Boolean, Boolean, (() -> Unit)?) -> Unit,
     /** 派发一个非 shell 的内置动作。 */
     private val dispatch: (Action) -> Unit,
     /** 展开失败时的通知出口。 */
@@ -164,7 +166,7 @@ internal class CustomCommandRunner(
         if (parsed is Action.Shell) {
             //  单条自己的「以 root 执行」只在这一支生效：它是**整条命令**的开关，不跟着正文的
             //  `shell:` 前缀走（前缀只是格式，同一个前缀在「多条」的步骤里也一样用）。
-            execShell(parsed.command, cmd.root, cmd.viaShizuku, cmd.outputSink, null)
+            execShell(parsed.command, cmd.root, cmd.viaShizuku, cmd.showOutput, null)
             return
         }
         //  正文里写 `cmd:<另一条>` 是**老版本 / 手改文件**才有的写法：命令正文不再支持引用另一条
@@ -223,14 +225,14 @@ internal class CustomCommandRunner(
         if (shell != null && KsuCompat.isSidebarAlias(shell)) {
             XLog.w("  第 ${index + 1} 步（KSU 别名）→ $shell")
             //  别名被翻译成原生调用、不是真 shell，执行身份不参与；照旧按这一步自己的两位传
-            execShell(shell, step.root, step.viaShizuku, OutputSink(), null)
+            execShell(shell, step.root, step.viaShizuku, false, null)
             scheduleNext(steps, index + 1, gapMs, name)
             return
         }
 
         if (shell != null && gapMs > 0) {
             XLog.w("  第 ${index + 1} 步（shell，等它跑完再等 ${gapMs}ms）→ ${XLog.redactCommand(shell)}")
-            execShell(shell, step.root, step.viaShizuku, OutputSink()) { scheduleNext(steps, index + 1, gapMs, name) }
+            execShell(shell, step.root, step.viaShizuku, false) { scheduleNext(steps, index + 1, gapMs, name) }
             return
         }
 
@@ -243,12 +245,12 @@ internal class CustomCommandRunner(
             XLog.w("  第 ${index + 1}~$nextIndex 步（shell，合并成一条）→ ${XLog.redactCommand(joined)}")
             val nextIsShell = nextIndex < steps.size && shellStepText(steps[nextIndex].text) != null
             if (nextIsShell) {
-                execShell(joined, step.root, step.viaShizuku, OutputSink()) {
+                execShell(joined, step.root, step.viaShizuku, false) {
                     scheduleNext(steps, nextIndex, gapMs, name)
                 }
                 return
             }
-            execShell(joined, step.root, step.viaShizuku, OutputSink(), null)
+            execShell(joined, step.root, step.viaShizuku, false, null)
             scheduleNext(steps, nextIndex, gapMs, name)
             return
         }

@@ -1,14 +1,18 @@
 package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.chrome.HEADER_ACTION_GAP
 import com.lookie.opluskey.ui.chrome.HeaderIconButton
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.HintText
@@ -16,6 +20,7 @@ import com.lookie.opluskey.ui.model.icon.FluidIconRow
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.row.rememberRowIconColor
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.command.CommandListEditState
 import com.lookie.opluskey.ui.state.page.CommandForm
@@ -23,6 +28,46 @@ import com.lookie.opluskey.ui.style.AnimatedColumn
 import com.lookie.opluskey.ui.wire.disabledClickReason
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.theme.COUITheme
+
+/**
+ * 编辑态里那颗「全选」—— 按一下把命令清单**一次勾满**，已经勾满时再按一下**收回**。
+ *
+ *  与「按键功能」「常用命令」那两颗同一个样式：同一颗 `PageIcons.SelectAll`、同一档间距、
+ *  勾满那一档走强调色。勾中的是**命令名**（与列表行、批量删除同一个键）。
+ */
+@Composable
+private fun SettingsPage.CommandHeaderSelectAll(canEdit: Boolean) {
+    val all =
+        configState.commands.value
+            .map { it.name }
+            .toSet()
+    val every = all.isNotEmpty() && CommandListEditState.picked == all
+    //  勾满那一档用强调色：只看图标分不出两档，文案在无障碍里，眼睛看不到。
+    val iconTint by rememberRowIconColor(
+        enabled = canEdit,
+        selected = every,
+        label = "CommandsSelectAllIcon",
+    )
+    DisabledHint(if (canEdit) null else disabledClickReason()) {
+        HeaderIconButton(
+            onClick = { CommandListEditState.toggleAll(all) },
+            enabled = canEdit,
+        ) {
+            Icon(
+                PageIcons.SelectAll,
+                contentDescription =
+                    if (every) {
+                        I18n.get(Strings.KEYS_DESELECT_ALL)
+                    } else {
+                        I18n.get(Strings.KEYS_SELECT_ALL)
+                    },
+                tint = iconTint,
+            )
+        }
+    }
+    //  间距挂在左边这颗身上（与「按键功能」「常用命令」同一套写法）：两颗都带会叠成两档
+    Spacer(Modifier.width(HEADER_ACTION_GAP))
+}
 
 /**
  * 「自定义命令」页顶栏右侧那颗按钮 —— 两个页签各一档：
@@ -59,6 +104,8 @@ internal fun SettingsPage.CommandHeaderReset(
             sorting -> I18n.get(Strings.COMMAND_RESET_SORTING)
             else -> I18n.get(Strings.COMMAND_RESET_EMPTY)
         }
+    //  顶栏按钮不给图标上色 ⇒ 禁用态得自己给：取全项目那一份（启用 / 禁用两档 + 统一过渡）
+    val resetTint by rememberRowIconColor(enabled = canReset, label = "CommandResetIcon")
     DisabledHint(if (canReset) null else blocked) {
         HeaderIconButton(
             //  「按一下振一下」由顶栏那一层统一挂（见 `PageHeader` 的 `headerPressTick`）
@@ -68,13 +115,7 @@ internal fun SettingsPage.CommandHeaderReset(
             Icon(
                 PageIcons.MenuReset,
                 contentDescription = label,
-                // 顶栏按钮不给图标上色 ⇒ 禁用态得自己给（与行首图标同一个禁用色）
-                tint =
-                    if (canReset) {
-                        COUITheme.colorScheme.onSurfaceContainer
-                    } else {
-                        COUITheme.colorScheme.disabledOnSecondaryVariant
-                    },
+                tint = resetTint,
             )
         }
     }
@@ -104,6 +145,9 @@ private fun SettingsPage.CommandHeaderEdit() {
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "CommandsEditIcon",
     )
+    //  **编辑态里它左边还多一颗「全选」**：一列命令逐条勾太费事，而整批删除正是这一页的用法
+    //  —— 与「按键功能」「常用命令」那两颗同一个样式、同一个位置。
+    if (editing) CommandHeaderSelectAll(canEdit)
     DisabledHint(
         when {
             canEdit -> {

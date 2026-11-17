@@ -303,57 +303,6 @@ data class BranchCondition(
     }
 }
 
-/**
- * 一条 `shell:` 命令跑完之后，**把返回结果（标准输出）显示到哪** —— 每条命令自己的一档。
- *
- *  四档都是「用户看得见」的落点，只是打扰程度不同；[NONE] 是默认值（不显示），
- *  老配置里缺这一位也落在这里 —— 一条命令跑完就安静地结束，与这一版之前的行为一致。
- *
- *  **只对 `shell:` 有意义**：别的写法（`toast:` / `notify:` / `fluid:` / `keyevent:` …）本身就在
- *  「显示一句话」，没有 stdout 可回显（判据与「以 root 执行」同一个 `Action.usesRoot`）。
- *
- *  多条命令的每一步都是 shell，但**没有逐档配置**（步骤只存写法，见 `CommandKind.SERIAL`）：
- *  它的输出归整条命令那一档（[Command.output]），执行侧只取这一位。
- */
-enum class CommandOutput(
-    /** 存文件时用的标识。 */
-    val id: String,
-) {
-    /** 不显示（默认）。 */
-    NONE("none"),
-
-    /** 系统提示（`toast:` 那一档的落点）—— 最轻，一句话闪一下。 */
-    TOAST("toast"),
-
-    /** 通知（`notify:` 那一档的落点）—— 留在通知中心，长输出也读得全。 */
-    NOTIFY("notify"),
-
-    /** 流体云（`fluid:` 那一档的落点）—— 状态栏那一颗，适合「结果就一行」的场景。 */
-    FLUID("fluid"),
-
-    ;
-
-    companion object {
-        /** 老配置 / 缺键时落在哪一档。 */
-        val DEFAULT = NONE
-
-        /** 带 `Locale.ROOT`：文件格式解析不能受设备语言影响；认不出的也落回默认档。 */
-        fun fromId(id: String?): CommandOutput = entries.firstOrNull { it.id == id?.trim()?.lowercase(Locale.ROOT) } ?: DEFAULT
-    }
-}
-
-/**
- * 「这次执行的结果送到哪」—— 执行入口那一路要的两个值（落点 + 流体云那一档的图标）。
- *
- *  收成一个值而不是两个平级参数：它们总是一起传（`execShell` 那条 lambda 已经 4 个位置参数了），
- *  分开传的话每加一个落点的附加项都要再改一遍所有调用签名。
- */
-data class OutputSink(
-    val mode: CommandOutput = CommandOutput.NONE,
-    /** 只有 [CommandOutput.FLUID] 读它；空串 = 胶囊不带图标。 */
-    val icon: String = "",
-)
-
 data class Command(
     val name: String,
     val kind: CommandKind,
@@ -391,25 +340,20 @@ data class Command(
      */
     val viaShizuku: Boolean = false,
     /**
-     * 这条命令跑完之后**把返回结果显示到哪** —— 与 [root] / [viaShizuku] 同一族（每条命令自己的一档）。
+     * 执行完之后，**把这条命令的实际输出当成它的名字**来提示。
      *
-     *  内容是该次执行的**标准输出**（整段、去首尾空白）；没有输出就什么都不弹 ——
-     *  「成功但没说话」与「失败了」本来就该长得不一样，失败那一侧另有失败提示。
+     *  `false`（默认）= 提示里念命令名（「执行时提示」那句的 `$action`）；`true` = 念命令的
+     *  标准输出 —— 没有输出时仍回落到命令名（「跑成功了但没说话」不该念出一条空提示）。
      *
-     *  默认 [CommandOutput.NONE]：老配置与没配这一档的命令一律安静结束。
+     *  **这一位只管「念什么」，不管「念不念、在哪念」**：那两件事由「执行时提示」与它所在的
+     *  设置页（含独立设置）决定。所以它不带落点、也不带图标 —— 换成输出之后，图标仍按这一档
+     *  动作自己的那颗取（流体云那一档）。
+     *
+     *  只对 `shell:` 有意义（判据与 [root] 同一个 `Action.usesRoot`）：别的写法本身就在
+     *  「说一句话」，没有 stdout 可换。
      */
-    val output: CommandOutput = CommandOutput.DEFAULT,
-    /**
-     * [CommandOutput.FLUID] 那一档用的**胶囊图标**（`FluidIcons` 的 id，空串 = 不带图标）。
-     *
-     *  只在 `output == FLUID` 时有意义：流体云那颗胶囊左边要画一颗字形，而执行侧拿到的是命令的
-     *  输出文本，没有别的地方能告诉它画哪颗。
-     */
-    val outputIcon: String = "",
+    val showOutput: Boolean = false,
 ) {
-    /** 这次执行的结果送到哪（落点 + 流体云那一档的图标）—— 执行侧只认这一份。 */
-    val outputSink: OutputSink get() = OutputSink(output, outputIcon)
-
     /**
      * 写进配置文件 `single` / `double` / `long` 那一档的取值。
      *
@@ -664,4 +608,37 @@ class ActionReading(
     val parent: String?,
     val name: String,
     val state: String?,
+)
+
+/**
+ * 一次「执行时提示」的**渲染参数** —— 判定侧算好、随动作交给执行侧。
+ *
+ *  ## 为什么要传下来而不是就地发
+ *
+ *  命令开了 [Command.showOutput] 时，这句话里的 `$action` 要等命令**跑完**才知道（那是它的
+ *  标准输出）。所以判定侧只能在派发之前把模板与主语算好交下来，由执行侧在 `onDone` 里拼
+ *  （见 `ActionRunner.publishOutput`）—— 否则要么先弹一句命令名、要么整条提示丢掉。
+ *
+ *  ## 落点仍然只有一份
+ *
+ *  [channel] 与 [template] 都来自**这一次生效的那份设置**（公共或独立设置），与「执行时提示」
+ *  就地发的那条读的是同一个出口 —— 命令这一位不另起一条落点。落点已按
+ *  [NoticeMode.effective] 折算过（流体云在「使用 ColorOS 接口」关着时就是 [NoticeMode.TOAST]），
+ *  执行侧拿到什么就发什么，不再回头看配置。
+ *
+ *  @param channel 这一句往哪儿发（[NoticeMode.NONE] 不会出现在这里 —— 那一档判定侧根本不建 spec）。
+ *  @param fallback 输出为空时念的那一段（命令名）。与 [ActionReading] 的回落同一条：
+ *    「跑成功了但没说话」不该念出一条空提示。
+ *  @param token 这一档动作的 token —— 流体云那一档要按它取预渲染的图标。
+ *  @param identity 图标名要带的执行身份（`FluidCard.identityOf`）：同一条命令按
+ *    sh / root / Shizuku 三档各一张图，空串 = 默认那档。
+ */
+class NoticeSpec(
+    val key: String,
+    val gesture: String,
+    val template: String,
+    val channel: NoticeMode,
+    val fallback: String,
+    val token: String,
+    val identity: String = "",
 )

@@ -4,6 +4,10 @@ import android.os.Handler
 import android.os.SystemClock
 import android.view.KeyEvent
 import com.lookie.opluskey.bridge.Framework
+import com.lookie.opluskey.core.intercept.ClaimKind
+import com.lookie.opluskey.core.intercept.HoldStep
+import com.lookie.opluskey.core.intercept.claimKindOf
+import com.lookie.opluskey.core.intercept.holdStepOf
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
@@ -476,16 +480,22 @@ internal class SideKeyInterceptor(
             // ROM 判好的手势码（压感拍照键）：直接按手势派发，不进时长判定 ——
             //  判成双击时 ROM 只发 769 一个码，等第二次按下永远等不到（见 `RomKeyFamilies`）。
             val gesture = RomKeyFamilies.gestureOf(keyEvent.keyCode)
+            //  归哪一档收在 `core/intercept/KeyClaim.claimKindOf`，顺序就是语义：
+            //  **「只参与非首键的按住组合」先判** —— ROM 判好的那几颗码本身就是单键手势
+            //  （双击 / 轻按 / 重按），认下来就等于「单键仍归模块」，而这一位要的正好相反。
+            //  交给 `ComboOnlyNative` 压住这一下再按窗口还回去，组合照旧能凑（它只是不判单键）。
+            val kind =
+                claimKindOf(
+                    comboOnly = keyConfig.comboOnly,
+                    romGesture = gesture != null,
+                    romMember = RomKeyFamilies.isNonGestureMember(keyEvent.keyCode),
+                )
             return when {
-                //  **「只参与非首键的按住组合」先判**：ROM 判好的那几颗码本身就是单键手势（双击 / 轻按 / 重按），
-                //  认下来就等于「单键仍归模块」—— 这一位要的正好相反。交给 `ComboOnlyNative`
-                //  压住这一下再按窗口还回去，组合照旧能凑（它只是不判单键）。
-                keyConfig.comboOnly -> Decision.Claimed(keyConfig)
-
-                gesture != null -> Decision.RomGesture(keyConfig, gesture)
+                //  ROM_GESTURE 只在 `gesture != null` 时才会被选中（见 `claimKindOf`）
+                kind == ClaimKind.ROM_GESTURE && gesture != null -> Decision.RomGesture(keyConfig, gesture)
 
                 //  族里的**中间态码**：认下就吞，既不派发、也不放行给 ROM
-                RomKeyFamilies.isNonGestureMember(keyEvent.keyCode) -> Decision.RomSwallow(keyEvent.keyCode)
+                kind == ClaimKind.ROM_SWALLOW -> Decision.RomSwallow(keyEvent.keyCode)
 
                 else -> Decision.Claimed(keyConfig)
             }
@@ -893,49 +903,54 @@ internal class ComboOnlyNative(
         }
         val downAt = SystemClock.uptimeMillis()
         val taken = combo.onDown(id) == ComboDetector.Down.TAKEN
-        //  两条「要不要压」的判据各查一次表（按键热路径，别为了一句注释查两遍）
-        val windowMemberHere = windowMember(id)
-        val holdStarterHere = holdStarter(id)
+        //  两条「要不要压」的判据各查一次表（按键热路径，别为了一句注释查两遍）；
+        //  压不压、压到哪一步收在 `core/intercept/KeyClaim.holdStepOf`（顺序就是语义）。
+        val step = holdStepOf(taken = taken, windowMember = windowMember(id), holdStarter = holdStarter(id))
         //  **这一下没有任何理由压住**（见类注释的第三种情形）：那一组不认窗口、这颗键也不是
         //  先按住的那一颗 —— 组合要么已经在上面那一句里当场成立，要么永远配不上。原样交给系统，
         //  一秒都不压，也不必再补一条注入事件回去。
-        if (!taken && !windowMemberHere && !holdStarterHere) {
+        if (step == HoldStep.PASS) {
             XLog.d { "${id.label}（$point）：不认窗口、也不是先按住的那颗 → 原样交给系统" }
             return false
         }
-        //  压到哪一步：窗口那条压到窗口到点，按住那条压到抬手（见类注释）。
-        val waitForRelease = !taken && holdStarterHere
         synchronized(lock) {
-            //  走到这里就是「这一下要压」（上面那两级判据已经排除掉不必压的）：先吞，
+            //  走到这里就是「这一下要压」（上面那一级已经排除掉不必压的）：先吞，
             //  凑成了永久吞、没凑成再由窗口到点或抬手还回去（用户口径：组合判定不该触发原生事件）。
             swallowed.add(id.id)
             //  上一次那一下的「已松手」止于这次按下：新的一下从按下算起
             released.remove(id.id)
-            when {
-                taken -> {
+            when (step) {
+                HoldStep.TAKEN -> {
                     pending.remove(id.id)
                     deferred.remove(id.id)
                 }
 
-                waitForRelease -> {
+                HoldStep.UNTIL_RELEASE -> {
                     //  **时间戳当版本号**只在窗口那条有用；这一档没有窗口任务，抬手那次自己认这一笔
                     deferred[id.id] = keyEvent.keyCode
                 }
 
+                //  走到这里只剩 UNTIL_WINDOW：`PASS` 在上面已经返回
                 else -> {
                     pending[id.id] = downAt
                 }
             }
         }
-        if (taken) {
-            XLog.w("${id.label}（$point）：这一下归组合（只参与非首键的按住组合），连原生事件一起吞掉")
-        } else if (waitForRelease) {
-            XLog.w("${id.label}（$point）：按下先压住（只参与非首键的按住组合），抬手时再还回去")
-        } else {
-            //  时间戳当这一下的**版本号**：同一颗键在窗口内又被按到时，旧任务到点会发现
-            //  账已经被新的一次改写了，不会替新的那一下做主（补发错次数比不补发更难查）。
-            scheduleFallback(id, keyEvent.keyCode, downAt)
-            XLog.w("${id.label}（$point）：按下先压住（只参与非首键的按住组合），窗口内没凑成就把原生事件还回去")
+        when (step) {
+            HoldStep.TAKEN -> {
+                XLog.w("${id.label}（$point）：这一下归组合（只参与非首键的按住组合），连原生事件一起吞掉")
+            }
+
+            HoldStep.UNTIL_RELEASE -> {
+                XLog.w("${id.label}（$point）：按下先压住（只参与非首键的按住组合），抬手时再还回去")
+            }
+
+            else -> {
+                //  时间戳当这一下的**版本号**：同一颗键在窗口内又被按到时，旧任务到点会发现
+                //  账已经被新的一次改写了，不会替新的那一下做主（补发错次数比不补发更难查）。
+                scheduleFallback(id, keyEvent.keyCode, downAt)
+                XLog.w("${id.label}（$point）：按下先压住（只参与非首键的按住组合），窗口内没凑成就把原生事件还回去")
+            }
         }
         return true
     }

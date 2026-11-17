@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.GlobalConfig
+import com.lookie.opluskey.core.model.NoticeMode
 import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -24,6 +25,9 @@ import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
+import com.lookie.opluskey.ui.row.noticeModeMenu
+import com.lookie.opluskey.ui.row.noticeModeRow
+import com.lookie.opluskey.ui.row.rememberNoticeModeMenu
 import com.lookie.opluskey.ui.screen.binding.ClickDelayCard
 import com.lookie.opluskey.ui.screen.binding.SHOW_COMMON_COMMANDS
 import com.lookie.opluskey.ui.screen.binding.clickGlobalParams
@@ -33,8 +37,7 @@ import com.lookie.opluskey.ui.screen.combo.comboPublicParams
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.write.setColorOsApi
 import com.lookie.opluskey.ui.write.setMiniWindowAnim
-import com.lookie.opluskey.ui.write.setToastFluid
-import com.lookie.opluskey.ui.write.setToastOnRun
+import com.lookie.opluskey.ui.write.setNoticeMode
 import com.lookie.opluskey.ui.write.setToastTemplate
 import com.lookie.opluskey.ui.write.setVibrate
 import com.lookie.opluskey.ui.write.setVibrateOnNone
@@ -139,6 +142,8 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
     val cfg = configState.config.value
     val vibrate = cfg.global.vibrate
     val vibrateOnNone = cfg.global.vibrateOnNone
+    // 「执行时提示」四档菜单开着没有 —— 与那一行同一支里（菜单行点开它，选完就收）。
+    val noticeMenu = rememberNoticeModeMenu()
     // 「提示文案」那一行开着编辑弹窗没有 —— 弹窗与这一行同一张卡，状态就留在这支里。
     var editingToastTemplate by remember { mutableStateOf(false) }
     CardList(
@@ -183,8 +188,14 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                         )
                     },
                 )
-                add(toastRow(cfg.global.toastOnRun, pageEnabled))
-                add(toastFluidRow(cfg.global.toastFluid, pageEnabled, visible = cfg.global.toastOnRun))
+                add(
+                    noticeModeRow(
+                        mode = cfg.global.noticeMode,
+                        enabled = pageEnabled,
+                        anchor = noticeMenu.anchor,
+                        onClick = noticeMenu::show,
+                    ),
+                )
                 add(toastTemplateRow(cfg.global, pageEnabled) { editingToastTemplate = true })
                 // 「前台转小窗时使用动画」：`zoom:mini` 那一下要不要播缩小动画。
                 //  关（默认）= 原地收、无动画；开 = 原地收成小窗后紧接着让框架自己的动画器播那一段
@@ -208,29 +219,15 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
             },
     )
     toastTemplateDialog(cfg.global.toastTemplate, editingToastTemplate) { editingToastTemplate = it }
+    //  四档菜单：与那一行同一张卡（行的点击只负责把它打开）。流体云那行按「使用 ColorOS 接口」
+    //  判能不能选 —— 与执行侧的回落同一条（见 `NoticeMode.effective`）。
+    noticeModeMenu(
+        state = noticeMenu,
+        current = cfg.global.noticeMode,
+        enabled = pageEnabled,
+        colorOsApi = cfg.global.colorOsApi,
+    ) { setNoticeMode(it) }
 }
-
-/**
- * 「用流体云提示」那一行 —— 只在「执行时提示」开着时出现（与提示文案同一档）。
- *
- *  它只换**落点**：关着走注入侧那颗系统身份的 Toast，开着走宿主自己的流体云胶囊。
- *  文案不跟着变 —— 同一句 `$key - $gesture → $action` 两个地方都念得对。
- *  图标来自被执行的那个动作（界面层预热成 png，宿主按 token 找回来）。
- */
-private fun SettingsPage.toastFluidRow(
-    checked: Boolean,
-    enabled: Boolean,
-    visible: Boolean,
-): CardRow =
-    CardRow.Switch(
-        title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE),
-        icon = PageIcons.FormatFluid,
-        checked = checked,
-        enabled = enabled,
-        visible = visible,
-    ) {
-        setToastFluid(it)
-    }
 
 /**
  * 「提示文案」那一行 —— 只在「执行时提示」开着时出现（关着提示还摆一行改文案，
@@ -254,7 +251,8 @@ private fun SettingsPage.toastTemplateRow(
         //  **不给行尾箭头**（用户口径）：那一颗的读法是「点了进下一页」（见 `PageIcons.EnterArrow`
         //  的注释），而这一行点开的是一张弹窗 —— 没有下一层可进。
         enabled = enabled,
-        visible = global.toastOnRun,
+        //  「不提示」这一档没有文案可改 —— 与原来「提示关着就不摆这一行」同一条口径
+        visible = global.noticeMode != NoticeMode.NONE,
         onClick = onEdit,
     )
 
@@ -328,28 +326,6 @@ private fun SettingsPage.toastTemplateDialog(
  *  三段都摆上就已经二十来个字符，再前后加几个字就顶到名字那档的上限了。
  */
 private const val MAX_TOAST_TEMPLATE_LENGTH = 60
-
-/**
- * 「执行时提示」那一行 —— 执行命令时弹一条 Toast（内容是**命令名**）。
- *
- *  它是**全局**项，不分命令 —— 它回答的是「按下去到底有没有被触发」，与「这条命令是什么」无关。
- *  执行侧在 `host/GestureExec` 的 `noticeIfNeeded`（一次手势走一遍，`cmd:` 与内置动作都覆盖）；
- *  那边每按一次**现读**配置，所以拨完开关立刻生效，不必重启。
- *  每颗键 / 每组组合可以在「独立设置」里另设一份（`Config.effectiveFor` 判，本页是默认值）。
- *
- */
-private fun SettingsPage.toastRow(
-    checked: Boolean,
-    enabled: Boolean,
-): CardRow =
-    CardRow.Switch(
-        title = I18n.get(Strings.HOME_TOAST_TITLE),
-        icon = PageIcons.CommandToast,
-        checked = checked,
-        enabled = enabled,
-    ) {
-        setToastOnRun(it)
-    }
 
 /**
  * 「振动强度」那一行 —— 三档滑杆（弱 / 中 / 强）。

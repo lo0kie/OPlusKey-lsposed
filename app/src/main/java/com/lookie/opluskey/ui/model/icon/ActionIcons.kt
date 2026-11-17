@@ -28,6 +28,7 @@ import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.text.actionCellIcon
 import com.lookie.opluskey.ui.model.text.formatIconOf
+import com.lookie.opluskey.ui.model.text.isCommandRef
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.AccessPoint
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
@@ -821,8 +822,11 @@ private fun switchKindIcon(kind: SwitchKind): ImageVector =
 internal fun systemSwitchKindIcon(id: String): ImageVector = SwitchKind.of(id)?.let(::switchKindIcon) ?: TablerIcons.Outline.Dots
 
 /**
- * 把这份配置里**可能被执行到的动作**逐个渲染成 png，写进宿主的共享目录 ——
+ * 把**可能被执行到的动作**逐个渲染成 png，写进宿主的共享目录 ——
  * 「执行时提示走流体云」那一档执行时按 token 找回来（`FluidCard.actionNameOf`）。
+ *
+ *  三路来源：配置里绑着的（`actionTokens()`）、**命令库里的每一条**、以及传进来的**草稿**
+ *  —— 后两路是「测试命令」那一档要的（测试直接跑库里 / 正在编辑的那一条，不必先绑到键上）。
  *
  * ## 为什么挂在设置页根上
  *
@@ -840,7 +844,7 @@ internal fun systemSwitchKindIcon(id: String): ImageVector = SwitchKind.of(id)?.
  *  那种情况下 token 不变、图标会短暂停在旧形状，直到下次换绑或清数据；它不影响胶囊弹出来。
  */
 @Composable
-internal fun SettingsPage.PrewarmActionIcons() {
+internal fun SettingsPage.PrewarmActionIcons(draft: Command? = null) {
     val config = configState.config.value
     val commands = configState.commands.value
     val ctx = LocalContext.current
@@ -857,14 +861,48 @@ internal fun SettingsPage.PrewarmActionIcons() {
                 .mapNotNull { raw -> Action.parse(raw).takeIf { it.isBound }?.token }
                 .toSet()
         }
+    val libraryTokens =
+        remember(commands) {
+            commands
+                .mapNotNull { c ->
+                    c.name
+                        .trim()
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { Command.PREFIX + it }
+                }.toSet()
+        }
+    //  **正在编辑的那一条草稿**也要画一张：`测试命令` 跑的就是它（`runTest` 不回库里按名字查），
+    //  而它可能刚把「以 Shizuku 执行」打开、还没保存 —— 图名里的执行身份取自草稿，与库里那份
+    //  不同 ⇒ 不补这一张，测试时的胶囊照样落到包里那张通用图上。
+    //
+    //  草稿由调用方递进来：`draftCommand()` 在 `ui/screen/command` 那一档，`ui/model` 不认具体屏
+    //  （分层图上 `ui.model` 在最底下，见 `tools/audit-coupling.py`）。
+    val draftCmd = draft?.takeIf { it.hasContent && it.name.isNotBlank() }
+    val draftToken = draftCmd?.let { Command.PREFIX + it.name.trim() }
+    val draftIdentity = draftCmd?.let { actionIdentityOfDraft(it) }
     tokens.forEach { token ->
         key(token) { ActionIconExport(token, commands) }
     }
+    //  命令库里的每一条：`测试命令` 直接跑库里那一条，不必先绑到某个键上 —— 而 `actionTokens()`
+    //  只收「配置里出现过的」，没绑过的命令在测试时就只剩通用图（真机反馈就是这个）。
+    libraryTokens.forEach { token ->
+        key("library:$token") { ActionIconExport(token, commands) }
+    }
+    if (draftToken != null) {
+        key("draft:$draftToken") { ActionIconExport(draftToken, commands, draftCmd) }
+    }
     //  已经不在配置里的那几张图顺手清掉：文件名由 token 决定，改过命令内容的旧 token 再也不会
-    //  被用到，留着只是让共享目录只增不减。一次配置一份要留的名单，IO 在后台。
-    LaunchedEffect(tokens) {
+    //  被用到，留着只是让共享目录只增不减。「要留的」与上面画的是同一份名单（含执行身份与草稿），
+    //  否则刚补的那几张会被当成「不在配置里」清掉。
+    LaunchedEffect(tokens, libraryTokens, draftToken, draftIdentity) {
         withContext(Dispatchers.IO) {
-            pruneActionIcons(ctx, tokens.mapTo(HashSet()) { FluidCard.actionNameOf(it) })
+            val keep =
+                buildSet {
+                    tokens.forEach { add(FluidCard.actionNameOf(it, actionIdentity(it, commands))) }
+                    libraryTokens.forEach { add(FluidCard.actionNameOf(it, actionIdentity(it, commands))) }
+                    if (draftToken != null) add(FluidCard.actionNameOf(draftToken, draftIdentity.orEmpty()))
+                }
+            pruneActionIcons(ctx, keep)
         }
     }
 }
@@ -874,21 +912,52 @@ internal fun SettingsPage.PrewarmActionIcons() {
  *
  *  在调用点循环里直接 `rememberVectorPainter` 是不行的：列表长度变化会打乱 Compose 的槽位
  *  对应（`key(token)` 才把「第几个」换成「是哪一个」）。
+ *
+ * @param draft 传了就是「正在编辑的那一条草稿」（它的图标与身份都从草稿取，库里还查不到）：
+ *   `测试命令` 跑的是草稿，胶囊的名字要按草稿那份算，否则会落到包里那张通用图上。
  */
 @Composable
 private fun SettingsPage.ActionIconExport(
     token: String,
     commands: List<Command>,
+    draft: Command? = null,
 ) {
     val ctx = LocalContext.current
     val density = LocalDensity.current
     val layout = LocalLayoutDirection.current
-    //  有父格时用那一行自己的字形（与步骤行 / 绑定列表同一份取法）
-    val painter = rememberVectorPainter(actionCellIcon(ActionCatalog.actionOf(token), commands))
-    LaunchedEffect(token, commands) {
-        exportPng(ctx, painter, density, layout, FluidCard.actionNameOf(token))
+    //  有父格时用那一行自己的字形（与步骤行 / 绑定列表同一份取法）；草稿那条按它自己的
+    //  类型 / 执行身份画（库里那条可能还是旧身份，画出来就是另一颗字形）。
+    val painter =
+        rememberVectorPainter(
+            draft?.let { commandIcon(it.kind, it.steps.size, it.root, it.single, it.viaShizuku) }
+                ?: actionCellIcon(ActionCatalog.actionOf(token), commands),
+        )
+    //  文件名带上执行身份：同一条命令在 sh / root / Shizuku 三档下是三张图。只按 token 命名时，
+    //  改完开关那张旧图会一直留着（下面 `exportPng` 的「已经有就不重画」）—— 表现是
+    //  「换成 Shizuku 了，胶囊还是井号」。
+    val iconName = FluidCard.actionNameOf(token, draft?.let { actionIdentityOfDraft(it) } ?: actionIdentity(token, commands))
+    LaunchedEffect(token, commands, iconName) {
+        exportPng(ctx, painter, density, layout, iconName)
     }
 }
+
+/**
+ * 这个 token 的图标名要带哪一档执行身份 —— 只有 `cmd:` 引用有身份（其余动作没有执行开关）。
+ *
+ *  与执行侧 `NoticeSpec.identity` 同一份口径（都走 [FluidCard.identityOf]）：两处不一致时，
+ *  胶囊会去一个没人写过的文件名上找图，结果是通用那张。
+ */
+private fun actionIdentity(
+    token: String,
+    commands: List<Command>,
+): String {
+    if (!isCommandRef(token)) return ""
+    val cmd = commands.firstOrNull { it.name == token.removePrefix(Command.PREFIX) } ?: return ""
+    return actionIdentityOfDraft(cmd)
+}
+
+/** 一条命令自己的执行身份 —— 库里那条与草稿那条共用这一份（同一判据：Shizuku 优先）。 */
+private fun actionIdentityOfDraft(cmd: Command): String = FluidCard.identityOf(cmd.root, cmd.viaShizuku)
 
 /**
  * [exportPainter] 加一道「已经有了就不重画」。

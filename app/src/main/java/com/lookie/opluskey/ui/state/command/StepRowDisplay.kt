@@ -407,6 +407,15 @@ internal object CommandListEditState {
         picked = if (name in picked) picked - name else picked + name
     }
 
+    /**
+     * 顶栏那颗「全选」：把清单里能勾的**一次勾满**，已经勾满时再按一下**收回**。
+     *
+     *  集合由调用方现算：清单随时在变（加一条 / 删一条 / 改名），「全选」的含义也跟着变。
+     */
+    fun toggleAll(names: Set<String>) {
+        picked = if (names.isNotEmpty() && picked == names) emptySet() else names
+    }
+
     /** 顶栏那颗按钮：编辑 ⇄ 完成。退出编辑时选中一起清掉。 */
     fun toggleEditing() {
         editing = !editing

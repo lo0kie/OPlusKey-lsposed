@@ -11,13 +11,15 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ComboKey
-import com.lookie.opluskey.core.model.CommandOutput
+import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.FluidCard
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.NoticeMode
+import com.lookie.opluskey.core.model.NoticeSpec
 import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.core.model.gestureOrNull
@@ -29,6 +31,7 @@ import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.host.action.FailureNotice
 import com.lookie.opluskey.host.action.condition.ConditionProbe
 import com.lookie.opluskey.host.action.notice.FluidAction
+import com.lookie.opluskey.host.action.notice.NotifyAction
 import com.lookie.opluskey.host.action.notice.actionNoticeReading
 
 /**
@@ -466,10 +469,10 @@ internal object GestureExec {
         val own = config.effectiveFor(combo)
         val colorOsApi = own.colorOsApi
         if (comboShouldVibrate(action, colorOsApi) && (!repeat || combo.longRepeatVibrate)) haptic(config, combo)
-        if (!repeat) noticeIfNeeded(config, action, keyLabel, gestureLabel, combo)
+        val pending = if (repeat) null else noticeIfNeeded(config, action, keyLabel, gestureLabel, combo)
         //  执行结果只有成功才算数：失败回执已经由执行器那边弹过（`notifyFailure`），
         //  这里不再补报；而 `lastActionAt` / 报活是「真的做成了」的凭证，失败时置位就是假绿灯。
-        val ok = r.run(action, subject, colorOsApi, own.vibrate)
+        val ok = r.run(action, subject, colorOsApi, own.vibrate, pending)
         if (ok) {
             if (action.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
             if (!repeat) onExecutedHook?.invoke(config)
@@ -608,9 +611,10 @@ internal object GestureExec {
         //  `run` 内部吞掉执行异常，绑了个解析不出来的 token 也走同一条路 —— 提前置位会让
         //  「关于模块」的「使用验证」在什么都没发生时显示已生效（假绿灯）。
         if (shouldVibrate(repeat, keyConfig, trigger, fired, colorOsApi)) haptic(config, keyConfig)
-        // 提示只在第一次派发时说：连续触发的重复是同一次按压（按住不放），弹几十条没有意义
-        if (!repeat) announceOnce(config, keyConfig, id, trigger, fired)
-        val ok = r.run(fired, "${id.label} - ${trigger.label}", colorOsApi, own.vibrate)
+        // 提示只在第一次派发时说：连续触发的重复是同一次按压（按住不放），弹几十条没有意义。
+        //  返回值 = 这一句要等命令跑完才能拼（「用输出代替命令名」那一档），交给执行侧发。
+        val pending = if (repeat) null else announceOnce(config, keyConfig, id, trigger, fired)
+        val ok = r.run(fired, "${id.label} - ${trigger.label}", colorOsApi, own.vibrate, pending)
         //  只有**成功**才置两笔凭证：失败回执由执行器那边弹（`notifyFailure`），这里不再补；
         //  `lastActionAt` 与报活都是「真的做成了」的凭证，失败时置位会让「关于模块」显示假绿灯。
         if (ok) {
@@ -693,11 +697,11 @@ internal object GestureExec {
         id: KeyId,
         trigger: GestureTrigger,
         fired: Action,
-    ) {
+    ): NoticeSpec? {
         // 语言档在拼主语**之前**对一次：`triggerParts` 里的键名 / 手势名走的都是字典。
         syncLanguage(config)
         val (keyLabel, gestureLabel) = triggerParts(id, trigger)
-        noticeIfNeeded(config, fired, keyLabel, gestureLabel, keyConfig)
+        return noticeIfNeeded(config, fired, keyLabel, gestureLabel, keyConfig)
     }
 
     /**
@@ -756,53 +760,75 @@ internal object GestureExec {
         gestureLabel: String,
         /** 这一下是谁触发的（单键那一档 / 那一组组合）—— 提示的两项都按它取，不另传布尔。 */
         owner: OwnSettings,
-    ) {
+    ): NoticeSpec? {
         //  一次解析，下面两项都读它（判据见 `Config.effectiveFor`：独立设置开着才看自己那份）
         val own = config.effectiveFor(owner)
-        if (!own.toastOnRun) return
+        //  「不提示」不是一个开关：三颗布尔折成四档的唯一出口（`NoticeMode.of`），
+        //  NONE 就是以前 `!toastOnRun` 那一支 —— 提示文案那一行在界面上也跟着不显示。
+        val mode = own.noticeMode
+        if (mode == NoticeMode.NONE) return null
         //  「无操作」不弹提示 —— 这是**提示这个位置**的规矩（那一刻没有动作发生，没什么可报），
         //  不是「一个动作怎么念」。所以它在这一侧，不在 `CommandTitle` 里：工厂只负责把一句话
         //  念完整。放回工厂的话，同一个动作在提示里是空串、在步骤行里是 `无操作`，而那两处
         //  本来就该是同一句 —— 回执那边还得再拿 `ifBlank` 兜一次。
-        if (!action.isBound) return
-        //  **一次执行只留一条提示**：这条自定义命令自己开了「显示执行返回结果」时，返回结果就是
-        //  这次的回执，动作名这一句不再弹；没开才回落到这里。两者都没开就都不显示。
-        if (action is Action.Custom && commandOutputOn(action.name)) return
+        if (!action.isBound) return null
         // 名字表随配置来（`Config.appNames`）：快捷方式那档的名字只存在那里，token 里没有
         val what = actionNoticeReading(appContext, action, config.appNames)
-        if (what.sentence.isEmpty()) return
-        val notice = ToastNotice.render(own.toastTemplate, keyLabel, gestureLabel, what)
-        XLog.w("执行时提示：$notice")
+        if (what.sentence.isEmpty()) return null
         //  走哪一路：流体云是 **ColorOS 的能力**（Seedling 卡片只有已注册的 seedling 宿主发得出去），
         //  所以「使用 ColorOS 接口」关着时一律回落 Toast —— 那一档的语义就是「这一套都走 AOSP 通道」。
         //  用户口径「使用 ColorOS 接口时应该弹流体云」。
         //  这一位读**这一档生效后**的那份（`own`，独立设置开着就看它自己那份），
         //  与同文件里振动 / 执行侧那两处（`own.colorOsApi`）同一个口径：读公共值会让
         //  「这一档走 AOSP」的独立设置在这一处失效。
-        val viaFluid = own.toastFluid && own.colorOsApi
-        if (viaFluid) {
+        val channel = mode.effective(own.colorOsApi)
+        //  **这一位只换「念什么」**：命令开了「用输出代替命令名」时，那句话要等它跑完才有字
+        //  （那是它的标准输出），所以不在这里发，把模板与主语交给执行侧（见 `publishOutput`）。
+        //  「发不发、往哪发」仍由上面那两个开关定，与就地发那一条读的是同一个出口。
+        val cmd = if (action is Action.Custom) commandOf(action.name) else null
+        if (cmd != null && cmd.showOutput) {
+            return NoticeSpec(
+                key = keyLabel,
+                gesture = gestureLabel,
+                template = own.toastTemplate,
+                channel = channel,
+                fallback = what.sentence,
+                token = action.token,
+                identity = FluidCard.identityOf(cmd.root, cmd.viaShizuku),
+            )
+        }
+        val notice = ToastNotice.render(own.toastTemplate, keyLabel, gestureLabel, what)
+        XLog.w("执行时提示：$notice")
+        when (channel) {
             //  换落点不换说法：同一句 `$key - $gesture → $action`，交给宿主自己的 Seedling SDK。
             //  图标取**这一次执行的动作**（界面层已按 `FluidCard.actionNameOf` 预渲染成 png）；
             //  失败不再回头弹一条 Toast —— 那是「提示失败的提示」，用户要的那一句照样没出现。
-            FluidAction.runText(appContext, notice, FluidCard.actionNameOf(action.token)) {}
-        } else {
-            FailureNotice.toast(appContext, notice)
+            NoticeMode.FLUID -> {
+                val identity = cmd?.let { FluidCard.identityOf(it.root, it.viaShizuku) }.orEmpty()
+                FluidAction.runText(appContext, notice, FluidCard.actionNameOf(action.token, identity)) {}
+            }
+
+            //  通知：通知中心留一条，同一段正文落在同一个 id 上（反复替换，不堆一串）。
+            //  发不出去（宿主没通知权限）时 [NotifyAction] 自己记一行并回调 —— 这一档**不报失败提示**：
+            //  用户设的是「通知」，再弹一条 Toast 说通知没发出去，等于替他换了落点。
+            NoticeMode.NOTIFY -> {
+                NotifyAction.run(appContext, Action.Notify(notice)) {}
+            }
+
+            //  NONE 在上面就返回了；TOAST 是默认档
+            NoticeMode.NONE, NoticeMode.TOAST -> {
+                FailureNotice.toast(appContext, notice)
+            }
         }
+        return null
     }
 
     /**
-     * 这条自定义命令有没有开「显示执行返回结果」—— 开着时这次回执由命令的 stdout 承担，
-     * 动作名那句不再弹（一次执行只留一条提示）。
+     * 命令库里那一条（按名字）—— 已删 / 改名时返回 `null`。
      *
-     *  查不到命令（已删 / 改名）按「没开」处理：那时提示照弹，随后执行侧报 `NOT_FOUND`，
-     *  失败回执仍会说明问题。
+     *  两处都用它：判断「用输出代替命令名」有没有开、以及流体云图标要带哪一档执行身份。
      */
-    private fun commandOutputOn(name: String): Boolean =
-        CommandLibrary
-            .loadCached()
-            .firstOrNull { it.name == name }
-            ?.output
-            ?.let { it != CommandOutput.NONE } ?: false
+    private fun commandOf(name: String): Command? = CommandLibrary.loadCached().firstOrNull { it.name == name }
 
     /**
      * 语言档跟配置走。

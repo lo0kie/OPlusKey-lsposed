@@ -11,13 +11,15 @@ import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.config.VariableStore
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ActionReading
 import com.lookie.opluskey.core.model.Command
-import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.CommandOutput
+import com.lookie.opluskey.core.model.FluidCard
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
-import com.lookie.opluskey.core.model.OutputSink
+import com.lookie.opluskey.core.model.NoticeMode
+import com.lookie.opluskey.core.model.NoticeSpec
+import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.core.model.expandedWith
 import com.lookie.opluskey.core.rom.RomKeyFamilies
 import com.lookie.opluskey.core.rom.RomProfile
@@ -73,6 +75,18 @@ internal class ActionRunner(
      */
     @Volatile
     private var runVibrate: Boolean = ConfigStore.read().global.vibrate
+
+    /**
+     * 这一次「执行时提示」的渲染参数 —— 只有命令开了「用输出代替命令名」时非空。
+     *
+     *  与 [runColorOsApi] / [runVibrate] 同一个槽位口径：由 [run] 每次开头写入，`shell` 那一支
+     *  **在入口就把值捕获成局部变量**（异步的 `onDone` 用它，不受下一次按键覆盖）。
+     *
+     *  为什么不在判定侧直接发：那句话要等命令跑完才有字（那是它的标准输出）。判定侧只把模板与
+     *  主语算好交下来（[NoticeSpec]），这里拿到输出后拼。
+     */
+    @Volatile
+    private var runNotice: NoticeSpec? = null
 
     /**
      * [run] 里「写这两格 → 整段派发」那把锁。
@@ -245,6 +259,11 @@ internal class ActionRunner(
          *  缺省值读公共设置：只服务「测试命令」那种没有按键上下文的调用。
          */
         vibrate: Boolean = ConfigStore.read().global.vibrate,
+        /**
+         * 这一下的「执行时提示」渲染参数 —— 只有命令开了「用输出代替命令名」时才非空
+         * （判定侧算好交下来，见 [NoticeSpec]）。其余动作传 `null`：那一句由判定侧就地发。
+         */
+        notice: NoticeSpec? = null,
     ): Boolean {
         //  「这一次是哪一档」与「派发」必须是一段：两个执行器（手电筒 / 响铃）在构造时就绑定了
         //  `isColorOsApi` / `runVibrate` 这两条闭包，它们不知道这一次是哪一档按键，只能读这两格。
@@ -257,6 +276,7 @@ internal class ActionRunner(
         synchronized(runState) {
             runColorOsApi = colorOsApi
             runVibrate = vibrate
+            runNotice = notice
             val scope = RunScope()
             openScope = scope
             try {
@@ -278,16 +298,34 @@ internal class ActionRunner(
      */
     fun runTest(cmd: Command) {
         XLog.w("测试命令 → ${cmd.name.ifBlank { "（未命名）" }}")
-        //  **测试时「不显示」按「提示」跑**：`none` 是给日常按键用的（不想每次按都被打扰），
-        //  照搬到这一条路上就成了「点了测试、什么都没发生」—— 而测试这一档的意义恰恰是看见结果。
-        //  只改这一条路：按侧键真跑的时候仍按用户选的那一档（安静就是安静）。
-        val forTest =
-            if (cmd.kind == CommandKind.SINGLE && cmd.output == CommandOutput.NONE) {
-                cmd.copy(output = CommandOutput.TOAST)
+        //  落点照**公共**那一份：独立设置是按键级的，测试这里没有那一位。
+        //  四档的唯一出口是 `NoticeMode.of`（`GlobalConfig.noticeMode`），流体云在「使用 ColorOS
+        //  接口」关着时由 `effective` 回落 Toast —— 与按侧键那条路同一个读法。
+        val global = ConfigStore.read().global
+        val channel = global.noticeMode.effective(global.colorOsApi)
+        //  「不提示」就是**什么都不发**：这一档连测试也不念（用户已经说了不要提示），
+        //  失败那一侧仍由 `notifyFailure` 照报 —— 那条是「命令没跑成」，不是回执。
+        //  开着时念哪一句由执行侧定：`showOutput` 真念输出、假念命令名（见 `publishOutput`）。
+        runNotice =
+            if (channel == NoticeMode.NONE) {
+                null
             } else {
-                cmd
+                NoticeSpec(
+                    key = "",
+                    gesture = "",
+                    //  没有键 / 手势上下文，所以模板只用 `$action` —— 用全局模板会念成「 -  → xxx」
+                    template = ToastNotice.ACTION,
+                    channel = channel,
+                    fallback = cmd.name,
+                    token = cmd.token,
+                    identity = FluidCard.identityOf(cmd.root, cmd.viaShizuku),
+                )
             }
-        custom.run(forTest)
+        //  跑的是传进来的这条命令本身（不回库里按名字查，理由见函数头）。
+        //  **「用输出代替命令名」照这条命令自己的开关走**：关着时念的是命令名（那份 `runNotice`
+        //  的 `fallback`），与按侧键同一个读法。这一档不再无条件置真 —— 置真之后，用户在命令
+        //  设置里关掉这一位，按侧键不再念输出、测试却照念，同一条命令两条路两个说法。
+        custom.run(cmd)
     }
 
     /**
@@ -498,11 +536,12 @@ internal class ActionRunner(
          */
         viaShizuku: Boolean = false,
         /**
-         * 跑完之后把**标准输出**显示到哪（`Command.outputSink`：落点 + 流体云那一档的图标）。
+         * 跑完之后要不要**用这条命令的实际输出代替它的名字**（`Command.showOutput`）。
          *
-         *  `mode == NONE` = 不收集、不显示（默认）；其余三档见 [publishOutput]。
+         *  为真时输出被收下来，`onDone` 里按 [runNotice] 那份参数拼成「执行时提示」那一句；
+         *  为假不收集（默认）。内置 `shell:` 动作与多条命令的步骤一直传假。
          */
-        sink: OutputSink = OutputSink(),
+        showOutput: Boolean = false,
         /**
          * 「这一条跑完了」的回执 —— **只给多条命令的步骤间隔用**（`CustomCommandRunner` 要等这一步
          * 真的结束才排下一步，见 `CustomCommandRunner.runSteps`）。
@@ -553,11 +592,21 @@ internal class ActionRunner(
             return
         }
         //  原样交给 shell（不传 trim 过的）：用户写的空白 / 引号是命令的一部分。
-        //  结果怎么给用户看由 `Command.output` 那一档决定（见 [publishOutput]），失败那一侧由
-        //  [notifyFailure] 报 —— 执行侧不再从输出里认任何前缀。
+        //  结果怎么给用户看：开了「用输出代替命令名」时，这一趟的输出就是「执行时提示」那句里的
+        //  动作名（见 [publishOutput]）；没开就不收行，念的是 [NoticeSpec.fallback]（命令名）。
+        //  失败那一侧由 [notifyFailure] 报 —— 执行侧不从输出里认任何前缀。
+        //
+        //  **念不念、念哪一句由 [runNotice] 一处定**：它非空就等于「这一次要有一句回执」——
+        //  按侧键时那是「执行时提示」那一套的结论（没开输出的一档已经就地发过、这里给的是空），
+        //  测试则一定有。原先这里按 `showOutput` 判，于是测试那条路被无条件置真之后，
+        //  「关掉用输出代替命令名」在测试里一点效果都没有。
+        //
+        //  **参数在这里捕获**：[runNotice] 是本次执行的槽位，`dispatch` 同步走到这里之后，
+        //  异步的 `onDone` 只认这一份，不会被下一次按键覆盖。
+        val plan = runNotice
         //  要显示结果时才收行（`Collections.synchronizedList`：读线程写、`onDone` 读）
         val lines =
-            if (sink.mode == CommandOutput.NONE) {
+            if (!showOutput) {
                 null
             } else {
                 java.util.Collections.synchronizedList(mutableListOf<String>())
@@ -572,7 +621,7 @@ internal class ActionRunner(
             //  跑完（含起进程失败 / 被拒 / 超时）回执一次 —— 有间隔的多条命令靠它推进下一步。
             //  **先报输出、再回执**：回执会推进下一步，反过来的话这一步的尾巴会落进下一步之后。
             onDone = {
-                publishOutput(sink, lines)
+                plan?.let { publishOutput(it, lines) }
                 settle()
             },
             //  Shizuku 那一路要 bind 模块进程的执行服务，需要宿主 Context
@@ -582,43 +631,55 @@ internal class ActionRunner(
     }
 
     /**
-     * 把这次执行的标准输出送到用户选的那个落点（`Command.output` 那四档里的后三档）。
+     * 把这一趟的输出**当成动作名**，走「执行时提示」那条唯一出口说一句。
      *
-     *  ## 只报**有内容**的那一次
+     *  ## 落点与模板都不在这里决定
      *
-     *  没有输出就什么都不弹：`ls /nonexistent >/dev/null` 这种「跑成功了但没说话」与「失败了」
-     *  本来就该长得不一样，失败那一侧另有 [notifyFailure]。空串同理（`printf ''`）。
+     *  [NoticeSpec] 是判定侧按**这一次生效的那份设置**（公共或独立设置）算好的：模板、键名、
+     *  手势、走不走流体云。与「就地发」那条（`GestureExec.noticeIfNeeded`）读的是同一个出口 ——
+     *  命令这一位只负责「念什么」，不另起一条落点。
      *
-     *  ## 三档落点用的都是现成的那一套
+     *  ## 输出为空时回落到命令名
      *
-     *  提示 / 通知 / 流体云各自已经有动作实现（`toast:` / `notify:` / `fluid:` 三档），这里
-     *  **直接调那三支**而不是再写一遍：它们各自管长度、图标、失败回执，重写一遍必然两套口径。
-     *  也**不走 [dispatch]**：那里会再展开一次 `${…}`，而这段是命令跑出来的原文，不该被当成模板。
+     *  `ls /nonexistent >/dev/null` 这种「跑成功了但没说话」不该念出一条空提示：那一档回落到
+     *  [NoticeSpec.fallback]（命令名），于是它与没开这一位时长得一样。失败那一侧另有 [notifyFailure]。
      *
      *  ## 为什么要 `handler.post`
      *
-     *  `ShellRunner` 的回调在池线程上（读输出的那一条），而这三支落点都要碰界面 / 系统服务；
+     *  `ShellRunner` 的回调在池线程上（读输出的那一条），而这两支落点都要碰界面 / 系统服务；
      *  回主线程再发，与项目里其它「池线程跑完回来报一句」的地方同一条做法。
      *
-     * @param lines 读输出那条线程攒下的行；`mode == NONE` 时为 `null`
+     * @param lines 读输出那条线程攒下的行（可能为空表：命令什么都没打印）
      */
     private fun publishOutput(
-        sink: OutputSink,
+        plan: NoticeSpec,
         lines: List<String>?,
     ) {
-        if (sink.mode == CommandOutput.NONE || lines.isNullOrEmpty()) return
-        val text = lines.joinToString("\n").trim()
-        if (text.isEmpty()) return
+        val output = lines?.joinToString("\n")?.trim().orEmpty()
+        val said = output.ifEmpty { plan.fallback }
+        if (said.isEmpty()) return
+        //  三段（父 / 子 / 状态）都回落成同一句：这一档没有「父动作: 子动作」那种结构，
+        //  模板里写了 `$parent` / `$state` 也只该念这一次的输出。
+        val reading = ActionReading(sentence = said, parent = null, name = said, state = null)
+        val notice = ToastNotice.render(plan.template, plan.key, plan.gesture, reading)
+        XLog.w("执行时提示：$notice")
         handler.post {
-            when (sink.mode) {
-                CommandOutput.NONE -> Unit
+            when (plan.channel) {
+                //  流体云：图标仍按这一档动作自己的那颗取（换成输出之后，图标不跟着变）；
+                //  文件名带上执行身份 —— sh / root / Shizuku 三档各一张（见 `FluidCard.identityOf`）
+                NoticeMode.FLUID -> {
+                    FluidAction.runText(context, notice, FluidCard.actionNameOf(plan.token, plan.identity)) {}
+                }
 
-                CommandOutput.TOAST -> requestSystemToast(context, text)
+                //  通知：与就地发那条同一个出口（`NotifyAction`），发不出去只记日志
+                NoticeMode.NOTIFY -> {
+                    NotifyAction.run(context, Action.Notify(notice)) {}
+                }
 
-                CommandOutput.NOTIFY -> NotifyAction.run(context, Action.Notify(text), ::notifyFailure)
-
-                //  图标跟着这一档一起走（用户挑的那颗，空串 = 胶囊不带图标）
-                CommandOutput.FLUID -> FluidAction.run(context, Action.Fluid(text, sink.icon), ::notifyFailure)
+                //  NONE 不会出现在 spec 里（判定侧那一档不建 spec）；TOAST 是默认档
+                NoticeMode.NONE, NoticeMode.TOAST -> {
+                    FailureNotice.toast(context, notice)
+                }
             }
         }
     }

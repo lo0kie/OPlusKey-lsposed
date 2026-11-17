@@ -516,7 +516,9 @@ private fun SettingsPage.AppRow(
                             }
 
                             else -> {
-                                RowEndIcon(tint = COUITheme.colorScheme.onSurfaceVariantActions)
+                                //  不传 tint：默认那一档 + 禁用时由行压暗（`LocalRowEnabled`），
+                                //  写死 `onSurfaceVariantActions` 等于把行状态绕过去了
+                                RowEndIcon()
                             }
                         }
                     },
