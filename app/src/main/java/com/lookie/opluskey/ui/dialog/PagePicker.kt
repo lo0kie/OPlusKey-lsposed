@@ -313,7 +313,8 @@ internal fun ColumnScope.PickerRows(
             Modifier
                 .fillMaxWidth()
                 //  真能滚时才让出滚动条那条道（`maxValue` 随滚动状态变，滚不动就是 0）：
-                //  不滚的窗不必白缩一行宽。宽度与抽屉那条同一档（`PageSheet` 的 `SHEET_SCROLLBAR_LANE`）。
+                //  不滚的窗不必白缩一行宽。抽屉那边不必让（它的条落在面板边那条 12dp 上，
+                //  本来就不压内容），这里条压在内容上，只能由内容让出来。
                 .padding(end = if (scroll.maxValue > 0) PICKER_SCROLLBAR_LANE else 0.dp)
                 //  这里**不再自己补底部留白**：上下外沿那一档由 `FrostedDialog` 的三区统一给
                 //  （自己再补一份，上下就一边多一边少）。
@@ -616,8 +617,8 @@ private val PICKER_ROWS_MAX_HEIGHT = 320.dp
 /**
  * 真能滚时内容右边要让出的那一档 —— 给滚动条留道，拇指才不压在文字上。
  *
- *  与抽屉那条同一档（`PageSheet` 的 `SHEET_SCROLLBAR_LANE`）：两处都是「通用滚动条贴在内容区
- *  右边缘，内容让出一条」，宽度不一样就会一页比另一页挤。
+ *  只这一处要：滚动条贴在**内容区**右边缘（往里 2dp，见 [PICKER_SCROLLBAR_INSET]），
+ *  不让一条就压在行尾。抽屉那边条落在面板边那条 12dp 上，不压内容，也就不必让。
  */
 private val PICKER_SCROLLBAR_LANE = 8.dp
 

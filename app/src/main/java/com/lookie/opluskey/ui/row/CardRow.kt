@@ -3,6 +3,8 @@ package com.lookie.opluskey.ui.row
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,10 +19,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -42,7 +47,9 @@ import com.lookie.opluskey.ui.model.page.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.page.ROW_START_ICON_GAP
 import com.lookie.opluskey.ui.model.page.ROW_TITLE_INSET
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.model.theme.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER
+import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT
 import com.lookie.opluskey.ui.style.AnimatedColumn
 import com.lookie.opluskey.ui.style.AppDivider
@@ -718,6 +725,62 @@ internal val LocalRowEnabled = compositionLocalOf { true }
  */
 internal val LocalReduceRowIcons = compositionLocalOf { false }
 
+/** 手风琴的开合状态 —— 由调用点 `remember` 住（见 [rememberAccordionState]）。 */
+internal class AccordionState(
+    initiallyExpanded: Boolean = false,
+) {
+    var expanded by mutableStateOf(initiallyExpanded)
+        private set
+
+    fun toggle() {
+        expanded = !expanded
+    }
+}
+
+/** 页面级记住一份开合状态（与页面同寿命，进出子页不重置）。 */
+@Composable
+internal fun rememberAccordionState(): AccordionState = remember { AccordionState() }
+
+/**
+ * 手风琴**表头行尾那颗箭头** —— 收起朝下、展开转 180°；转动与正文的展开 / 收起同一时长。
+ *
+ *  它只是指示，不单独挂点击：整行就是命中区（与 [CardRow.Item.onClick] 同一处）。
+ */
+@Composable
+internal fun AccordionChevron(expanded: Boolean) {
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
+        label = "AccordionChevron",
+    )
+    Icon(
+        PageIcons.StepDown,
+        contentDescription = null,
+        modifier = Modifier.rotate(rotation).size(ROW_END_ICON_SIZE),
+        tint = COUITheme.colorScheme.onSurfaceVariantActions,
+    )
+}
+
+/**
+ * **手风琴**：一张卡里的「一行表头 + 一组正文行」。点表头整行展开 / 收起，
+ * 正文行跟着高度动画进出（走 [CardList] 的 `visible` 那一套：滑下来 / 收回去，连分隔线一起）。
+ *
+ *  正文行**始终在表里**，只是 `visible` 跟着状态走 —— 不要用 `if (expanded) add(...)`
+ *  那样行是直接出现 / 消失的，没有高度过渡。
+ *
+ * @param state 开合状态（[rememberAccordionState]）
+ * @param header 表头那一行；回调里的 `toggle` 由调用点挂到 [CardRow.Item.onClick] 上
+ * @param body 正文行 —— 以「现在可不可见」为参数，调用点把它挂到每一行的 `visible` 上
+ */
+@Composable
+internal fun AccordionCard(
+    state: AccordionState,
+    header: @Composable (expanded: Boolean, toggle: () -> Unit) -> CardRow.Item,
+    body: @Composable (visible: Boolean) -> List<CardRow>,
+) {
+    CardList(rows = listOf(header(state.expanded) { state.toggle() }) + body(state.expanded))
+}
+
 /**
  * 行尾那颗**指示性图标**（`trailing` / `endActions` 槽里那一颗）—— 全项目只此一份。
  *
@@ -775,17 +838,28 @@ internal fun RowEndIcon(
 private val ROW_END_SUMMARY_GAP = 6.dp
 
 /**
- * 行尾那一格写成「**当前值** + 选择器」—— 主题 / 强调色 / 语言 / 执行时提示这几行用。
+ * 行尾那一格写成「**当前值** + 行尾图标」—— 主题 / 强调色 / 语言 / 执行时提示这几行用。
  *
- *  这几行回答的是「现在选的是哪一档」：答案贴在右侧、与行尾那颗选择器同一组，
+ *  这几行回答的是「现在选的是哪一档」：答案贴在右侧、与行尾图标同一组，
  *  读起来是「这一行 → 现在是什么 → 点开还能改」，不必再从标题下面那行副标题抬头找答案。
  *
  *  文字与副标题同一档（`body2` + `onSurfaceVariantSummary`）；整行禁用时跟着 [RowEndIcon]
  *  一起压暗，不另分一套色。
+ *
+ * @param text 当前值那一句
+ * @param icon 行尾那颗图标：弹一层菜单的行用默认的选择器，换页的行传 `EnterArrow`；
+ *   `null` = 这一行没有「下一站」（只读的状态行），行尾只留文字
+ * @param muted 这一行**内容还没配**（如场景动作的「跟随默认」）—— 文字与图标一起压到禁用色，
+ *   行本身仍可点（与 `CardRow.Item.titleTint` 同一档，别用 `enabled = false`）
  */
 @Composable
-internal fun RowEndSummary(text: String) {
+internal fun RowEndSummary(
+    text: String,
+    icon: ImageVector? = PageIcons.Selector,
+    muted: Boolean = false,
+) {
     val rowEnabled = LocalRowEnabled.current
+    val off = !rowEnabled || muted
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(ROW_END_SUMMARY_GAP),
@@ -794,15 +868,20 @@ internal fun RowEndSummary(text: String) {
             text = text,
             style = COUITheme.textStyles.body2,
             color =
-                if (rowEnabled) {
-                    COUITheme.colorScheme.onSurfaceVariantSummary
-                } else {
+                if (off) {
                     COUITheme.colorScheme.disabledOnSecondaryVariant
+                } else {
+                    COUITheme.colorScheme.onSurfaceVariantSummary
                 },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        RowEndIcon(PageIcons.Selector)
+        if (icon != null) {
+            RowEndIcon(
+                icon,
+                tint = if (muted) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
+            )
+        }
     }
 }
 

@@ -1,5 +1,7 @@
 package com.lookie.opluskey.ui.screen.about
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -7,9 +9,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.core.DEBUG_PROBE
 import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.config.isDefaultProfile
 import com.lookie.opluskey.core.i18n.AppLanguage
@@ -26,12 +31,15 @@ import com.lookie.opluskey.ui.model.text.paletteLabel
 import com.lookie.opluskey.ui.model.text.themeTitle
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.PagePalette
+import com.lookie.opluskey.ui.row.AccordionCard
+import com.lookie.opluskey.ui.row.AccordionChevron
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.row.RowEndSummary
 import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
+import com.lookie.opluskey.ui.row.rememberAccordionState
 import com.lookie.opluskey.ui.state.page.deviceModel
 import com.lookie.opluskey.ui.state.page.deviceSupport
 import com.lookie.opluskey.ui.wire.linkChecks
@@ -62,8 +70,8 @@ import kotlinx.coroutines.withContext
  * 接管点、配置送达、以及宿主真读到配置），外加一段只能靠实践拿到的证据。
  *
  *  只看「宿主报活了没有」一个布尔的话，答不了「注入侧压根没装」这种（那种情况下宿主照样报活、
- *  页面全绿）。只读信息，没有可点的行；明细**只列不通的那几段**（正常的不占地方），
- *  一行明细都没有时由「整体状态」那一行报「全部正常」。
+ *  页面全绿）。整块是**手风琴**：平时只摆「整体状态」一行，点它把每一段都滑出来
+ *  （正常那几段也列，回答「到底查了哪几段」），再点收起。
  *
  *  注意：数据是**读缓存**、不是「进页时现取」：`linkChecks()` 读的是 `hostServiceUp` /
  *  `injectStatus` 这些**已经缓存在页面状态里**的结论，本页**不发任何问句**；主动报活只有首页
@@ -76,10 +84,14 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun SettingsPage.LinkStatusCard() {
     val checks = linkChecks()
-    val broken = checks.firstOrNull { !it.ok && it.blocking }
-    val adapted = deviceSupport == DeviceSupport.Support.ADAPTED
+    //  调试通道（`--es checks all`）：**四段全列出来、每段都换成「坏」的字形**（汇总行同）——
+    //  只看行与字形，不反映真实结论。平时只列 `blocking` 那几段。
+    val showAllBroken = DEBUG_PROBE && link.debugShowAllChecks
+    val abnormal = if (showAllBroken) checks else checks.filter { !it.ok && it.blocking }
+    val broken = if (showAllBroken) checks.firstOrNull() else checks.firstOrNull { !it.ok && it.blocking }
     //  明细**只列真故障**：正常那几段不占地方 —— 这一段本来就只在出问题时才需要看。
-    //  「主开关已关闭」与「尚未使用」两种不 ok 不算故障（[LinkCheck.blocking] 那句），所以不进明细；
+    //  「主开关已关闭」与「尚未使用」两种不 ok 不算故障（[LinkCheck.blocking] 那句），所以不进明细
+    //  （排查时用调试通道 `--es checks all` 把四段全列出来，那时它们照自己的结论画）；
     //  但「主开关关着」会经 [LinkCheck.inSummary] 出现在**汇总行**（它意味着所有按键都不接管），
     //  「尚未使用」不会（那只是还没拿到证据，不是结论）。
     //  汇总行常留：它负责回答「到底有没有事」，一行明细都没用时靠它报「全部正常」。
@@ -94,42 +106,68 @@ internal fun SettingsPage.LinkStatusCard() {
             offNote != null -> offNote.detail
             else -> I18n.get(Strings.LINK_CHECK_ALL_NORMAL)
         }
-    CardList(
-        rows =
-            buildList {
-                // 机型是这一张卡的**第一行**：它答的也是「这台机器现在什么状态」，与下面那几段同类。
-                //  只读、**不给 `onClick`**（给了反而像能点）。
-                add(
-                    CardRow.Item(
-                        title = localDeviceTitle(),
-                        summary = adaptVerdict(deviceSupport),
-                        // 适配命中 / 没命中 —— 用「这台机器认不认得」两个字形
-                        icon = if (adapted) PageIcons.DeviceAdapted else PageIcons.DeviceUnsupported,
-                        // **一律常规色**：这一行只是「这一组验过没有」的提示，不是故障。
-                        //  原先没命中时染成 error 红，用户口径是「很多用户以为不能用」——
-                        //  与 AGENTS 一、13 同一条：清单不参与任何「看起来坏了」的表达。
-                        //  认不认得靠字形分，不靠颜色骂人。
-                        iconTint = COUITheme.colorScheme.onSurfaceContainer,
-                    ),
+    val overallOk = abnormal.isEmpty() && offNote == null
+    //  展开之前只有汇总那一行：**点它**把每一段都滑出来（正常的也列，回答「到底查了哪几段」）。
+    //  展开后正文行走 `CardList` 的 `visible`，收起时连行间分隔线一起缩回去。
+    val accordion = rememberAccordionState()
+    AccordionCard(
+        state = accordion,
+        header = { expanded, toggle ->
+            // 汇总那一行（缺哪一段直接点名）。字形只分两档：正常 `home-check`、
+            //  不正常 `home-cancel` —— 这一行回答的就是「合起来好不好」，别去细分是哪一段
+            //  （那是展开后明细行的活）。
+            statusRow(
+                icon = if (overallOk) PageIcons.LinkOk else PageIcons.LinkBroken,
+                title = I18n.get(Strings.LINK_CHECK_OVERALL_STATUS),
+                ok = overallOk,
+                detail = detail,
+                onClick = toggle,
+                expanded = expanded,
+            )
+        },
+        body = { visible ->
+            // 每一段各占一行（全部列出，不只异常的那几段）。每段自带字形
+            //  （`LinkCheck.icon` / `iconBroken`）—— 服务 / 按键 / 设置 / 使用各一颗，
+            //  几段一起坏时也能一眼看出断在哪一环，而不是一整列一样的叉。
+            checks.map { check ->
+                //  字形与行尾那句一起换成「坏」的那一档；调试档里正常的段也按异常画
+                val bad = showAllBroken || !check.ok
+                statusRow(
+                    icon = if (bad) check.iconBroken else check.icon,
+                    title = check.name,
+                    ok = !bad,
+                    detail = if (bad) check.detailBroken else check.detail,
+                    //  「使用验证」那一档**始终不标红**：没走过是还没拿到证据，不是故障。
+                    red = bad && !check.neverRed,
+                    visible = visible,
+                    rowKey = check.name,
                 )
-                // 整体结论那一行（缺哪一段直接点名）。字形只分两档：正常 `home-check`、
-                //  不正常 `home-cancel` —— 这一行回答的就是「合起来好不好」，别去细分是哪一段
-                //  （那是下面明细行的活）。
-                val overallOk = broken == null && offNote == null
-                add(
-                    statusRow(
-                        icon = if (overallOk) PageIcons.LinkOk else PageIcons.LinkBroken,
-                        title = I18n.get(Strings.LINK_CHECK_OVERALL_STATUS),
-                        ok = overallOk,
-                        detail = detail,
-                    ),
-                )
-                // 明细行：只有故障那几段。每段自带字形（`LinkCheck.icon`）—— 服务 / 按键 / 设置 /
-                //  使用各一颗，几段一起坏时也能一眼看出断在哪一环，而不是一整列一样的叉。
-                checks
-                    .filter { !it.ok && it.blocking }
-                    .forEach { add(statusRow(icon = it.icon, title = it.name, ok = false, detail = it.detail)) }
-            },
+            }
+        },
+    )
+}
+
+/**
+ * 「关于」卡里的机型那一行 —— 从「运行状态」卡挪过来，放在版本与签名之间。
+ *
+ *  它答的是「这台机器 + 这个包」里的前半句（版本、签名答后半句），所以与那一张卡同类。
+ *  只读、**不给 `onClick`**（给了反而像能点）。
+ *
+ *  结论是一整句话（「这一版系统没实测过，请自行尝试」），仍走副标题：行尾那一格单行、
+ *  放不下就把话说掉一半。
+ */
+@Composable
+internal fun SettingsPage.deviceInfoRow(): CardRow {
+    val adapted = deviceSupport == DeviceSupport.Support.ADAPTED
+    return CardRow.Item(
+        title = localDeviceTitle(),
+        summary = adaptVerdict(deviceSupport),
+        // 适配命中 / 没命中 —— 用「这台机器认不认得」两个字形
+        icon = if (adapted) PageIcons.DeviceAdapted else PageIcons.DeviceUnsupported,
+        //  颜色跟着「随机图标配色」走（不指定 = 由行自己算，见 `rememberRowIconColor`）：
+        //  它只是「这一组验过没有」的提示、不是故障，所以**不染红**
+        //  （AGENTS 一、13：清单不参与任何「看起来坏了」的表达）。
+        //  原先没命中时染成 error 红，用户口径是「很多用户以为不能用」。
     )
 }
 
@@ -166,11 +204,12 @@ private fun adaptVerdict(support: DeviceSupport.Support): String =
     }
 
 /**
- * 运行状态里的一行 —— **字形说的是「哪一段」、颜色说的是「好不好」**。
+ * 运行状态里的一行 —— **字形说的是「哪一段 + 好不好」、颜色也一起说、行尾那句话说的是「怎么坏的」**。
  *
- *  这两件事原先都由字形承担（正常一颗 `home-check`、故障一颗 `home-cancel`），于是几段一起坏时
- *  排下来是一整列一模一样的叉，「断在哪一环」只能靠读字。现在环节由字形分（见 [icon]），
- *  好坏由颜色与副标题分。
+ *  早先这两件事都由字形承担（正常一颗 `home-check`、故障一颗 `home-cancel`），于是几段一起坏时
+ *  排下来是一整列一模一样的叉；后来改成「环节一颗字形 + 颜色分好坏」，再后来每段自己有了
+ *  两颗字形（`LinkCheck.icon` / `iconBroken`，如 `server` / `server-off`）——
+ *  字形与颜色一起说结论，行尾那句在异常时换成「坏」的那一档（`LinkCheck.detailBroken`）。
  */
 @Composable
 private fun statusRow(
@@ -178,13 +217,37 @@ private fun statusRow(
     title: String,
     ok: Boolean,
     detail: String,
-): CardRow =
+    /** 这一行标不标红（默认跟着 [ok]）；「使用验证」那一档 `ok = false` 也传 `false`。 */
+    red: Boolean = !ok,
+    visible: Boolean? = null,
+    rowKey: Any? = null,
+    onClick: (() -> Unit)? = null,
+    /** 非 `null` = 这一行是手风琴表头：行尾在结论后面再跟一颗会转的箭头。 */
+    expanded: Boolean? = null,
+): CardRow.Item =
     CardRow.Item(
         title = title,
-        summary = detail,
         icon = icon,
-        iconTint = if (ok) COUITheme.colorScheme.onSurfaceContainer else COUITheme.colorScheme.error,
+        iconTint = if (red) COUITheme.colorScheme.error else COUITheme.colorScheme.onSurfaceContainer,
+        visible = visible,
+        rowKey = rowKey,
+        onClick = onClick,
+        trailing = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                RowEndSummary(detail, icon = null)
+                if (expanded != null) AccordionChevron(expanded)
+            }
+        },
     )
+
+/**
+ * 「显示更详细的按键设置」那一行**先临时隐藏** —— 配置项（`detailedKeySettings`）与写回逻辑不动，
+ * 只是这一行先不摆出来；恢复时改回 `true`。
+ */
+private const val SHOW_DETAILED_KEY_SETTINGS_ROW = false
 
 /**
  * 「配置」卡（语言 / 切换配置 / 导出 / 导入）。
@@ -224,16 +287,22 @@ internal fun SettingsPage.ConfigCard(
     }
     CardList(
         rows =
-            listOf(
+            listOfNotNull(
                 // 第 1 行：显示更详细的按键设置 —— 按键页收不收全部参数。
                 //  **这一位还没有读取方**（先把配置键跑通）：拨完只有回执，按键页暂时不变。
                 //  与「外观」那几行同一类（页面怎么画），所以不吃总闸。
-                CardRow.Switch(
-                    title = I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_TITLE),
-                    icon = PageIcons.DetailedKeySettings,
-                    checked = configState.config.value.global.detailedKeySettings,
-                    onCheckedChange = { setDetailedKeySettings(it) },
-                ),
+                //  **先临时隐藏**（配置项与写回逻辑不动）；恢复时把 [SHOW_DETAILED_KEY_SETTINGS_ROW]
+                //  改回 `true` 即可。
+                if (SHOW_DETAILED_KEY_SETTINGS_ROW) {
+                    CardRow.Switch(
+                        title = I18n.get(Strings.MORE_DETAILED_KEY_SETTINGS_TITLE),
+                        icon = PageIcons.DetailedKeySettings,
+                        checked = configState.config.value.global.detailedKeySettings,
+                        onCheckedChange = { setDetailedKeySettings(it) },
+                    )
+                } else {
+                    null
+                },
                 // 「语言」：点开的是一层菜单，行尾给选择器字形（不是右箭头）
                 CardRow.Item(
                     title = I18n.get(Strings.MORE_LANGUAGE),

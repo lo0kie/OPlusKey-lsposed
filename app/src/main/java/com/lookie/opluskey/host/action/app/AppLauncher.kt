@@ -253,7 +253,7 @@ internal class AppLauncher(
      * 起一个 ColorOS 系统能力（`oplus:` 动作）；目标组件与 action 见 [RomProfile]。
      */
     fun startOplusFeature(feature: String) {
-        val target =
+        val found =
             RomProfile.builtIn(feature) ?: run {
                 // 本机 ROM 没验过时落点会照基准实现试（见 `RomProfile.landing`），所以走到这里只剩
                 //  两种情形：功能名写错了，或者那一档里根本没登记这个名字 —— 由下面那句日志报出来
@@ -266,6 +266,10 @@ internal class AppLauncher(
                 XLog.w("没有 Context，oplus:$feature 跳过")
                 return
             }
+        // 落点先定一次：主落点在本机解析不到时退上一代的同一能力（见 [pickLanding]）。
+        //  必须在下面的分支**之前**定 —— 那些分支（AIDL / 只停 / 广播 / Messenger）都按落点分派，
+        //  换了落点还按旧的走就等于没换。
+        val target = pickLanding(ctx, feature, found)
         // 带 AIDL 的那几档（录音）：先问一次真实状态再决定这一下是「起」「停」还是「不动」。
         //  必须排在下面「只停」那一支前面 —— 录音的「只结束」正是 service 为空、只有 AIDL 的落点。
         if (target.aidl != null && runAidlFeature(ctx, feature, target, onFailure) { startOplusFeature(feature) }) return
@@ -509,6 +513,84 @@ internal class AppLauncher(
             XLog.w("$tag 的 AIDL stopRecord 没发出去（断在哪一环见上面那行），报一次失败")
             onFailure(CommandFailure.UNKNOWN)
         }
+    }
+
+    /**
+     * 落点**按本机实际有没有那个组件**挑一个：主落点解析得到就用主落点，否则退
+     * [RomProfile.BuiltIn.fallback]（同一能力在上一代 ROM 的位置）。
+     *
+     *  为什么要在起之前判，而不是「起了失败再退」：同一条能力在不同代里换过宿主包
+     *  （`voice_memory` 17 在 AI 记忆包、16 在智慧数据感知），
+     *  这时起法会走完两条路 + 一条显式组件退路、各打一行日志才报失败；先解析一遍只多一次
+     *  `PackageManager` 查询，日志里也只剩「退到哪一份」这一行。
+     *
+     *  判的是**存在**，不是**权限**：`resolveService` 不看调用方有没有目标声明的权限，
+     *  所以这里挑出来的落点仍可能在起的时候被 `SecurityException` 拦下 —— 那种情况由下面
+     *  那几层起法照常报失败，不会被这一层掩盖。
+     */
+    private fun pickLanding(
+        ctx: Context,
+        feature: String,
+        target: RomProfile.BuiltIn,
+    ): RomProfile.BuiltIn {
+        if (resolves(ctx, target)) return target
+        //  一档一档往下退：同一条能力在不同代里换过宿主包（17 在 AI 记忆包、16 在智慧数据感知 /
+        //  颜色直连服务），再往下是「打开 App」这种降级落点 —— 只退一层不够用，
+        //  因为 16 那代自己也有两档（装了智慧数据感知退它，没装才退颜色直连）。
+        val chain = generateSequence(target.fallback) { it.fallback }.toList()
+        if (chain.isEmpty()) return target
+        val names = chain.joinToString(" → ") { shortName(it) }
+        val hit = chain.firstOrNull { resolves(ctx, it) }
+        return if (hit != null) {
+            XLog.w("oplus:$feature 的主落点不在本机（${shortName(target)}）⇒ 退到 ${shortName(hit)}（候选：$names）")
+            hit
+        } else {
+            //  全都不在：照主落点试，让下面的起法把「试过什么、为什么没成」照常写进日志 ——
+            //  这一层不替它们下结论。
+            XLog.w("oplus:$feature 的候选落点全都不在本机（$names）⇒ 照主落点试")
+            target
+        }
+    }
+
+    /** 日志里用的短名：`包名/类名末段`。 */
+    private fun shortName(target: RomProfile.BuiltIn): String = "${target.owner}/${target.service.substringAfterLast('.')}"
+
+    /**
+     * 这个落点在本机解析得到吗。
+     *
+     * ## 带 action 的服务型目标：按 **action** 判，不按类名
+     *
+     *  真的发出去的那一发是 `action + setPackage`（见 [buildFeatureIntent]），落到哪个服务由清单的
+     *  intent-filter 决定；类名只是落点表里的备注。按类名判会和起法错位 —— ROM 换过宿主包
+     *  （语音采集 17 在 AI 记忆包、16 在智慧数据感知），类名对不上不代表这台机器没有受理者；
+     *  反过来，类名对得上也可能压根没有服务声明这个 action。
+     *
+     *  顺带把这台机器上「这个 action 落到谁」记一行 —— 代际差异全在这一行里。
+     */
+    private fun resolves(
+        ctx: Context,
+        target: RomProfile.BuiltIn,
+    ): Boolean {
+        val action = target.action
+        if (action != null && !target.activity) {
+            val hits =
+                runCatching {
+                    ctx.packageManager.queryIntentServices(Intent(action).setPackage(target.owner), 0)
+                }.getOrDefault(emptyList())
+            XLog.d(
+                "oplus 落点：${target.owner} 的 $action 在本机落到 " +
+                    (hits.firstOrNull()?.serviceInfo?.name ?: "没有受理者"),
+            )
+            return hits.isNotEmpty()
+        }
+        //  与 [tryComponentFallback] 同一条：`service` 不总是类名（录音那族把 action 写在同一格）,
+        //  拿它拼出来的组件必然解析不到 —— 那一档不该被判成「本机没有」。
+        if (action != null && !target.service.contains('.')) return true
+        val intent = Intent().setComponent(ComponentName(target.owner, target.service))
+        return runCatching {
+            val pm = ctx.packageManager
+            if (target.activity) pm.resolveActivity(intent, 0) else pm.resolveService(intent, 0)
+        }.getOrNull() != null
     }
 
     /**

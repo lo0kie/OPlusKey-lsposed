@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.model.icon
 
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.Gesture
@@ -51,9 +52,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ColorFilter
 import io.github.lyxnx.compose.ui.tablericons.outline.ColorSwatch
 import io.github.lyxnx.compose.ui.tablericons.outline.Contrast
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceAirpods
-import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
-import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobile
+import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileQuestion
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
@@ -80,11 +80,11 @@ import io.github.lyxnx.compose.ui.tablericons.outline.HandRingFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandThreeFingers
 import io.github.lyxnx.compose.ui.tablericons.outline.HandTwoFingers
 import io.github.lyxnx.compose.ui.tablericons.outline.Hash
-import io.github.lyxnx.compose.ui.tablericons.outline.History
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
 import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
+import io.github.lyxnx.compose.ui.tablericons.outline.KeyboardOff
 import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.ListDetails
@@ -116,6 +116,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer2
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerShare
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
@@ -133,6 +134,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.RotateRectangle
 import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
 import io.github.lyxnx.compose.ui.tablericons.outline.Server
+import io.github.lyxnx.compose.ui.tablericons.outline.ServerOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
@@ -976,11 +978,11 @@ internal object PageIcons {
     /** 「关于」卡里「作者」那一行的行首 —— `user-screen`（人的名片，读作「个人页」）。 */
     val UserScreen: ImageVector get() = TablerIcons.Outline.UserScreen
 
-    /** 「关于本机」那一行：**适配命中** —— `device-ipad-check`（这台机器认得）。 */
-    val DeviceAdapted: ImageVector get() = TablerIcons.Outline.DeviceIpadCheck
+    /** 「关于本机」那一行：**适配命中** —— `device-mobile`（这台机器认得）。 */
+    val DeviceAdapted: ImageVector get() = TablerIcons.Outline.DeviceMobile
 
-    /** 「关于本机」那一行：**没命中**（等待适配 / 不在清单）—— `device-ipad-cancel`。 */
-    val DeviceUnsupported: ImageVector get() = TablerIcons.Outline.DeviceIpadCancel
+    /** 「关于本机」那一行：**没命中**（等待适配 / 不在清单）—— `device-mobile-question`。 */
+    val DeviceUnsupported: ImageVector get() = TablerIcons.Outline.DeviceMobileQuestion
 
     /**
      * 「关于」卡里「反馈与交流」那一行的行首 —— `message-2`（对话气泡）。
@@ -1149,14 +1151,23 @@ internal object PageIcons {
     /** 「运行状态」明细：**服务运行** —— `server`（宿主那一侧有没有在跑）。 */
     val LinkService: ImageVector get() = TablerIcons.Outline.Server
 
+    /** 同 [LinkService]，这一段**不 ok** 时那一颗 —— `server-off`（那一侧没在跑）。 */
+    val LinkServiceOff: ImageVector get() = TablerIcons.Outline.ServerOff
+
     /** 「运行状态」明细：**按键响应** —— `keyboard`（按键那一侧的接管点）。 */
     val LinkKeyResponse: ImageVector get() = TablerIcons.Outline.Keyboard
+
+    /** 同 [LinkKeyResponse]，这一段**不 ok** 时那一颗 —— `keyboard-off`（接管点没挂上）。 */
+    val LinkKeyResponseOff: ImageVector get() = TablerIcons.Outline.KeyboardOff
 
     /** 「运行状态」明细：**设置生效** —— `settings-cancel`（设置没送到 / 不是这一份）。 */
     val LinkConfig: ImageVector get() = TablerIcons.Outline.SettingsCancel
 
-    /** 「运行状态」明细：**使用验证** —— `history`（真按过的那笔痕迹）。 */
-    val LinkUsage: ImageVector get() = TablerIcons.Outline.History
+    /** 「运行状态」明细：**使用验证** —— `test-pipe`（这一条链路真被走过一遍）。 */
+    val LinkUsage: ImageVector get() = TablerIcons.Outline.TestPipe
+
+    /** 同 [LinkUsage]，这一段**不 ok** 时那一颗 —— 仍是 `test-pipe`：这一档始终不标红。 */
+    val LinkUsageMissing: ImageVector get() = TablerIcons.Outline.TestPipe
 
     /**
      * 「运行状态」明细：**按键接管** —— `pointer`（按键到底落没落到模块手上）。
@@ -1166,23 +1177,48 @@ internal object PageIcons {
      *  「自检全绿、按下去却是系统的功能」。真机上撞到过一次。
      */
     val LinkTakeOver: ImageVector get() = TablerIcons.Outline.Pointer
+
+    /** 同 [LinkTakeOver]，这一段**不 ok** 时那一颗 —— `pointer-cancel`（没有键落到手上）。 */
+    val LinkTakeOverOff: ImageVector get() = TablerIcons.Outline.PointerCancel
 }
 
 // 「常用命令」清单项的行首字形 —— 绑定页那一段与「常用命令」页共用这一份。
 
 /**
- * **这一条现在该画哪颗字形** —— 换过图标就用换的那颗（[FluidIcons] 里那一批），否则按动作取。
+ * **这一条现在该画哪颗字形** —— 换过图标就用换的那颗（[FluidIcons] 里那一批）；
+ * 没换过时按**这一条的来源**取：
+ *  · `cmd:<名字>` → 去命令库里找那条命令，按它的**类型**画
+ *    （单条按写法 / 执行身份、多条按步骤数，见 [commandIcon]）；
+ *  · 内置动作 token → [actionIcon]。
  *
  *  **只在这里判，不落文件**：常用命令是模块自己界面里的一格（绑定页那一段、「常用命令」页的
  *  清单），画 `ImageVector` 就够。它不像 `fluid:` 与「执行时提示走流体云」那样要被宿主进程画
  *  到胶囊上 —— 那两处没有 Compose 运行时，才必须先把字形渲染成 png（见 `ActionCardArt`）。
  *
- *  换的 id 认不出来（手改过配置）也退回按动作取 —— 不留一格空白。
+ *  换的 id 认不出来（手改过配置）也退回按来源取 —— 不留一格空白。
+ *  引用了一条已经删掉的命令时同样退回 `actionIcon`（那颗通用 `cmd:` 字形）。
+ *
+ *  @param commands 当前命令库（`configState.commands`）—— 由调用点递进来，这一层不读盘
  *
  *  绑定页那一段与「常用命令」页共用这一份：两处各判一次就会漂。
  */
-internal fun commonCommandIcon(cmd: CommonCommand): ImageVector =
-    cmd.icon.takeIf { it.isNotEmpty() }?.let { FluidIcons.of(it) } ?: actionIcon(cmd.token)
+internal fun commonCommandIcon(
+    cmd: CommonCommand,
+    commands: List<Command>,
+): ImageVector =
+    cmd.icon.takeIf { it.isNotEmpty() }?.let { FluidIcons.of(it) }
+        ?: pinnedIcon(cmd.token, commands)
+
+/** [commonCommandIcon] 的第二段：`cmd:` 引用去库里按类型取，其余走内置动作表。 */
+private fun pinnedIcon(
+    token: String,
+    commands: List<Command>,
+): ImageVector {
+    if (!token.startsWith(Command.PREFIX)) return actionIcon(token)
+    val name = token.removePrefix(Command.PREFIX)
+    val command = commands.firstOrNull { it.name == name } ?: return actionIcon(token)
+    return commandIcon(command.kind, command.steps.size, command.root, command.single, command.viaShizuku)
+}
 
 // 分叉条件的字形 —— 只剩「种类」这一层。
 //

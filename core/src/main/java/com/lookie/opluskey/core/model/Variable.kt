@@ -869,10 +869,16 @@ data class ComboKey(
      * [sequence] 是不是按 [keys] 的**先后顺序**按下这一档的全部成员 —— 只给 [ordered] 那一档用。
      *
      *  [sequence] 是「真实按下顺序」的键 id 序列（判定侧按按下时刻排好）。这一档要求它的
-     *  **开头几位**与 [keys] 逐位相同 —— 序列里多出来的那几颗（可能归更宽的一档）不碍事，
-     *  只要求「该按的顺序都按到了」。空序列 / 长度不足都算不成立。
+     *  **最后几位**与 [keys] 逐位相同 —— 序列里多出来的那几颗不碍事：可能是这一组开始之前
+     *  按过的别的键（还在同一个扫描窗口里），也可能是更宽一档的成员。空序列 / 长度不足都算不成立。
+     *
+     *  **比的必须是结尾而不是开头**：当前这一下一定是成员里的最后一颗（组合在它落下那一刻成立），
+     *  而扫描窗口里可能还兜着这组开始之前按过的键。按开头比时，前面多一颗（比如先点了一下音量键）
+     *  就会把整条有序组合判成「顺序不对」，用户看到的是这一组没生效、只落下两颗键各自的单击。
      */
-    fun matchesOrdered(sequence: List<String>): Boolean = sequence.size >= keys.size && keys.indices.all { sequence[it] == keys[it] }
+    fun matchesOrdered(sequence: List<String>): Boolean =
+        sequence.size >= keys.size &&
+            keys.indices.all { sequence[sequence.size - keys.size + it] == keys[it] }
 
     companion object {
         /** 组合键 id 的前缀：`cmb1` / `cmb2` ……（序号由收集侧维护，只增不减）。 */

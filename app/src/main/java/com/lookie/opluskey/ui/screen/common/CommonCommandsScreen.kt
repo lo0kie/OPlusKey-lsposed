@@ -794,8 +794,9 @@ private fun SettingsPage.commonCommandRow(
         //  进 / 退场由 `CardList` 按这一位播（规格见 `VISIBILITY_ENTER` / `VISIBILITY_EXIT`）
         visible = visible,
         title = commonCommandName(cmd),
-        //  换过图标就画换的那颗（`commonCommandIcon(cmd)` 里判），没换过才按动作取
-        icon = commonCommandIcon(cmd),
+        //  换过图标就画换的那颗，没换过按来源取：`cmd:` 引用看命令自己的类型
+        //  （单条按写法 / 身份、多条按步骤数），内置动作仍走动作表
+        icon = commonCommandIcon(cmd, configState.commands.value),
         //  在按键绑定页不显示的那几条压一档色：一眼能看出哪些不会出现在那一段
         //  （每条自己一个开关，见上面菜单里的「显示在按键绑定页」）。
         enabled = enabled,

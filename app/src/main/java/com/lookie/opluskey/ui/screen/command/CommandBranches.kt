@@ -61,6 +61,7 @@ import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.NameFlow
 import com.lookie.opluskey.ui.row.RowEndIcon
+import com.lookie.opluskey.ui.row.RowEndSummary
 import com.lookie.opluskey.ui.row.SECTION_TITLE_TRAILING_GLYPH_INSET
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SectionTitleTrailingMore
@@ -727,10 +728,11 @@ private fun RuleActionRows(
         rows =
             text.actions.map { line ->
                 CardRow.Item(
-                    //  标题前面写档位：「单击 | 手电筒」。三行并排时，光有动作名看不出哪一行是哪一档。
+                    //  档位写在**行尾**（「手电筒 ⋯ 单击 ▸」）：标题只说这一档做什么，
+                    //  三行并排时档位同样一眼分得开，而标题不必再从档位名读起。
                     //  **档位名走 `gestureLabel`（字典）**，不读 `Gesture.label` —— 那串是写死的中文，
                     //  英文界面下这里会冒出「单击」（真机口径）。那一支也是将来自定义手势的接口。
-                    title = "${gestureLabel(line.trigger)} | ${line.text}",
+                    title = line.text,
                     //  动作那一行按行内统一的行数上限折行（[ROW_TEXT_MAX_LINES]，3 行 + 省略），
                     //  与整页其余行同一个口径。
                     //  整页只读 / 闸门关着时点不动（与条件行同一道闸，见 `RuleCells.enabled`）
@@ -742,7 +744,7 @@ private fun RuleActionRows(
                         //  这一行是**换页**（进「场景动作」编那一档），行尾给「进下一层」那枚右箭头；
                         //  选择器那枚说的是「点了要选点什么」，与这里的去处对不上。
                         //  **不再标「已停用」**：那一句只在小标题上写一次（用户口径）。
-                        RowEndIcon()
+                        RowEndSummary(gestureLabel(line.trigger), icon = PageIcons.EnterArrow, muted = line.empty)
                     },
                     //  这一行是**换页**（进「场景动作」编那一档），不是弹浮层 ——
                     //  所以不挂触点锚点：锚点只服务「菜单弹在被点的那一格旁边」。
@@ -1117,6 +1119,8 @@ internal fun ConditionRowTitle(
         style = COUITheme.textStyles.headline1,
         color = color,
         modifier = Modifier.fillMaxWidth(),
+        //  **应用名之间不留连接词**（用户口径）：只用空格隔开 —— 逐个名字仍按自己的字宽换行。
+        separator = "",
         leading = {
             Text(
                 //  种类名**按这一条自己的档念**：应用那一族两档都走这里，

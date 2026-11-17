@@ -496,8 +496,30 @@ internal data class LinkCheck(
     val name: String,
     val ok: Boolean,
     val detail: String,
+    /**
+     * 这一段**不 ok** 时行尾那句（默认仍是 [detail]）。
+     *
+     *  只在调试通道把整张卡按异常画时用得上：那时正常的段也要显示「坏」的说法
+     *  （`未运行` / `未响应` / `未验证` 这一档），否则字形是坏的、行尾却写着「正常」。
+     */
+    val detailBroken: String = detail,
+    /**
+     * 这一段**不 ok** 时换成的那颗字形（默认仍是 [icon]）。
+     *
+     *  与「整体状态」那两档同一个读法：字形自己也说结论 —— 服务那条从 `server` 换成 `server-off`、
+     *  按键接管从 `pointer` 换成 `pointer-cancel`、使用验证那一档两态都是 `test-pipe`。
+     *  只换字形，颜色仍由 [ok]（与 [neverRed]）决定（见 `ui/screen/about/AboutCards` 的 `statusRow`）。
+     */
+    val iconBroken: ImageVector = icon,
     val blocking: Boolean = true,
     val inSummary: Boolean = false,
+    /**
+     * 这一条**永远按常规色画**，哪怕 [ok] 为假（「使用验证」那一档）。
+     *
+     *  它答的是「这条链路被真的走过一遍没有」：没走过是**还没拿到证据**，不是故障。
+     *  标红会让用户以为模块坏了，而下面那句「未验证」本身已经把话说清楚了。
+     */
+    val neverRed: Boolean = false,
     /**
      * 这一条红，**只是「跑着旧版」的结果**（换包没重启 ⇒ 两边必然对不上）。
      *

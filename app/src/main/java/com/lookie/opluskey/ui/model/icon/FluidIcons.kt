@@ -81,6 +81,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobile
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileBolt
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobilePause
+import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileQuestion
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
@@ -121,6 +122,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.HourglassHigh
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
 import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
+import io.github.lyxnx.compose.ui.tablericons.outline.KeyboardOff
 import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.Language
 import io.github.lyxnx.compose.ui.tablericons.outline.LanguageOff
@@ -170,6 +172,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer2
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerShare
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
@@ -190,6 +193,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Screenshot
 import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
 import io.github.lyxnx.compose.ui.tablericons.outline.Server
+import io.github.lyxnx.compose.ui.tablericons.outline.ServerOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
@@ -334,6 +338,7 @@ internal object FluidIcons {
             "devicemobile" to TablerIcons.Outline.DeviceMobile,
             "devicemobilebolt" to TablerIcons.Outline.DeviceMobileBolt,
             "devicemobilepause" to TablerIcons.Outline.DeviceMobilePause,
+            "devicemobilequestion" to TablerIcons.Outline.DeviceMobileQuestion,
             "devicemobilevibration" to TablerIcons.Outline.DeviceMobileVibration,
             "dots" to TablerIcons.Outline.Dots,
             "dotscirclehorizontal" to TablerIcons.Outline.DotsCircleHorizontal,
@@ -374,6 +379,7 @@ internal object FluidIcons {
             "hourglasshigh" to TablerIcons.Outline.HourglassHigh,
             "infinity2" to TablerIcons.Outline.Infinity2,
             "keyboard" to TablerIcons.Outline.Keyboard,
+            "keyboardoff" to TablerIcons.Outline.KeyboardOff,
             "labelimportant" to TablerIcons.Outline.LabelImportant,
             "language" to TablerIcons.Outline.Language,
             "languageoff" to TablerIcons.Outline.LanguageOff,
@@ -422,6 +428,7 @@ internal object FluidIcons {
             "plugconnected" to TablerIcons.Outline.PlugConnected,
             "plus" to TablerIcons.Outline.Plus,
             "pointer" to TablerIcons.Outline.Pointer,
+            "pointercancel" to TablerIcons.Outline.PointerCancel,
             "pointer2" to TablerIcons.Outline.Pointer2,
             "pointerpause" to TablerIcons.Outline.PointerPause,
             "pointershare" to TablerIcons.Outline.PointerShare,
@@ -443,6 +450,7 @@ internal object FluidIcons {
             "selectall" to TablerIcons.Outline.SelectAll,
             "selector" to TablerIcons.Outline.Selector,
             "server" to TablerIcons.Outline.Server,
+            "serveroff" to TablerIcons.Outline.ServerOff,
             "settings" to TablerIcons.Outline.Settings,
             "settings2" to TablerIcons.Outline.Settings2,
             "settingscancel" to TablerIcons.Outline.SettingsCancel,

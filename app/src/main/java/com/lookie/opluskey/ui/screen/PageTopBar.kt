@@ -274,7 +274,7 @@ private fun SettingsPage.pageTitle(s: Screen): String =
  * 顶栏矮一截，翻页 / 返回时整页跟着跳）。
  *
  * 首页那一行是**这个模块是干什么的**（`home.subtitle`），不是版本号：大标题已经是模块名，
- * 下面再跟一串 `version-1.4.0-debug-…` 对用户没有意义 —— 要看版本的去「更多选项」页，
+ * 下面再跟一串 `1.4.0-debug-…` 对用户没有意义 —— 要看版本的去「更多选项」页，
  * 首页那张「激活状态」卡里也有一行。
  *
  * 「按键绑定」= **现在这一组**叫什么（「快捷键」或收集来的那颗键的名字）；
@@ -386,9 +386,10 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
             I18n.get(Strings.MORE_SUBTITLE)
         }
 
-        // 「捐赠列表」：一句谢谢（与页内空态同一句，不改口径）。
+        // 「捐赠列表」：与首页「捐赠打赏」那一行同一句（说的是这一页为什么存在）；
+        //  页内空态那句「收到的每一份支持都会记在这里」讲的是列表本身，两处不混。
         Screen.DONATE_LIST -> {
-            I18n.get(Strings.DONATE_LIST_EMPTY_SUMMARY)
+            I18n.get(Strings.HOME_DONATE_SUMMARY)
         }
 
         // 「按键设置」（公共那份）：与每颗键自己那份「独立设置」相对 —— 这里改的是默认值。

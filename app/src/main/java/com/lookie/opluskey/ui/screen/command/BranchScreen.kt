@@ -442,15 +442,6 @@ internal fun SettingsPage.openAppPickerForBranch(
             ?.toSet()
             .orEmpty()
     appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId(), picked = picked)
-    //  说一句「可以多选」：这一页以前是单选（点一行只亮一行），不提示的话没人会去点第二下。
-    //  两档那半句的结论相反（「任一在前台即通过」/「都不在前台才通过」），所以各有各的一句。
-    hint(
-        if (kind == ConditionKind.APP_NOT) {
-            I18n.get(Strings.APP_PICKER_BRANCH_MULTI_HINT_NOT)
-        } else {
-            I18n.get(Strings.APP_PICKER_BRANCH_MULTI_HINT)
-        },
-    )
     navTo(Screen.APP_PICKER)
 }
 

@@ -195,7 +195,8 @@ internal fun ChipLegend(
  *
  *  @param style / @param color 名字那一档的样式与颜色
  *  @param leading 排在最前面的那一项（场景条件的「前台应用 - 」）；它同样参与换行
- *  @param separator 名字之间的分隔符 —— 默认「和」（一起按下）；按顺序触发那一档传「→」
+ *  @param separator 名字之间的分隔符 —— 默认「和」（一起按下）；按顺序触发那一档传「→」；
+ *    场景条件那几行传空串（用户口径：应用名之间只用空格）
  */
 @Composable
 internal fun NameFlow(

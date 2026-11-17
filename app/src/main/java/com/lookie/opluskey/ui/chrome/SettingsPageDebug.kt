@@ -28,9 +28,9 @@ import com.lookie.opluskey.ui.write.write
  *
  * 支持的动作见 [PageDebugChannel] 的类注释（`screen` / `gesture` / `kind` /
  * `name` / `cmd` / `steps` / `del` / `reset` / `save` / `hint` / `action` / `state` / `model` / `rom` /
- * `combo` + `combo_single` + `combo_long`，一次可以带多个）。`model` / `rom` 是**伪装本机身份**
+ * `combo` + `combo_single` + `combo_long` / `checks`，一次可以带多个）。`model` / `rom` 是**伪装本机身份**
  * （只动判定与显示，不碰注入），传空串即恢复真机值；`combo` 写一份组合键（界面入口还没有，
- * 见 [applyDebugCombo]），传空串即清空。
+ * 见 [applyDebugCombo]），传空串即清空；`checks` 传 `all` 时「运行状态」把不 ok 的段全列出来。
  *
  * 执行顺序是**固定的**：先跳页、再切 tab、再填字段、最后才 reset / save —— 这样
  * 「`--es screen COMMANDS --es kind SERIAL --es name X --ez save true`」这一条广播
@@ -159,6 +159,14 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
         //  「运行状态」里每条都红。空串关掉它。
         link.debugAllBroken = raw.lowercase() == "broken"
         XLog.w("调试：首页提示 → ${if (raw.isEmpty()) "恢复真实状态" else raw}")
+    }
+    // 「运行状态」的明细**全列出来** —— 平时只列真故障（`blocking`），这一档连
+    //  「主开关已关闭」「使用验证」那两档不 ok 不拦的也列，排查时能一眼看全四段：
+    //   am broadcast -a com.lookie.opluskey.DEBUG --es checks all
+    //   am broadcast -a com.lookie.opluskey.DEBUG --es checks ""      ← 恢复只列故障
+    intent.getStringExtra("checks")?.let { raw ->
+        link.debugShowAllChecks = raw.equals("all", ignoreCase = true)
+        XLog.w("调试：运行状态明细 → ${if (link.debugShowAllChecks) "全部列出" else "只列故障"}")
     }
     if (intent.getBooleanExtra("state", false)) logDebugState()
 }

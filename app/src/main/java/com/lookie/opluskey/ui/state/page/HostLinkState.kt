@@ -113,6 +113,19 @@ internal object HostLinkState {
      */
     var debugAllBroken by mutableStateOf(false)
 
+    /**
+     * **调试**：「运行状态」的明细把**四段全列出来**。
+     *
+     *  平时明细只列真故障（`LinkCheck.blocking`），正常的段与「主开关已关闭」「使用验证」都不占地方。
+     *  打开这一位之后每一段都占一行，且**全部按异常画**（坏字形 + 红 + 行尾换成「坏」那句，
+     *  汇总行同）—— 看的是行、字形与配色，不反映真实结论。
+     *
+     *  只有调试通道会写它（`--es checks all` 开、传空串关），读它在 `LinkStatusCard` 那一处；
+     *  与 [debugAllBroken] 同一条纪律：**只改列什么、不改判据**。初值 `false`：不写死默认值，
+     *  要全列就发一条广播。
+     */
+    var debugShowAllChecks by mutableStateOf(false)
+
     /** 宿主侧报活的**代次** —— 每收到一条报活就自增；进页时记下它、等一档再看变没变。 */
     var hostAliveToken by mutableIntStateOf(0)
 

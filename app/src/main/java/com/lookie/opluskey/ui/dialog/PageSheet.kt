@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -70,6 +69,14 @@ import kotlinx.coroutines.delay
  *  —— 高出那一档全给内容，矮屏上也不会把整页盖死（面板仍按内容长，长了才停在这一档）。
  */
 private val SHEET_MAX_HEIGHT = 480.dp
+
+/**
+ * 抽屉**上沿**两角的圆角 —— 库默认 20dp，这里与弹窗同档取 24dp。
+ *
+ *  抽屉从屏幕底边滑出，只有上面两角看得见；与确认 / 起名那套弹窗同一档，页面里几种浮层
+ *  的弧才是一致的。底边两角仍是方的（库按「延伸到屏外」画）。
+ */
+private val SHEET_CORNER = 24.dp
 
 /**
  * 进场定位最多试几次 —— 见 [PageSheet] 的「进场定位」那段。
@@ -161,9 +168,9 @@ internal val LocalSheetBringIntoView = compositionLocalOf<BringIntoViewRequester
  * @param onDismiss 收起：点外部 / 下拉 / 系统返回 / 换页，四条路都走它
  * @param endAction 标题行**右端**那一格（「新建」这类提交键）；`null` = 不占位
  * @param header 顶部不滚的那一块（`null` = 内容直接占满）
- * @param scrollBarModifier 右边那条滚动条的**位置** —— 默认见 [SHEET_SCROLLBAR_DEFAULT]；
- *   某个抽屉的面板内缩不一样时由调用点自己给（`Modifier.offset(x = …)`，**记得同时加宽**，
- *   否则拇指会移出盒子被裁掉）。
+ * @param scrollBarModifier 右边那条滚动条的**几何** —— 默认见 [SHEET_SCROLLBAR_DEFAULT]
+ *   （贴面板右边缘、宽 [SCROLLBAR_WIDTH]）；某个抽屉要另摆时才由调用点自己给，
+ *   宽度也一起给（盒子的宽度就是滚动条那一条的宽度）。
  * @param content 抽屉正文（在滚动区里，自带 [ColumnScope]）
  *
  * ## 为什么参数到 7 个（`@Suppress("LongParameterList")`）
@@ -224,6 +231,7 @@ internal fun SettingsPage.PageSheet(
     val frostState = chrome.pageHazeState
     OverlayBottomSheet(
         show = show,
+        cornerRadius = SHEET_CORNER,
         modifier = frostState?.let { Modifier.hazeSource(it) } ?: Modifier,
         title = title,
         //  标题行右端那一格（右上角）—— 库自己的槽，不从标题里抢位置
@@ -235,8 +243,13 @@ internal fun SettingsPage.PageSheet(
         //  而且第二遍发生在状态已经被改过之后。需要「收场之后再做一件事」的调用点，
         //  自己传 `PageConfirmDialog` 那个同名参数。
         //  **横向内边距全在这一个参数上**（它同时套在把手 / 标题 / 内容上）：收到 [PAGE_MARGIN]
-        //  之后标题与行文字的左边线才落在同一条 16dp 线上。
+        //  之后标题与行文字的左边线才落在同一条线上。
         insideMargin = DpSize(PAGE_MARGIN, 0.dp),
+        //  **内容那一半的边距归我们**（补丁 `0017` 给库加的这一位，默认仍是 `insideMargin`）：
+        //  内容区拿到整幅面板宽，于是右边那条滚动条能贴到面板边缘 —— 内边距收进来的话，
+        //  条再怎么 `offset` 也只是在自己的盒子里挪，越过内缩线就会被面板裁掉。
+        //  标题 / 把手仍吃 [insideMargin]，两边的左边线不受影响。
+        contentInsideMargin = DpSize(0.dp, 0.dp),
         //  断掉抽屉对内容滚动的接管：否则「内容滚不动之后的余量」会被当成往下拽抽屉，
         //  滚到底一松手抽屉就没了。硬性 false，不接受调用点覆盖。
         enableNestedScroll = false,
@@ -249,7 +262,11 @@ internal fun SettingsPage.PageSheet(
                     .heightIn(max = SHEET_MAX_HEIGHT)
                     .animateContentSize(tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL)),
             ) {
-                header?.invoke()
+                //  顶部那块不滚的内容也归我们加边距（`contentInsideMargin` 归零之后，内容区
+                //  拿到的是整幅面板宽 —— 见上面那一段）。
+                if (header != null) {
+                    Box(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) { header() }
+                }
                 //  可滚那块与滚动条叠在同一个盒子里：滚动条贴右侧、与内容同高（`fillMaxHeight`
                 //  取的是这个 Box 的高度，而 Box 由内容定 —— 不会长出内容一截）。
                 //  **只有真能滚时才画**（`maxValue > 0`）：内容短的抽屉不滚，画一条全长拇指
@@ -265,10 +282,10 @@ internal fun SettingsPage.PageSheet(
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            //  右侧留出滚动条那条道：滚动条已经贴到内容区右边缘了（再往右会被面板裁掉，
-                            //  见 [SHEET_SCROLLBAR_DEFAULT]），要让拇指再离开文字一截，只能由内容让出这一档。
-                            //  只在真能滚时让 —— 不滚的抽屉不必白缩一行宽。
-                            .padding(end = if (scrollState.maxValue > 0) SHEET_SCROLLBAR_LANE else 0.dp)
+                            //  左右同一条边距（`contentInsideMargin` 归零之后这两个数是我们自己给的）：
+                            //  滚动条那一条**正好落在右边距之外**（盒子就是面板边那 [SCROLLBAR_WIDTH]），
+                            //  所以不必再额外让出「滚动条那条道」—— 让了就成了右边比左边多一截。
+                            .padding(horizontal = PAGE_MARGIN)
                             .overScrollVertical(nestedScrollToParent = false)
                             .verticalScroll(scrollState)
                             .padding(bottom = PAGE_BOTTOM_PADDING),
@@ -293,27 +310,15 @@ internal fun SettingsPage.PageSheet(
 }
 
 /**
- * 抽屉那条滚动条的**默认位置** —— 往右挪 8dp，同时把盒子加宽同样一档。
+ * 抽屉那条滚动条的**默认位置** —— 贴面板右边缘，只占 [SCROLLBAR_WIDTH] 那一条。
  *
- *  滚动条自己的盒子只有 [SCROLLBAR_WIDTH]（12dp）宽，拇指画在**盒子右边缘往里一档**的位置：
- *  只 `offset` 不加宽的话，拇指整个移出盒子、被裁掉（真机踩过「滚动条看不见了」）。
- *  两样一起给，拇指才既往右移、又留在盒子里。
+ *  内容区拿的是**整幅面板宽**（`contentInsideMargin = DpSize(0.dp, 0.dp)`，见上面那段），
+ *  所以这里不需要任何 `offset`：盒子右边缘就是面板右边缘，拇指由库自己留 5.5dp
+ *  （`ScrollBarDefaults.EndPadding`），既贴边又不会被面板的圆角裁剪削掉。
  *
- *  往右这一档是「离开行文字的右边缘」：原先拇指压在文字上（内容与滚动条共用同一条内缩线）。
- *  更远就由调用点自己传 `scrollBarModifier`（面板内缩各抽屉不一样）。
+ *  面板内缩与别处不一样的抽屉由调用点自己传 `scrollBarModifier`。
  */
-private val SHEET_SCROLLBAR_DEFAULT =
-    Modifier
-        .offset(x = 8.dp)
-        .width(SCROLLBAR_WIDTH + 8.dp)
-
-/**
- * 抽屉内容右侧给滚动条让出的那一档 —— 8dp。
- *
- *  滚动条最多只能挪到内容区右边缘（再往外就被面板裁掉），所以「拇指离开文字」的最后一截
- *  由内容让出来：只让右侧、只在真能滚时让，行宽看起来不变。
- */
-private val SHEET_SCROLLBAR_LANE = 8.dp
+private val SHEET_SCROLLBAR_DEFAULT = Modifier.width(SCROLLBAR_WIDTH)
 
 /**
  * 抽屉标题行右端那颗**圆键里的图标**边长。

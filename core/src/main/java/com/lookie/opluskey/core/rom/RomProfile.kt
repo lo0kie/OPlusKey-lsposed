@@ -117,6 +117,22 @@ object RomProfile {
          *  Context 起界面必须带），写进表里会让人以为哪几档不用带。
          */
         val flags: Int = 0,
+        /**
+         * 同一能力在**别的代 / 别的包**上的落点 —— 主落点在本机解析不到时顺着这条链往下退。
+         *
+         *  为什么需要它：ColorOS 把一批能力搬过家（`voice_memory` 17 在 `com.oplus.aimemory`，
+         *  16 在 `com.oplus.gleanerservice`，再往下还有 `com.coloros.colordirectservice`），
+         *  但**旧代机器一样能用**，只是宿主包不同。落点表按 `romSeries` 分档要求「每一版都验过」，
+         *  而这类「同一份实现换了宿主包」的迁移不该逼着给每个旧版本各开一档 —— 让执行侧
+         *  **按包解析挑一个**更省事。
+         *
+         *  **可以串成链**：执行侧（`AppLauncher.pickLanding`）会一级一级 `resolves`，直到命中；
+         *  一串都没命中也照主落点试，由起法那边报失败（日志里能看到整条候选链）。
+         *  链尾允许是**降级落点**（例如「打开对应 App」），但那要在注释里写明「这一档已经做不到原本的事」。
+         *
+         *  只用于「同一能力、同一套 extras」的代际改名；载荷不同的落点不要塞在这里。
+         */
+        val fallback: BuiltIn? = null,
     )
 
     /**
@@ -400,6 +416,78 @@ object RomProfile {
         )
 
     /**
+     * 灵感语音在**没有采集服务**的机器上（ColorOS 16 那代）的退路：**打开「小布记忆」**。
+     *
+     * ## 为什么不退「上一代的采集服务」
+     *
+     *  16 上 `com.coloros.colordirectservice` 的 `flashnotes…DataCollectService` 确实存在 ——
+     *  manifest 里 `exported=true`、`permission=com.oplus.permission.safe.SECURITY`（宿主有），
+     *  发 `COLLECT_DATA` 出去系统也接受（真机日志：`startForegroundService(...)` 之后没有异常）。
+     *  但它在 `onStartCommand` 里先过一道 `foundation.d.c()` = `OplusBuild.VERSION.SDK_VERSION > 37`，
+     *  不满足就 `stopSelf()`、一帧界面都没有；16 那代 `com.oplus.aimemory` 16.10.1 又没有任何
+     *  「开始录音」的对外入口（30 个导出组件全是界面，且挂 `PRIVATE`）。
+     *  **两头都没有 headless 入口**，硬发下去只会得到「按了、什么都没发生」。
+     *
+     * ## 为什么这一发能成
+     *
+     *  `MainActivity` 在清单里是 `exported=true` + `permission=com.oppo.permission.safe.PRIVATE`，
+     *  宿主没有 PRIVATE，但持有 `android.permission.START_ANY_ACTIVITY`（真机 `granted=true`）——
+     *  这颗权限的定义就是「不看导出状态、不看目标声明的权限，起任何一个 Activity」。
+     *
+     *  退成「进 App」而不是报错：用户按一下至少落到小布记忆里，能手动点录音；
+     *  这条能力在 16 上本来就没有免界面的实现。取证见 `docs/device/actions/voice.md` 四十七、四十八。
+     */
+    private val VOICE_MEMORY_OPEN_APP =
+        BuiltIn(
+            owner = "com.oplus.aimemory",
+            service = "com.oplus.aimemory.MainActivity",
+            activity = true,
+        )
+
+    /** 灵感语音 —— **结束**那一档的 16 代落点（与 17 那份同一条服务，事件号 2）。 */
+    private val VOICE_MEMORY_STOP_LEGACY =
+        BuiltIn(
+            owner = "com.coloros.colordirectservice",
+            service = "com.oplus.directservice.flashnotes.business.service.DataCollectService",
+            action = "coloros.colordirectservice.intent.action.COLLECT_DATA",
+            extras = mapOf("triggerType" to 1, "longPressEventType" to 2),
+            foreground = true,
+        )
+
+    /**
+     * 灵感语音 —— **16 那代真正干活的那一份**：`com.oplus.gleanerservice`（智慧数据感知）的
+     * `flashnotes` 采集服务。
+     *
+     *  判断依据不是猜的：`com.oplus.gesture` 8.5.0 的 `j6.e0.r()` 里就是
+     *  `if (b.l(ctx)) 发 gleaner  else 发 colordirectservice` —— `b.l()` 是「智慧数据感知装没装」。
+     *  它和 17 那份（`com.oplus.aimemory`）**同构**：同样读 `triggerType` + `longPressEventType`、
+     *  同样有 `TriggerType$a.b(Intent)` 与 `isVoiceCollect()`、同样有 `VoiceCollectTask`。
+     *  以前记成「只做闪记、不读 longPressEventType」是错的（见 `voice.md` 四十七的更正）。
+     *
+     *  `fallback` 再往下一档是「打开小布记忆」：连智慧数据感知都没有的机器上，16 这代就只剩进 App。
+     */
+    private val VOICE_MEMORY_GLEANER =
+        BuiltIn(
+            owner = "com.oplus.gleanerservice",
+            service = "com.oplus.gleanerservice.flashnotes.business.service.DataCollectService",
+            action = "oplus.gleanerservice.intent.action.COLLECT_DATA",
+            extras = mapOf("triggerType" to 1, "longPressEventType" to 1, "longPressScreenOff" to false),
+            foreground = true,
+            fallback = VOICE_MEMORY_OPEN_APP,
+        )
+
+    /** 灵感语音 —— **结束**那一档的 gleaner 落点（同一条服务，事件号 2）。 */
+    private val VOICE_MEMORY_STOP_GLEANER =
+        BuiltIn(
+            owner = "com.oplus.gleanerservice",
+            service = "com.oplus.gleanerservice.flashnotes.business.service.DataCollectService",
+            action = "oplus.gleanerservice.intent.action.COLLECT_DATA",
+            extras = mapOf("triggerType" to 1, "longPressEventType" to 2, "longPressScreenOff" to false),
+            foreground = true,
+            fallback = VOICE_MEMORY_STOP_LEGACY,
+        )
+
+    /**
      * 灵感语音（AI 记忆的录音）—— **开始**那一档。
      *
      * 真机实测（PLK110 / ColorOS 17）：`com.oplus.aimemory` 的
@@ -415,8 +503,17 @@ object RomProfile {
             owner = "com.oplus.aimemory",
             service = "com.oplus.aimemory.voicecollect.service.DataCollectService",
             action = "oplus.aimemory.intent.action.COLLECT_DATA",
-            extras = mapOf("triggerType" to 1, "longPressEventType" to 1),
+            extras =
+                mapOf(
+                    "triggerType" to 1,
+                    "longPressEventType" to 1,
+                    //  ROM 自己那一发还带这一个（`com.oplus.gesture` 的 `i9.g0.m()`）：
+                    //  熄屏长按走同一条路，服务据此决定要不要点屏；不带上就等于少说一句话。
+                    "longPressScreenOff" to false,
+                ),
             foreground = true,
+            //  16 那代先退智慧数据感知（见 [VOICE_MEMORY_GLEANER]），再退「打开小布记忆」
+            fallback = VOICE_MEMORY_GLEANER,
         )
 
     /**
@@ -431,8 +528,14 @@ object RomProfile {
             owner = "com.oplus.aimemory",
             service = "com.oplus.aimemory.voicecollect.service.DataCollectService",
             action = "oplus.aimemory.intent.action.COLLECT_DATA",
-            extras = mapOf("triggerType" to 1, "longPressEventType" to 2),
+            extras =
+                mapOf(
+                    "triggerType" to 1,
+                    "longPressEventType" to 2,
+                    "longPressScreenOff" to false,
+                ),
             foreground = true,
+            fallback = VOICE_MEMORY_STOP_GLEANER,
         )
 
     /** 切换免打扰（场景表 `no_disturb`）。KeyBaseService 族，bind 后发 what=2 —— 只有长按档碰 zen。 */

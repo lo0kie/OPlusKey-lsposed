@@ -371,6 +371,17 @@ internal object SideKeyGestureHooks {
         }
     }
 
+    /** 场景表里值得看的那几列（其余是 id / 更新标记 / 震动，排查用不上）。 */
+    private val ACTION_COLUMNS =
+        listOf(
+            "scene_owner",
+            "click_action_info",
+            "click_action_type",
+            "long_press_action_info",
+            "long_press_action_type",
+            "second_menu_activity_info",
+        )
+
     /**
      * 读一次系统侧键配置，把场景名列出来（纯诊断，读不到不影响任何功能）。
      * 必须在宿主进程读 —— `ContentResolver` 在 system_server 里必 NPE。
@@ -398,12 +409,14 @@ internal object SideKeyGestureHooks {
                             rows.joinToString(", ") { it.sceneName }
                         }",
                     )
-                    rows.firstOrNull()?.let { r ->
-                        XLog.d(
-                            "首个场景「${r.sceneName}」的列值：${
-                                r.values.entries.joinToString(", ") { "${it.key}=${it.value}" }
-                            }",
-                        )
+                    //  逐个场景把「谁 / 单击干什么 / 长按干什么」打出来 —— 排查「系统原生某个动作
+                    //  到底调的谁」时答案就在这张表里（例如 `flash_memory` 那一行的长按列）。
+                    rows.forEach { r ->
+                        val cols =
+                            ACTION_COLUMNS.mapNotNull { c ->
+                                r.values[c]?.takeIf { it.isNotEmpty() }?.let { "$c=$it" }
+                            }
+                        XLog.d("场景「${r.sceneName}」：${cols.joinToString(", ")}")
                     }
                 }
             }

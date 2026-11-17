@@ -218,3 +218,203 @@ python tools/dexdump.py classes4.dex method 'com.oplus.aimemory.voicecollect.ser
 adb shell su -c 'am start-foreground-service -n com.oplus.aimemory/com.oplus.aimemory.voicecollect.service.DataCollectService -a oplus.aimemory.intent.action.COLLECT_DATA --ei triggerType 1 --ei longPressEventType 1'
 adb shell "dumpsys activity services com.oplus.aimemory | grep isForeground"   # 看 types 里的 0x80
 ```
+
+## 四十七、灵感语音在 ColorOS 16 上落在**颜色直连服务**里（拆包 16.8.8 / 16.10.1，2026-11-17）
+
+16 那一代没有 `com.oplus.aimemory` 的采集服务：真机反馈「绑了灵感语音，按下去弹执行失败」，
+日志是 `显式组件不存在：com.oplus.aimemory/com.oplus.aimemory.voicecollect.service.DataCollectService`。
+拿三份 16 的包拆完，链路是这样的。
+
+### 47.1 落点
+
+```
+owner   com.coloros.colordirectservice
+service com.oplus.directservice.flashnotes.business.service.DataCollectService
+action  coloros.colordirectservice.intent.action.COLLECT_DATA
+extras  triggerType=1 + longPressEventType=1（开始）/ 2（结束）
+```
+
+manifest（ColorDirectService 16.8.8）里这一条：`exported=true`、
+`permission=com.oplus.permission.safe.SECURITY`（宿主 `com.oplus.gesture` 持有，`granted=true`）、
+`foregroundServiceType=0x40000080`（`SPECIAL_USE | MICROPHONE`），并带
+`PROPERTY_SPECIAL_USE_FGS_SUBTYPE=special_use_for_ai_memory` —— 与 17 上 aimemory 那条**同一个能力**。
+
+### 47.2 `onStartCommand` 的分支（与 17 同构）
+
+```
+ai_memory_installed（b()）+ USER_SETUP_COMPLETE 不满足 ⇒ 什么都不做，报
+    "ai memory is not installed or user setup not complete, or disabled"
+triggerType 映射 TriggerType；== UNKNOWN ⇒ "trigger type error"
+== SCREENSHOT ⇒ 截屏那条任务
+== MAGIC_KEY 且 longPressType != 0 ⇒ task/e（语音采集）
+== MAGIC_KEY 且 longPressType == 0 ⇒ task/g（闪记）
+```
+
+`task/e` / `task/g` 都在 `com.oplus.directservice.flashnotes.business.service.task` 下 ——
+也就是说 17 把这两条从颜色直连服务搬进了 AI 记忆包，**载荷一个字没改**。
+
+### 47.3 三份 16 的包的结论
+
+| 包（用户提供的名字） | 实际包名 | 与灵感语音的关系 |
+| --- | --- | --- |
+| 小布识屏 16.8.8 | `com.coloros.colordirectservice` | **就是上面那条落点**；`AUTO_NOTES` 也在这边 |
+| 智慧数据感知 16.5.2 | `com.oplus.gleanerservice` | **语音采集的主力落点**（此格原先写的「与语音无关」是错的，见四十九） |
+| 系统界面 16.99.12 | `com.android.systemui` | 只有闪记的两条 action，与语音无关 |
+
+`com.oplus.aimemory` 16.10.1 本身：manifest 只有 4 个 service
+（`MemoryJobService` / `MemoryPluginService` / `MemoryPluginSecureService` / `OPushService`），
+dex 里 `DataCollectService` / `longPressEventType` / `MAGIC_KEY` / `COLLECT_DATA` **全部 0 命中**；
+录音只存在于内部 `voicecollect.collect.VoiceRecorder`，唯一发起点是
+`VoiceCollectionDetailFragment`（前台界面 + 按压手势），没有任何对外 service / action / receiver。
+`/local_recorder/start` / `stop` / `stop_all` 是它内嵌的小布语音引擎节点（`com.heytap.speech.engine.nodes`），
+只能由语音指令流触发，外部不可调。
+
+### 47.4 17 上同一条也还在
+
+`dumpsys package com.coloros.colordirectservice`（17.7.4）里同一条服务仍在。用 shell 试发：
+
+```
+am start-foreground-service -n com.coloros.colordirectservice/com.oplus.directservice.flashnotes.business.service.DataCollectService \
+  -a coloros.colordirectservice.intent.action.COLLECT_DATA --ei triggerType 1 --ei longPressEventType 1
+⇒ Error: Requires permission com.oplus.permission.safe.SECURITY
+```
+
+`Error` 是权限（shell 没有），不是「组件不存在」—— 说明组件可解析、只差权限，而宿主有。
+
+### 47.5 对模块的含义
+
+落点表里 17 那份（aimemory）在主落点解析不到时退这一份 —— 用
+`RomProfile.BuiltIn.fallback` 表达（执行侧 `AppLauncher.pickLanding` 按
+`PackageManager.resolveService` 挑），不为 16 单开一档：两份的 extras 完全一致，差别只有宿主包。
+
+> **本节结论已被四十九推翻，保留为排查过程记录。** 真实原因是落点选错了包
+> （16 的主力是 `com.oplus.gleanerservice`），不是引导页、也不是「16 没有 headless 入口」。
+
+## 四十八、灵感语音「按了、什么都没发生」的那道闸：**小布记忆的介绍引导没走完**（反编译 ColorDirectService 16.8.8 + 真机，2026-11-17）
+
+用户反馈：ColorOS 16.0.9（PKX110）上绑了 `oplus:voice_memory`，长按**没有任何反应** ——
+没有界面、没有 toast，连旧版那句「执行失败」也没有。日志里只剩这两行：
+
+```
+oplus:voice_memory 的主落点不在本机（com.oplus.aimemory/DataCollectService） ⇒ 退上一代落点（com.coloros.colordirectservice/DataCollectService）
+oplus:voice_memory → startForegroundService(com.coloros.colordirectservice/DataCollectService)
+```
+
+服务被系统接受了（返回 ComponentName、没抛 `SecurityException`），后面所有判断都在**服务内部**，
+模块日志看不见 —— 这就是「静默无反应」的来源。
+
+### 48.1 服务里那道闸
+
+`task/e`（语音采集任务）执行前要先过 `framework/ability/a` 的前置判断：
+
+```
+c()  = Settings.System.ai_memory_introduction_enable == 0        // 引导没走完
+       true  ⇒ 打 "function introduce disable" → s(context, triggerType)，**不采集**
+       false ⇒ 继续原来的采集流程
+s()  = 发 Intent(action = com.oplus.aimemory.action.introduction_guide)
+         putExtra("from_channel", triggerType.value)             // MAGIC_KEY 即 1
+         putExtra("android_action_key_launch_type", true)
+         flags 0x14000000
+```
+
+也就是：**引导没走完时它一个字都不采，只去拉「小布记忆」的介绍引导页**。
+
+### 48.2 为什么那一发落不到界面上
+
+`com.oplus.aimemory` 16.10.1 清单里那个 Activity：
+
+```
+com.oplus.aimemory.business.settings.introduction.IntroductionGuideActivity
+action      com.oplus.aimemory.action.introduction_guide
+exported    true
+permission  com.oppo.permission.safe.PRIVATE
+```
+
+`PRIVATE` 是签名级权限，`com.coloros.colordirectservice` 真机上没拿到 —— 后台起的这一发被
+`SecurityException` 吞掉。用户侧看到的就是「按键有反应、屏幕没反应」。
+顺带记一笔：`VoicePermissionActivity`（`android.permission.RECORD_AUDIO` 的运行时授权）也在这条链上，
+首次走语音采集时同样得先有权限。
+
+### 48.3 当时的结论（**错**，见四十九）：16 上没有 headless 入口，退成「打开小布记忆」
+
+先按「把引导页接管下来」做过一版（`BuiltIn.guide` + 宿主 `START_ANY_ACTIVITY` 起
+`IntroductionGuideActivity`），真机日志里那条分支一次都没触发 —— 引导不是这台机器上卡住的那一环。
+加上 16.8.8 那句 `d.c()` = `SDK_VERSION > 37` 的守卫，可以认定 **这套采集在 16 上要么被闸掉、
+要么压根不跑**。
+于是落点表里 16 那一格不再写「上一代的采集服务」，改成**打开「小布记忆」**：
+
+```
+owner   com.oplus.aimemory
+service com.oplus.aimemory.MainActivity      // 显式组件，不带 action
+```
+
+`VOICE_MEMORY`（17 那份）的 `fallback` 指向它 —— 主落点（aimemory 的采集服务）在本机解析不到时，
+退成「进 App」，用户在小布记忆里手动点录音。理由在 `RomProfile.VOICE_MEMORY_OPEN_APP` 的注释里：
+16 那一代把语音采集藏在 App 界面后面，没有任何外部可触发的入口，硬发服务只会得到「没反应」。
+`MainActivity` 挂 `com.oppo.permission.safe.PRIVATE`，宿主没有它，但持有
+`android.permission.START_ANY_ACTIVITY`（真机 `granted=true`）—— 这颗权限的定义正是
+「可以不看导出状态、不看目标声明的权限，起任何一个 Activity」，所以这一发能落下去。
+
+## 四十九、闭环：16 那代的落点是**智慧数据感知**，不是颜色直连服务（真机 + 拆包手势体感 8.5.0，2026-11-17）
+
+### 49.1 系统原生长按发的到底是什么
+
+`com.oplus.gesture` 8.5.0（反馈者机型 PKX110 / ColorOS 16.0.9）里那一发在 `j6.e0.r(Z)`：
+
+```java
+if (!isPkgInstalled("com.oplus.aimemory", userId)) { Log.e("ActionKeyStartApp", "aimemory not install"); return; }
+if (k8.c.a().h() && isDown) { j6.c0.k(ctx).x(); return; }   // 用户自定义了长按动作
+
+Intent i = (b.l(ctx))
+    ? Intent("oplus.gleanerservice.intent.action.COLLECT_DATA").setPackage("com.oplus.gleanerservice")
+    : Intent("coloros.colordirectservice.intent.action.COLLECT_DATA").setPackage("com.coloros.colordirectservice");
+i.putExtra("triggerType", 1);
+i.putExtra("longPressEventType", isDown ? 1 : 2);
+i.putExtra("longPressScreenOff", this.h);                   // 屏幕是不是熄着
+ctx.startForegroundService(i);
+```
+
+`b.l(ctx)` 是「**智慧数据感知装没装**」。也就是说 16 上有两条候选，装了 `com.oplus.gleanerservice` 就走它，
+没装才退颜色直连服务 —— 而我们之前**只认颜色直连服务**，把 16 的主力落点整个漏掉了。
+
+### 49.2 更正四十七 47.3 的一条错判
+
+47.3 写的「`com.oplus.gleanerservice` 只做闪记、不读 `longPressEventType`」是**错的**。拆 16.5.2 复核：
+
+```
+Lcom/oplus/gleanerservice/flashnotes/business/service/DataCollectService; :: onStartCommand  ← longPressEventType
+Lcom/oplus/gleanerservice/flashnotes/framework/ability/TriggerType$a; :: b                    ← longPressEventType
+```
+
+它有完整的语音采集实现：`TriggerType$a.b(Intent)`（`triggerType=1` + `longPressEventType>0` ⇒ `VOICE_RECORD`）、
+`isVoiceCollect()`、`VoiceCollectTask`、"longPressType is not valid !"、以及同一条
+"ai memory is not installed or user setup not complete, or disabled" 门禁。**与 17 的 AI 记忆那份同构。**
+
+结论：16 的语音落点排序是 **gleaner → colordirectservice**；颜色直连那份还有
+`SDK_VERSION > 37` 的前置门禁（真机日志：`Gleaner has Installed or intent is null, stop service`），
+所以在 16/17 上它本来就不干活，只当 gleaner 缺失时的备胎。
+
+### 49.3 模块现在的落点链
+
+`RomProfile.BuiltIn.fallback` 从「只退一层」升成**链**（`AppLauncher.pickLanding` 逐级 `resolves`）：
+
+```
+voice_memory        17 aimemory 的 DataCollectService
+                 →  16 gleaner 的 DataCollectService        （本次新增）
+                 →  再没有就「打开小布记忆」（MainActivity，START_ANY_ACTIVITY 绕过 PRIVATE）
+
+voice_memory_stop   17 aimemory → 16 gleaner → 颜色直连（干净空转）
+```
+
+真机判据：按一次之后日志会出现
+
+```
+oplus:voice_memory 的主落点不在本机（com.oplus.aimemory/DataCollectService）⇒ 退到 com.oplus.gleanerservice/DataCollectService（候选：…）
+```
+
+那一行落到 gleaner，就说明 16 上走对了包。
+
+**真机结果（2026-11-17 23:26，PKX110 / ColorOS 16.0.9）**：落到 gleaner 之后，长按
+**语音浮条正常出现，采集可用**。之前「按了没反应」的全部原因是落点选错包 ——
+不是权限、不是版本钳制、也不是载荷差分。
+

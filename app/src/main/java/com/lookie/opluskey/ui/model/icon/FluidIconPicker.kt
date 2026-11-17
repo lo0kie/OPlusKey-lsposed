@@ -46,6 +46,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.FluidCard
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.FrostedDialog
+import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
@@ -114,6 +115,9 @@ internal fun SettingsPage.FluidIconPicker(
     val context = LocalContext.current
     val density = LocalDensity.current
     val layout = LocalLayoutDirection.current
+    //  点格子那一下走全项目通用振动（`LocalTick`）：这一页是弹层、控件层不认 `SettingsPage`，
+    //  只能从页面那层递下来的通道叫一声 —— 与卡片行、菜单行同一处。
+    val tick = LocalTick.current
     //  画图 + 落盘在 `exportPainter` 里自己 `withContext(Dispatchers.IO)`，这里只负责起一个作用域：
     //  回来那一句 `onPick` 改的是 Compose 状态，必须在主线程 —— 协程默认就在主线程恢复。
     val scope = rememberCoroutineScope()
@@ -167,6 +171,7 @@ internal fun SettingsPage.FluidIconPicker(
                             .clip(RoundedCornerShape(12.dp))
                             //  退场那一段不再派发：那时窗已经要收了，点了也只会把命令改掉一半
                             .clickable(enabled = show) {
+                                tick()
                                 scope.launch {
                                     if (exportPainter(context, painter, density, layout, FluidCard.nameOf(id))) {
                                         onPick(id)

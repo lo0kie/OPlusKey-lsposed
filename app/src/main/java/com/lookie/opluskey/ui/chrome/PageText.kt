@@ -129,9 +129,10 @@ internal fun SettingsPage.addCommand() {
  * 完整版本标识：**模块自己**的版本号 + [BUILD_KIND] + 构建时刻
  * （`1.0.0-debug-2026-10-15 15:07:12`）。
  *
- *  两处用它：导出的日志头（见 `ConfigTransfer.exportLog`）与**「更多选项」页的版本行** ——
- * 排查时要据此认出是哪个包、什么时候出的，而「什么时候」必须带日期才认得出。
- * 首页「激活状态」那张卡里那行版本走 [appVersionLabel]（它按构建类型决定要不要带末段）。
+ *  导出的日志头用它（见 `LogPull`）：排查时要据此认出是哪个包、什么时候出的，
+ *  而「什么时候」必须带日期才认得出。
+ *  首页「激活状态」那张卡里那行版本走 [appVersionLabel]（它按构建类型决定要不要带末段），
+ *  「更多选项」页那一行走 [appVersionShort]（只写版本号）。
  */
 internal fun SettingsPage.appVersionText(): String {
     val build = moduleBuildStamp()
@@ -139,13 +140,27 @@ internal fun SettingsPage.appVersionText(): String {
 }
 
 /**
- * 「更多选项」页「版本」那一行的副标题 —— `version-<版本号>-<构建类型>-<yyMMddHHmm>`
- * （如 `version-1.1.0-release-2610201546`）。
+ * 版本号 + 构建类型 + 构建时刻（`1.5.0-debug-2610201546`）—— 首页「激活状态」那张卡
+ * 在非 release 档显示的那一串（见 [appVersionLabel]）。
  *
  *  与 [appVersionText] **分开**：那一串还喂给导出的日志头，要完整日期带秒才方便事后对时间；
- *  这一行是给人扫一眼的，时刻压到分钟，前面那截 `version-` 让它自己说明是什么。
+ *  这一串是给人扫一眼的，时刻压到分钟。
+ *
+ *  「更多选项」页那一行**不用**它：那一行只写版本号（见 [appVersionShort]）。
  */
-internal fun SettingsPage.appVersionBadge(): String = "$VERSION_BADGE_PREFIX${versionHead()}-${compactBuildStamp(moduleBuildStamp())}"
+internal fun SettingsPage.appVersionBadge(): String = "${versionHead()}-${compactBuildStamp(moduleBuildStamp())}"
+
+/**
+ * 「更多选项」页「版本」那一行行尾那一串 —— 只有版本号（`1.5.0`），前面不带任何前缀。
+ *
+ *  三档（release / debug / log）显示**同一串**：`versionNameSuffix` 挂上去的 `-debug` / `-log`
+ *  在这里去掉。「这个包是哪一档、什么时候出的」由下面签名那一行与导出的日志头回答，
+ *  不再挤进这一行。
+ *
+ *  读不到版本号时只显示 [BUILD_KIND]（与 [appVersionLabel] 同一档兜底），不抛异常。
+ */
+internal fun SettingsPage.appVersionShort(): String =
+    moduleVersionName()?.removeSuffix("-$BUILD_KIND")?.takeIf { it.isNotBlank() } ?: BUILD_KIND
 
 /**
  * 版本号 + 构建类型（`1.1.0-release`）—— 三处版本串共用的那一段。
@@ -162,9 +177,6 @@ private fun SettingsPage.versionHead(): String {
         else -> "$name$suffix"
     }
 }
-
-/** 版本行那串的前缀（见 [appVersionBadge]）。 */
-private const val VERSION_BADGE_PREFIX = "version-"
 
 /** 构建时刻的完整形态（`GenerateBuildId` 写进资源的那一份）。 */
 private const val STAMP_FULL_PATTERN = "yyyy-MM-dd HH:mm:ss"
@@ -191,22 +203,19 @@ private fun compactBuildStamp(raw: String): String =
 /**
  * 首页「激活状态」那张卡里那行版本。
  *
- *  前面带一截 `version-`：这串东西摆在卡里、旁边没有标签，光一个 `1.1.0-release`
- *  看不出它是什么（页面上别处也没有「版本」两个字给它托底）。
- *
  *  **不是顶栏副标题**（用户口径：首页不要副标题）—— 首页那一行恒为空，版本只在这张卡里。
  *
  *  两档口径（判据是 [SHOW_BUILD_TIME]，它只在 release 关着）：
- *   · 非 release（debug / log）→ 与「更多选项」页那一行**同一个形态**（[appVersionBadge]，
- *     `version-1.1.0-debug-2610201546`）：自用包一天里会出好几个，光看构建类型分不出是哪一次；
- *   · release → 不带时刻（`version-1.1.0-release`）：首页是面向用户的界面，时刻对用户没意义
+ *   · 非 release（debug / log）→ 带构建时刻（[appVersionBadge]，
+ *     `1.1.0-debug-2610201546`）：自用包一天里会出好几个，光看构建类型分不出是哪一次；
+ *   · release → 不带时刻（`1.1.0-release`）：首页是面向用户的界面，时刻对用户没意义
  *     （要看的去「更多选项」页）。
  *
  *  读不到版本号时只显示 [BUILD_KIND]，不抛异常。
  */
 internal fun SettingsPage.appVersionLabel(): String {
     if (SHOW_BUILD_TIME) return appVersionBadge()
-    return "$VERSION_LABEL_PREFIX${versionHead()}"
+    return versionHead()
 }
 
 /**
@@ -304,9 +313,6 @@ private fun SettingsPage.moduleBuildStamp(): String =
         XLog.w("读构建标识失败（退回常量）：${e.javaClass.simpleName}")
         null
     } ?: ModuleInfo.BUILD_ID
-
-/** 首页那张卡里版本串的前缀（见 [appVersionLabel]）。 */
-private const val VERSION_LABEL_PREFIX = "version-"
 
 internal fun SettingsPage.actionOf(
     cfg: Config,

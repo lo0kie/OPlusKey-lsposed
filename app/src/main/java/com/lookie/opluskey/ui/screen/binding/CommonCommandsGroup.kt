@@ -153,8 +153,8 @@ private fun SettingsPage.CommonCommandTile(
     ActionTile(
         spec = null,
         title = name,
-        //  与「常用命令」页那一行同一个答案：换过图标就画换的那颗
-        icon = commonCommandIcon(cmd),
+        //  与「常用命令」页那一行同一个答案：换过图标画换的那颗，没换过按来源（命令类型）取
+        icon = commonCommandIcon(cmd, configState.commands.value),
         selected = bound,
         focused = false,
         focusRequester = remember { FocusRequester() },

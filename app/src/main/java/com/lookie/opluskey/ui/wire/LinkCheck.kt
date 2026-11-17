@@ -679,7 +679,7 @@ internal fun SettingsPage.disabledClickReason(): HintText {
  *  而「主开关关着」当时被当成「用户意图」静默掉了：不报红、也不进明细。
  *
  *  **仍然不报红**（关开关是用户的意图，不该骂人），但走 [LinkCheck.inSummary]：
- *  整体状态那一行会直接说「主开关已关闭，所有按键都不接管」。
+ *  整体状态那一行会直接说「主开关已关闭」。
  *
  *  单独一个函数只为让 [linkChecks] 留在 `LongMethod` 阈值内。
  */
@@ -692,6 +692,7 @@ private fun SettingsPage.takeOverCheck(): LinkCheck {
     val anyKeyOn = cfg.allKeys.any { cfg.key(it).enabled }
     return LinkCheck(
         icon = PageIcons.LinkTakeOver,
+        iconBroken = PageIcons.LinkTakeOverOff,
         name = I18n.get(Strings.LINK_CHECK_TAKE_OVER),
         ok = masterOn && anyKeyOn,
         detail =
@@ -700,6 +701,12 @@ private fun SettingsPage.takeOverCheck(): LinkCheck {
                 !masterOn -> I18n.get(Strings.LINK_CHECK_MASTER_OFF_ALL)
                 !anyKeyOn -> I18n.get(Strings.LINK_CHECK_ALL_KEYS_OFF)
                 else -> I18n.get(Strings.LINK_CHECK_NORMAL)
+            },
+        detailBroken =
+            when {
+                readOnly -> I18n.get(Strings.LINK_CHECK_CONFIG_FAILED)
+                !masterOn -> I18n.get(Strings.LINK_CHECK_MASTER_OFF_ALL)
+                else -> I18n.get(Strings.LINK_CHECK_ALL_KEYS_OFF)
             },
         blocking = false,
         inSummary = true,
@@ -716,6 +723,7 @@ private fun SettingsPage.takeOverCheck(): LinkCheck {
 private fun SettingsPage.usageCheck(inj: InjectStatus?): LinkCheck =
     LinkCheck(
         icon = PageIcons.LinkUsage,
+        iconBroken = PageIcons.LinkUsageMissing,
         name = I18n.get(Strings.LINK_CHECK_USAGE_VERIFIED),
         ok = link.hostLastActionAt > 0,
         // 判到过手势、却一次都没执行 —— 多半是这一档绑的是「无操作」
@@ -725,7 +733,15 @@ private fun SettingsPage.usageCheck(inj: InjectStatus?): LinkCheck =
                 inj != null && inj.lastGestureAt > 0 -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE)
                 else -> I18n.get(Strings.LINK_CHECK_NOT_USED_YET)
             },
+        detailBroken =
+            if (inj != null && inj.lastGestureAt > 0) {
+                I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE)
+            } else {
+                I18n.get(Strings.LINK_CHECK_NOT_USED_YET)
+            },
         blocking = false,
+        //  「还没被验证过」不是故障：整行始终常规色，只有字形与行尾那句在说「还没拿到那笔证据」。
+        neverRed = true,
     )
 
 /**
@@ -763,6 +779,7 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
     return listOf(
         LinkCheck(
             icon = PageIcons.LinkService,
+            iconBroken = PageIcons.LinkServiceOff,
             name = I18n.get(Strings.LINK_CHECK_SERVICE_STATUS),
             ok = hostOk,
             detail =
@@ -771,9 +788,11 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
                 } else {
                     I18n.get(Strings.LINK_CHECK_NOT_RUNNING)
                 },
+            detailBroken = I18n.get(Strings.LINK_CHECK_NOT_RUNNING),
         ),
         LinkCheck(
             icon = PageIcons.LinkKeyResponse,
+            iconBroken = PageIcons.LinkKeyResponseOff,
             name = I18n.get(Strings.LINK_CHECK_KEY_RESPONSE),
             ok = respondOk,
             detail =
@@ -781,6 +800,12 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
                     inj == null -> I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE)
                     inj.hooks <= 0 -> I18n.get(Strings.LINK_CHECK_NOT_RESPONDING)
                     else -> I18n.get(Strings.LINK_CHECK_NORMAL)
+                },
+            detailBroken =
+                if (inj == null) {
+                    I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE)
+                } else {
+                    I18n.get(Strings.LINK_CHECK_NOT_RESPONDING)
                 },
         ),
         // 「按键接管」：接管点挂上 ≠ 按键真被接住 —— 总闸关着时上面那段照样绿，
@@ -874,6 +899,9 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
                         I18n.get(Strings.LINK_CHECK_NORMAL)
                     }
                 },
+            //  这一段不 ok 的来路太多（读不懂 / 没送到 / 未同步 / 需要重启），
+            //  调试档只给一句最笼统的「未生效」—— 真要看哪一档，看的是真实状态下的那一行。
+            detailBroken = I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE),
         ),
         // 这一段永远不 block：还没被验证过不是故障，只是一条还没拿到的证据。
         usageCheck(inj),

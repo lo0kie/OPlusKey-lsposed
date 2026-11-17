@@ -21,7 +21,7 @@ import com.lookie.opluskey.core.seal.Seal
 import com.lookie.opluskey.core.seal.Verdict
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
-import com.lookie.opluskey.ui.chrome.appVersionBadge
+import com.lookie.opluskey.ui.chrome.appVersionShort
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.chrome.updateHost
 import com.lookie.opluskey.ui.dialog.MenuEntry
@@ -40,6 +40,7 @@ import com.lookie.opluskey.ui.row.ExpandableRow
 import com.lookie.opluskey.ui.row.ExpandableRowSpec
 import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.row.RowEndSummary
+import com.lookie.opluskey.ui.row.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.state.host.UpdateState
 import io.github.suqi8.coui.kmp.basic.CardListPosition
@@ -65,10 +66,9 @@ private const val UPDATE_CHECKING_HOLD_MS = 11_000L
 internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
     // 取版本号要过 PackageManager（见 [moduleVersionName]），本页每次重组都算一遍纯属白花。
     // 「运行状态」那张卡是 `@Composable` 读状态、会频繁重组，而版本号在整个进程生命里不变。
-    //  这一页走 [appVersionBadge]（`version-1.1.0-release-2610201546`）：这一页本来就回答
-    //  「我这个包是哪一个」，「什么时候出的」正是它要说的事。首页那条副标题走 [appVersionLabel]，
-    //  仍按构建类型决定带不带。
-    val version = remember { appVersionBadge() }
+    //  这一页走 [appVersionShort]（`1.5.0`）：这一行只回答「这是第几版」，三档显示同一串。
+    //  首页那条副标题走 [appVersionLabel]，仍按构建类型决定带不带构建时刻。
+    val version = remember { appVersionShort() }
     // 「签名」那一行：也要跨进程问 PMS，同样进页算一次。
     //  判据读的是**本包**（`ModuleInfo.PACKAGE`）而不是当前进程所属的宿主，见 `core/seal/Seal`。
     val context = LocalContext.current
@@ -121,13 +121,10 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
     }
 
     PageScrollColumn(scrollBehavior = scrollBehavior) {
-        // 顶栏叠在内容上，顶部要自己让出（动态值）。这一页首行是 `SmallTitle`（下面「运行状态」
-        // 那一个），它自带 8dp 上内边距，**不另加** [PAGE_TOP_PADDING] —— 那一档是给首行是卡片的
-        // 「选择应用」的。
+        // 顶栏叠在内容上，顶部要自己让出（动态值）。首块没有小标题，补回它自带的那一档上间距
+        // （[SECTION_TITLE_PAD_TOP]），第一张卡不贴着顶栏；其后各块仍由小标题自带上 16 / 下 0。
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
-
-        //  块与块之间的间距由小标题自带（上 16 / 下 0），页面不再写 `Spacer`。
-        SectionTitle(I18n.get(Strings.MORE_SECTION_STATUS))
+        Spacer(Modifier.height(SECTION_TITLE_PAD_TOP))
         LinkStatusCard()
 
         SectionTitle(I18n.get(Strings.MORE_SECTION_APPEARANCE))
@@ -392,14 +389,14 @@ internal fun SettingsPage.VersionMenu(ui: AboutUiState) {
 }
 
 /**
- * 「关于」卡 —— 版本 / 签名 / 作者 / 反馈问题，四行固定。
+ * 「关于」卡 —— 版本 / 机型 / 签名 / 作者 / 反馈问题，五行固定。
  *
- *  本机那一行已经挪到「运行状态」卡的最上面：那是「这台机器现在什么状态」，与链路那几段同属一类。
+ *  机型那一行排在这里的版本与签名之间：这一张是「这台机器 + 这个包」的自述，
+ *  前半句是机型（含适配清单的结论），后半句是版本与签名。
  *
- *  放在整页**最下面**：上面两张答的是「怎么用、现在什么状态」，这一张是「这台机器 + 这个包」的
- *  自述，看过一次就够。
+ *  放在整页**最下面**：上面几张答的是「怎么用、现在什么状态」，这一张是自述，看过一次就够。
  *
- *  @param version 版号 + 构建类型 + 构建时刻（含日期），见 `appVersionText`
+ *  @param version 只有版本号（`1.5.0`，三档同一串），见 `appVersionShort`
  *  @param signature 签名那一行的四样（标题 / 结论 / 指纹 / 是否官方），见 [SignatureInfo]
  */
 @Composable
@@ -412,19 +409,23 @@ internal fun SettingsPage.MachineCard(
         rows =
             buildList {
                 // 版本那一行 —— 点一下开一层菜单（检查更新 / 项目仓库），不再直接跳外链。
+                //  版本号贴在**行尾**（与语言 / 配色那几行同一形状：这一行 → 现在是什么 → 点开还能改），
+                //  副标题不再占一行：这一页的版本只有一句话，摊在标题底下等于把行高翻倍。
                 add(
                     CardRow.Item(
                         title = I18n.get(Strings.MORE_ABOUT_VERSION),
-                        summary = version,
                         icon = PageIcons.Versions,
                         //  行尾不挂红点：有新版由首页顶上那块「模块状态」说（见 `HomeActivationCard`）
-                        trailing = { RowEndIcon(PageIcons.Selector) },
+                        trailing = { RowEndSummary(version) },
                         modifier = Modifier.preciseClickAnchor(ui.versionClick),
                         onClick = {
                             ui.showVersionMenu = true
                         },
                     ),
                 )
+                // 机型（含适配结论）那一行 —— 在版本与签名之间：这一张卡回答「这台机器 + 这个包」，
+                //  机型是前半句。它原先在「运行状态」卡的第一行，与链路那几段并排时读成了故障明细。
+                add(deviceInfoRow())
                 // 签名那一行自己是一整行（可展开的指纹），位置由列表递进来
                 add(CardRow.Custom { position -> SignatureRow(signature, ui, position) })
                 // 作者那一行 —— 点开的是一层菜单（GitHub / 酷安两个去处），不直接跳外部。

@@ -34,10 +34,6 @@ object Strings {
     const val APP_PICKER_ACTIVITY_EMPTY = "app_picker.activity_empty"
     const val APP_PICKER_ACTIVITY_LOAD_FAILED = "app_picker.activity_load_failed"
     const val APP_PICKER_ACTIVITY_TITLE = "app_picker.activity_title"
-    const val APP_PICKER_BRANCH_MULTI_HINT = "app_picker.branch_multi_hint"
-
-    /** 同一句提示的**反面那一档**（「前台应用以外」挑的那一趟：都不在前台才通过）。 */
-    const val APP_PICKER_BRANCH_MULTI_HINT_NOT = "app_picker.branch_multi_hint_not"
 
     /** 给条件挑前台应用那一趟：一条都没勾就按确认时的那句（FAB 常驻，见 `AppConfirmFab`）。 */
     const val APP_PICKER_BRANCH_AT_LEAST_ONE = "app_picker.branch_at_least_one"
@@ -1714,7 +1710,6 @@ object Strings {
     const val MORE_SECTION_ABOUT = "more.section_about"
     const val MORE_SECTION_APPEARANCE = "more.section_appearance"
     const val MORE_SECTION_CONFIG = "more.section_config"
-    const val MORE_SECTION_STATUS = "more.section_status"
 
     /** 「更多选项」页「外观」那一卡：系统配色（页面强调色）与五套色板各自的名字。 */
     const val MORE_PALETTE = "more.palette"

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.shape.CircleShape
@@ -36,7 +35,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -63,7 +61,6 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.theme.LocalContentColor
 import io.github.suqi8.coui.kmp.utils.TiltFeedback
 import io.github.suqi8.coui.kmp.utils.pressable
-import kotlin.math.roundToInt
 
 // 顶栏那一整套：**骨架**（高度通道、折叠几何、那条 `TopAppBar` 本身）、右侧那几颗圆键与
 // 「按一下振一下」、以及副标题按可用宽度截断的两档账本。
@@ -225,22 +222,26 @@ internal fun SettingsPage.PageHeader(
         subtitle = if (subtitleContent == null) subtitleBar.shown(subtitle) else "",
         subtitleContent = subtitleContent,
         //  副标题与主标题之间的 3.5dp 就是设计值：两行的行盒都由 `AppTextStyles` 那一档
-        //  `LineHeightStyle(Center, Trim.Both)` 贴着墨迹算，行盒之间的空隙就是眼睛看到的空隙，
-        //  不再需要把副标题单独上提。
+        //  `LineHeightStyle(Center, Trim.Both)` 贴着墨迹算，行盒之间的空隙就是眼睛看到的空隙。
+        //  **两行的间距归库**（它按副标题盒子高度堆标题），这里只决定整组离栏底多远 ——
+        //  所以下面那条底 padding 抬的是两行一起，间距不受影响。
         hideSubtitleOnCollapse = false,
-        //  **折叠到底时把副标题往上提一档**（用户口径）：它折进 52dp 那条栏之后贴着栏底，
-        //  比右侧圆键的视觉重心低一点。
-        //  位移按 `collapsedFraction` **线性**给：展开态是 0、折叠态是满值，中途跟着库的折叠
-        //  进度连续变 —— 收尾那一帧（含 fling 吸附）也在这个函数上，不会折完再瞬移一下。
-        //  走 `subtitleModifier` 而不是改栏高：那个槽位只移动墨迹，栏高、展开 / 折叠两档的
-        //  落点与宽度账本都不受影响（见补丁 `0014`）。
-        subtitleModifier =
-            Modifier.offset {
-                IntOffset(
-                    x = 0,
-                    y = -(SUBTITLE_COLLAPSE_LIFT * scrollBehavior.state.collapsedFraction).toPx().roundToInt(),
-                )
-            },
+        //  **折叠态让「标题 + 副标题」整组抬上去**（用户口径：副标题到分隔线的距离，与圆键
+        //  到分隔线的距离一样）。
+        //
+        //  做法是给副标题槽加一条**底 padding**，而不是只把墨迹往上挪：库按「副标题占多高」
+        //  把折叠标题堆在它上面（`collapsedTitleY = 52 - 副标题高 - 3.5 - 标题高`），所以副标题
+        //  盒子长高一格，标题跟着上移同一格 —— 两行的 3.5dp 间距不变、整组一起抬，副标题底边
+        //  正好落在圆键底边那条水平线上（两者到底边都是 `(52 - 40) / 2 = 6dp`）。
+        //
+        //  旧做法（只 `offset` 提副标题墨迹 3dp）在这里是错的：标题按库的式子不动，副标题
+        //  上移多少就吃掉多少间距 —— 提到 6dp 时两行会叠在一起。
+        //
+        //  代价：展开态也高这一档（副标题盒子本来按内容量高），于是展开的顶栏多 6dp 空白、
+        //  内容起点跟着下移 6dp；折起来的那条 52dp 栏不受影响。要连这 6dp 都不动，得再给库开
+        //  一个 `titleModifier` 把标题单独上提（与补丁 `0014` 同一形状）—— 6dp 的视觉对齐还不值
+        //  一个库版本，所以先这么办。
+        subtitleModifier = Modifier.padding(bottom = SUBTITLE_BOTTOM_GAP),
         //  三个水平边距统一到**卡片那一档**（[PAGE_MARGIN]）：整页所有卡片的外边距、固定带里
         //  的分段控件、选择应用页的搜索框都是这一档，顶栏两侧的圆键与大标题跟着走同一条竖线
         //  （原来用库默认的 `TitlePadding` / `NavigationIconPadding` / `ActionIconPadding`
@@ -444,13 +445,15 @@ private const val SUBTITLE_ELLIPSIS_COLUMNS = 2
 private const val SUBTITLE_SWAP_AT_COLLAPSED = 0.9999f
 
 /**
- * 折叠到底时副标题再往上提的那一档。
+ * 副标题底边到栏底（折叠态那条分隔线）的距离 —— 与右侧圆键同一条下边距。
  *
- *  折进 52dp 那条栏之后，副标题贴着栏底，比右侧那排圆键的视觉重心低一点 —— 提这一档让两者
- *  在同一条水平线上。位移**只作用在墨迹上**（`subtitleModifier` 不参与栏高、落点与宽度账本），
- *  量也按 `collapsedFraction` 线性缩放，所以展开态完全不动。
+ *  折进 52dp 那条栏之后，圆键（[HEADER_ICON_SIZE]）上下各留 `(52 - 40) / 2 = 6dp`；副标题原先
+ *  贴着栏底，两者并排看是「字比按钮低一截」。这里让副标题盒子底下也让出同一条 6dp，
+ *  副标题的底边就与圆键的底边落在同一条水平线上（标题被库按副标题高度堆着，跟着一起上移）。
+ *
+ *  数值由两个常量算出来而不是写死 6：栏高换了、圆键换了，这条边距自己跟着变。
  */
-private val SUBTITLE_COLLAPSE_LIFT = 3.dp
+private val SUBTITLE_BOTTOM_GAP: Dp = (TopAppBarDefaults.CollapsedHeight - HEADER_ICON_SIZE) / 2
 
 /**
  * 这段宽度放得下多少**格**字 —— 副标题两档上限共用的那把尺子。

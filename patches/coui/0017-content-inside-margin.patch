@@ -1,0 +1,142 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/layout/BottomSheetContentLayout.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/layout/BottomSheetContentLayout.kt
+index a8627be..c73c680 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/layout/BottomSheetContentLayout.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/layout/BottomSheetContentLayout.kt
+@@ -96,6 +96,10 @@ import kotlin.coroutines.cancellation.CancellationException
+  *   grid width (full width on compact windows, a 6-column grid span on medium/expanded ones).
+  * @param outsideMargin The margin outside the bottom sheet.
+  * @param insideMargin The margin inside the bottom sheet.
++ * @param contentInsideMargin The horizontal margin applied to the content area only (the drag
++ *   handle and the title keep [insideMargin]). Defaults to [insideMargin]; pass `DpSize(0.dp, 0.dp)`
++ *   when the content wants to lay out its own margins — a scrollbar that should sit at the panel
++ *   edge, for instance, cannot escape the inside margin it is padded by.
+  * @param dragHandleColor The color of the drag handle.
+  * @param popupHost A composable that provides the container (e.g., DialogLayout or Dialog).
+  *   It receives the visibility state and the inner content composable.
+@@ -122,6 +126,7 @@ internal fun BottomSheetContentLayout(
+     sheetMaxWidth: Dp,
+     outsideMargin: DpSize,
+     insideMargin: DpSize,
++    contentInsideMargin: DpSize = insideMargin,
+     dragHandleColor: Color,
+     popupHost: @Composable (visible: Boolean, content: @Composable () -> Unit) -> Unit,
+     modifier: Modifier = Modifier,
+@@ -303,6 +308,7 @@ internal fun BottomSheetContentLayout(
+                 sheetMaxWidth = sheetMaxWidth,
+                 outsideMargin = outsideMargin,
+                 insideMargin = insideMargin,
++                contentInsideMargin = contentInsideMargin,
+                 defaultWindowInsetsPadding = defaultWindowInsetsPadding,
+                 dragHandleColor = dragHandleColor,
+                 allowDismiss = allowDismiss,
+@@ -343,6 +349,7 @@ internal fun BottomSheetContent(
+     sheetMaxWidth: Dp,
+     outsideMargin: DpSize,
+     insideMargin: DpSize,
++    contentInsideMargin: DpSize = insideMargin,
+     defaultWindowInsetsPadding: Boolean,
+     dragHandleColor: Color,
+     allowDismiss: Boolean,
+@@ -547,6 +554,7 @@ internal fun BottomSheetContent(
+         sheetMaxWidth = sheetMaxWidth,
+         outsideMargin = outsideMargin,
+         insideMargin = insideMargin,
++        contentInsideMargin = contentInsideMargin,
+         defaultWindowInsetsPadding = defaultWindowInsetsPadding,
+         dragHandleColor = dragHandleColor,
+         allowDismiss = allowDismiss,
+@@ -576,6 +584,7 @@ private fun BottomSheetColumn(
+     sheetMaxWidth: Dp,
+     outsideMargin: DpSize,
+     insideMargin: DpSize,
++    contentInsideMargin: DpSize,
+     defaultWindowInsetsPadding: Boolean,
+     dragHandleColor: Color,
+     allowDismiss: Boolean,
+@@ -636,26 +645,40 @@ private fun BottomSheetColumn(
+                     bottomEnd = 0.dp,
+                     bottomStart = 0.dp,
+                 )
+-                .padding(horizontal = insideMargin.width)
+                 .padding(bottom = insideMargin.height),
+         ) {
+-            DragHandleArea(
+-                dragHandleColor = dragHandleColor,
+-                allowDismiss = allowDismiss,
+-                dragOffsetY = dragOffsetY,
+-                coroutineScope = coroutineScope,
+-                dragSnapChannel = dragSnapChannel,
+-                onSettle = onSettle,
+-                onUpdateAlpha = onUpdateAlpha,
+-            )
++            // The handle and the title always sit on [insideMargin]; only the content area honours
++            // [contentInsideMargin] — that is what lets a caller hand the content a full-width box
++            // (a scrollbar that must hug the panel edge, for instance) without moving the title.
++            Column(
++                modifier = Modifier
++                    .fillMaxWidth()
++                    .padding(horizontal = insideMargin.width),
++            ) {
++                DragHandleArea(
++                    dragHandleColor = dragHandleColor,
++                    allowDismiss = allowDismiss,
++                    dragOffsetY = dragOffsetY,
++                    coroutineScope = coroutineScope,
++                    dragSnapChannel = dragSnapChannel,
++                    onSettle = onSettle,
++                    onUpdateAlpha = onUpdateAlpha,
++                )
+ 
+-            TitleAndActionsRow(
+-                title = title,
+-                startAction = startAction,
+-                endAction = endAction,
+-            )
++                TitleAndActionsRow(
++                    title = title,
++                    startAction = startAction,
++                    endAction = endAction,
++                )
++            }
+ 
+-            content()
++            Box(
++                modifier = Modifier
++                    .fillMaxWidth()
++                    .padding(horizontal = contentInsideMargin.width),
++            ) {
++                content()
++            }
+         }
+     }
+ }
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/overlay/OverlayBottomSheet.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/overlay/OverlayBottomSheet.kt
+index 21a8d64..2e6a373 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/overlay/OverlayBottomSheet.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/overlay/OverlayBottomSheet.kt
+@@ -32,6 +32,9 @@ import io.github.suqi8.coui.kmp.utils.COUIPopupUtils.Companion.DialogLayout
+  * @param onDismissFinished The callback when the [OverlayBottomSheet] is completely dismissed.
+  * @param outsideMargin The margin outside the [OverlayBottomSheet].
+  * @param insideMargin The margin inside the [OverlayBottomSheet].
++ * @param contentInsideMargin The horizontal margin applied to the content area only; the drag
++ *   handle and the title keep [insideMargin]. Defaults to [insideMargin] — pass `DpSize(0.dp, 0.dp)`
++ *   when the content lays out its own margins (e.g. a scrollbar that should hug the panel edge).
+  * @param defaultWindowInsetsPadding Whether to apply default window insets padding.
+  * @param dragHandleColor The color of the drag handle at the top.
+  * @param allowDismiss Whether to allow dismissing the sheet via drag or back gesture.
+@@ -56,6 +59,7 @@ fun OverlayBottomSheet(
+     onDismissFinished: (() -> Unit)? = null,
+     outsideMargin: DpSize = BottomSheetDefaults.outsideMargin,
+     insideMargin: DpSize = BottomSheetDefaults.insideMargin,
++    contentInsideMargin: DpSize = insideMargin,
+     defaultWindowInsetsPadding: Boolean = true,
+     dragHandleColor: Color = BottomSheetDefaults.dragHandleColor(),
+     allowDismiss: Boolean = true,
+@@ -70,6 +74,7 @@ fun OverlayBottomSheet(
+         sheetMaxWidth = sheetMaxWidth,
+         outsideMargin = outsideMargin,
+         insideMargin = insideMargin,
++        contentInsideMargin = contentInsideMargin,
+         dragHandleColor = dragHandleColor,
+         popupHost = { visible, hostContent ->
+             val visibleState = remember { mutableStateOf(false) }
