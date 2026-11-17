@@ -251,12 +251,6 @@ internal data class KeyDto(
     val toastFluid: Boolean? = null,
     val toastTemplate: String? = null,
     /**
-     * 上面那几项**被公共设置播过种没有**（见 `OwnSettings.ownSettingsSeeded`）。
-     *
-     *  `null` = 老文件没有这一项 ⇒ 没播过，第一次打开总开关时会播一次（与新装一致）。
-     */
-    val ownSettingsSeeded: Boolean? = null,
-    /**
      * **老的「一条规则一个手势」那一列** —— 只读：新写的文件不再写它，读到就迁移（见 [mergeScenes]）。
      *
      *  留着它只为把已经存在的配置读上来：删掉这一格的话，老文件里那一整批条件分支会在升级
@@ -399,7 +393,6 @@ internal data class KeyDto(
                 ConfigFields.F_KEY_TOAST_ON_RUN to (toastOnRun ?: GlobalConfig.DEFAULT_TOAST_ON_RUN),
                 ConfigFields.F_KEY_TOAST_FLUID to (toastFluid ?: GlobalConfig.DEFAULT_TOAST_FLUID),
                 ConfigFields.F_KEY_TOAST_TEMPLATE to (toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE),
-                ConfigFields.F_OWN_SETTINGS_SEEDED to (ownSettingsSeeded ?: false),
                 //  「哪几档多击开着」也要走这张表：`toValues` 是两条通道共用的入口，
                 //  这里给文本（`Kind` 只有 Bool / Number / Text），与 `fieldValues()` 同一个编码
                 ConfigFields.F_EXTRA_CLICKS to clicksOn.sorted().joinToString(","),
@@ -479,7 +472,6 @@ internal data class KeyDto(
                 toastOnRun = key.toastOnRun,
                 toastFluid = key.toastFluid,
                 toastTemplate = key.toastTemplate,
-                ownSettingsSeeded = key.ownSettingsSeeded,
                 scenes = key.scenes.map { SceneRuleDto.of(it) },
                 extraClicks = key.extraClicks.mapKeys { it.key.toString() }.mapValues { it.value.token },
                 //  写侧一律给具体值：给 `null` 的话下次读回来会走「按表倒推」那条老路
@@ -779,6 +771,29 @@ internal data class ComboDto(
     @SerialName("hold_fixed_window_start")
     val holdFixedWindowStart: Boolean? = null,
     /**
+     * 这一档**顺序组合**的四格窗口（毫秒）；`0` = 跟随公共设置。
+     *
+     *  与上面那四格**是两套数**（顺序组合单独一组）：有序档量的是「按配置的先后逐颗落」，
+     *  老文件没有这四位 ⇒ 全 0 ⇒ 跟随公共，与这一位出现之前一致，不需要迁移。
+     */
+    @SerialName("ordered_wait_window_ms")
+    val orderedWaitWindowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
+    @SerialName("ordered_wait_pair_ms")
+    val orderedWaitPairMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
+    @SerialName("ordered_hold_window_ms")
+    val orderedHoldWindowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
+    @SerialName("ordered_hold_follower_ms")
+    val orderedHoldFollowerMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
+    /**
+     * 这一档**顺序组合**的两颗固定窗口起点（等待档 / 按住档）；`null` = 跟随公共设置。
+     *
+     *  与 [fixedWindowStart] / [holdFixedWindowStart] 各自独立 —— 拨顺序组合那一颗不动不分顺序那份。
+     */
+    @SerialName("ordered_fixed_window_start")
+    val orderedFixedWindowStart: Boolean? = null,
+    @SerialName("ordered_hold_fixed_window_start")
+    val orderedHoldFixedWindowStart: Boolean? = null,
+    /**
      * **老的「一条规则一个手势」那一列** —— 只读，读到就迁移（见 [mergeScenes]）；与单键那份同型。
      */
     val rules: List<StateRuleDto> = emptyList(),
@@ -801,10 +816,8 @@ internal data class ComboDto(
     val toastOnRun: Boolean? = null,
     val toastFluid: Boolean? = null,
     val toastTemplate: String? = null,
-    /** 上面那几项被公共设置播过种没有 —— 与单键那条同义（`OwnSettings.ownSettingsSeeded`）。 */
-    val ownSettingsSeeded: Boolean? = null,
     /**
-     * 这一档自己的**四格窗口**（毫秒，等待 / 按住 × 固定窗口起点 开 / 关）；`0` = 跟随公共设置。
+     * **这一档自己的**四格窗口（毫秒，等待 / 按住 × 固定窗口起点 开 / 关）；`0` = 没写过 ⇒ 出厂默认。
      *
      *  v74 起分开存（见 `ComboWindows`）；老文件只有 [windowMs] 一个数，由 [toCombo] 铺到前三格。
      */
@@ -939,11 +952,10 @@ internal data class ComboDto(
             toastOnRun = toastOnRun ?: GlobalConfig.DEFAULT_TOAST_ON_RUN,
             toastFluid = toastFluid ?: GlobalConfig.DEFAULT_TOAST_FLUID,
             toastTemplate = toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE,
-            ownSettingsSeeded = ownSettingsSeeded ?: false,
             //  **四格窗口**：v74 起分开存。老文件只有一个数（`window_ms`，更老的还有
-            //  `fixed_window_ms`）—— 拿它给前三格铺底，第四格留给公共那一格的出厂值。
-            //  0 表示跟随公共设置，必须原样留着 —— `clamp` 会把它抬到下限 20，
-            //  那就成了「这一组显式设了 20ms」，界面上再也回不到跟随。
+            //  `fixed_window_ms`）—— 拿它给前三格铺底，第四格留给出厂值。
+            //  0 表示没写过（取出厂默认），必须原样留着 —— `clamp` 会把它抬到下限 20，
+            //  那就成了「这一组显式设了 20ms」，界面上再也回不到默认。
             waitWindowMs = clampOrFollow(waitWindowMs, legacyWindowMs, fixedWindowMs),
             waitPairMs = clampOrFollow(waitPairMs, legacyWindowMs, fixedWindowMs),
             holdWindowMs = clampOrFollow(holdWindowMs, legacyWindowMs, fixedWindowMs),
@@ -961,6 +973,34 @@ internal data class ComboDto(
             ordered = this.ordered,
             fixedWindowStart = fixedWindowStart,
             holdFixedWindowStart = holdFixedWindowStart,
+            //  **顺序组合那一组**：四格与两颗开关各自一份（老文件没有 ⇒ 0 / null ⇒ 跟随公共）。
+            //  0 必须原样留着 —— `clamp` 会把它抬到下限，那就成了「这一组显式设了下限值」。
+            orderedWaitWindowMs =
+                if (orderedWaitWindowMs <= 0) {
+                    ComboKey.WINDOW_FOLLOW_GLOBAL
+                } else {
+                    clamp(ConfigFields.F_COMBO_ORDERED_WAIT_WINDOW_MS, orderedWaitWindowMs)
+                },
+            orderedWaitPairMs =
+                if (orderedWaitPairMs <= 0) {
+                    ComboKey.WINDOW_FOLLOW_GLOBAL
+                } else {
+                    clamp(ConfigFields.F_COMBO_ORDERED_WAIT_PAIR_MS, orderedWaitPairMs)
+                },
+            orderedHoldWindowMs =
+                if (orderedHoldWindowMs <= 0) {
+                    ComboKey.WINDOW_FOLLOW_GLOBAL
+                } else {
+                    clamp(ConfigFields.F_COMBO_ORDERED_HOLD_WINDOW_MS, orderedHoldWindowMs)
+                },
+            orderedHoldFollowerMs =
+                if (orderedHoldFollowerMs <= 0) {
+                    ComboKey.WINDOW_FOLLOW_GLOBAL
+                } else {
+                    clamp(ConfigFields.F_COMBO_ORDERED_HOLD_FOLLOWER_MS, orderedHoldFollowerMs)
+                },
+            orderedFixedWindowStart = orderedFixedWindowStart,
+            orderedHoldFixedWindowStart = orderedHoldFixedWindowStart,
         )
     }
 
@@ -997,6 +1037,12 @@ internal data class ComboDto(
                 ordered = combo.ordered,
                 fixedWindowStart = combo.fixedWindowStart,
                 holdFixedWindowStart = combo.holdFixedWindowStart,
+                orderedWaitWindowMs = combo.orderedWaitWindowMs,
+                orderedWaitPairMs = combo.orderedWaitPairMs,
+                orderedHoldWindowMs = combo.orderedHoldWindowMs,
+                orderedHoldFollowerMs = combo.orderedHoldFollowerMs,
+                orderedFixedWindowStart = combo.orderedFixedWindowStart,
+                orderedHoldFixedWindowStart = combo.orderedHoldFixedWindowStart,
                 scenes = combo.scenes.map { SceneRuleDto.of(it) },
                 useOwnSettings = combo.useOwnSettings,
                 colorOsApi = combo.colorOsApi,
@@ -1006,7 +1052,6 @@ internal data class ComboDto(
                 toastOnRun = combo.toastOnRun,
                 toastFluid = combo.toastFluid,
                 toastTemplate = combo.toastTemplate,
-                ownSettingsSeeded = combo.ownSettingsSeeded,
                 waitWindowMs = combo.waitWindowMs,
                 waitPairMs = combo.waitPairMs,
                 holdWindowMs = combo.holdWindowMs,
@@ -1054,7 +1099,7 @@ internal data class GlobalDto(
      * 组合键**四格窗口**（`GlobalConfig` 那四位，毫秒）—— 等待 / 按住 × 固定窗口起点 开 / 关。
      *
      *  老文件没有这四位：由 [mergedComboWindowMs] 把 v73 那一个数铺到前三格，
-     *  第四格（按住组合、起点关）用出厂 150ms（那一格原先是写死的常量）。
+     *  第四格（按住组合、起点关）用出厂 [GlobalConfig.DEFAULT_COMBO_PAIR_MS]（那一格原先是写死的常量）。
      */
     @SerialName("combo_wait_window_ms")
     val comboWaitWindowMs: Int? = null,
@@ -1140,6 +1185,25 @@ internal data class GlobalDto(
     @SerialName("combo_hold_fixed_window_start")
     val comboHoldFixedWindowStart: Boolean = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
     /**
+     * **顺序组合**那一组窗口与两颗开关（`GlobalConfig.comboOrdered*` 那六位）—— 与上面那四格
+     *  + 两颗开关是**两套数**（顺序组合单独一组）。
+     *
+     *  两列都走（落盘 + 广播）：判据在注入侧（`ComboDetector` 按 `Config.comboWindowsFor` 挑这一份）。
+     *  老文件没有这六位 ⇒ 出厂值（固定等 350 / 逐次等 250 与两颗关），与这一位出现之前一致。
+     */
+    @SerialName("combo_ordered_wait_window_ms")
+    val comboOrderedWaitWindowMs: Int = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+    @SerialName("combo_ordered_wait_pair_ms")
+    val comboOrderedWaitPairMs: Int = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
+    @SerialName("combo_ordered_hold_window_ms")
+    val comboOrderedHoldWindowMs: Int = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+    @SerialName("combo_ordered_hold_follower_ms")
+    val comboOrderedHoldFollowerMs: Int = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
+    @SerialName("combo_ordered_fixed_window_start")
+    val comboOrderedFixedWindowStart: Boolean = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
+    @SerialName("combo_ordered_hold_fixed_window_start")
+    val comboOrderedHoldFixedWindowStart: Boolean = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
+    /**
      * 按住组合的首键松手后仍执行它自己的长按（见 `GlobalConfig.comboStarterKeepLong`）。
      *
      *  **两列都走**：落盘这一份之外还进配置广播（`ConfigFields.F_COMBO_STARTER_KEEP_LONG`
@@ -1166,7 +1230,7 @@ internal data class GlobalDto(
      * v73 及以前那**一个**等待窗口（[comboWindowMs]）—— 四格窗口缺项时用它铺底。
      *
      *  老文件没有这四位：前三格（等待 / 等待对 / 按住）都铺成这一个数，
-     *  第四格（按住、起点关）用出厂 150ms —— 那一格原先是写死的常量。
+     *  第四格（按住、起点关）用出厂 [GlobalConfig.DEFAULT_COMBO_PAIR_MS] —— 那一格原先是写死的常量。
      */
     private val legacyWindowMs: Int
         get() = comboWindowMs
@@ -1193,11 +1257,17 @@ internal data class GlobalDto(
                 ConfigFields.F_COMBO_WAIT_WINDOW_MS to (comboWaitWindowMs ?: legacyWindowMs),
                 ConfigFields.F_COMBO_WAIT_PAIR_MS to (comboWaitPairMs ?: legacyWindowMs),
                 ConfigFields.F_COMBO_HOLD_WINDOW_MS to (comboHoldWindowMs ?: legacyWindowMs),
-                ConfigFields.F_COMBO_HOLD_FOLLOWER_MS to (comboHoldFollowerMs ?: GlobalConfig.DEFAULT_COMBO_HOLD_FOLLOWER_MS),
+                ConfigFields.F_COMBO_HOLD_FOLLOWER_MS to (comboHoldFollowerMs ?: GlobalConfig.DEFAULT_COMBO_PAIR_MS),
                 ConfigFields.F_COMBO_HOLD_MIN_MS to comboHoldMinMs,
                 ConfigFields.F_COMBO_SCENE_ON_STARTER to comboSceneOnStarter,
                 ConfigFields.F_COMBO_FIXED_WINDOW_START to comboFixedWindowStart,
                 ConfigFields.F_COMBO_HOLD_FIXED_WINDOW_START to comboHoldFixedWindowStart,
+                ConfigFields.F_COMBO_ORDERED_WAIT_WINDOW_MS to comboOrderedWaitWindowMs,
+                ConfigFields.F_COMBO_ORDERED_WAIT_PAIR_MS to comboOrderedWaitPairMs,
+                ConfigFields.F_COMBO_ORDERED_HOLD_WINDOW_MS to comboOrderedHoldWindowMs,
+                ConfigFields.F_COMBO_ORDERED_HOLD_FOLLOWER_MS to comboOrderedHoldFollowerMs,
+                ConfigFields.F_COMBO_ORDERED_FIXED_WINDOW_START to comboOrderedFixedWindowStart,
+                ConfigFields.F_COMBO_ORDERED_HOLD_FIXED_WINDOW_START to comboOrderedHoldFixedWindowStart,
                 ConfigFields.F_COMBO_STARTER_KEEP_LONG to comboStarterKeepLong,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
@@ -1236,6 +1306,12 @@ internal data class GlobalDto(
                 comboSceneOnStarter = g.comboSceneOnStarter,
                 comboFixedWindowStart = g.comboFixedWindowStart,
                 comboHoldFixedWindowStart = g.comboHoldFixedWindowStart,
+                comboOrderedWaitWindowMs = g.comboOrderedWaitWindowMs,
+                comboOrderedWaitPairMs = g.comboOrderedWaitPairMs,
+                comboOrderedHoldWindowMs = g.comboOrderedHoldWindowMs,
+                comboOrderedHoldFollowerMs = g.comboOrderedHoldFollowerMs,
+                comboOrderedFixedWindowStart = g.comboOrderedFixedWindowStart,
+                comboOrderedHoldFixedWindowStart = g.comboOrderedHoldFixedWindowStart,
                 comboStarterKeepLong = g.comboStarterKeepLong,
                 iconTintSeed = g.iconTintSeed,
                 showCommonCommands = g.showCommonCommands,

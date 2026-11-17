@@ -25,26 +25,19 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
  *  走不走 ColorOS 专有接口、振不振、振多重、弹不弹提示、提示写什么。
  *  顶上那颗总开关（[OwnSettings.useOwnSettings]，默认关）决定用哪份 —— 关着就是跟随公共设置。
  *
- * ## 关着时显示**生效值**，不是这一档自己存的那份
+ * ## 显示的是**这一档自己那份**，不跟总开关跳
  *
- *  这一点原先写错过：卡片直接读 `owner` 上的那几个值，而总开关关着时它们**不参与取值**。
- *  于是「公共开了振动、这颗键自己那份还是默认的关」时，这一页显示「振动反馈：关（灰）」——
- *  而按下去明明会振。同一页下半的「组合按键设置」几行一直读的是生效值
- *  （`comboWindowsFor` / `comboHoldMinFor`），只有上面这张卡不一样。
+ *  总开关关着时这几项不参与取值（执行侧看公共设置），但这一页显示的仍是这一档自己存的那几个值
+ *  —— **显示与写入同源**（都是 [owner]）。
  *
- *  所以显示统一走 [effective]（`Config.effectiveFor(owner)`），**写入仍落到** [owner]：
- *  关着时看到的就是「现在实际在用的那份」，打开总开关后同一处立刻变成这一档自己的值。
- *  总开关本身与「哪几行能不能点」仍按 [owner] 判 —— 那是「算不算数」，不是「是什么样」。
+ *  为什么不让它跟着开关走：拨一下总开关，整页数字会换成另一份（这一档没写过时就是出厂默认），
+ *  读起来像「刚配的东西被重置了」，而其实一个字节都没写。用户口径：**切换那颗开关时只该
+ *  「禁用 / 启用」这些行，值一个都不许变**。所以开关只决定 [rowsEnabled] 与「哪几行出现」
+ *  （振动关着就没有强度那一行），不参与任何取数；关着时整片灰着并挂一句「需先开启 使用独立设置」，
+ *  不会有人把灰着的数字当成此刻的行为。
  *
- * ## 例外：**滑杆显示的是这一档自己的值**，不跟总开关跳
- *
- *  开关那一档必须走生效值（「关着但实际会振」就是骗人），滑杆不行 —— 拨一下总开关，
- *  滑杆会从公共值跳到这一档自己的值，读起来像「我的强度被改了」（用户口径「切换开关
- *  slider 的值会变」）。而滑杆在总开关关着时本来就是灰的、拖不动，显示生效值没有行动价值；
- *  它的写入落点也正是 [owner]，**显示与落点同源**才不会有这一跳。
- *
- *  于是 [strengthRow] 的滑杆值取 [owner]，只有「这一行出不出现」仍按生效值判
- *  （否则公共开着振动、这一档没设过时这一行会凭空消失）。
+ *  同一页下半的单击卡（`ClickDelayCard`）与组合参数卡（`ComboParamCards`）也是这条口径：
+ *  读的是这一档自己的值，总开关只管可编辑性。
  *
  * ## 为什么是**两张**卡，且各带一个小标题
  *
@@ -73,8 +66,6 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
 @Composable
 internal fun SettingsPage.OwnSettingsCard(
     owner: OwnSettings,
-    /** **生效**那一份（`Config.effectiveFor(owner)`）—— 只用于显示，写入仍落到 [owner]。 */
-    effective: OwnSettings,
     enabled: Boolean,
     titles: OwnCardTitles,
     onWrite: (OwnSettingsValues, OwnField) -> Unit,
@@ -95,8 +86,7 @@ internal fun SettingsPage.OwnSettingsCard(
 
     // 每一行都基于「当前这份值」改一位再交回去 —— 形状与 `CardRow` 的开关一致。
     // **顺手写下改的是哪一项**：调用方按它只覆盖那一格（见 [OwnField]）。
-    //  基值取 [owner]（写入的落点）：`withField` 只取被改的那一格，但 `ownSettingsSeeded`
-    //  这类「没被点名」的位要跟着这一档自己的值走，不能跟着公共那份。
+    //  基值取 [owner]（写入的落点）：`withField` 只取被改的那一格，其余项以配置现值为准。
     fun edit(
         field: OwnField,
         transform: (OwnSettingsValues) -> OwnSettingsValues,
@@ -106,24 +96,20 @@ internal fun SettingsPage.OwnSettingsCard(
     //  总开关**另起一张卡**：它管的是「下面那几张卡算不算数」，不是「调成什么样」。
     CardList(rows = listOf(useOwnRow(owner, enabled, onWrite)))
     SectionTitle(titles.interfaceTitle)
-    CardList(rows = listOf(interfaceRow(effective, rowsEnabled, ownHint, ::edit)))
+    CardList(rows = listOf(interfaceRow(owner, rowsEnabled, ownHint, ::edit)))
     SectionTitle(titles.behavior)
     CardList(
         rows =
             buildList {
-                add(vibrateRow(effective, rowsEnabled, ownHint, ::edit))
-                add(vibrateOnNoneRow(effective, rowsEnabled, ownHint, ::edit))
-                //  滑杆值取 `owner`（这一档自己的），**不取** `effective` —— 见类注释那段
-                //  「滑杆显示的是这一档自己的值」。取生效值的话，拨一下总开关它就从公共值
-                //  跳到这一档自己的值，看着像刚调好的强度被改了。
-                add(strengthRow(effective, owner.vibrateStrength, rowsEnabled, ownHint, ::edit))
-                addAll(toastRows(effective, rowsEnabled, ownHint, ::edit) { editingTemplate = true })
+                add(vibrateRow(owner, rowsEnabled, ownHint, ::edit))
+                add(vibrateOnNoneRow(owner, rowsEnabled, ownHint, ::edit))
+                add(strengthRow(owner, rowsEnabled, ownHint, ::edit))
+                addAll(toastRows(owner, rowsEnabled, ownHint, ::edit) { editingTemplate = true })
             },
     )
     OwnTemplateDialog(
-        //  窗里编辑的是**当前生效**那句：总开关关着时改的虽是这一档自己那份，
-        //  但看到的应当与行尾副标题同一个值（否则打开窗先看到一句屏幕上没出现过的文本）。
-        initial = effective.toastTemplate,
+        //  窗里编辑的是这一档自己那句 —— 与行尾显示同一个值，否则打开窗先看到一句屏幕上没出现过的文本。
+        initial = owner.toastTemplate,
         show = editingTemplate,
         onShowChange = { editingTemplate = it },
     ) { text ->
@@ -174,7 +160,7 @@ private fun SettingsPage.useOwnRow(
 /**
  * 「接口选择」那张卡的行表 —— 与公共页同一张卡同一个标题，这里只有「使用 ColorOS 接口」一行。
  *
- * @param show **生效**那一份 —— 每一行显示的值都从它取（见 [OwnSettingsCard] 那段说明）
+ * @param show 这一档自己那份（见 [OwnSettingsCard]：总开关只管能不能改，不管显示什么）
  */
 @Composable
 private fun SettingsPage.interfaceRow(
@@ -215,7 +201,7 @@ private fun SettingsPage.vibrateRow(
  * 「无操作时振动」—— 与 [vibrateRow] 是两颗开关：那一颗管「执行了动作」，
  * 这一颗管「按了、但这一档什么动作都没有」。
  *
- *  **它依赖振动反馈**（`show.vibrate`，判据与 [strengthRow] 同一条、也取生效值）：
+ *  **它依赖振动反馈**（`show.vibrate`，判据与 [strengthRow] 同一条、取的也是这一档自己那份）：
  *  振动关着时整个振动链路都不走，这一颗摆着就是让人调一个不起作用的东西。
  *  显隐复用 `visible` 那套进出场动画，与公共页那一行同一个做法。
  */
@@ -243,17 +229,14 @@ private fun SettingsPage.vibrateOnNoneRow(
  *
  * 规格与公共页那一行同一套（三档、行首随档换字形、行尾写「弱 / 中 / 强」）。
  *
- * @param show 显示用的那一份（生效值）—— 只用来判「这一行出不出现」：
- *   按这一档自己那份判的话，公共开着振动、这一档没设过时这一行会凭空消失。
- * @param value 滑杆上那个值 —— **这一档自己的**（`owner.vibrateStrength`），不是 [show] 里的。
- *   取生效值会让它跟着总开关跳（见 [OwnSettingsCard] 的「滑杆显示的是这一档自己的值」）。
+ * @param show 这一档自己那份 —— 滑杆值（`show.vibrateStrength`）与「这一行出不出现」
+ *   （`show.vibrate`）都从它取，与写入同源（见 [OwnSettingsCard] 那段说明）。
  * @param hint 灰着被点一下时的说法 —— 交给 `SliderSpec.disabledHint`（投递在 [SliderRow]
  *   那一层，所有滑杆共用一条通道）；`null` = 整页闸门关着，用页面那句。
  */
 @Composable
 private fun SettingsPage.strengthRow(
     show: OwnSettings,
-    value: Int,
     rowsEnabled: Boolean,
     hint: String?,
     edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
@@ -264,10 +247,10 @@ private fun SettingsPage.strengthRow(
             spec =
                 SliderSpec(
                     title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE),
-                    icon = PageIcons.vibrateLevel(value),
+                    icon = PageIcons.vibrateLevel(show.vibrateStrength),
                     min = GlobalConfig.VIBRATE_WEAK,
                     max = GlobalConfig.VIBRATE_STRONG,
-                    value = value,
+                    value = show.vibrateStrength,
                     default = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
                     step = 1,
                     enabled = rowsEnabled,
@@ -286,7 +269,8 @@ private fun SettingsPage.strengthRow(
 /**
  * 「执行时提示 + 文案」那两行 —— 文案只在提示开着时出现。
  *
- * @param show 显示用的那一份（生效值）—— 同 [strengthRow]：可见性也按它判。
+ * @param show 这一档自己那份 —— 值、可见性（`show.toastOnRun`）与「流体云要不要跟着 ColorOS 走」
+ *   都从它取，与写入同源（见 [OwnSettingsCard] 那段说明）。
  */
 @Composable
 private fun SettingsPage.toastRows(
@@ -408,7 +392,6 @@ internal fun KeyConfig.withOwn(values: OwnSettingsValues): KeyConfig =
         toastOnRun = values.toastOnRun,
         toastFluid = values.toastFluid,
         toastTemplate = values.toastTemplate,
-        ownSettingsSeeded = values.ownSettingsSeeded,
     )
 
 /** 把这份值落到一组组合键上 —— 与 [withOwn] 那份一字不差。 */
@@ -422,7 +405,6 @@ internal fun ComboKey.withOwn(values: OwnSettingsValues): ComboKey =
         toastOnRun = values.toastOnRun,
         toastFluid = values.toastFluid,
         toastTemplate = values.toastTemplate,
-        ownSettingsSeeded = values.ownSettingsSeeded,
     )
 
 // 「独立设置」那份值的载体与「按字段合并」的那一小块 —— 这两样东西**不是界面**：
@@ -469,7 +451,6 @@ internal data class OwnSettingsValues(
     override val toastOnRun: Boolean,
     override val toastFluid: Boolean,
     override val toastTemplate: String,
-    override val ownSettingsSeeded: Boolean = false,
 ) : OwnSettings {
     override val useOwnSettings: Boolean get() = useOwn
 }
@@ -485,5 +466,4 @@ internal fun OwnSettings.values(): OwnSettingsValues =
         toastOnRun = toastOnRun,
         toastFluid = toastFluid,
         toastTemplate = toastTemplate,
-        ownSettingsSeeded = ownSettingsSeeded,
     )

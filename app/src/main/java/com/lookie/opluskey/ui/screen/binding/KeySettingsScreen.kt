@@ -12,7 +12,6 @@ import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
-import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
@@ -118,11 +117,11 @@ internal fun SettingsPage.KeySettingsScreen(
 
         //  一个小标题带一张卡（与「按键设置」页同构）—— 页面顶部不再另放一个与顶栏同名的
         //  「独立设置」，那三个小标题由卡片自己画（见 `OwnSettingsCard`）。
+        //  **只交这一档自己那份**：卡片里每一行都从它取数（总开关只管「能不能改」），
+        //  所以拨那颗总开关时页面上的数一个都不跳（口径见 `OwnSettingsCard` 的
+        //  「显示的是这一档自己那份」）。
         OwnSettingsCard(
             owner = owner,
-            //  **显示用生效值、写入仍落到这一档**：总开关关着时那几项不参与取值，直接读
-            //  `owner` 会让这一页显示「振动反馈：关」而按下去明明会振（口径见 `OwnSettingsCard`）。
-            effective = cfg.effectiveFor(owner),
             //  「只参与非首键的按住组合」时整张卡灰掉：接口 / 振动 / 提示都是**单键按下去那一下**的行为，
             //  这颗键不判单键手势，它们一次也用不上。灰着点一下落到页面那句原因上
             //  （`disabledClickReason` 的 comboOnly 那一支），卡片里不必再写一句。
@@ -537,64 +536,6 @@ private fun applyOwnSettings(
     }
 
 /**
- * 组合那几位「这一组独有的参数」**跟着总开关一起播种**。
- *
- *  `OwnSettings` 契约里只有那几项，四格窗口 / `holdMinMs` / `sceneOnStarter` 是 `ComboKey` 独有的，
- *  所以它们**不在** [OwnSettingsValues] 里 —— 但「打开独立设置」对用户来说是一件事：
- *  这一档从此自己说了算。只播那几项的话，其余几位仍停在「没设过 ⇒ 跟公共」，同一颗开关下就有了
- *  两套语义（那几项已经是自己的值、另几位还在跟随）——「既然都开了独立设置，还跟随公共」正是这个别扭。
- *
- *  播一次之后不再重播（判据 `ownSettingsSeeded`）：关掉总开关仍回到公共
- *  （`Config.comboWindowsFor` 的第一支），重新打开用的是上次这一套。
- *  读取侧那几个 `?: global` 兜底留给**老配置**（这一位出现之前写下的 `0` ——
- *  `ComboKey.WINDOW_FOLLOW_GLOBAL` / `HOLD_MIN_FOLLOW_GLOBAL`），新配置不会再落到那一支。
- *
- * @param values 上面算好的那份独立设置（用它判断「这一次是不是刚打开总开关」）
- * @param before 写之前的这一档 —— 只为看 `ownSettingsSeeded`
- */
-private fun withSeededComboFields(
-    cfg: Config,
-    target: SettingsTarget,
-    values: OwnSettingsValues,
-    before: OwnSettings,
-): Config {
-    val base = applyOwnSettings(cfg, target, values)
-    if (target !is SettingsTarget.Combo || !values.useOwnSettings || before.ownSettingsSeeded) return base
-    //  播的是**这一刻**的公共值：与上面那几项同一个时刻、同一份来源，两边不会错开。
-    //  四格各播一格（等待 / 按住 × 固定窗口起点 开 / 关）：少播一格，那一格就还在「跟随公共」，
-    //  界面上看起来是「独立设置开着、可这一根滑杆拨了不改行为」。
-    //
-    //  **只补空格**（`null` / `0` 才算空）：这一位出现之前写下的老配置里，`useOwnSettings` 可能
-    //  早就开着、`ownSettingsSeeded` 却还是 false —— 那种情况下整份覆盖会把用户早先调好的窗口 /
-    //  按住时长 / 场景时机一起顶回公共值，表现为「拨了一下振动强度，这一组的窗口自己变了」。
-    //  按位补空之后，这个动作只在「这一位确实没设过」时才落笔，重复执行也幂等。
-    val g = cfg.global
-    return base.copy(
-        combos =
-            base.combos.map { c ->
-                if (c.id == target.id) {
-                    c.copy(
-                        waitWindowMs = c.waitWindowMs.takeIf { it > 0 } ?: g.comboWaitWindowMs,
-                        waitPairMs = c.waitPairMs.takeIf { it > 0 } ?: g.comboWaitPairMs,
-                        holdWindowMs = c.holdWindowMs.takeIf { it > 0 } ?: g.comboHoldWindowMs,
-                        holdFollowerMs = c.holdFollowerMs.takeIf { it > 0 } ?: g.comboHoldFollowerMs,
-                        //  按住手势的下限也一起播：它属于「这一档从此自己说了算」那一族
-                        holdMinMs = c.holdMinMs.takeIf { it > 0 } ?: g.comboHoldMinMs,
-                        //  「场景在什么时候取」不播的话仍是 `null`，以后改公共设置还会顺带改到这一档
-                        sceneOnStarter = c.sceneOnStarter ?: g.comboSceneOnStarter,
-                        //  两颗「固定窗口起点」（等待 / 按住）是两个变量，各播各的：只播一颗的话，
-                        //  打开独立设置之后另一颗仍停在 `null`（跟随公共）
-                        fixedWindowStart = c.fixedWindowStart ?: g.comboFixedWindowStart,
-                        holdFixedWindowStart = c.holdFixedWindowStart ?: g.comboHoldFixedWindowStart,
-                    )
-                } else {
-                    c
-                }
-            },
-    )
-}
-
-/**
  * 这一格改完该弹哪句话 —— **只有开关有回执**，与公共页那一颗同一句话、同一个语义位
  * （[HINT_SLOT_OWN_SETTINGS]）。
  *
@@ -646,6 +587,11 @@ private fun ownSwitchNotice(
  *  （false）—— 真机上就是「刚打开的那颗自己又关回去了」。按字段合并之后，别的项有多旧都不影响，
  *  只有手指真点到的那一格会变。
  *
+ *  **打开总开关不再抄公共值**：这一档自己那几格本来是「没写过 ⇒ 出厂默认」，开着照样是出厂默认
+ *  （口径见 `docs/changelog/2026-11-17-独立设置去掉播种.md`）。原先那套「第一次打开时按公共值
+ *  播一次种」整段删掉了 —— 它需要一整个 `ownSettingsSeeded` 位来判断「播过没有」，而那个位又得
+ *  跟着落盘、跟着迁移、跟着重置清，绕出的状态比它省下的解释多。
+ *
  *  抽成一支：这段写回逻辑本来与页面骨架无关。
  */
 private fun SettingsPage.commitOwnField(
@@ -655,47 +601,9 @@ private fun SettingsPage.commitOwnField(
 ) {
     val cfgNow = configState.config.value
     val ownerNow = target.ownerIn(cfgNow) ?: return
-    val base = ownerNow.values()
-    val patched = base.withField(field, values)
-    //  **第一次打开总开关时，用公共设置把这一档播一次种**；之后开关怎么拨都不再读公共值。
-    //
-    //  为什么要播：这一页从来没配过时，各项自己的默认值与公共那份往往不同（振动关着、
-    //  强度中档、提示关着、模板是默认那句）—— 打开开关却看到一片与公共不一样的旧默认值，
-    //  读起来就是「开了没生效」。
-    //
-    //  为什么**只播一次**（判据是 `ownSettingsSeeded`，不是「当前开关关着」）：用户把这
-    //  几项调成自己想要的样子、关掉总开关、过一阵又打开 —— 那时他要的是**上次那套**，
-    //  不是公共设置。原先每次「关→开」都重抄一遍，等于把他调过的值悄悄扔掉。
-    //  播种后置位写到盘上，所以跨进程、跨重启都只播一次。
-    //
-    //  **播种之后必须把这一次的改动再叠回去**（`withField` 那一下）：顺序反过来的话，
-    //  用户刚拨的那一项会被公共值盖掉。什么时候会撞上：`useOwnSettings` 早就开着、
-    //  而 `ownSettingsSeeded` 还是 false —— 老配置里没有这一位（它是后加的），
-    //  升级上来的用户第一次拨任何一项都会「拨了没反应」（那一格被公共值顶回去）。
-    val next =
-        if (patched.useOwnSettings && !ownerNow.ownSettingsSeeded) {
-            patched
-                .copy(
-                    colorOsApi = cfgNow.global.colorOsApi,
-                    vibrate = cfgNow.global.vibrate,
-                    vibrateStrength = cfgNow.global.vibrateStrength,
-                    vibrateOnNone = cfgNow.global.vibrateOnNone,
-                    toastOnRun = cfgNow.global.toastOnRun,
-                    toastFluid = cfgNow.global.toastFluid,
-                    toastTemplate = cfgNow.global.toastTemplate,
-                    ownSettingsSeeded = true,
-                ).withField(field, values)
-        } else {
-            patched
-        }
-    XLog.w(
-        "own_settings 提交：field=$field 提交值=${values.useOwnSettings} " +
-            "现存=${base.useOwnSettings} 已播种=${ownerNow.ownSettingsSeeded} " +
-            "写入=${next.useOwnSettings}",
-    )
-    //  「改谁」只在写回这一处落成具体表（`keys` 还是 `combos`）；组合那两项也在这里
-    //  跟着一起播种（理由见 [withSeededComboFields]）。
-    val cfgNext = withSeededComboFields(cfgNow, target, next, ownerNow)
+    val next = ownerNow.values().withField(field, values)
+    //  「改谁」只在写回这一处落成具体表（`keys` 还是 `combos`）。
+    val cfgNext = applyOwnSettings(cfgNow, target, next)
     val what = "own_settings target=${settingsTargetLabel(target)} field=$field"
     //  **开关有回执，滑杆与文案窗没有** —— 与公共页同一口径：那边滑杆也只靠行尾数值、
     //  文案窗按下即关。滑杆松手会连发一次 commit，弹回执只会把提示条刷成跑马灯。

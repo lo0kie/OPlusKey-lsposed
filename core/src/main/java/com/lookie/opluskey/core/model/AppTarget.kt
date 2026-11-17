@@ -271,6 +271,16 @@ interface ClickChainParams : LongPressParams {
     /** 两种判定时机：`false` = 固定窗口起点（首击抬手排一次），`true` = 每次松手重新起算。 */
     val waitMultiWindow: Boolean
 
+    /**
+     * **界面与文案用的正向说法**：`true` = 固定窗口起点（窗口只在首击抬手排一次）。
+     *
+     *  它就是 [waitMultiWindow] 的反面，**全项目只在这里翻一次**。存储位沿用的是老名字
+     *  （落盘键 `wait_multi_window` 已落在用户机器上，改不得），而界面那颗开关叫「固定窗口起点」
+     *  —— 一个 bit 两个方向的名字，读写各反一次，三处注释提醒过仍然错过。
+     *  所以规矩是：**读**这一侧一律用本属性，不许再写 `!waitMultiWindow`。
+     */
+    val fixedWindowStart: Boolean get() = !waitMultiWindow
+
     /** 判定侧数到第几击就**封顶**（按开着的档算，不看绑没绑动作，至少 1）。 */
     val judgeCap: Int
 
@@ -303,11 +313,20 @@ interface ClickChainParams : LongPressParams {
 }
 
 /**
+ * [GlobalConfig] 那一份的同名正向说法 —— 与 [ClickChainParams.fixedWindowStart] 同一条规矩。
+ *
+ *  它没有实现 [ClickChainParams]（判定侧不直接读公共那一份），但公共设置页那颗「固定窗口起点」
+ *  读的正是它；放在这里是为了让「反一次」的地方只有这两行，而不是散在界面的几个 lambda 里。
+ */
+val GlobalConfig.fixedWindowStart: Boolean get() = !waitMultiWindow
+
+/**
  * **成员连击**那一份 [ClickChainParams] 视图 —— 由 `Config.comboMemberChain` 现算，
  * 供判定侧（`GestureDetector`）按「按住首键、成员键连击」那套参数走连击链。
  *
- *  不落在 `ComboKey` 自己身上：窗口与判定时机取自**公共设置**里「单击那一套」三项
- *  （见 `Config.comboMemberChain` —— 成员连击量的是同一颗键两击之间的间隔，与单键连击同一件事），
+ *  不落在 `ComboKey` 自己身上：窗口与判定时机取自**按住组合那张卡**那两行
+ *  （`Config.comboWindowsFor` 的按住那一半 + `Config.comboHoldWindowStartFor`，见
+ *  `Config.comboMemberChain`），要按「独立设置 / 顺序组合」解析出这一档生效的那一份，
  *  而 `ComboKey` 拿不到那份 `Config` 上下文。所以由装配方 / `Config` 在判定的那一刻现算一份，
  *  喂给判定器。
  *

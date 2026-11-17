@@ -557,6 +557,10 @@ private fun SettingsPage.ExecSwitchCard(
     var pendingRoot by remember { mutableStateOf(false) }
     //  「提示类型 → 流体云」那一档要先挑一颗胶囊图标（选中即落盘，png 由选择器自己写）
     var pickingOutputIcon by remember { mutableStateOf(false) }
+    //  流体云是 ColorOS 的能力（Seedling 卡片只有已注册的 seedling 宿主发得出去）：公共设置里
+    //  「使用 ColorOS 接口」关着时那一档置灰，理由用与首页那颗「用流体云提示」同一句。
+    //  读的是**公共那一份**：命令没有独立的接口开关（与执行身份那两行不同）。
+    val fluidAllowed = configState.config.value.global.colorOsApi
     //  编辑已有命令**回填表单之后，先看 root 现在还真的有**：配置里存着「以 root 执行」、
     //  机器上却已经没了 root 时，勾还亮着会让人以为这一档是好的（真按下去只会得到一句失败）。
     //  初值按「有」：进页面前那几帧不先灭一下再亮（探回来才纠正）。
@@ -685,6 +689,15 @@ private fun SettingsPage.ExecSwitchCard(
                                     null
                                 },
                             selected = form.output == mode,
+                            //  流体云那一档随「使用 ColorOS 接口」走：关着时置灰 + 点一下说明原因
+                            //  （判据与首页那颗「用流体云提示」同一个开关、同一句话）
+                            enabled = !fluid || fluidAllowed,
+                            disabledHint =
+                                if (fluid) {
+                                    I18n.get(Strings.HOME_TOAST_FLUID_NEEDS_COLOROS)
+                                } else {
+                                    null
+                                },
                             onPick = {
                                 outputMenu.dismiss()
                                 //  流体云这一档**先挑图标、挑完才算选中**（关掉选择器就什么都没发生）；

@@ -129,17 +129,18 @@ data class KeyConfig(
      *  按得快不快决定，而「等满」是模块额外压上去的犹豫期 —— 复用同一个值时，想把单击压短
      *  就得同时把连击窗口压短，两者互相牵着（用户口径：「等满多击窗口和单击延迟是冲突的」）。
      *
-     *  ## 0 = 跟随 [doubleClickMs]
+     *  ## 0 = 跟随 [doubleClickMs]（老配置）
      *
-     *  这一位是后加的（version 48），老配置里没有它。**默认 0 而不是某个具体毫秒**：
-     *  用户可能已把 [doubleClickMs] 调成 500 并开着等满，默认写死 300 会让升级后那一下
-     *  突然变快。0 = 「没有自己的意见，跟着单击延迟走」⇒ 升级前后行为一字不差；动过这根
-     *  滑杆之后才固定成具体值。
+     *  这一位是后加的（version 48），老配置里没有它 ⇒ 读成 0 = 「没有自己的意见，跟着单击延迟走」，
+     *  升级前后手感一字不差。
+     *
+     *  **出厂值是 250ms**（[DEFAULT_MULTI_WAIT_MS]）：新装 / 复位写的就是这个数，与组合四格里
+     *  「逐次等」那一档同数；0 只留给老配置读到的那个空位。
      *
      *  界面上一根滑杆按 [waitMultiWindow] 切换显示：开着显示这一位、关着显示 [doubleClickMs]
      *  —— 同一时刻只有一根在起作用，不该摆两根让人猜哪根算数。
      */
-    val multiWaitMs: Int = FOLLOW_DOUBLE_CLICK_MS,
+    val multiWaitMs: Int = DEFAULT_MULTI_WAIT_MS,
     /**
      * **这颗键要不要用自己那套公共项** —— 默认关（跟随公共设置）。
      *
@@ -165,12 +166,6 @@ data class KeyConfig(
     override val toastFluid: Boolean = GlobalConfig.DEFAULT_TOAST_FLUID,
     /** 这颗键自己的提示文案模板（空串 = 默认那句）—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
-    /**
-     * 上面那几项**被公共设置播过种没有** —— 见 [OwnSettings.ownSettingsSeeded]。
-     *
-     *  只影响界面「第一次打开总开关时要不要抄一份公共值」，执行侧不读它。
-     */
-    override val ownSettingsSeeded: Boolean = false,
     /**
      * 长按绑的是不是「多条命令」（`cmd:<名字>` 且命令库里那条是串行命令）。
      * 只由宿主算好、随配置广播带过来（`ConfigFields.LONG_SERIAL_EXTRA`），注入侧不自己算：
@@ -248,7 +243,7 @@ data class KeyConfig(
      *  · 执行侧 [actionOf] 对双击恒回「无操作」。
      *
      *  **开着就要等**：判定封顶按**档位开关**算（[judgeCap]），所以这一位开着时，即使双击
-     *  暂时还没绑动作，单击也要先等一个窗口（默认 300ms，可配到 1s）。
+     *  暂时还没绑动作，单击也要先等一个窗口（出厂：逐次等 250ms / 固定等 350ms，可配到 1s）。
      *  不想等就把它关掉 —— 关掉之后第二下按下就是**新的一轮**，单击当场判。
      *  （这里曾经写成「没绑动作就不等」，真机上就是「开关开着、单击却不等窗口」，已改回。）
      *
@@ -785,7 +780,6 @@ data class KeyConfig(
                 ConfigFields.F_KEY_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_KEY_TOAST_FLUID to toastFluid,
                 ConfigFields.F_KEY_TOAST_TEMPLATE to toastTemplate,
-                ConfigFields.F_OWN_SETTINGS_SEEDED to ownSettingsSeeded,
                 ConfigFields.F_LONG_SERIAL to longIsSerial,
                 ConfigFields.F_SCENE_RELEASE to sceneRelease,
                 //  「这一档有没有人配」（= 场景里的 [sceneChain]）由宿主现算、随广播带过来，
@@ -824,8 +818,15 @@ data class KeyConfig(
     }
 
     companion object {
-        /** 「单击延迟」的默认值（毫秒）—— 150：与四格组合窗口的出厂值同一档，人手节奏一致。 */
-        const val DEFAULT_DOUBLE_CLICK_MS = 150
+        /**
+         * 「**固定等**」那一档的默认值（毫秒）—— 350：固定窗口起点**开着**时整串共用的那个窗口，
+         * 与组合四格里「固定等」那两格同数（[GlobalConfig.DEFAULT_COMBO_WINDOW_MS]）。
+         *
+         *  取哪一位的判据在 [clickWindowMs]：`waitMultiWindow` 为假（固定窗口起点开）读**本值**，
+         *  为真（每次松手重新起算）读 [multiWaitMs]。它同时是 [multiWaitMs] 为 0 时的回落值
+         *  ——老配置没有「等待窗口」这一项，跟着它走才保证升级前后手感一字不差。
+         */
+        const val DEFAULT_DOUBLE_CLICK_MS = 350
 
         /**
          * 多击的**第一档**（第 3 击起；1 / 2 落在 [single] / [double]）与界面排在后面的那几档。
@@ -856,6 +857,13 @@ data class KeyConfig(
          *  再往下调就几乎是「必须精确同时按」，组合键会挑手。
          */
         const val MIN_DOUBLE_CLICK_MS = 50
+
+        /**
+         * 「**固定等**」那一档的上限 —— 1000ms（固定窗口起点开着：整串只给一次预算）。
+         *
+         *  三颗以上的连击、手慢的人确实需要宽一档；而这一档的窗口同时也是「单击要等多久才
+         *  回落」，上限就是它的代价。
+         */
         const val MAX_DOUBLE_CLICK_MS = 1000
 
         /**
@@ -867,15 +875,32 @@ data class KeyConfig(
         const val FOLLOW_DOUBLE_CLICK_MS = 0
 
         /**
-         * 「多击窗口」的上限 —— **与 [MAX_DOUBLE_CLICK_MS] 是同一个数**。
+         * 「**逐次等**」那一档的默认值（毫秒）—— 250：每次松手重新起算时用的那个窗口，
+         * 与组合四格里「逐次等」那两格同数（[GlobalConfig.DEFAULT_COMBO_PAIR_MS]）。
          *
-         *  两根值现在共用同一根滑杆（见 `BindingSettings` 的 `waitWindowRow`），上下限必须一致：
-         *  两个上限各写一份时，切换判定时机那一下滑杆的可用范围会跳一截，看着像值被改了。
-         *  保留这个别名只为「多击窗口」那一位自己的文档里能指名道姓。
+         *  **0 仍是「跟随 [DEFAULT_DOUBLE_CLICK_MS]」**（[FOLLOW_DOUBLE_CLICK_MS]）：老配置没有
+         *  这一项时读到的就是 0，跟着单击延迟走才能保证升级前后一字不差。出厂值只影响新装 / 复位。
          */
-        const val MAX_MULTI_WAIT_MS = MAX_DOUBLE_CLICK_MS
+        const val DEFAULT_MULTI_WAIT_MS = 250
 
-        const val DEFAULT_LONG_PRESS_MS = 500
+        /**
+         * 「**逐次等**」那一档的上限 —— 500ms（每次松手重新起算时用的那个窗口）。
+         *
+         *  这一档量的是**相邻两击之间**：人类两击的自然间隔是 150~250ms，超过约 500ms 就不再
+         *  被感知成一次连击。再往上调只意味着每一下单击都要晚这么久才执行。
+         *
+         *  与 [MAX_DOUBLE_CLICK_MS]（固定等 1000）**刻意不同**：以两者分开为代价，那根滑杆在
+         *  切换判定时机时右端会跳一截 —— 这是两档各存一份的必然结果。
+         */
+        const val MAX_MULTI_WAIT_MS = 500
+
+        /**
+         * 「长按延迟」的出厂值 —— 350ms。
+         *
+         *  比人手一次自然按压（80~150ms）宽一档，又比原来的 500ms 跟手；判定只拿它排长按那一枪，
+         *  调小只是更容易判成长按。逐键、组合、成员「单击后长按」三处都读它（各自可在界面上另设）。
+         */
+        const val DEFAULT_LONG_PRESS_MS = 350
 
         /**
          * 长按阈值下限 —— **200ms 已经高于人手一次自然按压（80~150ms）**，所以任何一档下
@@ -897,18 +922,25 @@ data class KeyConfig(
          *  值会不一样。
          */
         const val MAX_LONG_PRESS_MS = 1000
-        const val DEFAULT_REPEAT_INTERVAL_MS = 300
+
+        /**
+         * 「长按连续触发」的出厂间隔 —— 200ms。
+         *
+         *  一秒里约五下：看得出在连发，又不至于糊成一片。逐键、组合、成员「单击后长按」三处
+         *  都读它（各自可在界面上另设，区间见下面两条）。
+         */
+        const val DEFAULT_REPEAT_INTERVAL_MS = 200
 
         /** 连发间隔下限 —— 50ms（用户口径）：再快就与「按住不放」的体感脱节，且按键注入本身也要时间。 */
         const val MIN_REPEAT_INTERVAL_MS = 50
 
         /**
-         * 连发间隔上限 —— **1000ms**（用户口径），与长按阈值上限同一个数。
+         * 连发间隔上限 —— **500ms**：一秒两下是「看得出在连发」的极限。
          *
-         *  再长，一次按住在一秒里只重复一次，「连续触发」就不成其为连续了 —— 那种节奏该由
+         *  再往上，一次按住一秒里只重复一次，「连续触发」就不成其为连续了 —— 那种节奏该由
          *  动作自己去排（计时器 / 多步命令）。滑杆与 `ConfigFields` 的钳制都取这一个数。
          */
-        const val MAX_REPEAT_INTERVAL_MS = 1000
+        const val MAX_REPEAT_INTERVAL_MS = 500
 
         /**
          * 某个键的默认值：**内置键默认接管、自定义键默认不接管**。
@@ -982,7 +1014,6 @@ data class KeyConfig(
                 toastOnRun = v.bool(ConfigFields.F_KEY_TOAST_ON_RUN),
                 toastFluid = v.bool(ConfigFields.F_KEY_TOAST_FLUID),
                 toastTemplate = v.text(ConfigFields.F_KEY_TOAST_TEMPLATE),
-                ownSettingsSeeded = v.bool(ConfigFields.F_OWN_SETTINGS_SEEDED),
                 longIsSerial = v.bool(ConfigFields.F_LONG_SERIAL),
                 sceneRelease = v.bool(ConfigFields.F_SCENE_RELEASE),
                 scenes = scenes,
@@ -1057,8 +1088,8 @@ data class GlobalConfig(
     val doubleClickMs: Int = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
     /** 公共设置里的**判定时机**（`false` = 固定窗口起点，`true` = 每次松手重新起算；默认后者）。 */
     val waitMultiWindow: Boolean = true,
-    /** 公共设置里的**等待窗口**（0 = 跟随 [doubleClickMs]，见 `KeyConfig.multiWaitMs`）。 */
-    val multiWaitMs: Int = KeyConfig.FOLLOW_DOUBLE_CLICK_MS,
+    /** 公共设置里的**等待窗口**（出厂 250；0 = 跟随 [doubleClickMs]，只留给老配置，见 `KeyConfig.multiWaitMs`）。 */
+    val multiWaitMs: Int = KeyConfig.DEFAULT_MULTI_WAIT_MS,
     override val vibrate: Boolean,
     /**
      * **振动强度** —— 三档（[VIBRATE_WEAK] / [VIBRATE_MEDIUM] / [VIBRATE_STRONG]）。
@@ -1185,7 +1216,9 @@ data class GlobalConfig(
      *
      *  一个数同时管两种按法的两种时序，会把四件不同的事压成一件：调宽「按住组合的成员接收」
      *  会连带拖钝「等待组合的收集」，而开 / 关两种时序共用同一个数时，拨一下开关那个数就换了
-     *  含义（80ms 从「整串」变成「相邻两颗」）。所以四格各存一份，各自默认。
+     *  含义（同一个数从「整串」变成「相邻两颗」）。所以四格各存一份，各自默认 ——
+     *  「固定等」两格出厂 350ms（[DEFAULT_COMBO_WINDOW_MS]）、
+     *  「逐次等」两格出厂 250ms（[DEFAULT_COMBO_PAIR_MS]）。
      *
      *  四格都**走广播**（`ConfigFields.F_COMBO_*_WINDOW_MS`）：判定在注入侧（`ComboDetector`），
      *  那边读不到配置文件。每格都可以由某一组自己另设一份（`ComboKey` 上对应的四个字段，
@@ -1195,11 +1228,11 @@ data class GlobalConfig(
      */
     val comboWaitWindowMs: Int = DEFAULT_COMBO_WINDOW_MS,
     /** 等待组合、固定窗口起点**关**时：相邻两颗之间的窗口（n 颗整串 = 它 × (n-1)）。 */
-    val comboWaitPairMs: Int = DEFAULT_COMBO_WINDOW_MS,
+    val comboWaitPairMs: Int = DEFAULT_COMBO_PAIR_MS,
     /** 按住组合、固定窗口起点**开**时：后续成员要在「首个成员按下」之后这个窗口内落完。 */
     val comboHoldWindowMs: Int = DEFAULT_COMBO_WINDOW_MS,
     /** 按住组合、固定窗口起点**关**时：后续成员每颗各自往前等多久。 */
-    val comboHoldFollowerMs: Int = DEFAULT_COMBO_HOLD_FOLLOWER_MS,
+    val comboHoldFollowerMs: Int = DEFAULT_COMBO_PAIR_MS,
     /**
      * 组合键：**按住那两档里，起点键要先按住多久**（毫秒）。
      *
@@ -1260,6 +1293,36 @@ data class GlobalConfig(
      *  取值一律走 `Config.comboHoldFixedWindowStartFor`。
      */
     val comboHoldFixedWindowStart: Boolean = DEFAULT_COMBO_FIXED_WINDOW_START,
+    /**
+     * **顺序组合**那一组窗口 —— 等待 / 按住 × 固定窗口起点 开 / 关，再四格分开存。
+     *
+     *  与上面那四格（[comboWaitWindowMs] 那一段）**不是同一件事**：那四格量的是「不分顺序时
+     *  成员在窗口内先后落下」，先按哪一颗都算；顺序组合要求**按配置的先后逐颗落**，慢的那一颗
+     *  决定成败，人手更难够到 —— 于是它自己一组窗口，调宽一处不连带拖钝另一处（用户口径：
+     *  顺序组合单独一组）。
+     *
+     *  四格都**走广播**（`ConfigFields.F_COMBO_ORDERED_*`）：判定在注入侧（`ComboDetector`）。
+     *  每格都可以由某一档自己另设一份（`ComboKey.ordered*`，受那一档的「使用独立设置」管），
+     *  取值一律走 `Config.comboWindowsFor` 那几支。
+     */
+    val comboOrderedWaitWindowMs: Int = DEFAULT_COMBO_WINDOW_MS,
+    /** 顺序组合、等待档、固定窗口起点**关**时：相邻两颗之间的窗口。 */
+    val comboOrderedWaitPairMs: Int = DEFAULT_COMBO_PAIR_MS,
+    /** 顺序组合、按住档、固定窗口起点**开**时：后续成员要在首个成员按下后这个窗口内落完。 */
+    val comboOrderedHoldWindowMs: Int = DEFAULT_COMBO_WINDOW_MS,
+    /** 顺序组合、按住档、固定窗口起点**关**时：后续成员每颗各自往前等多久。 */
+    val comboOrderedHoldFollowerMs: Int = DEFAULT_COMBO_PAIR_MS,
+    /**
+     * **顺序组合 · 等待档**的固定窗口起点 —— 默认**关**（逐次等满）。
+     *
+     *  与 [comboFixedWindowStart] 分成两个变量（与窗口分四格同一条口径）：两种按法、有序无序
+     *  各存一份，拨一颗不动其余。判定在注入侧，所以这一位**走广播**
+     *  （`ConfigFields.F_COMBO_ORDERED_FIXED_WINDOW_START`）。
+     *  取值一律走 `Config.comboOrderedFixedWindowStartFor`。
+     */
+    val comboOrderedFixedWindowStart: Boolean = DEFAULT_COMBO_FIXED_WINDOW_START,
+    /** **顺序组合 · 按住档**的固定窗口起点 —— 与上面那一位同一条规则、**另一个变量**。 */
+    val comboOrderedHoldFixedWindowStart: Boolean = DEFAULT_COMBO_FIXED_WINDOW_START,
 ) : OwnSettings {
     /**
      * 公共那份**永远是「用自己的」**：它自己就是那个「公共设置」。
@@ -1304,7 +1367,41 @@ data class GlobalConfig(
                 ConfigFields.F_COMBO_STARTER_KEEP_LONG to comboStarterKeepLong,
                 ConfigFields.F_COMBO_FIXED_WINDOW_START to comboFixedWindowStart,
                 ConfigFields.F_COMBO_HOLD_FIXED_WINDOW_START to comboHoldFixedWindowStart,
+                ConfigFields.F_COMBO_ORDERED_WAIT_WINDOW_MS to comboOrderedWaitWindowMs,
+                ConfigFields.F_COMBO_ORDERED_WAIT_PAIR_MS to comboOrderedWaitPairMs,
+                ConfigFields.F_COMBO_ORDERED_HOLD_WINDOW_MS to comboOrderedHoldWindowMs,
+                ConfigFields.F_COMBO_ORDERED_HOLD_FOLLOWER_MS to comboOrderedHoldFollowerMs,
+                ConfigFields.F_COMBO_ORDERED_FIXED_WINDOW_START to comboOrderedFixedWindowStart,
+                ConfigFields.F_COMBO_ORDERED_HOLD_FIXED_WINDOW_START to comboOrderedHoldFixedWindowStart,
             ),
+        )
+
+    /**
+     * 不分顺序那四格窗口（等待 / 按住 × 固定窗口起点 开 / 关）。
+     *
+     *  只回答「这几个数现在是多少」：界面那两根滑杆与 [Config.comboStoredWindowsFor] 都读它，
+     *  「独立设置开着看自己那份」的判据仍在 `Config` 那一层。
+     */
+    fun windows(): ComboWindows =
+        ComboWindows(
+            wait = comboWaitWindowMs,
+            waitPair = comboWaitPairMs,
+            hold = comboHoldWindowMs,
+            holdFollower = comboHoldFollowerMs,
+        )
+
+    /**
+     * **顺序组合**那四格窗口 —— 与 [windows] 同一个形状、另一组数（用户口径：顺序组合单独一组）。
+     *
+     *  形状复用 [ComboWindows] 而不是另造一个类型：四个格子的含义一一对应（等待档的开 / 关、
+     *  按住档的开 / 关），判定侧与界面拿到的都是同一套结构，只是数值来源不同。
+     */
+    fun orderedWindows(): ComboWindows =
+        ComboWindows(
+            wait = comboOrderedWaitWindowMs,
+            waitPair = comboOrderedWaitPairMs,
+            hold = comboOrderedHoldWindowMs,
+            holdFollower = comboOrderedHoldFollowerMs,
         )
 
     companion object {
@@ -1388,33 +1485,51 @@ data class GlobalConfig(
         const val DEFAULT_MINI_WINDOW_ANIM = false
 
         /**
-         * 四格窗口共用的三档 —— 下限 / 出厂值 / 上限（毫秒）。
+         * 四格窗口的下限 —— **50ms**（与 [KeyConfig.MIN_DOUBLE_CLICK_MS] 同一档）：
+         *  八根窗口滑杆（不分顺序四格 + 顺序组合四格）的下限统一，再短就几乎是
+         *  「必须精确同时按」，组合键会挑手。
          *
-         *  出厂 **150**：四格（等待组合的整串 / 相邻两颗、按住组合的整串 / 后续成员）出厂同一个数，
-         *  与 [DEFAULT_COMBO_HOLD_FOLLOWER_MS] 对齐 —— 四格量的都是一件事「人手按下相邻两颗的间隔」，
-         *  出厂给两个不同的数只会让同一次按法在换格之后手感变了。
-         *  下限 **50**（与 [KeyConfig.MIN_DOUBLE_CLICK_MS] 同一档）：六根窗口滑杆的下限统一，
-         *  再短就几乎是「必须精确同时按」，组合键会挑手。
-         *
-         *  上限放到 1000（原 300）：这个数同时管「算不算凑齐」与「第一颗键等多久才回落单击」，
-         *  手慢的人 / 三颗的组合 / 需要先按住再补另一颗的场景，300ms 明显不够。放宽的代价是
-         *  滑杆右端更钝 —— 副标题那句「调大会让参与组合的按键多等这么久」就是给它的说明。
-         *
-         *  **四格共用这三档**：四格里量的都是「人手的节奏」，没有哪一格需要另一套边界。
+         *  **上限按「固定等 / 逐次等」分成两档**（见下面两个常量）：前者量整串、后者量相邻两颗。
          */
         const val COMBO_WINDOW_MIN_MS = 50
-        const val DEFAULT_COMBO_WINDOW_MS = 150
+
+        /**
+         * 「**固定等**」那几格（`wait` / `hold` 与顺序组合的同名两格）的上限 —— 1000ms。
+         *
+         *  这一档是「整串只给一次预算、从第一颗起算」，三颗以上的组合、手慢的人确实需要宽；
+         *  而这个数同时管「算不算凑齐」与「第一颗键等多久才回落单击」，所以上限就是它的代价。
+         */
         const val COMBO_WINDOW_MAX_MS = 1000
 
         /**
-         * 按住组合、固定窗口起点**关**时的出厂值 —— 150ms。
+         * 「**逐次等**」那几格（`waitPair` / `holdFollower` 与顺序组合的同名两格）的上限
+         * —— 500ms。
          *
-         *  那一格判的是「后续成员是不是紧接着落下的」：150ms 够人手一颗一颗按下去，
-         *  又不至于把「按完 B 过一会儿再按 C」也算进来。原先是写死的常量，现在成了可调的一项。
-         *
-         *  **与 [DEFAULT_COMBO_WINDOW_MS] 是同一个数**：四格出厂值统一，换格不该换手感。
+         *  这一档量的是**相邻两颗之间**（按住档则是「后续成员各自往前等」）：人类两颗键相继
+         *  落下的间隔超过约 500ms 就不再像「一次按下来的」，再宽也匹配不到真实按法。更关键的是
+         *  它会被**乘法放大**：`n` 颗的组合整串跨度 = 本值 × (n-1)，参与组合的键按下后就要
+         *  等这么久（`ConfigChannel.holdWindowMsFor`）—— 五颗组合配 1000ms 就是四秒的单击延迟。
          */
-        const val DEFAULT_COMBO_HOLD_FOLLOWER_MS = 150
+        const val COMBO_PAIR_MAX_MS = 500
+
+        /**
+         * 「**固定等**」那一档的出厂值（固定窗口起点**开**：整串共用一个窗口）—— 350ms。
+         *
+         *  四格里的 `wait` / `hold` 与顺序组合的同名两格都读它。起点开着时窗口从**第一颗**起算、
+         *  整串只给一次预算，用户在那一档表达的是「我打算一口气按完这一串」，出厂给宽一档
+         *  才不会让他先按出一串单击再回头调滑杆。
+         */
+        const val DEFAULT_COMBO_WINDOW_MS = 350
+
+        /**
+         * 「**逐次等**」那一档的出厂值（固定窗口起点**关**：相邻两颗各一个窗口 / 每颗各自往前等）
+         * —— 250ms。
+         *
+         *  四格里的 `waitPair` / `holdFollower` 与顺序组合的同名两格都读它。逐次等量的是
+         *  **相邻两颗之间**的间隔，比整串那一档窄一档；两档分开存正是为了让人换格之后手感
+         *  按自己的预期变（见 `GlobalConfig.comboWaitWindowMs` 那一段）。
+         */
+        const val DEFAULT_COMBO_PAIR_MS = 250
 
         /**
          * [GlobalConfig.comboHoldMinMs] 的三档 —— 下限 / 出厂值 / 上限（毫秒）。
@@ -1504,10 +1619,10 @@ data class GlobalConfig(
                 detailedKeySettings = v.bool(ConfigFields.F_GLOBAL_DETAILED_KEY_SETTINGS),
                 //  与 pageScale 同一档：手改文件写进越界值，在这一层钳回滑杆两端
                 comboWaitWindowMs = v.number(ConfigFields.F_COMBO_WAIT_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
-                comboWaitPairMs = v.number(ConfigFields.F_COMBO_WAIT_PAIR_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
+                comboWaitPairMs = v.number(ConfigFields.F_COMBO_WAIT_PAIR_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_PAIR_MAX_MS),
                 comboHoldWindowMs = v.number(ConfigFields.F_COMBO_HOLD_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
                 comboHoldFollowerMs =
-                    v.number(ConfigFields.F_COMBO_HOLD_FOLLOWER_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
+                    v.number(ConfigFields.F_COMBO_HOLD_FOLLOWER_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_PAIR_MAX_MS),
                 //  与 comboWindowMs 同一档：越界值在这一层钳回滑杆两端
                 comboHoldMinMs =
                     v
@@ -1518,6 +1633,17 @@ data class GlobalConfig(
                 comboFixedWindowStart = v.bool(ConfigFields.F_COMBO_FIXED_WINDOW_START),
                 //  按住组合那一份与等待组合那一份是两个变量（见各自字段的说明）
                 comboHoldFixedWindowStart = v.bool(ConfigFields.F_COMBO_HOLD_FIXED_WINDOW_START),
+                //  顺序组合那一组：与上面四格同一档（越界值在这一层钳回滑杆两端）
+                comboOrderedWaitWindowMs =
+                    v.number(ConfigFields.F_COMBO_ORDERED_WAIT_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
+                comboOrderedWaitPairMs =
+                    v.number(ConfigFields.F_COMBO_ORDERED_WAIT_PAIR_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_PAIR_MAX_MS),
+                comboOrderedHoldWindowMs =
+                    v.number(ConfigFields.F_COMBO_ORDERED_HOLD_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
+                comboOrderedHoldFollowerMs =
+                    v.number(ConfigFields.F_COMBO_ORDERED_HOLD_FOLLOWER_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_PAIR_MAX_MS),
+                comboOrderedFixedWindowStart = v.bool(ConfigFields.F_COMBO_ORDERED_FIXED_WINDOW_START),
+                comboOrderedHoldFixedWindowStart = v.bool(ConfigFields.F_COMBO_ORDERED_HOLD_FIXED_WINDOW_START),
             )
     }
 }
@@ -1664,23 +1790,31 @@ data class Config(
     /**
      * 组合键上那几位「这一档自己写过没有」的公共项 —— 唯一一处判据。
      *
-     *  `null` 是「没写过 ⇒ 跟公共」，但**总开关一关就整份看公共**（哪怕写过）——
-     *  否则界面灰着、执行侧却照旧用自己那份，是「关了没关掉」。
+     *  总开关一关就整份看公共（哪怕写过）—— 否则界面灰着、执行侧却照旧用自己那份，
+     *  是「关了没关掉」。开着时：写过就用写的那个，**没写过取出厂默认**（[default]），
+     *  **不抄公共值** —— 独立设置是「这一档自己一份」，不是「公共值的一份快照」
+     *  （口径见 `docs/changelog/2026-11-17-独立设置去掉播种.md`）。
      *
-     *  现在只剩 `sceneOnStarter` 一位用它：`windowOn` / `holdOn` 那一对已经收进
+     *  现在只剩这几颗「没写过 ⇒ 出厂值」的开关用它：`windowOn` / `holdOn` 那一对已经收进
      *  [ComboKey.mode]（触发方式是这一档的身份），不再有「跟随公共」这回事。
+     *
+     * @param global 总开关关着时用的那个数（公共设置现值）
+     * @param default 总开关开着、这一档又没写过时用的那个数（出厂默认）
      */
     private fun comboField(
         combo: ComboKey,
         own: Boolean?,
-        public: Boolean,
-    ): Boolean = effective(combo.useOwnSettings, public, stored(own, public))
+        global: Boolean,
+        default: Boolean,
+    ): Boolean = if (combo.useOwnSettings) own ?: default else global
 
     /**
      * 「独立设置开着看自己那份、关着看公共」—— **全项目只有这一处实现**。
      *
      *  组合那几位自有字段（`windowMs` / `holdMinMs` / `sceneOnStarter`）都按它取值。原先每项各写一遍
      *  `if (!combo.useOwnSettings) global.X else combo.X`：规则一样、改一处要改五处。
+     *
+     *  **自己那份的回落值不由它决定**：交给调用方（现在一律是出厂默认）。
      */
     private fun <T> effective(
         useOwnSettings: Boolean,
@@ -1689,19 +1823,27 @@ data class Config(
     ): T = if (useOwnSettings) own else global
 
     /**
-     * 这一档自己**存着**的那一份 —— 没写过（`null` / `0`）就退回 [global]。
+     * 这一档自己**存着**的那一份 —— 没写过（`null` / `0`）就退回 [fallback]。
+     *
+     *  [fallback] 现在是**出厂默认**，不是公共现值：独立设置开着却一格没写过时，
+     *  看到 / 用到的就是出厂那一份（口径见 `docs/changelog/2026-11-17-独立设置去掉播种.md`）。
      *
      * 与 [effective] 的分工：这一半只管「写过没有」，不看总开关；界面上那几根滑杆要的正是它
      * （理由见 [comboStoredWindowsFor]）。
      */
     private fun <T : Any> stored(
         own: T?,
-        global: T,
-    ): T = own ?: global
+        fallback: T,
+    ): T = own ?: fallback
 
     /**
      * 这一组**四个窗口**（等待 / 按住 × 固定窗口起点 开 / 关）—— **实际生效**的那一份：
-     * 独立设置关着整份看公共，开着就是这一组自己那份。
+     * 独立设置关着整份看公共，开着就是这一组自己那份（没写过的那几格 = 出厂默认）。
+     *
+     *  **按 [ComboKey.ordered] 挑一组**：不分顺序那一档读公共 / 自己那四格，顺序组合读另一组
+     *  四格（`GlobalConfig.comboOrderedWaitWindowMs` 那一段）。两件事量的是不同的东西 ——
+     *  那一档允许成员乱序落下，这一档必须按配置的先后落 —— 所以两套数各存各的，判定侧与
+     *  界面都只从这一支拿「这一档此刻该用哪四个数」。
      *
      *  四格分开存（见 `GlobalConfig.comboWaitWindowMs` 那一段）：一个数同时管两种按法的两种时序，
      *  会把四件不同的事压成一件。取值只走这里 —— 判定侧（`inject/`）与界面手上都只有这份 Config，
@@ -1710,13 +1852,8 @@ data class Config(
     fun comboWindowsFor(combo: ComboKey): ComboWindows =
         effective(
             combo.useOwnSettings,
-            ComboWindows(
-                wait = global.comboWaitWindowMs,
-                waitPair = global.comboWaitPairMs,
-                hold = global.comboHoldWindowMs,
-                holdFollower = global.comboHoldFollowerMs,
-            ),
-            comboStoredWindowsFor(combo),
+            if (combo.ordered) global.orderedWindows() else global.windows(),
+            if (combo.ordered) comboStoredOrderedWindowsFor(combo) else comboStoredWindowsFor(combo),
         )
 
     /**
@@ -1724,43 +1861,102 @@ data class Config(
      *
      *  界面上那几根滑杆要的正是这一份：它显示的得是「这一组自己的数」，否则拨一下总开关
      *  它就跟着换一份，看着像刚调好的值被改了（与单键那张卡里振动强度那一行同一条口径）。
-     *  `0`（`WINDOW_FOLLOW_GLOBAL`）只剩老配置会读到，退回公共那一格。
+     *  `0`（`WINDOW_FOLLOW_GLOBAL`）只剩老配置会读到 —— 现在退回的是**出厂那一份**
+     *  （[ComboWindows.DEFAULT]），不是公共现值。
+     *
+     *  **这一份永远是不分顺序那四格**：界面上「固定窗口起点 / 等待窗口」那两行管的就是它们；
+     *  顺序组合那两格在同页的另一对行上，见 [comboStoredOrderedWindowsFor]。
+     *
+     *  **总开关关着时，界面拿到的不是「此刻生效的数」**：它显示的是「这一档一旦打开会用的数」
+     *  （没写过 ⇒ 出厂默认）。当前生效值是 [comboWindowsFor] 那一份 —— 两者只在总开关开着时相等。
+     *  这一页的滑杆在总开关关着时本来就灰着、还挂一句「需先开启 使用独立设置」，所以显示
+     *  「打开之后会怎样」比显示「现在实际怎样」更贴近那一下要拨的东西。
      */
-    fun comboStoredWindowsFor(combo: ComboKey): ComboWindows =
-        ComboWindows(
-            wait = stored(combo.waitWindowMs.takeIf { it > 0 }, global.comboWaitWindowMs),
-            waitPair = stored(combo.waitPairMs.takeIf { it > 0 }, global.comboWaitPairMs),
-            hold = stored(combo.holdWindowMs.takeIf { it > 0 }, global.comboHoldWindowMs),
-            holdFollower = stored(combo.holdFollowerMs.takeIf { it > 0 }, global.comboHoldFollowerMs),
+    fun comboStoredWindowsFor(combo: ComboKey): ComboWindows {
+        val d = ComboWindows.DEFAULT
+        return ComboWindows(
+            wait = windowClamped(stored(combo.waitWindowMs.takeIf { it > 0 }, d.wait), pair = false),
+            waitPair = windowClamped(stored(combo.waitPairMs.takeIf { it > 0 }, d.waitPair), pair = true),
+            hold = windowClamped(stored(combo.holdWindowMs.takeIf { it > 0 }, d.hold), pair = false),
+            holdFollower = windowClamped(stored(combo.holdFollowerMs.takeIf { it > 0 }, d.holdFollower), pair = true),
         )
+    }
+
+    /**
+     * 某一格读回来时按**那一格自己的上限**钳一次（固定等 1000 / 逐次等 500）。
+     *
+     *  公共那八格有 `GlobalConfig.ofFields` 钳，某一档自己存的那几格没有（它们在 `ComboKey`
+     *  上、随 `ComboWire` 落地）—— 老版本把逐次等写成过 800，新上限是 500 之后不钳的话，
+     *  滑杆会拿到一个超出自己右端的值，判定侧也会按 800 判。
+     */
+    private fun windowClamped(
+        ms: Int,
+        pair: Boolean,
+    ): Int =
+        ms.coerceIn(
+            GlobalConfig.COMBO_WINDOW_MIN_MS,
+            if (pair) GlobalConfig.COMBO_PAIR_MAX_MS else GlobalConfig.COMBO_WINDOW_MAX_MS,
+        )
+
+    /**
+     * 这一组**自己存着**的**顺序组合**四格窗口 —— 与 [comboStoredWindowsFor] 同一条（不看总开关）。
+     *
+     *  顺序组合单独一组数（用户口径）：与不分顺序那四格互不改写，界面那两行也只写这四格。
+     *  回落同样是出厂那一份 —— 四格的出厂值本来就相同（见 [ComboWindows.DEFAULT]）。
+     */
+    fun comboStoredOrderedWindowsFor(combo: ComboKey): ComboWindows {
+        val d = ComboWindows.DEFAULT
+        return ComboWindows(
+            wait = windowClamped(stored(combo.orderedWaitWindowMs.takeIf { it > 0 }, d.wait), pair = false),
+            waitPair = windowClamped(stored(combo.orderedWaitPairMs.takeIf { it > 0 }, d.waitPair), pair = true),
+            hold = windowClamped(stored(combo.orderedHoldWindowMs.takeIf { it > 0 }, d.hold), pair = false),
+            holdFollower = windowClamped(stored(combo.orderedHoldFollowerMs.takeIf { it > 0 }, d.holdFollower), pair = true),
+        )
+    }
 
     /**
      * 按住这一档的**场景在什么时候定下来** —— 首键按下（`true`）还是成员键按下（`false`）。
      *
      *  与 [comboWindowsFor] 同一条规则：独立设置关着就跟随公共，开着就是这一档自己那份；
-     *  `null` = 这一档还没写过 ⇒ 仍跟随公共（老配置、以及打开独立设置后还没拨过这一项时）。
+     *  `null` = 这一档还没写过 ⇒ 取**出厂默认**（不抄公共现值）。
      *  两种时机都只在**按住**那两档上有意义（等窗口那一档没有「先按住哪一颗」，
      *  判定侧也不会为首键发那条通知）。
      */
-    fun comboSceneOnStarterFor(combo: ComboKey): Boolean = comboField(combo, combo.sceneOnStarter, global.comboSceneOnStarter)
+    fun comboSceneOnStarterFor(combo: ComboKey): Boolean =
+        comboField(
+            combo,
+            combo.sceneOnStarter,
+            global.comboSceneOnStarter,
+            GlobalConfig.DEFAULT_COMBO_SCENE_ON_STARTER,
+        )
 
     /**
-     * 这一组开了「**首键松手后仍执行它自己的长按**」吗 —— 规则与 [comboSceneOnStarterFor] 同一条：
-     * 独立设置关着就跟随公共，开着就是这一档自己那份；`null` = 这一档还没写过 ⇒ 仍跟随公共。
+     * 这一组开了「**首键松手后仍执行它自己的长按**」吗 —— 规则与 [comboSceneOnStarterFor] 同一条。
      *
      *  判定侧（`ComboDetector` 的 `starterKeepLong`）与界面都只走这一处。
      */
-    fun comboStarterKeepLongFor(combo: ComboKey): Boolean = comboField(combo, combo.starterKeepLong, global.comboStarterKeepLong)
+    fun comboStarterKeepLongFor(combo: ComboKey): Boolean =
+        comboField(
+            combo,
+            combo.starterKeepLong,
+            global.comboStarterKeepLong,
+            GlobalConfig.DEFAULT_COMBO_STARTER_KEEP_LONG,
+        )
 
     /**
-     * 这一组**等待组合**的固定窗口起点 —— 规则与 [comboSceneOnStarterFor] 同一条：
-     * 独立设置关着就跟随公共，开着就是这一档自己那份；`null` = 这一档还没写过 ⇒ 仍跟随公共。
+     * 这一组**等待组合**的固定窗口起点 —— 规则与 [comboSceneOnStarterFor] 同一条。
      *
      *  `true` = 从首个成员按下起一个固定窗口；`false` = 每个成员按下都清掉计时重新等。
      *
      *  **与 [comboHoldFixedWindowStartFor] 是两个变量**：两张卡各管一种按法。
      */
-    fun comboFixedWindowStartFor(combo: ComboKey): Boolean = comboField(combo, combo.fixedWindowStart, global.comboFixedWindowStart)
+    fun comboFixedWindowStartFor(combo: ComboKey): Boolean =
+        comboField(
+            combo,
+            combo.fixedWindowStart,
+            global.comboFixedWindowStart,
+            GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
+        )
 
     /**
      * 这一组**按住组合**的固定窗口起点 —— 与 [comboFixedWindowStartFor] 同一条规则、**另一个变量**。
@@ -1771,7 +1967,49 @@ data class Config(
      *  判定侧只有一处读它：`ComboDetector` 的 `fixedWindowStartFor`。
      */
     fun comboHoldFixedWindowStartFor(combo: ComboKey): Boolean =
-        comboField(combo, combo.holdFixedWindowStart, global.comboHoldFixedWindowStart)
+        comboField(
+            combo,
+            combo.holdFixedWindowStart,
+            global.comboHoldFixedWindowStart,
+            GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
+        )
+
+    /**
+     * 这一组**顺序组合 · 等待档**的固定窗口起点 —— 规则与 [comboFixedWindowStartFor] 同一条，
+     * 但落的是**另一个变量**（`ComboKey.orderedFixedWindowStart`）：顺序组合单独一组窗口。
+     *
+     *  `null` = 这一档还没写过 ⇒ 出厂默认（与不分顺序那一颗同一个值）。
+     */
+    fun comboOrderedFixedWindowStartFor(combo: ComboKey): Boolean =
+        comboField(
+            combo,
+            combo.orderedFixedWindowStart,
+            global.comboOrderedFixedWindowStart,
+            GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
+        )
+
+    /** 这一组**顺序组合 · 按住档**的固定窗口起点 —— 与上面那一位同一条规则、**另一个变量**。 */
+    fun comboOrderedHoldFixedWindowStartFor(combo: ComboKey): Boolean =
+        comboField(
+            combo,
+            combo.orderedHoldFixedWindowStart,
+            global.comboOrderedHoldFixedWindowStart,
+            GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
+        )
+
+    /**
+     * 这一档**这一刻**该按哪一颗固定窗口开关取格 —— 有序档走顺序组合那一颗，其余走不分顺序那颗。
+     *
+     *  判定侧（`ComboDetector` 的 `holdFixedWindowStartFor` 与 `comboSpanFor`）只认这一支：
+     *  直接读 [comboFixedWindowStartFor] 会让「按顺序触发」的那几档仍按不分顺序的取窗口方式判，
+     *  于是界面上「顺序组合固定窗口」拨了不改行为。
+     */
+    fun comboWindowStartFor(combo: ComboKey): Boolean =
+        if (combo.ordered) comboOrderedFixedWindowStartFor(combo) else comboFixedWindowStartFor(combo)
+
+    /** 按住档的同一位 —— 与 [comboWindowStartFor] 同一条规则，落的是按住那一对开关。 */
+    fun comboHoldWindowStartFor(combo: ComboKey): Boolean =
+        if (combo.ordered) comboOrderedHoldFixedWindowStartFor(combo) else comboHoldFixedWindowStartFor(combo)
 
     /**
      * 这一档的**成员连击参数** —— 按住首键、那颗唯一成员键连击时，判定侧（`GestureDetector`）
@@ -1780,41 +2018,34 @@ data class Config(
      *  只在 `mode == MODE_HOLD` 且 `followers.size == 1` 时有意义；多成员组合上连击没有判据，
      *  调用方不该问它（判定侧在 [ComboDetector] 里先按这一条拦掉）。
      *
-     *  ## 窗口取「单击那一套」，不取组合那四格
+     *  ## 窗口与判定时机取**按住组合那张卡**那两行（用户口径）
      *
-     *  成员连击量的是**同一颗键两击之间隔多久**，与单键连击是同一件事 —— 所以窗口与判定时机
-     *  都读公共设置里那三项（[GlobalConfig.doubleClickMs] / [GlobalConfig.waitMultiWindow] /
-     *  [GlobalConfig.multiWaitMs]，口径与 [KeyConfig.clickWindowMs] 逐条相同）。
+     *  连击节奏就是「这颗成员键两击之间最多隔多久」，不再另开一套滑块：
+     *  窗口取 [comboWindowsFor] 里按住那一半（[comboHoldWindowStartFor] 开 = `hold`、
+     *  关 = `holdFollower`），判定时机取那颗「固定窗口起点」本身。
      *
-     *  曾经复用按住组合那四格（`comboWindowsFor`）：那是「两颗**不同**键的按下间隔」，
-     *  出厂 150ms。拿它当连击窗口的后果是「第 1 击抬手后 150ms 内必须按下第 2 击」——
-     *  人手做不到，表现正是「单击后长按怎么按都判不出来」；而按不出来时窗口一到就先派发
-     *  一次组合短按，于是偶尔判出来时又像「连带触发了一次单击」。
-     *  语义不同的两个数不该共用（见 AGENTS.md 一之二、6）。
+     *  `ClickChainParams.waitMultiWindow` 是那颗开关的**反面**（见 `KeyConfig.waitMultiWindow`：
+     *  false = 固定窗口起点、true = 每次松手重新起算），所以这里传 `!fixedStart`。
      *
-     *  组合那几项里**只有** `useOwnSettings` 之外的都不参与：这一档没有自己的连击窗口可配。
+     *  于是那两行改一次，成员之间接收与成员连击一起变 —— 不要再在这里另读单击那三项，
+     *  两套数并存时表现就是「按住卡上那根滑杆拨了，连击手感一点不变」。
      */
-    fun comboMemberChain(combo: ComboKey): ClickChainParams = MemberChainView(combo, publicClickWindowMs, global.waitMultiWindow)
-
-    /**
-     * **公共**那一套的连击窗口 —— 与 [KeyConfig.clickWindowMs] 同一条口径，数据取自 [global]。
-     *
-     *  读者只有 [comboMemberChain]：单键那一侧每颗键自己存着一份（`KeyConfig.clickWindowMs`），
-     *  而成员连击属于「这一组」，公共设置里没有它的位置，直接用公共那一份。
-     */
-    private val publicClickWindowMs: Int
-        get() =
-            if (global.waitMultiWindow) {
-                global.multiWaitMs.takeIf { it > KeyConfig.FOLLOW_DOUBLE_CLICK_MS } ?: global.doubleClickMs
-            } else {
-                global.doubleClickMs
-            }
+    fun comboMemberChain(combo: ComboKey): ClickChainParams {
+        val windows = comboWindowsFor(combo)
+        val fixedStart = comboHoldWindowStartFor(combo)
+        return MemberChainView(
+            combo,
+            clickWindowMs = if (fixedStart) windows.hold else windows.holdFollower,
+            //  `waitMultiWindow` 是界面上那颗「固定窗口起点」的反面
+            waitMultiWindow = !fixedStart,
+        )
+    }
 
     /**
      * 这一组**自己存着**的「首键要先按住多久」（毫秒）—— 与 [comboStoredWindowsFor] 同一条：
-     * 不看总开关，滑杆要的就是这一份。
+     * 不看总开关，滑杆要的就是这一份；没写过 ⇒ 出厂默认。
      */
-    fun comboStoredHoldMinFor(combo: ComboKey): Int = stored(combo.holdMinMs.takeIf { it > 0 }, global.comboHoldMinMs)
+    fun comboStoredHoldMinFor(combo: ComboKey): Int = stored(combo.holdMinMs.takeIf { it > 0 }, GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS)
 
     /**
      * 这一组**实际生效**的「首键要先按住多久」（毫秒）—— 规则与 [comboWindowsFor] 同一条：
@@ -1829,6 +2060,10 @@ data class Config(
      *
      *  · 等待档：起点开着用 `wait`，关着用 `waitPair × (n-1)`；
      *  · 按住档：起点开着用 `hold`，关着用 `holdFollower × (n-1)`。
+     *
+     *  **顺序组合另取一套**：窗口来自 [comboWindowsFor]（它按 `ordered` 挑那一组），开关来自
+     *  [comboWindowStartFor] / [comboHoldWindowStartFor]（同上）。于是这一支不必自己分叉 ——
+     *  判定侧、扫候选、界面三处问到的都是「这一档此刻真正的跨度」。
      *
      *  早先这一支不分档、两种按法都读等待那两格与 `comboFixedWindowStartFor` —— 于是把
      *  「按住组合的成员接收」调宽（独立设置里那一档的 `holdFollower`）之后，[comboScanWindowMs]
@@ -1846,13 +2081,13 @@ data class Config(
         val w = comboWindowsFor(combo)
         val gaps = (combo.keys.size - 1).coerceIn(1, ComboKey.MAX_JUDGE_KEYS - 1)
         if (combo.isHold) {
-            return if (comboHoldFixedWindowStartFor(combo)) {
+            return if (comboHoldWindowStartFor(combo)) {
                 maxOf(w.hold, w.holdFollower)
             } else {
                 w.holdFollower * gaps
             }
         }
-        if (comboFixedWindowStartFor(combo)) return w.wait
+        if (comboWindowStartFor(combo)) return w.wait
         return w.waitPair * gaps
     }
 
@@ -1876,6 +2111,12 @@ data class Config(
                 global.comboWaitPairMs,
                 global.comboHoldWindowMs,
                 global.comboHoldFollowerMs,
+                //  顺序组合那四格也要算进来：它自己一组数，比不分顺序那四格宽时（顺序组合更难按，
+                //  用户多半会调宽），扫候选仍按旧那四格取就会「扫得到、等不到」。
+                global.comboOrderedWaitWindowMs,
+                global.comboOrderedWaitPairMs,
+                global.comboOrderedHoldWindowMs,
+                global.comboOrderedHoldFollowerMs,
                 liveCombos().maxOfOrNull { comboSpanFor(it) } ?: 0,
             )
 
@@ -2055,7 +2296,7 @@ data class Config(
      *  三处读者都从这里取：注入侧每颗键「等多久」的账（`ConfigChannel.holdWindows`）、
      *  「参不参与组合」的成员表（`rebuildComboIndex`）、以及判定计划（`comboPlans`）。
      *  各自按 `isUsable` 筛的后果是「这一档永远凑不齐，参与它的键却照样等满一个窗口」——
-     *  最长 1000ms 的白等，且列表上已经显示「已停用」。
+     *  白等到秒级（整串跨度 = 窗口 × (n-1)），且列表上已经显示「已停用」。
      */
     fun liveCombos(): List<ComboKey> = combos.filterNot(::comboOff)
 
@@ -2149,4 +2390,22 @@ data class ComboWindows(
     val waitPair: Int,
     val hold: Int,
     val holdFollower: Int,
-)
+) {
+    companion object {
+        /**
+         * **出厂那一份** —— 固定等那两格读 [GlobalConfig.DEFAULT_COMBO_WINDOW_MS]（350）、
+         *  逐次等那两格读 [GlobalConfig.DEFAULT_COMBO_PAIR_MS]（250）。
+         *
+         *  两处都用它：公共页「双击滑杆回落」，以及某一组「开着独立设置、可这一格没写过」。
+         *  后者原先回落成**当前公共值**，于是「独立设置」在没写过时等于公共设置的一份快照 ——
+         *  改一次公共，那一档跟着变（口径见 `docs/changelog/2026-11-17-独立设置去掉播种.md`）。
+         */
+        val DEFAULT: ComboWindows =
+            ComboWindows(
+                wait = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                waitPair = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
+                hold = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                holdFollower = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
+            )
+    }
+}

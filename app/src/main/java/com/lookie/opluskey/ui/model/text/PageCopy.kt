@@ -125,7 +125,7 @@ internal val CONFIG_READ_FAILED_HINT: String
  *  那一行此刻可点**，所以「拨回去」这个建议永远是可执行的。
  *
  *  **逐键的停用不走这一条**：停用一颗键（含侧键）时页面照常可用，只是那一颗的控件变灰、
- *  点一下说「可在 ⋮ 菜单里启用」（见 `disabledClickReason`）。
+ *  点一下说「可在 ⋮ 菜单中启用」（见 `disabledClickReason`）。
  */
 internal val KEY_DISABLED_HINT: String
     get() = I18n.get(Strings.STATUS_KEY_DISABLED)

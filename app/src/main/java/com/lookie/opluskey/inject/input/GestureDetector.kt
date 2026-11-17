@@ -291,7 +291,7 @@ internal class GestureDetector(
                 //  抬手那一刻再排）。
                 XLog.w("${id.label}：第 ${p.clicks} 击（这颗键配到第 $maxClicks 击）")
                 p.sawFirstRelease = false
-                if (config.waitMultiWindow) p.doubleWindowAt = 0L
+                if (!config.fixedWindowStart) p.doubleWindowAt = 0L
                 return
             }
             // 「判出手势」这几行是验收判据链的第二环（见 AGENTS.md 二、1.2）——
@@ -438,10 +438,10 @@ internal class GestureDetector(
 
         //  **两种判定时机在这里分叉**（用户口径，两者差别必须明显）。两种都从**抬手**
         //  起算（按下时按住多久都不吃掉窗口预算），差别只在**后续的抬手刷不刷新它**：
-        //  · 固定窗口起点（`waitMultiWindow = false`）：只在**第一击抬手**排一次，之后
+        //  · 固定窗口起点（`fixedWindowStart`）：只在**第一击抬手**排一次，之后
         //    每一击抬手都不延长 —— 一个窗口内收集到几击就算几击。
-        //  · 每次松手重新起算（`true`）：每次抬手都把截止推到「此刻 + 一个窗口」。
-        if (!config.waitMultiWindow) {
+        //  · 每次松手重新起算（`fixedWindowStart` 为假）：每次抬手都把截止推到「此刻 + 一个窗口」。
+        if (config.fixedWindowStart) {
             if (p.doubleWindowAt != 0L) {
                 //  首击已经排过窗口：还在窗口里就交给那一枪，过期了当场按实际击数判
                 if (now < p.doubleWindowAt) return
@@ -1052,7 +1052,8 @@ internal data class DetectorBinds(
      * 按住档成员的「固定窗口起点」—— 判「从首个成员起固定窗口」还是「逐次重置」。
      *
      *  这一位与等待组合那颗开关是**两个变量**（两张卡各管一种按法），
-     *  装配方接 `Config.comboHoldFixedWindowStartFor`。
+     *  装配方接 `Config.comboHoldWindowStartFor` —— 那一支还按「这一档是不是按顺序触发」挑一组
+     *  （顺序组合有自己那两颗开关），所以别再退回 `comboHoldFixedWindowStartFor`。
      */
     val holdFixedWindowStartFor: (ComboKey) -> Boolean = { false },
     /**

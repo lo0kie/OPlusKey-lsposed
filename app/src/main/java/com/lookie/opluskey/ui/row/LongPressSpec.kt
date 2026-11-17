@@ -411,8 +411,8 @@ private fun SettingsPage.RepeatIntervalRow(
                 max = KeyConfig.MAX_REPEAT_INTERVAL_MS,
                 value = value,
                 default = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-                //  取值 10ms 一档（50~1000 之间 95 档）；**拖动落点吸到 50 的整数倍** ——
-                //  95 档铺在一根轨道上拖不准，粗拖 + 手输才是这一行的用法（见 `SliderSpec.snapDrag`）
+                //  取值 10ms 一档（50~500 之间 46 档）；**拖动落点吸到 50 的整数倍** ——
+                //  46 档铺在一根轨道上拖不准，粗拖 + 手输才是这一行的用法（见 `SliderSpec.snapDrag`）
                 step = 10,
                 dragStep = 50,
                 enabled = enabled,

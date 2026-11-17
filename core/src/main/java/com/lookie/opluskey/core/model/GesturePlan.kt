@@ -285,6 +285,15 @@ data class MemberGestures(
 )
 
 /**
+ * 这几档里**有开着的**吗 —— 「成员连击真的会判」的唯一判据。
+ *
+ *  读者是界面那一侧：按住组合卡上「固定窗口起点 / 等待窗口」两行在**只有一颗成员**时之所以
+ *  还有意义，就是因为它们是成员连击的窗口（见 `Config.comboMemberChain`）——
+ *  一档都没开时那两行量不到任何东西，得如实置灰。
+ */
+val MemberGestures.isOn: Boolean get() = doubleClickOn || extraClicksOn.isNotEmpty() || clickThenLongOn
+
+/**
  * 这一档是不是**某一次按压的收尾**（松手那一刻才发）—— `Release` 与 `ClickThenLongRelease`。
  *
  *  两者都不是「新的一次按压」，而是已经判过的那一按结束时的另一件事：

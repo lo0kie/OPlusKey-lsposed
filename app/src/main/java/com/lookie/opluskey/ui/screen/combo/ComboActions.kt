@@ -577,7 +577,8 @@ private fun SettingsPage.comboEnableAllowed(
         if (starter != null && !cfg.key(starter).longFireOnRelease) {
             XLog.w("组合键：${combo.id} 的起点 ${starter.label} 没开「松手时触发」，不启用（$label）")
             hint(
-                I18n.get(Strings.KEYS_COMBO_NEEDS_FIRE),
+                //  回执点名那一颗键：同一组里「谁没开」只有它说得清（见 `Strings.KEYS_COMBO_NEEDS_FIRE`）
+                I18n.format(Strings.KEYS_COMBO_NEEDS_FIRE, starter.label),
                 slot = HINT_SLOT_COMBO,
             )
             return false
@@ -645,15 +646,18 @@ internal fun SettingsPage.updateCombo(
  *  与别的全局项同一条路。返回「写盘成没成」：滑杆失败时要拨回原值（见 `SliderRow` 的 `commit`）。
  *
  * @param what 写盘说明里那一段（`wait_pair_ms` 这种）
+ * @param pair 「逐次等」那一格（相邻两颗 / 每颗各自往前）—— 上限 500，其余四格 1000
  * @param change 把这一格换掉 —— 四支各自只写自己那一格，别的一格不动
  */
 private fun SettingsPage.setComboPublicWindow(
     what: String,
     ms: Int,
+    pair: Boolean = false,
     change: (GlobalConfig, Int) -> GlobalConfig,
 ): Boolean {
     val cfg = configState.config.value
-    val value = ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, GlobalConfig.COMBO_WINDOW_MAX_MS)
+    val max = if (pair) GlobalConfig.COMBO_PAIR_MAX_MS else GlobalConfig.COMBO_WINDOW_MAX_MS
+    val value = ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, max)
     val next = change(cfg.global, value)
     if (next == cfg.global) return true
     return write(cfg.copy(global = next), "combo_$what=$value") != CommandsSave.Failed
@@ -665,7 +669,7 @@ internal fun SettingsPage.setComboWaitWindow(ms: Int): Boolean =
 
 /** 公共：等待组合、**固定窗口起点关** —— 相邻两颗之间最多隔多久（n 颗整串 = 它 × (n-1)）。 */
 internal fun SettingsPage.setComboWaitPair(ms: Int): Boolean =
-    setComboPublicWindow("wait_pair_ms", ms) { g, v -> g.copy(comboWaitPairMs = v) }
+    setComboPublicWindow("wait_pair_ms", ms, pair = true) { g, v -> g.copy(comboWaitPairMs = v) }
 
 /** 公共：按住组合、**固定窗口起点开** —— 后续成员要在首个成员按下后的这个窗口内落完。 */
 internal fun SettingsPage.setComboHoldWindow(ms: Int): Boolean =
@@ -673,7 +677,25 @@ internal fun SettingsPage.setComboHoldWindow(ms: Int): Boolean =
 
 /** 公共：按住组合、**固定窗口起点关** —— 后续成员相继落下，彼此相差不超过这个窗口。 */
 internal fun SettingsPage.setComboHoldFollower(ms: Int): Boolean =
-    setComboPublicWindow("hold_follower_ms", ms) { g, v -> g.copy(comboHoldFollowerMs = v) }
+    setComboPublicWindow("hold_follower_ms", ms, pair = true) { g, v -> g.copy(comboHoldFollowerMs = v) }
+
+/**
+ * 下面四支写**顺序组合**那一组窗口（与上面四格分开存，用户口径：顺序组合单独一组）。
+ *
+ *  判定侧按 `Config.comboWindowsFor` 挑这一份（`combo.ordered` 为真时读它），所以这两根滑杆
+ *  只管「按顺序触发」的那几档；不分顺序那一档仍读上面那四格。
+ */
+internal fun SettingsPage.setComboOrderedWaitWindow(ms: Int): Boolean =
+    setComboPublicWindow("ordered_wait_window_ms", ms) { g, v -> g.copy(comboOrderedWaitWindowMs = v) }
+
+internal fun SettingsPage.setComboOrderedWaitPair(ms: Int): Boolean =
+    setComboPublicWindow("ordered_wait_pair_ms", ms, pair = true) { g, v -> g.copy(comboOrderedWaitPairMs = v) }
+
+internal fun SettingsPage.setComboOrderedHoldWindow(ms: Int): Boolean =
+    setComboPublicWindow("ordered_hold_window_ms", ms) { g, v -> g.copy(comboOrderedHoldWindowMs = v) }
+
+internal fun SettingsPage.setComboOrderedHoldFollower(ms: Int): Boolean =
+    setComboPublicWindow("ordered_hold_follower_ms", ms, pair = true) { g, v -> g.copy(comboOrderedHoldFollowerMs = v) }
 
 /**
  * 写**这一组自己**的某一格窗口（毫秒）—— 四支写函数共用的形状。
@@ -685,18 +707,19 @@ internal fun SettingsPage.setComboHoldFollower(ms: Int): Boolean =
  *
  *  那个状态的入口只有一个：**关掉这一组的「使用独立设置」**
  *  （`Config.comboWindowsFor` 的第一支：关着就整份看公共）。开着独立设置时不存在「跟随」——
- *  打开那一刻已经把公共值播进这一组了（见 `KeySettingsScreen.withSeededComboFields`），
- *  之后改公共它一格都不动；关掉再打开用的还是这一组上次那套。
+ *  没写过的那几格取出厂默认（`ComboWindows.DEFAULT`），写过的就是这一组自己的数；
+ *  之后改公共它一格都不动。想整页回到默认值就走页面顶上那颗「重置」。
  *
  *  所以下面 `ms <= 0` 那一支**界面上到不了**：滑杆的下限是
  *  [GlobalConfig.COMBO_WINDOW_MIN_MS]（20ms）。它留着是因为**老配置**里可能已经是
- *  [ComboKey.WINDOW_FOLLOW_GLOBAL]（这一位出现之前写下的 0），读取侧的 `?: global` 靠它兜底；
- *  手改配置文件写 0 也照样表达「跟随」。
+ *  [ComboKey.WINDOW_FOLLOW_GLOBAL]（= 没写过），读取侧按出厂默认兜底；
+ *  手改配置文件写 0 也照样表达「没写过」。
  */
 private fun SettingsPage.setComboOwnWindow(
     id: String,
     what: String,
     ms: Int,
+    pair: Boolean = false,
     change: (ComboKey, Int) -> ComboKey,
 ): Boolean =
     updateCombo(id, "$what=$ms") { combo ->
@@ -704,7 +727,8 @@ private fun SettingsPage.setComboOwnWindow(
             if (ms <= 0) {
                 ComboKey.WINDOW_FOLLOW_GLOBAL
             } else {
-                ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, GlobalConfig.COMBO_WINDOW_MAX_MS)
+                val max = if (pair) GlobalConfig.COMBO_PAIR_MAX_MS else GlobalConfig.COMBO_WINDOW_MAX_MS
+                ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, max)
             }
         change(combo, value)
     }
@@ -719,7 +743,7 @@ internal fun SettingsPage.setComboOwnWaitWindow(
 internal fun SettingsPage.setComboOwnWaitPair(
     id: String,
     ms: Int,
-): Boolean = setComboOwnWindow(id, "wait_pair_ms", ms) { c, v -> c.copy(waitPairMs = v) }
+): Boolean = setComboOwnWindow(id, "wait_pair_ms", ms, pair = true) { c, v -> c.copy(waitPairMs = v) }
 
 /** 这一组自己的「按住组合、起点开」那一格 —— 见 [setComboOwnWindow]。 */
 internal fun SettingsPage.setComboOwnHoldWindow(
@@ -731,7 +755,31 @@ internal fun SettingsPage.setComboOwnHoldWindow(
 internal fun SettingsPage.setComboOwnHoldFollower(
     id: String,
     ms: Int,
-): Boolean = setComboOwnWindow(id, "hold_follower_ms", ms) { c, v -> c.copy(holdFollowerMs = v) }
+): Boolean = setComboOwnWindow(id, "hold_follower_ms", ms, pair = true) { c, v -> c.copy(holdFollowerMs = v) }
+
+/** 这一组自己的「**顺序组合**、等待档、起点开」那一格 —— 见 [setComboOwnWindow]。 */
+internal fun SettingsPage.setComboOwnOrderedWaitWindow(
+    id: String,
+    ms: Int,
+): Boolean = setComboOwnWindow(id, "ordered_wait_window_ms", ms) { c, v -> c.copy(orderedWaitWindowMs = v) }
+
+/** 这一组自己的「**顺序组合**、等待档、起点关」那一格 —— 见 [setComboOwnWindow]。 */
+internal fun SettingsPage.setComboOwnOrderedWaitPair(
+    id: String,
+    ms: Int,
+): Boolean = setComboOwnWindow(id, "ordered_wait_pair_ms", ms, pair = true) { c, v -> c.copy(orderedWaitPairMs = v) }
+
+/** 这一组自己的「**顺序组合**、按住档、起点开」那一格 —— 见 [setComboOwnWindow]。 */
+internal fun SettingsPage.setComboOwnOrderedHoldWindow(
+    id: String,
+    ms: Int,
+): Boolean = setComboOwnWindow(id, "ordered_hold_window_ms", ms) { c, v -> c.copy(orderedHoldWindowMs = v) }
+
+/** 这一组自己的「**顺序组合**、按住档、起点关」那一格 —— 见 [setComboOwnWindow]。 */
+internal fun SettingsPage.setComboOwnOrderedHoldFollower(
+    id: String,
+    ms: Int,
+): Boolean = setComboOwnWindow(id, "ordered_hold_follower_ms", ms, pair = true) { c, v -> c.copy(orderedHoldFollowerMs = v) }
 
 /**
  * 写**这一组自己**的「首键要先按住多久」（毫秒）—— 按住手势的下限。

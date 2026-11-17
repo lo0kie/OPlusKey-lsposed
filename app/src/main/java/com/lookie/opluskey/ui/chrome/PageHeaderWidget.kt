@@ -185,9 +185,9 @@ internal fun SettingsPage.collapsedHeaderHeight(scrollBehavior: ScrollBehavior):
  *  `subtitleContent` 给**要画圆角框**的那几页（装键名的：按键绑定 / 按键设置 / 场景动作 /
  *  组合键编辑）：框按名字宽度自己排，那本「按格数截断」的账套不上，所以与 `subtitle` 二选一。
  *
- *  `subtitleColor` 是标题下面那行的颜色，默认就是库那一档次要色。留成参数是为了
- *  「这一页整体按不动」时把它也压暗一档：内容区整片变灰了，这一行还按满亮度亮着，读起来像
- *  那一区仍然是活的（见 `PageTopBar` 里停用那支）。
+ *  副标题的字色**固定用库那档次要色**，不给参数：原先留了个 `subtitleColor` 只为「这一页整体按不动」
+ *  时把它压暗一档，现已撤掉（用户口径：整页禁用时副标题不再压暗 —— 那行装的是这一页在编的名字，
+ *  压暗只会让它难认；停用与否由页内那句原因与内容区整片变灰表达）。
  *
  *  注：参数**不逐条写 KDoc** —— 要解释的写在这里。
  *
@@ -196,7 +196,6 @@ internal fun SettingsPage.collapsedHeaderHeight(scrollBehavior: ScrollBehavior):
 internal fun SettingsPage.PageHeader(
     title: String,
     subtitle: String = "",
-    subtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
     subtitleContent: (@Composable () -> Unit)? = null,
     scrollBehavior: ScrollBehavior,
     state: HazeState,
@@ -228,7 +227,6 @@ internal fun SettingsPage.PageHeader(
         //  副标题与主标题之间的 3.5dp 就是设计值：两行的行盒都由 `AppTextStyles` 那一档
         //  `LineHeightStyle(Center, Trim.Both)` 贴着墨迹算，行盒之间的空隙就是眼睛看到的空隙，
         //  不再需要把副标题单独上提。
-        subtitleColor = subtitleColor,
         hideSubtitleOnCollapse = false,
         //  **折叠到底时把副标题往上提一档**（用户口径）：它折进 52dp 那条栏之后贴着栏底，
         //  比右侧圆键的视觉重心低一点。

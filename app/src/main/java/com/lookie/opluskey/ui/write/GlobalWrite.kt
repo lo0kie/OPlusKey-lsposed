@@ -71,6 +71,7 @@ internal fun SettingsPage.setVibrateOnNone(on: Boolean) =
  *
  *  与独立设置页那颗同一句文案、同一套语义（见 `waitMultiWindowRow`）：开关说「固定窗口起点」，
  *  开着 = 一个窗口内收集、不随后续按压延长；关着 = 每次松手重新起算。
+ *  **读那一侧请用 `GlobalConfig.fixedWindowStart`**（正向说法、翻在 core 里），别自己再取反。
  */
 internal fun SettingsPage.setGlobalWaitMultiWindow(on: Boolean) =
     toggleGlobal(
@@ -212,6 +213,44 @@ internal fun SettingsPage.setComboHoldFixedWindowStart(on: Boolean) {
         slot = HINT_SLOT_COMBO,
     ) {
         switchNotice(I18n.get(Strings.COMBO_FIXED_WINDOW_START_TITLE), on)
+    }
+}
+
+/**
+ * 切「顺序组合固定窗口」**公共那一档 —— 等待组合那张卡**（`GlobalConfig.comboOrderedFixedWindowStart`）。
+ *
+ *  顺序组合自己一组窗口（用户口径），所以这颗开关与 [setComboFixedWindowStart] 也是**两个变量**：
+ *  拨它只改「按顺序触发」那几档取窗口的方式，不分顺序那一档一格不动。
+ *
+ *  判定侧读 `Config.comboWindowStartFor`（有序档走这一颗，其余走不分顺序那颗）。
+ *  回执位与其它组合项一致（`HINT_SLOT_COMBO`）。
+ */
+internal fun SettingsPage.setComboOrderedFixedWindowStart(on: Boolean) {
+    val cfg = configState.config.value
+    writeAndNotice(
+        cfg.copy(global = cfg.global.copy(comboOrderedFixedWindowStart = on)),
+        "combo_ordered_fixed_window_start=${if (on) 1 else 0}",
+        slot = HINT_SLOT_COMBO,
+    ) {
+        switchNotice(I18n.get(Strings.COMBO_ORDERED_FIXED_WINDOW_TITLE), on)
+    }
+}
+
+/**
+ * 切「**顺序组合**固定窗口」**公共那一档 —— 按住组合那张卡**
+ * （`GlobalConfig.comboOrderedHoldFixedWindowStart`）。
+ *
+ *  与 [setComboOrderedFixedWindowStart] 是**两个变量**（两张卡各管一种按法）：这一颗只影响
+ *  有序的按住组合取窗口的方式。判定侧读 `Config.comboHoldWindowStartFor`。
+ */
+internal fun SettingsPage.setComboOrderedHoldFixedWindowStart(on: Boolean) {
+    val cfg = configState.config.value
+    writeAndNotice(
+        cfg.copy(global = cfg.global.copy(comboOrderedHoldFixedWindowStart = on)),
+        "combo_ordered_hold_fixed_window_start=${if (on) 1 else 0}",
+        slot = HINT_SLOT_COMBO,
+    ) {
+        switchNotice(I18n.get(Strings.COMBO_ORDERED_FIXED_WINDOW_TITLE), on)
     }
 }
 

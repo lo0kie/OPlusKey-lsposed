@@ -7,6 +7,7 @@ import com.lookie.opluskey.core.model.ClickChainParams
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.ComboPlan
 import com.lookie.opluskey.core.model.GestureTrigger
+import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import java.util.concurrent.ConcurrentHashMap
@@ -39,10 +40,10 @@ private const val MULTI_MIN_KEYS = ComboKey.MIN_KEYS + 1
  *
  *  正常取值走四格里那一格（见 [DetectorBinds.windowsFor]）：固定窗口起点开着用 `hold`
  *  （从首个成员按下起算一个），关着用 `holdFollower`（每颗各自往前一个）。
- *  逐次重置那一档只判「后续那一颗是不是紧接着落下的」，150ms 够人手一颗一颗按下去，
- *  又不至于把「按完 B 过一会儿再按 C」也算进来。
+ *  逐次重置那一档只判「后续那一颗是不是紧接着落下的」，出厂 250ms（`DEFAULT_COMBO_PAIR_MS`）
+ *  够人手一颗一颗按下去，又不至于把「按完 B 过一会儿再按 C」也算进来。
  */
-private const val HOLD_FOLLOWER_WINDOW_MS = 150L
+private val HOLD_FOLLOWER_WINDOW_MS = GlobalConfig.DEFAULT_COMBO_PAIR_MS.toLong()
 
 /**
  * 组合键的判定 —— **几颗已接管的键**在窗口内先后按下，就当作一次组合，不再各自判单击 / 长按。

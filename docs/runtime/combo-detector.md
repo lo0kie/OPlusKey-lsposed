@@ -33,6 +33,12 @@
 这一档照样成立。**算不算数**则由这一档自己的**整串跨度**判（`spanFor`）：固定窗口起点开着
 就只等一个窗口，关着则按相邻两颗各一个窗口放大（n 颗 = n-1 个）。
 
+**按顺序触发那一档（`ordered`）另外一组窗口**：`Config.comboWindowsFor` 按 `ordered` 挑
+（`GlobalConfig.comboOrdered*` / `ComboKey.ordered*`），开关同理走 `comboWindowStartFor` /
+`comboHoldWindowStartFor`。两档量的不是同一件事 —— 不分顺序那一档允许成员乱序落下（人手可以挑
+最好按的那一颗先按），顺序这一档必须按配置的先后逐颗落、慢的那一颗决定成败 —— 所以顺序组合
+自己一组数，调宽一处不连带拖钝另一处。
+
 ## 「先按住某颗」那一档不看窗口，但要真的按住
 
 那两档（`MODE_HOLD_FIRST` / `MODE_HOLD_SECOND`）的判据是「**起点键还按着**」（读 `down`），
@@ -101,7 +107,7 @@
 
 ## 长按阈值取组合自己的
 
-`ComboKey.longPressMs` 是这一档自己的（默认 500ms，与单键默认值同档）。不用某颗成员键的阈值：
+`ComboKey.longPressMs` 是这一档自己的（默认 350ms，与单键默认值同档）。不用某颗成员键的阈值：
 两颗键可能各配一个值，取谁的都是任选其一；而「一起按住多久算长按」是这一档的语义。
 
 **按顺序触发的组合没有长按这一档**（`ComboKey.hasLong` = `!ordered`，等待与按住都一样）：

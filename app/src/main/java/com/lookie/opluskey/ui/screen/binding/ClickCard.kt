@@ -10,6 +10,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.fixedWindowStart
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.icon.actionIcon
@@ -48,9 +49,10 @@ import com.lookie.opluskey.ui.write.write
  *  公共那一份来自 `GlobalConfig`、写全局配置（[clickGlobalParams]）；某一颗键那一份来自
  *  `KeyConfig`、写回这颗键（[clickKeyParams]）。判定侧两处都读（`KeyConfig.clickWindowMs` 那一条口径）。
  *
- * @param collect 「固定窗口起点」那颗开关的 checked —— 与存储位 `waitMultiWindow` **相反**：
- *   开着 = 从首次按下只等一个窗口（`waitMultiWindow = false`），关着 = 每次松手重新起算。
- *   存储位当初按「要不要等满窗口」命名，界面按用户要的正向说法命名 —— 取反只在写回那一步做。
+ * @param collect 「固定窗口起点」那颗开关的 checked —— 直接就是 `ClickChainParams.fixedWindowStart`
+ *   （开着 = 从首次按下只等一个窗口，关着 = 每次松手重新起算）。它是存储位 `waitMultiWindow`
+ *   的反面，**翻的那一次在 core 里**（见 `ClickChainParams.fixedWindowStart` 的说明）；
+ *   写回时同一个反面（`setWaitMultiWindow(!collect)`），界面这一层不再各自取反。
  * @param windowMs 等待窗口滑杆**显示**的值（按当前判定时机取那一位；`multiWaitMs` 为 0 时回落
  *   到单击延迟 —— 老配置就长这样，滑杆要显示一个具体值）。
  * @param enabled 这两行能不能动。
@@ -107,12 +109,25 @@ internal fun SettingsPage.ClickDelayCard(source: ClickParamSource) {
                                 //  **不画副标题**：两种时机的差别在上面那颗开关的副标题里说清了。
                                 title = I18n.get(Strings.BINDING_WAIT_WINDOW),
                                 icon = PageIcons.ComboWait,
-                                //  上下限两个判定时机**统一**（100~1000）：一根滑杆写两处，
-                                //  切换时机时可用范围跟着跳一截的话，看着像值被改了。
+                                //  上限**按当前那一格取**：固定窗口起点开 = `doubleClickMs` 1000
+                                //  （整串一次预算）/ 关 = `multiWaitMs` 500（相邻两击，人类两击间隔
+                                //  超过约 500 就不再像连击）。两根上限不同 ⇒ 切换时机那一下右端会跳。
                                 min = KeyConfig.MIN_DOUBLE_CLICK_MS,
-                                max = KeyConfig.MAX_MULTI_WAIT_MS,
+                                max =
+                                    if (source.collect) {
+                                        KeyConfig.MAX_DOUBLE_CLICK_MS
+                                    } else {
+                                        KeyConfig.MAX_MULTI_WAIT_MS
+                                    },
                                 value = source.windowMs,
-                                default = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
+                                //  双击滑杆的回落值跟着**当前那一格**走：固定窗口起点开 = `doubleClickMs`
+                                //  350、关 = `multiWaitMs` 250（两位的取值口径见 `KeyConfig.clickWindowMs`）
+                                default =
+                                    if (source.collect) {
+                                        KeyConfig.DEFAULT_DOUBLE_CLICK_MS
+                                    } else {
+                                        KeyConfig.DEFAULT_MULTI_WAIT_MS
+                                    },
                                 enabled = source.enabled,
                                 disabledHint = source.disabledHint,
                             ),
@@ -130,7 +145,9 @@ internal fun SettingsPage.ClickDelayCard(source: ClickParamSource) {
  */
 internal fun SettingsPage.clickGlobalParams(enabled: Boolean): ClickParamSource {
     val g = configState.config.value.global
-    val multi = g.waitMultiWindow
+    //  正向说法走 `fixedWindowStart`（存储位 `waitMultiWindow` 是它的反面，翻的那一次在 core 里）
+    val fixedStart = g.fixedWindowStart
+    val multi = !fixedStart
     //  0 = 「跟随单击延迟」（老配置长这样），滑杆要显示一个具体值
     val windowValue =
         if (multi) {
@@ -139,7 +156,7 @@ internal fun SettingsPage.clickGlobalParams(enabled: Boolean): ClickParamSource 
             g.doubleClickMs
         }
     return ClickParamSource(
-        collect = !multi,
+        collect = fixedStart,
         windowMs = windowValue,
         enabled = enabled,
         onCollect = { collect -> setGlobalWaitMultiWindow(!collect) },
@@ -179,7 +196,10 @@ internal fun SettingsPage.clickKeyParams(
         }
     //  **不是 [key.multiWaitMs] 的原值**：0 表示「跟随单击延迟」（老配置就长这样），
     //  滑杆要显示一个具体值；「用户没动过就不写」这条靠 `SliderRow` 只在拖动时回调。
-    val multi = key.waitMultiWindow && !noMulti
+    //  判定时机那边读的是正向说法 `fixedWindowStart`（存储位 `waitMultiWindow` 是它的反面，
+    //  翻的那一次在 core 里，见 `ClickChainParams.fixedWindowStart`）。
+    val fixedStart = key.fixedWindowStart
+    val multi = !fixedStart && !noMulti
     val windowValue =
         if (multi) {
             key.multiWaitMs.takeIf { it > KeyConfig.FOLLOW_DOUBLE_CLICK_MS } ?: key.doubleClickMs
@@ -187,7 +207,7 @@ internal fun SettingsPage.clickKeyParams(
             key.doubleClickMs
         }
     return ClickParamSource(
-        collect = !key.waitMultiWindow,
+        collect = fixedStart,
         windowMs = windowValue,
         enabled = pageEnabled && own && !noMulti,
         disabledHint = hint,
@@ -196,10 +216,10 @@ internal fun SettingsPage.clickKeyParams(
             //  **写哪一位要现读一次配置**，不能用上面那个 `multi` 快照：用户刚拨完判定时机、
             //  紧接着拖这一根时，快照还是旧的 —— 按它写就会写到「当前不生效」的那一位上，
             //  表现正是「滑杆拖了、判定一点没变」（真机报过）。
-            //  判据与显示那一侧同一个（`waitMultiWindow && !noMulti`）：没有多击时这一根写的就是
+            //  判据与显示那一侧同一个（`!fixedWindowStart && !noMulti`）：没有多击时这一根写的就是
             //  单击延迟，写进 `multiWaitMs` 会是一条谁也读不到的账。
             val now = configState.config.value.key(keyId)
-            if (now.waitMultiWindow && !noMulti) writeMultiWaitMs(keyId, v) else writeDoubleClickMs(keyId, v)
+            if (!now.fixedWindowStart && !noMulti) writeMultiWaitMs(keyId, v) else writeDoubleClickMs(keyId, v)
         },
     )
 }

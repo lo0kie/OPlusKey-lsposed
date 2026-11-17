@@ -460,6 +460,9 @@ object Strings {
     /**
      * 按住组合启用时的同一条回执：**起点键没开「松手时触发」**，这一档保持停用。
      *
+     *  `%s` = **那颗起点键的名字**（`KeyId.label`）：同一组里「哪一颗没开」只有它说得清，
+     *  换成一句「起点键」用户还得回配置里自己找。带参数 ⇒ 取值走 `I18n.format`。
+     *
      *  与 [KEYS_COMBO_NEEDS_KEYS] 并列 —— 两条都是「先修好前置，再启用」，只是缺的东西不同。
      */
     const val KEYS_COMBO_NEEDS_FIRE = "keys.combo_needs_fire"
@@ -675,6 +678,21 @@ object Strings {
     const val COMBO_ORDERED_DESC_ON = "combo.ordered_desc_on"
     const val COMBO_ORDERED_DESC_OFF = "combo.ordered_desc_off"
 
+    /**
+     * **顺序组合**那一对窗口行（固定窗口起点开关 + 滑杆）—— 两张卡各摆一对、文案同一套。
+     *
+     *  与上面那两对（不只加在等待组合卡上）是**两套数**：不分顺序那一档允许成员乱序落下，
+     *  顺序组合必须按配置的先后逐颗落。所以顺序组合自己一组窗口，调宽一处不影响另一处。
+     *
+     *  滑杆与它上面那颗开关同一套用法：开着时管**整串**（`orderedWait` / `orderedHold`），
+     *  关着时管**相邻两颗**（`orderedWaitPair` / `orderedHoldFollower`）—— 两格分开存，
+     *  同一时刻只露一根，由开关决定写哪一格。
+     */
+    const val COMBO_ORDERED_FIXED_WINDOW_TITLE = "combo.ordered_fixed_window_title"
+    const val COMBO_ORDERED_FIXED_WINDOW_DESC_ON = "combo.ordered_fixed_window_desc_on"
+    const val COMBO_ORDERED_FIXED_WINDOW_DESC_OFF = "combo.ordered_fixed_window_desc_off"
+    const val COMBO_ORDERED_WINDOW_TITLE = "combo.ordered_window_title"
+
     /** 顺序选择器里「不分顺序」那一行的文案。 */
     const val COMBO_ORDER_ANY = "combo.order_any"
 
@@ -769,6 +787,15 @@ object Strings {
 
     /** 组合键：等待组合的「等待窗口」（滑杆标题，与按住组合那张卡同名同一句；**不画副标题**）。 */
     const val COMBO_WINDOW_TITLE = "combo.window_title"
+
+    /**
+     * 按住组合那两行（「固定窗口起点」+「等待窗口」）在**这一档用不上**时置灰的那句说明。
+     *
+     *  那两行服务两件事：成员之间的接收（3 颗起）与**成员连击**的窗口。两件都不成立时
+     *  （一颗成员、且成员连击一档都没开）没有可量的间隔 —— 摆一根空转的滑杆只会让人以为
+     *  「拨了没反应」。文案只点出**当下能动手的那一件事**（开多击），不解释原理。
+     */
+    const val COMBO_HOLD_WINDOW_IDLE = "combo.hold_window_idle"
 
     /** 灵感语音 —— 菜单里那一行（点开再选开始 / 结束）。 */
     const val CATALOG_VOICE_MEMORY = "catalog.voice_memory"
@@ -2123,7 +2150,7 @@ object Strings {
 
     const val COMMAND_SHIZUKU_GRANTED = "command.shizuku_granted"
 
-    /** 「显示执行返回结果」那一行的**行标题** —— 命令跑完之后把标准输出送到哪。 */
+    /** 「提示执行结果」那一行的**行标题** —— 命令跑完之后把标准输出送到哪。 */
     const val COMMAND_OUTPUT_TITLE = "command.output_title"
 
     /**
@@ -2148,4 +2175,14 @@ object Strings {
     const val COMMAND_FAILURE_SHELL_CHANNEL_OFF = "command_failure.shell_channel_off"
 
     const val COMMAND_SHIZUKU_CHECKING = "command.shizuku_checking"
+
+    const val COMBO_HOLD_FIXED_WINDOW_DESC_ON = "combo.hold_fixed_window_desc_on"
+
+    const val COMBO_HOLD_FIXED_WINDOW_DESC_OFF = "combo.hold_fixed_window_desc_off"
+
+    const val COMBO_ORDERED_HOLD_FIXED_WINDOW_DESC_ON = "combo.ordered_hold_fixed_window_desc_on"
+
+    const val COMBO_ORDERED_HOLD_FIXED_WINDOW_DESC_OFF = "combo.ordered_hold_fixed_window_desc_off"
+
+    const val COMBO_MEMBER_WINDOW_SHARE = "combo.member_window_share"
 }

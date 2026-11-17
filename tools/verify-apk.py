@@ -220,19 +220,35 @@ def check_apk(apk, checks):
         # (6) java_init.list 声明的入口类必须**真的在 dex 里**：
         #    类改名 / 挪包之后 CI 原来照样全绿发版，而框架按名字实例化会失败 ——
         #    现象是「模块已启用、日志一行都没有」。
+        #  直接在字节流里找（类名是纯 ASCII）：`strings` 是 binutils 的东西，精简镜像与
+        #  Windows 的 Git Bash 上不一定有 —— 缺了它这条会变成**假红灯**。
+        dexes = [n for n in names if fnmatch.fnmatch(n, 'classes*.dex')]
+        blob = b''.join(z.read(n) for n in dexes)
         entry_cls = entry(XPOSED + 'java_init.list').replace('\r', '').split('\n')[0]
         if not entry_cls:
             checks.bad(f'{disp(apk)} 的 java_init.list 是空的')
         else:
             desc = 'L' + entry_cls.replace('.', '/') + ';'
-            #  直接在字节流里找（类名是纯 ASCII）：`strings` 是 binutils 的东西，精简镜像与
-            #  Windows 的 Git Bash 上不一定有 —— 缺了它这条会变成**假红灯**。
-            dexes = [n for n in names if fnmatch.fnmatch(n, 'classes*.dex')]
-            blob = b''.join(z.read(n) for n in dexes)
             if desc.encode() in blob:
                 checks.ok(f'java_init.list 的 {entry_cls} 在 dex 里')
             else:
                 checks.bad(f'{disp(apk)} 的 java_init.list 声明了 {entry_cls}，但 dex 里找不到 {desc}')
+
+        # (6b) 界面跳板 `EntryActivity` 也必须真的在 dex 里 —— (4) 只读二进制清单、
+        #     (6) 只认 `java_init` 那一个类，两个都在时 APK 仍可能**整份工程 dex 没打进去**：
+        #     2026-11-17 撞到过 —— 并发构建把 `compileDebugKotlin` 的产物清掉、任务却判
+        #     UP-TO-DATE，打包只并进了依赖那几份 dex，包照样出、照样装得上去。
+        #     现象不是「少个按钮」，是 `ClassNotFoundException: Didn't find class
+        #     "…EntryActivity"` —— 模块页一点就崩，点快捷键回落到系统默认界面。
+        #     包名是**代码里的包**（`com.lookie.opluskey`），不是 applicationId。
+        jumper = b'Lcom/lookie/opluskey/EntryActivity;'
+        if jumper in blob:
+            checks.ok('界面跳板 EntryActivity 在 dex 里')
+        else:
+            checks.bad(
+                f'{disp(apk)} 的 dex 里找不到 {jumper.decode()} —— 工程类没打进包'
+                '（清掉 dex 与 kotlin 产物后加 --no-build-cache 重编）'
+            )
 
         # (7) 作用域必须是构建期写死的那一档（`staticScope=true`）—— 「作用域写错 = 模块全绿但
         #     日志一行都没有」正是它守的东西。

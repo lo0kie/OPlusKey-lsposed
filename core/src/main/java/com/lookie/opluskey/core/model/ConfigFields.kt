@@ -26,9 +26,11 @@ import com.lookie.opluskey.core.log.XLog
  * 3. `core/config/ConfigDto.kt`：线格式由 kotlinx.serialization 定义，字段名与默认值写在那边的
  *    属性与 `@SerialName` 上。
  *
- * **例外：「只落盘、不广播」的字段**（目前只有 [F_OWN_SETTINGS_SEEDED]）——
- * 第 1 步照旧加 `Field`，但**不加进 [KEY_FIELDS]**。那种字段只服务界面自己的状态，
- * 注入侧不读它；进广播等于白占每次按键的 IPC 体积。
+ * **例外：「只落盘、不广播」的字段**（目前是 [F_KEY_VIBRATE_ON_NONE] 这一类）——
+ * 第 1 步照旧加 `Field`，但 extra 传 `null` 且**不加进 [KEY_FIELDS]**。
+ * 那种字段只有宿主读得到、注入侧不需要，进广播等于白占每次按键的 IPC 体积。
+ * （曾经还有过 `F_OWN_SETTINGS_SEEDED` 这一类「只服务界面自己状态」的位，已随
+ *  「独立设置不再抄公共值」一起删掉，见 `docs/changelog/2026-11-17-独立设置去掉播种.md`。）
  *
  * 于是两条通道各有自己的生成源：**广播**由本表驱动（extra + [Kind]），**落盘**由 DTO 驱动，
  * 取值区间两边都回到本表来钳。
@@ -224,16 +226,6 @@ object ConfigFields {
     const val KEY_TOAST_FLUID_EXTRA = "key_toast_fluid"
     const val KEY_TOAST_TEMPLATE_EXTRA = "key_toast_template"
 
-    /**
-     * 「独立设置那几项**已经被公共值播过种**」—— 这一档自己的状态，**只落盘、不广播**。
-     *
-     *  第一次打开「使用独立设置」时，把公共设置那几项抄成这一档的初值（否则打开开关看到的是一片
-     *  与公共不一样的旧默认值，读起来就是「开了没生效」）。抄**只做一次**：关掉再打开时，
-     *  用户之前调过的值还在 —— 那是他自己的状态，不该被公共设置再覆盖一遍。
-     *
-     *  不进 [KEY_FIELDS]：注入侧与执行侧都不读它，它只服务「这一页要不要播种」。
-     */
-    const val OWN_SETTINGS_SEEDED_EXTRA = "own_settings_seeded"
     const val LANGUAGE_EXTRA = "language"
     const val COLOR_OS_API_EXTRA = "color_os_api"
 
@@ -262,6 +254,19 @@ object ConfigFields {
      *  关 = 每颗各自往前一个 `holdFollower`），而注入侧只吃广播。
      */
     const val COMBO_HOLD_FIXED_WINDOW_START_EXTRA = "combo_hold_fixed_window_start"
+
+    /**
+     * **顺序组合**那一组窗口（等待 / 按住 × 固定窗口起点 开 / 关）与它两颗开关。
+     *
+     *  与上面那四格 + 两颗开关是**两套数**（用户口径：顺序组合单独一组）：不分顺序那一档允许
+     *  成员乱序落下，顺序组合必须按配置的先后落。判据同样在注入侧（`ComboDetector`），所以都走广播。
+     */
+    const val COMBO_ORDERED_WAIT_WINDOW_MS_EXTRA = "combo_ordered_wait_window_ms"
+    const val COMBO_ORDERED_WAIT_PAIR_MS_EXTRA = "combo_ordered_wait_pair_ms"
+    const val COMBO_ORDERED_HOLD_WINDOW_MS_EXTRA = "combo_ordered_hold_window_ms"
+    const val COMBO_ORDERED_HOLD_FOLLOWER_MS_EXTRA = "combo_ordered_hold_follower_ms"
+    const val COMBO_ORDERED_FIXED_WINDOW_START_EXTRA = "combo_ordered_fixed_window_start"
+    const val COMBO_ORDERED_HOLD_FIXED_WINDOW_START_EXTRA = "combo_ordered_hold_fixed_window_start"
 
     /**
      * **模块总闸**（首页「启用按键绑定」那一行）—— 与 [ENABLED_EXTRA] 是两件事，别混：
@@ -466,13 +471,6 @@ object ConfigFields {
 
     /** 这颗键自己的提示文案模板 —— 只在 [F_OWN_SETTINGS] 开着时算数。 */
     val F_KEY_TOAST_TEMPLATE = Field(KEY_TOAST_TEMPLATE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_TOAST_TEMPLATE))
-
-    /**
-     * 这一档的独立设置**被公共值播过种没有**（见 [OWN_SETTINGS_SEEDED_EXTRA]）。
-     *
-     *  不放进 [KEY_FIELDS]：那是**广播**字段清单，而这一位只服务界面「要不要抄一遍公共设置」。
-     */
-    val F_OWN_SETTINGS_SEEDED = Field(OWN_SETTINGS_SEEDED_EXTRA, Kind.Bool(false))
 
     /** 长按绑的是不是串行命令 —— **只有广播那一列**，见 [LONG_SERIAL_EXTRA] 的说明。 */
     val F_LONG_SERIAL = Field(LONG_SERIAL_EXTRA, Kind.Bool(false))
@@ -692,9 +690,9 @@ object ConfigFields {
         Field(
             COMBO_WAIT_PAIR_MS_EXTRA,
             Kind.Number(
-                GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                GlobalConfig.DEFAULT_COMBO_PAIR_MS,
                 GlobalConfig.COMBO_WINDOW_MIN_MS,
-                GlobalConfig.COMBO_WINDOW_MAX_MS,
+                GlobalConfig.COMBO_PAIR_MAX_MS,
             ),
         )
 
@@ -712,9 +710,9 @@ object ConfigFields {
         Field(
             COMBO_HOLD_FOLLOWER_MS_EXTRA,
             Kind.Number(
-                GlobalConfig.DEFAULT_COMBO_HOLD_FOLLOWER_MS,
+                GlobalConfig.DEFAULT_COMBO_PAIR_MS,
                 GlobalConfig.COMBO_WINDOW_MIN_MS,
-                GlobalConfig.COMBO_WINDOW_MAX_MS,
+                GlobalConfig.COMBO_PAIR_MAX_MS,
             ),
         )
 
@@ -780,6 +778,64 @@ object ConfigFields {
      */
     val F_COMBO_HOLD_FIXED_WINDOW_START =
         Field(COMBO_HOLD_FIXED_WINDOW_START_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START))
+
+    /**
+     * **顺序组合**那四格窗口（`GlobalConfig.comboOrderedWaitWindowMs` 那一段，毫秒）。
+     *
+     *  与 [F_COMBO_WAIT_WINDOW_MS] 那一族同一个口径、另一组数：判定在注入侧（`ComboDetector`
+     *  按 `Config.comboWindowsFor` 挑这一份），所以都走广播。
+     */
+    val F_COMBO_ORDERED_WAIT_WINDOW_MS =
+        Field(
+            COMBO_ORDERED_WAIT_WINDOW_MS_EXTRA,
+            Kind.Number(
+                GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                GlobalConfig.COMBO_WINDOW_MIN_MS,
+                GlobalConfig.COMBO_WINDOW_MAX_MS,
+            ),
+        )
+
+    val F_COMBO_ORDERED_WAIT_PAIR_MS =
+        Field(
+            COMBO_ORDERED_WAIT_PAIR_MS_EXTRA,
+            Kind.Number(
+                GlobalConfig.DEFAULT_COMBO_PAIR_MS,
+                GlobalConfig.COMBO_WINDOW_MIN_MS,
+                GlobalConfig.COMBO_PAIR_MAX_MS,
+            ),
+        )
+
+    val F_COMBO_ORDERED_HOLD_WINDOW_MS =
+        Field(
+            COMBO_ORDERED_HOLD_WINDOW_MS_EXTRA,
+            Kind.Number(
+                GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                GlobalConfig.COMBO_WINDOW_MIN_MS,
+                GlobalConfig.COMBO_WINDOW_MAX_MS,
+            ),
+        )
+
+    val F_COMBO_ORDERED_HOLD_FOLLOWER_MS =
+        Field(
+            COMBO_ORDERED_HOLD_FOLLOWER_MS_EXTRA,
+            Kind.Number(
+                GlobalConfig.DEFAULT_COMBO_PAIR_MS,
+                GlobalConfig.COMBO_WINDOW_MIN_MS,
+                GlobalConfig.COMBO_PAIR_MAX_MS,
+            ),
+        )
+
+    /**
+     * **顺序组合 · 等待档**的固定窗口起点 —— 与 [F_COMBO_FIXED_WINDOW_START] 是**两个变量**。
+     *
+     *  走广播：`ComboDetector` 判有序档取窗口的方式时读它（`Config.comboWindowStartFor`）。
+     */
+    val F_COMBO_ORDERED_FIXED_WINDOW_START =
+        Field(COMBO_ORDERED_FIXED_WINDOW_START_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START))
+
+    /** **顺序组合 · 按住档**的固定窗口起点 —— 与上面那一位同一条规则、**另一个变量**。 */
+    val F_COMBO_ORDERED_HOLD_FIXED_WINDOW_START =
+        Field(COMBO_ORDERED_HOLD_FIXED_WINDOW_START_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START))
 
     /**
      * 页面缩放（百分比）—— 同样只有落盘那一列。上下限就是滑杆两端（[GlobalConfig.PAGE_SCALE_MIN]
@@ -871,6 +927,12 @@ object ConfigFields {
             F_COMBO_STARTER_KEEP_LONG,
             F_COMBO_FIXED_WINDOW_START,
             F_COMBO_HOLD_FIXED_WINDOW_START,
+            F_COMBO_ORDERED_WAIT_WINDOW_MS,
+            F_COMBO_ORDERED_WAIT_PAIR_MS,
+            F_COMBO_ORDERED_HOLD_WINDOW_MS,
+            F_COMBO_ORDERED_HOLD_FOLLOWER_MS,
+            F_COMBO_ORDERED_FIXED_WINDOW_START,
+            F_COMBO_ORDERED_HOLD_FIXED_WINDOW_START,
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
             F_ICON_TINT_SEED,

@@ -150,7 +150,7 @@ internal object ConfigChannel {
      *  还不知道会凑成哪一组，扫窄了就把宽窗口那一档直接漏掉。命中之后由那一档**自己的跨度**
      *  复核（[spanFor]）。
      *
-     *  还没收到过广播时给出厂值（80，与这一位出现之前写死的那个数一致）。
+     *  还没收到过广播时给出厂值（固定等那一档，四格里最宽的那个数）。
      */
     fun scanWindowMs(): Long =
         arrived
@@ -162,15 +162,15 @@ internal object ConfigChannel {
     /**
      * [combo] 这一档的**四格窗口**（等待 / 按住 × 固定窗口起点 开 / 关，见 `Config.comboWindowsFor`）。
      *
-     *  还没收到过广播时按公共出厂值兜底：前三格 80ms，第四格（按住、起点关）150ms。
+     *  还没收到过广播时按公共出厂值兜底：固定等两格 350ms，逐次等两格 250ms。
      */
     fun windowsFor(combo: ComboKey): ComboWindows =
         arrived?.config?.comboWindowsFor(combo)
             ?: ComboWindows(
                 wait = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
-                waitPair = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                waitPair = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
                 hold = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
-                holdFollower = GlobalConfig.DEFAULT_COMBO_HOLD_FOLLOWER_MS,
+                holdFollower = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
             )
 
     /**
@@ -196,7 +196,7 @@ internal object ConfigChannel {
             ?.comboSpanFor(combo)
             ?.takeIf { it > 0 }
             ?.toLong()
-            ?: (GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong() * (combo.keys.size - 1).coerceIn(1, ComboKey.MAX_JUDGE_KEYS - 1))
+            ?: (GlobalConfig.DEFAULT_COMBO_PAIR_MS.toLong() * (combo.keys.size - 1).coerceIn(1, ComboKey.MAX_JUDGE_KEYS - 1))
 
     /**
      * 这一颗键按下之后要**先等多久**（毫秒）：它参与的几组里最长的那个等待窗口。
@@ -403,7 +403,7 @@ private class ComboDerived(
  *
  *  **只算 [Config.liveCombos]**（成员键都还接管着）：凑不齐的组判不出来，让参与它们的键白等一个窗口。
  *  原先只看 `ComboKey.isUsable`，于是「停用其中一颗成员键」之后另一颗照样等满那个窗口 ——
- *  列表上已经显示「已停用」，按键却还是慢半拍（最长 1000ms）。
+ *  列表上已经显示「已停用」，按键却还是慢半拍（跨度 = 窗口 × (n-1)，最长到秒级）。
  *
  *  **窗口那两张只算认窗口的档**（`isWait`）：等窗口这件事是「会不会有第二颗键在一个窗口内落下来」
  *  这个问题的代价，不认窗口的档那个问题就不存在 —— 成员键按下去就该立刻走自己的单键判定

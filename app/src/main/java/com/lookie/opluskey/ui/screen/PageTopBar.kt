@@ -1,10 +1,8 @@
 package com.lookie.opluskey.ui.screen
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,8 +28,6 @@ import com.lookie.opluskey.ui.model.text.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.text.DONATE_LIST_TITLE
 import com.lookie.opluskey.ui.model.text.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.text.KEYS_TITLE
-import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.theme.SUBTITLE_DIM_FACTOR
 import com.lookie.opluskey.ui.row.ChipSentence
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
@@ -40,7 +36,6 @@ import com.lookie.opluskey.ui.screen.apppicker.pickerSubtitle
 import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
 import com.lookie.opluskey.ui.screen.binding.HeaderSettingsButton
 import com.lookie.opluskey.ui.screen.binding.bindingTabBand
-import com.lookie.opluskey.ui.screen.binding.bindingTargetOff
 import com.lookie.opluskey.ui.screen.combo.ComboEditMenu
 import com.lookie.opluskey.ui.screen.combo.KeysHeaderEdit
 import com.lookie.opluskey.ui.screen.combo.holdSentenceTemplate
@@ -75,31 +70,14 @@ internal fun SettingsPage.PageTopBar(
     hazeState: HazeState,
     pagers: PagePagers,
 ) {
-    // 这一页正在编辑的那一份**被停用**了吗 —— 按键绑定 / 组合键 / 场景动作三页看完的是一句
-    //  `bindingTargetOff`，「按键设置」另看这颗键（那一页装的全是它的参数）。
-    //  它只剩一个用处：把标题下面那行副标题压暗一档（判据与页内控件同一句）。
-    val editingDisabled =
-        when (s) {
-            Screen.BINDING, Screen.COMBO_EDIT, Screen.SCENE_BINDING -> bindingTargetOff(s)
-
-            //  「按键设置」看**这一页在编的那一份独立设置是谁**（`SettingsTargetState`）：
-            //  从组合键页顶栏那颗设置键进来时是组合，而 `KeyWatchState` 记的还是上一次编辑的键 ——
-            //  照那颗键判，会把「这一组停用了？」这种与本页无关的状态压到副标题上。
-            Screen.KEY_SETTINGS -> !SettingsTargetState.current.enabledIn(configState.config.value)
-
-            else -> false
-        }
-    //  这行小标题的压暗带过渡：拔掉这一颗键 / 这一组时，页内内容整片在渐变，只有它硬切会像闪了一下。
-    val subtitleTint by animateColorAsState(
-        targetValue =
-            if (editingDisabled) {
-                COUITheme.colorScheme.onSurfaceVariantSummary.let { it.copy(alpha = it.alpha * SUBTITLE_DIM_FACTOR) }
-            } else {
-                COUITheme.colorScheme.onSurfaceVariantSummary
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "HeaderSubtitle",
-    )
+    //  这行小标题的字色 —— **不参与「整页禁用」的压暗**（用户口径）：标题下面那行装的是
+    //  「这一页在编哪一颗键 / 哪一组」，名字本来就该看得清；停用与否由页内那句原因与内容区
+    //  整片变灰表达，够了。原先这里按 `editingDisabled` 把 alpha 乘一半（`SUBTITLE_DIM_FACTOR`），
+    //  结果是「键名被压成看不太清的一行」，已经撤掉。
+    //
+    //  取的就是库那档次要色 —— 与 `PageHeader` 的参数默认值、与 coui `subtitleColor` 的默认值同一档，
+    //  所以下面 `PageHeader(...)` 不必再传 `subtitleColor`。
+    val subtitleColor = COUITheme.colorScheme.onSurfaceVariantSummary
     //  装**键名**的那几页自己排这一行（[keyNames] / [holdComboChips]）：组合要按颗分开念，
     //  拼成一整串就很难看出中间那个 `×` / `→` 属于哪两颗。
     //  其余页仍是纯文字（[pageSubtitle]）：它们装的是句子或应用名。
@@ -107,7 +85,7 @@ internal fun SettingsPage.PageTopBar(
     val subtitleContentSlot: (@Composable () -> Unit)? =
         when (s) {
             Screen.BINDING -> {
-                keyNames(listOf(editingKeyName()), subtitleTint)
+                keyNames(listOf(editingKeyName()), subtitleColor)
             }
 
             Screen.KEY_SETTINGS -> {
@@ -118,9 +96,9 @@ internal fun SettingsPage.PageTopBar(
                     (target as? SettingsTarget.Combo)
                         ?.let { t -> cfg.combos.firstOrNull { it.id == t.id } }
                 if (combo != null && combo.isHold) {
-                    holdComboChips(cfg, combo, subtitleTint)
+                    holdComboChips(cfg, combo, subtitleColor)
                 } else {
-                    keyNames(settingsTargetNames(cfg, target), subtitleTint)
+                    keyNames(settingsTargetNames(cfg, target), subtitleColor)
                 }
             }
 
@@ -131,9 +109,9 @@ internal fun SettingsPage.PageTopBar(
                     branchDraft.comboId
                         ?.let { id -> cfg.combos.firstOrNull { it.id == id } }
                 if (combo != null && combo.isHold) {
-                    holdComboChips(cfg, combo, subtitleTint)
+                    holdComboChips(cfg, combo, subtitleColor)
                 } else {
-                    keyNames(branchOwnerNames(cfg, branchDraft.comboId, editingKeyName()), subtitleTint)
+                    keyNames(branchOwnerNames(cfg, branchDraft.comboId, editingKeyName()), subtitleColor)
                 }
             }
 
@@ -152,11 +130,11 @@ internal fun SettingsPage.PageTopBar(
                     }
 
                     combo.isHold -> {
-                        holdComboChips(cfg, combo, subtitleTint)
+                        holdComboChips(cfg, combo, subtitleColor)
                     }
 
                     else -> {
-                        keyNames(comboKeyNames(cfg, combo), subtitleTint)
+                        keyNames(comboKeyNames(cfg, combo), subtitleColor)
                     }
                 }
             }
@@ -170,13 +148,8 @@ internal fun SettingsPage.PageTopBar(
         // 大标题**下面**那行小标题（库的 `subtitle` 槽位，折叠后保留），内容见 [pageSubtitle]。
         subtitle = if (subtitleContentSlot == null) pageSubtitle(s) else "",
         subtitleContent = subtitleContentSlot,
-        //  这一颗键 / 这一档组合停用 ⇒ 内容区整片压暗了，这行小标题也跟着**压低一档**：它是这一页上唯一还亮着的字，
-        //  满亮度留着会读成「这一区还是活的」。
-        //
-        //  **压暗是「乘」不是「盖」**：`onSurfaceVariantSummary` 本身就是 `0x66000000`（alpha 0.4，
-        //  见 coui 的 `Colors.kt`）。第一版写成 `copy(alpha = 0.5f)` —— 那是把它从 0.4 **抬**到 0.5，
-        //  比原来还清楚，看起来当然「没生效」。所以按现有 alpha 乘一个系数（目标值在 [subtitleTint] 里算）。
-        subtitleColor = subtitleTint,
+        //  **不传 `subtitleColor`**：`PageHeader` 的默认值就是库那档次要色；
+        //  「整页禁用时压暗」已经撤掉（口径见上面 `subtitleColor` 那一段）。
         // 右上角那几颗动作键按页分派：**首页 / 「按键绑定」/「选择应用」三页有**
         // （首页是打开默认界面 / 重启服务 / 导出日志，「按键绑定」是「快捷键」「自定义按键」两组，
         // 「选择应用」是「以小窗口打开」那颗开关 + ⋮「显示系统应用 / 显示失效应用」）。
@@ -651,7 +624,7 @@ internal fun settingsTargetNames(
  *  三处顶栏共用这一支：组合编辑页、「按键设置」里那一档组合的独立设置 —— 它们说的是同一档组合，
  *  不该两种念法。
  *
- * @param color 这一行的字色（`subtitleTint`：停用那一档会压暗）
+ * @param color 这一行的字色 —— 恒定是库那档次要色（`subtitleColor`，停用与否都不压暗）
  */
 private fun holdComboChips(
     cfg: Config,

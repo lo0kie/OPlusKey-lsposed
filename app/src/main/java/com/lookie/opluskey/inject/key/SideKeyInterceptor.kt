@@ -160,10 +160,12 @@ internal class SideKeyInterceptor(
                             enabled = { c -> ConfigChannel.config.comboStarterKeepLongFor(c) },
                             fire = onStarterLong,
                         ),
-                    //  按住档成员的「固定窗口起点」—— 判据在 `Config.comboHoldFixedWindowStartFor` 一处。
+                    //  按住档成员的「固定窗口起点」—— 判据在 `Config.comboHoldWindowStartFor` 一处。
                     //  **这一位与等待组合那颗开关是两个变量**：两张卡各管一种按法，共用一个的话
-                    //  在「按住组合」卡上拨一下，等待组合那根滑杆也会跟着换一格。
-                    holdFixedWindowStartFor = { c -> ConfigChannel.config.comboHoldFixedWindowStartFor(c) },
+                    //  在「按住组合」卡上拨一下，等待组合那根滑杆也会跟着换一格。它还按
+                    //  「这一档是不是按顺序触发」挑一组（顺序组合自己那两颗开关），所以这里取
+                    //  的是那支合并后的判据、不是 `comboHoldFixedWindowStartFor`。
+                    holdFixedWindowStartFor = { c -> ConfigChannel.config.comboHoldWindowStartFor(c) },
                     //  这一档的四格窗口（等待 / 按住 × 固定窗口起点 开 / 关）—— 取值只在
                     //  `Config.comboWindowsFor` 一处，这里只把那一份递进去
                     windowsFor = { c -> ConfigChannel.windowsFor(c) },
