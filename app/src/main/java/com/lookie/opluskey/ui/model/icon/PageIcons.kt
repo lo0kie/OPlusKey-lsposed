@@ -21,6 +21,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AppsOff
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsDoubleNeSw
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsExchange
+import io.github.lyxnx.compose.ui.tablericons.outline.Backspace
 import io.github.lyxnx.compose.ui.tablericons.outline.Bell
 import io.github.lyxnx.compose.ui.tablericons.outline.Bluetooth
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandAlipay
@@ -83,8 +84,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Hash
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
-import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
-import io.github.lyxnx.compose.ui.tablericons.outline.KeyboardOff
 import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.ListDetails
@@ -114,10 +113,12 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Plane
 import io.github.lyxnx.compose.ui.tablericons.outline.Plug
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
-import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer2
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerCancel
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerCheck
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerPin
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerShare
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
@@ -138,7 +139,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ServerOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
+import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsPlus
+import io.github.lyxnx.compose.ui.tablericons.outline.SettingsQuestion
 import io.github.lyxnx.compose.ui.tablericons.outline.SortAscendingShapes
 import io.github.lyxnx.compose.ui.tablericons.outline.SortDescendingShapes
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
@@ -296,6 +299,14 @@ internal object PageIcons {
 
     /** 浮层菜单「重置配置」—— `eraser`（橡皮擦）。 */
     val MenuReset: ImageVector get() = TablerIcons.Outline.Eraser
+
+    /**
+     * 「自定义命令」页顶栏那颗「重置」—— `backspace`（退格键）。
+     *
+     *  与 [MenuReset]（橡皮擦）分开：这一颗清的是**正在编辑的草稿** —— 「把刚打进去的退掉」
+     *  正是退格的意思；擦掉一整份配置才用橡皮。
+     */
+    val CommandReset: ImageVector get() = TablerIcons.Outline.Backspace
 
     /** 浮层菜单「导出日志」—— `logs`（一叠日志行）。 */
     val MenuExport: ImageVector get() = TablerIcons.Outline.Logs
@@ -1164,14 +1175,25 @@ internal object PageIcons {
     /** 同 [LinkService]，这一段**不 ok** 时那一颗 —— `server-off`（那一侧没在跑）。 */
     val LinkServiceOff: ImageVector get() = TablerIcons.Outline.ServerOff
 
-    /** 「运行状态」明细：**按键响应** —— `keyboard`（按键那一侧的接管点）。 */
-    val LinkKeyResponse: ImageVector get() = TablerIcons.Outline.Keyboard
+    /** 「运行状态」明细：**按键响应** —— `pointer-pin`（按键那一侧的接管点钉住了）。 */
+    val LinkKeyResponse: ImageVector get() = TablerIcons.Outline.PointerPin
 
-    /** 同 [LinkKeyResponse]，这一段**不 ok** 时那一颗 —— `keyboard-off`（接管点没挂上）。 */
-    val LinkKeyResponseOff: ImageVector get() = TablerIcons.Outline.KeyboardOff
+    /** 同 [LinkKeyResponse]，这一段**不 ok** 时那一颗 —— `pointer-cancel`（接管点没挂上）。 */
+    val LinkKeyResponseOff: ImageVector get() = TablerIcons.Outline.PointerCancel
 
-    /** 「运行状态」明细：**设置生效** —— `settings-cancel`（设置没送到 / 不是这一份）。 */
-    val LinkConfig: ImageVector get() = TablerIcons.Outline.SettingsCancel
+    /** 「运行状态」明细：**设置生效** —— `settings-check`（设置送到了、就是这一份）。 */
+    val LinkConfig: ImageVector get() = TablerIcons.Outline.SettingsCheck
+
+    /** 同 [LinkConfig]，这一段**不 ok** 时那一颗 —— `settings-cancel`（设置没送到 / 不是这一份）。 */
+    val LinkConfigOff: ImageVector get() = TablerIcons.Outline.SettingsCancel
+
+    /**
+     * 同 [LinkConfig]，**换包没重启、判断不了**时那一颗 —— `settings-question`。
+     *
+     *  那一档两边的结构对不上，结论还没定：用 `settings-cancel` 会读成「设置坏了」，
+     *  而用户真正要做的事只是重启（见 `LinkCheck` 的 `staleOnly`）。
+     */
+    val LinkConfigUnknown: ImageVector get() = TablerIcons.Outline.SettingsQuestion
 
     /** 「运行状态」明细：**使用验证** —— `test-pipe`（这一条链路真被走过一遍）。 */
     val LinkUsage: ImageVector get() = TablerIcons.Outline.TestPipe
@@ -1180,16 +1202,16 @@ internal object PageIcons {
     val LinkUsageMissing: ImageVector get() = TablerIcons.Outline.TestPipe
 
     /**
-     * 「运行状态」明细：**按键接管** —— `pointer`（按键到底落没落到模块手上）。
+     * 「运行状态」明细：**按键接管** —— `pointer-check`（按键到底落没落到模块手上）。
      *
      *  这一段回答的是前面几段答不了的那个问题：接管点挂上了（`hooks > 0`）、配置也送到了，
      *  但只要总闸关着（或每颗键都停用），仍然**一颗键都不会被接住** —— 表现就是
      *  「自检全绿、按下去却是系统的功能」。真机上撞到过一次。
      */
-    val LinkTakeOver: ImageVector get() = TablerIcons.Outline.Pointer
+    val LinkTakeOver: ImageVector get() = TablerIcons.Outline.PointerCheck
 
-    /** 同 [LinkTakeOver]，这一段**不 ok** 时那一颗 —— `pointer-cancel`（没有键落到手上）。 */
-    val LinkTakeOverOff: ImageVector get() = TablerIcons.Outline.PointerCancel
+    /** 同 [LinkTakeOver]，这一段**不 ok** 时那一颗 —— `pointer-minus`（没有键落到手上）。 */
+    val LinkTakeOverOff: ImageVector get() = TablerIcons.Outline.PointerMinus
 }
 
 // 「常用命令」清单项的行首字形 —— 绑定页那一段与「常用命令」页共用这一份。

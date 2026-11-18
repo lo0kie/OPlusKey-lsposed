@@ -576,12 +576,9 @@ private fun sliderTextColors(enabled: Boolean): SliderTextColors {
         label = "SliderSummary",
     )
     val value by animateColorAsState(
-        targetValue =
-            if (enabled) {
-                COUITheme.colorScheme.onSurfaceSecondary
-            } else {
-                COUITheme.colorScheme.disabledOnSecondaryVariant
-            },
+        //  与卡片行尾那句**同一个取色**（`rowEndTextTint`）：那一档是「文字」，比行尾图标亮一档，
+        //  两处（`CardRow.RowEndSummary` 与这里）共用同一份。原先这里是 `onSurfaceSecondary`。
+        targetValue = rowEndTextTint(enabled = enabled),
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "SliderValue",
     )

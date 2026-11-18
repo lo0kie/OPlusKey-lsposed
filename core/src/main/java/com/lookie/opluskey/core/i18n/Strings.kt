@@ -2156,4 +2156,16 @@ object Strings {
     const val MORE_APPEARANCE_MORE = "more.appearance_more"
 
     const val TOAST_LOG_COLLECTING = "toast.log_collecting"
+
+    const val MORE_UI_VIBRATE_DESC = "more.ui_vibrate_desc"
+
+    const val GESTURE_RELEASE = "gesture.release"
+
+    const val GESTURE_CLICK3 = "gesture.click3"
+
+    const val GESTURE_CLICK4 = "gesture.click4"
+
+    const val GESTURE_CLICK_THEN_LONG = "gesture.click_then_long"
+
+    const val GESTURE_CLICK_THEN_LONG_RELEASE = "gesture.click_then_long_release"
 }

@@ -4,15 +4,19 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -164,6 +168,13 @@ private fun TabBandSurface(
     onSelect: (Int) -> Unit,
 ) {
     val labels = look.labels
+    //  标签行自己记着滚到哪儿：那一排在**最小宽度下也放不下**时整条可横向滚
+    //  （判据在库的 `computeSegmentWidths`，见 `patches/coui/0018-…`）。
+    //
+    //  这里**不再替库做第二轮滚动**。先收内边距（每格两侧 12dp → 下限 6dp）之后，常见那几档
+    //  已经不进滚动分支了；而这层再补一次 `scrollToItem` 只会跟库自己那次滚动抢位置 ——
+    //  换档时带子先被瞬移一下、再被库的动画拉回去，读起来就是「抽动」。
+    val listState = rememberLazyListState()
     val disabledAlpha by animateFloatAsState(
         targetValue = if (look.enabled) 1f else DISABLED_ALPHA,
         label = "PageTabBandDisabledAlpha",
@@ -173,28 +184,53 @@ private fun TabBandSurface(
             .fillMaxWidth()
             .onSizeChanged { look.band.report(it.height) },
     ) {
-        TabRowWithContour(
-            tabs = labels,
-            selectedTabIndex = selectedIndex,
-            selectedTabPosition = selectedPosition,
-            onTabSelected = onSelect,
-            colors = tabBandColors(),
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    // 左右取**卡片那一档**（[PAGE_MARGIN]）：带子里的控件、下面那些卡片、顶栏
-                    //  两侧的按钮与大标题现在都在同一条竖线上（顶栏那三个 padding 也是这一档，
-                    //  见 `PageHeader`）。
-                    // 纵向：**只带下边一档**（[PAGE_TOP_PADDING]）
-                    // —— 上边那 8dp 去掉，带子直接贴着折叠栏下沿；
-                    // 下边这一档就是「带子与内容之间」的间距，与没有带子的页（首页 / 更多）
-                    // 由内容 Spacer 加的是**同一档**，各页一致（见 [PAGE_TOP_PADDING]）。
-                    .padding(
-                        start = PAGE_MARGIN,
-                        end = PAGE_MARGIN,
-                        bottom = PAGE_TOP_PADDING,
-                    ).alpha(disabledAlpha),
-        )
+        //  **左右那一档属于视口，不属于滚动内容**：它垫在滚动区**外面**（`padding`），
+        //  再把滚动区沿这条内缩后的边界裁一刀（`clip`）—— 不垫这一层的话，滚到中间时
+        //  标签会一直画到屏幕边上，那一档留白只在最左 / 最右才看得见。
+        //
+        //  带子**里面**还有第二道留白（`contourPadding`，4dp）：滑块与标签都收在那一道
+        //  之内，滑块因此不会画满胶囊两端的圆头（见 `patches/coui/0019-…`）。
+        //
+        //  左右取**卡片那一档**（[PAGE_MARGIN]）：带子里的控件、下面那些卡片、顶栏
+        //  两侧的按钮与大标题现在都在同一条竖线上（顶栏那三个 padding 也是这一档，
+        //  见 `PageHeader`）。
+        //  纵向：**只带下边一档**（[PAGE_TOP_PADDING]）
+        //  —— 上边那 8dp 去掉，带子直接贴着折叠栏下沿；
+        //  下边这一档就是「带子与内容之间」的间距，与没有带子的页（首页 / 更多）
+        //  由内容 Spacer 加的是**同一档**，各页一致（见 [PAGE_TOP_PADDING]）。
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = PAGE_MARGIN,
+                    end = PAGE_MARGIN,
+                    bottom = PAGE_TOP_PADDING,
+                )
+                //  裁在 `padding` **之内**：这两条链顺序不能换 —— 先垫留白再裁，边界才是
+                //  内缩后的那一块（换过来就变成「先裁整屏、再挪位置」，留白照样被内容盖住）。
+                //
+                //  形状是**胶囊**而不是矩形：底下那条带子本身就是两头整圆的胶囊，直边裁在
+                //  圆头旁边会漏出两个角（滚到边上的标签从角上透出来，看着像跑到胶囊外面）。
+                .clip(RoundedCornerShape(percent = 50)),
+        ) {
+            TabRowWithContour(
+                tabs = labels,
+                selectedTabIndex = selectedIndex,
+                selectedTabPosition = selectedPosition,
+                onTabSelected = onSelect,
+                colors = tabBandColors(),
+                listState = listState,
+                //  **每格的下限从 52dp 收到 40dp**：库的 52dp 是按「三档短标签」定的，六档时它把
+                //  五档两字标签统统顶到 182px（比文字 + 内边距还宽），整条于是 1225px > 视口
+                //  1160px，只能进滚动分支、右端标签被切。40dp 仍高于「两字 + 两侧内边距」，
+                //  收下来之后整条 1155px 装得下，带子保持静止排布。
+                minWidth = 40.dp,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .alpha(disabledAlpha),
+            )
+        }
         if (!look.enabled) {
             // 透明吃事件层：不给任何视觉（灰是上面那层 alpha 做的），只负责拦住输入
             Box(

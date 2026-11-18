@@ -236,7 +236,9 @@ private fun statusRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                RowEndSummary(detail, icon = null)
+                //  值那一格让位给折叠箭头：这一行是「当前值 + 箭头」两样，限宽必须由外层给
+                //  `weight`（`RowEndSummary` 里面那层只管它与**自己**那颗图标的先后）。
+                RowEndSummary(detail, icon = null, modifier = Modifier.weight(1f, fill = false))
                 if (expanded != null) AccordionChevron(expanded)
             }
         },
@@ -463,6 +465,11 @@ internal fun SettingsPage.AppearanceCard(
                 //  与这一页其它几行一样**不吃总闸**：主开关关着时页面照样能点，照样该有手感。
                 CardRow.Switch(
                     title = I18n.get(Strings.MORE_UI_VIBRATE_TITLE),
+                    //  **两态同一句**：静音不振是系统那条礼节（`PageHaptics.allowed` 看
+                    //  `RINGER_MODE_SILENT`），与这一颗开关的状态无关 —— 开着也可能不振，
+                    //  所以这句是「前提说明」而不是「开了会怎样」，开关两态都该摆着。
+                    summaryOn = I18n.get(Strings.MORE_UI_VIBRATE_DESC),
+                    summaryOff = I18n.get(Strings.MORE_UI_VIBRATE_DESC),
                     icon = PageIcons.Vibrate,
                     checked = configState.config.value.global.uiVibrate,
                     visible = more.expanded,

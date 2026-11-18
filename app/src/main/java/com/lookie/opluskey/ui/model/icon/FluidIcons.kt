@@ -15,11 +15,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.AppsOff
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowBackUp
-import io.github.lyxnx.compose.ui.tablericons.outline.ArrowDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
-import io.github.lyxnx.compose.ui.tablericons.outline.ArrowUp
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsDoubleNeSw
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsExchange
+import io.github.lyxnx.compose.ui.tablericons.outline.Backspace
 import io.github.lyxnx.compose.ui.tablericons.outline.Ban
 import io.github.lyxnx.compose.ui.tablericons.outline.BatteryEco
 import io.github.lyxnx.compose.ui.tablericons.outline.Bell
@@ -62,10 +61,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.Clock
 import io.github.lyxnx.compose.ui.tablericons.outline.Clock24
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockBolt
-import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPause
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPlay
-import io.github.lyxnx.compose.ui.tablericons.outline.ClockRecord
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockStop
 import io.github.lyxnx.compose.ui.tablericons.outline.CloudSearch
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
@@ -76,11 +73,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Contrast
 import io.github.lyxnx.compose.ui.tablericons.outline.CornerDownLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.Cpu
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceAirpods
-import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
-import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobile
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileBolt
-import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobilePause
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileQuestion
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
@@ -91,38 +85,30 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Edit
 import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
 import io.github.lyxnx.compose.ui.tablericons.outline.ExternalLink
 import io.github.lyxnx.compose.ui.tablericons.outline.Eye
-import io.github.lyxnx.compose.ui.tablericons.outline.EyeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeCode
-import io.github.lyxnx.compose.ui.tablericons.outline.EyeCog
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeOff
 import io.github.lyxnx.compose.ui.tablericons.outline.FileDownload
 import io.github.lyxnx.compose.ui.tablericons.outline.FileMinus
-import io.github.lyxnx.compose.ui.tablericons.outline.FilePencil
 import io.github.lyxnx.compose.ui.tablericons.outline.FilePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.FileUpload
 import io.github.lyxnx.compose.ui.tablericons.outline.FileX
 import io.github.lyxnx.compose.ui.tablericons.outline.Filter2X
 import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
 import io.github.lyxnx.compose.ui.tablericons.outline.Flag
-import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandClick
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFingerLeft
-import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
 import io.github.lyxnx.compose.ui.tablericons.outline.HandMove
 import io.github.lyxnx.compose.ui.tablericons.outline.HandRingFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandThreeFingers
 import io.github.lyxnx.compose.ui.tablericons.outline.HandTwoFingers
 import io.github.lyxnx.compose.ui.tablericons.outline.Hash
-import io.github.lyxnx.compose.ui.tablericons.outline.History
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.HourglassHigh
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
-import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
-import io.github.lyxnx.compose.ui.tablericons.outline.KeyboardOff
 import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.Language
 import io.github.lyxnx.compose.ui.tablericons.outline.LanguageOff
@@ -150,13 +136,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Notification
 import io.github.lyxnx.compose.ui.tablericons.outline.Number
 import io.github.lyxnx.compose.ui.tablericons.outline.Opacity
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
-import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilAi
-import io.github.lyxnx.compose.ui.tablericons.outline.PencilCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Photo
 import io.github.lyxnx.compose.ui.tablericons.outline.PhotoOff
-import io.github.lyxnx.compose.ui.tablericons.outline.PhotoVideo
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.Pin
 import io.github.lyxnx.compose.ui.tablericons.outline.Pinned
@@ -170,14 +153,15 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PlayerTrackPrev
 import io.github.lyxnx.compose.ui.tablericons.outline.Plug
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
-import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer2
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerCancel
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerCheck
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerPin
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerShare
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Power
-import io.github.lyxnx.compose.ui.tablericons.outline.Refresh
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
 import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber2
@@ -197,8 +181,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ServerOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
+import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCog
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsPlus
+import io.github.lyxnx.compose.ui.tablericons.outline.SettingsQuestion
 import io.github.lyxnx.compose.ui.tablericons.outline.SortAscendingShapes
 import io.github.lyxnx.compose.ui.tablericons.outline.SortDescendingShapes
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
@@ -216,14 +202,12 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Table
 import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
 import io.github.lyxnx.compose.ui.tablericons.outline.TestPipe
 import io.github.lyxnx.compose.ui.tablericons.outline.TextScanAi
-import io.github.lyxnx.compose.ui.tablericons.outline.TextSize
 import io.github.lyxnx.compose.ui.tablericons.outline.ThinkingLow
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Tooltip
 import io.github.lyxnx.compose.ui.tablericons.outline.Trash
 import io.github.lyxnx.compose.ui.tablericons.outline.UserScreen
-import io.github.lyxnx.compose.ui.tablericons.outline.UsersGroup
 import io.github.lyxnx.compose.ui.tablericons.outline.Variable
 import io.github.lyxnx.compose.ui.tablericons.outline.Versions
 import io.github.lyxnx.compose.ui.tablericons.outline.Video
@@ -231,7 +215,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
 import io.github.lyxnx.compose.ui.tablericons.outline.Window
 import io.github.lyxnx.compose.ui.tablericons.outline.WindowMinimize
 import io.github.lyxnx.compose.ui.tablericons.outline.World
-import io.github.lyxnx.compose.ui.tablericons.outline.X
 import io.github.lyxnx.compose.ui.tablericons.outline.ZoomIn
 
 /**
@@ -271,11 +254,10 @@ internal object FluidIcons {
             "apps" to TablerIcons.Outline.Apps,
             "appsoff" to TablerIcons.Outline.AppsOff,
             "arrowbackup" to TablerIcons.Outline.ArrowBackUp,
-            "arrowdown" to TablerIcons.Outline.ArrowDown,
             "arrowleft" to TablerIcons.Outline.ArrowLeft,
-            "arrowup" to TablerIcons.Outline.ArrowUp,
             "arrowsdoublenesw" to TablerIcons.Outline.ArrowsDoubleNeSw,
             "arrowsexchange" to TablerIcons.Outline.ArrowsExchange,
+            "backspace" to TablerIcons.Outline.Backspace,
             "ban" to TablerIcons.Outline.Ban,
             "batteryeco" to TablerIcons.Outline.BatteryEco,
             "bell" to TablerIcons.Outline.Bell,
@@ -319,10 +301,8 @@ internal object FluidIcons {
             "clock" to TablerIcons.Outline.Clock,
             "clock24" to TablerIcons.Outline.Clock24,
             "clockbolt" to TablerIcons.Outline.ClockBolt,
-            "clockhour4" to TablerIcons.Outline.ClockHour4,
             "clockpause" to TablerIcons.Outline.ClockPause,
             "clockplay" to TablerIcons.Outline.ClockPlay,
-            "clockrecord" to TablerIcons.Outline.ClockRecord,
             "clockstop" to TablerIcons.Outline.ClockStop,
             "cloudsearch" to TablerIcons.Outline.CloudSearch,
             "codeplus" to TablerIcons.Outline.CodePlus,
@@ -333,11 +313,8 @@ internal object FluidIcons {
             "cornerdownleft" to TablerIcons.Outline.CornerDownLeft,
             "cpu" to TablerIcons.Outline.Cpu,
             "deviceairpods" to TablerIcons.Outline.DeviceAirpods,
-            "deviceipadcancel" to TablerIcons.Outline.DeviceIpadCancel,
-            "deviceipadcheck" to TablerIcons.Outline.DeviceIpadCheck,
             "devicemobile" to TablerIcons.Outline.DeviceMobile,
             "devicemobilebolt" to TablerIcons.Outline.DeviceMobileBolt,
-            "devicemobilepause" to TablerIcons.Outline.DeviceMobilePause,
             "devicemobilequestion" to TablerIcons.Outline.DeviceMobileQuestion,
             "devicemobilevibration" to TablerIcons.Outline.DeviceMobileVibration,
             "dots" to TablerIcons.Outline.Dots,
@@ -348,38 +325,30 @@ internal object FluidIcons {
             "eraser" to TablerIcons.Outline.Eraser,
             "externallink" to TablerIcons.Outline.ExternalLink,
             "eye" to TablerIcons.Outline.Eye,
-            "eyecancel" to TablerIcons.Outline.EyeCancel,
             "eyecode" to TablerIcons.Outline.EyeCode,
-            "eyecog" to TablerIcons.Outline.EyeCog,
             "eyeoff" to TablerIcons.Outline.EyeOff,
             "filedownload" to TablerIcons.Outline.FileDownload,
             "fileminus" to TablerIcons.Outline.FileMinus,
-            "filepencil" to TablerIcons.Outline.FilePencil,
             "fileplus" to TablerIcons.Outline.FilePlus,
             "fileupload" to TablerIcons.Outline.FileUpload,
             "filex" to TablerIcons.Outline.FileX,
             "filter2x" to TablerIcons.Outline.Filter2X,
             "fingerprint" to TablerIcons.Outline.Fingerprint,
             "flag" to TablerIcons.Outline.Flag,
-            "flask2" to TablerIcons.Outline.Flask2,
             "griddots" to TablerIcons.Outline.GridDots,
             "handclick" to TablerIcons.Outline.HandClick,
             "handfinger" to TablerIcons.Outline.HandFinger,
             "handfingerleft" to TablerIcons.Outline.HandFingerLeft,
-            "handgrab" to TablerIcons.Outline.HandGrab,
             "handmove" to TablerIcons.Outline.HandMove,
             "handringfinger" to TablerIcons.Outline.HandRingFinger,
             "handthreefingers" to TablerIcons.Outline.HandThreeFingers,
             "handtwofingers" to TablerIcons.Outline.HandTwoFingers,
             "hash" to TablerIcons.Outline.Hash,
-            "history" to TablerIcons.Outline.History,
             "home" to TablerIcons.Outline.Home,
             "homecancel" to TablerIcons.Outline.HomeCancel,
             "homecheck" to TablerIcons.Outline.HomeCheck,
             "hourglasshigh" to TablerIcons.Outline.HourglassHigh,
             "infinity2" to TablerIcons.Outline.Infinity2,
-            "keyboard" to TablerIcons.Outline.Keyboard,
-            "keyboardoff" to TablerIcons.Outline.KeyboardOff,
             "labelimportant" to TablerIcons.Outline.LabelImportant,
             "language" to TablerIcons.Outline.Language,
             "languageoff" to TablerIcons.Outline.LanguageOff,
@@ -407,13 +376,10 @@ internal object FluidIcons {
             "number" to TablerIcons.Outline.Number,
             "opacity" to TablerIcons.Outline.Opacity,
             "packages" to TablerIcons.Outline.Packages,
-            "palette" to TablerIcons.Outline.Palette,
             "pencil" to TablerIcons.Outline.Pencil,
             "pencilai" to TablerIcons.Outline.PencilAi,
-            "pencilcog" to TablerIcons.Outline.PencilCog,
             "photo" to TablerIcons.Outline.Photo,
             "photooff" to TablerIcons.Outline.PhotoOff,
-            "photovideo" to TablerIcons.Outline.PhotoVideo,
             "pictureinpictureon" to TablerIcons.Outline.PictureInPictureOn,
             "pin" to TablerIcons.Outline.Pin,
             "pinned" to TablerIcons.Outline.Pinned,
@@ -427,14 +393,15 @@ internal object FluidIcons {
             "plug" to TablerIcons.Outline.Plug,
             "plugconnected" to TablerIcons.Outline.PlugConnected,
             "plus" to TablerIcons.Outline.Plus,
-            "pointer" to TablerIcons.Outline.Pointer,
             "pointercancel" to TablerIcons.Outline.PointerCancel,
+            "pointercheck" to TablerIcons.Outline.PointerCheck,
+            "pointerminus" to TablerIcons.Outline.PointerMinus,
+            "pointerpin" to TablerIcons.Outline.PointerPin,
             "pointer2" to TablerIcons.Outline.Pointer2,
             "pointerpause" to TablerIcons.Outline.PointerPause,
             "pointershare" to TablerIcons.Outline.PointerShare,
             "pointerup" to TablerIcons.Outline.PointerUp,
             "power" to TablerIcons.Outline.Power,
-            "refresh" to TablerIcons.Outline.Refresh,
             "reload" to TablerIcons.Outline.Reload,
             "rosettenumber1" to TablerIcons.Outline.RosetteNumber1,
             "rosettenumber2" to TablerIcons.Outline.RosetteNumber2,
@@ -454,8 +421,10 @@ internal object FluidIcons {
             "settings" to TablerIcons.Outline.Settings,
             "settings2" to TablerIcons.Outline.Settings2,
             "settingscancel" to TablerIcons.Outline.SettingsCancel,
+            "settingscheck" to TablerIcons.Outline.SettingsCheck,
             "settingscog" to TablerIcons.Outline.SettingsCog,
             "settingsplus" to TablerIcons.Outline.SettingsPlus,
+            "settingsquestion" to TablerIcons.Outline.SettingsQuestion,
             "shizuku" to DrawnIcons.Shizuku,
             "sortascendingshapes" to TablerIcons.Outline.SortAscendingShapes,
             "sortdescendingshapes" to TablerIcons.Outline.SortDescendingShapes,
@@ -474,14 +443,12 @@ internal object FluidIcons {
             "terminal2" to TablerIcons.Outline.Terminal2,
             "testpipe" to TablerIcons.Outline.TestPipe,
             "textscanai" to TablerIcons.Outline.TextScanAi,
-            "textsize" to TablerIcons.Outline.TextSize,
             "thinkinglow" to TablerIcons.Outline.ThinkingLow,
             "toggleleft" to TablerIcons.Outline.ToggleLeft,
             "toggleright" to TablerIcons.Outline.ToggleRight,
             "tooltip" to TablerIcons.Outline.Tooltip,
             "trash" to TablerIcons.Outline.Trash,
             "userscreen" to TablerIcons.Outline.UserScreen,
-            "usersgroup" to TablerIcons.Outline.UsersGroup,
             "variable" to TablerIcons.Outline.Variable,
             "versions" to TablerIcons.Outline.Versions,
             "video" to TablerIcons.Outline.Video,
@@ -489,7 +456,6 @@ internal object FluidIcons {
             "window" to TablerIcons.Outline.Window,
             "windowminimize" to TablerIcons.Outline.WindowMinimize,
             "world" to TablerIcons.Outline.World,
-            "x" to TablerIcons.Outline.X,
             "zoomin" to TablerIcons.Outline.ZoomIn,
             // ── 手绘那批（[DrawnIcons]）—— Tabler 里没有的形状，仍是 24 视口、同一支笔 ──
             //  顺序照 `DrawnIcons.kt` 的书写顺序，不掺进上面那段字母序里（见类注释）。

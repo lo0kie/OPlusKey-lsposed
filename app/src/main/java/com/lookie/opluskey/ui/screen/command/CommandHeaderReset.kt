@@ -113,7 +113,7 @@ internal fun SettingsPage.CommandHeaderReset(
             enabled = canReset,
         ) {
             Icon(
-                PageIcons.MenuReset,
+                PageIcons.CommandReset,
                 contentDescription = label,
                 tint = resetTint,
             )

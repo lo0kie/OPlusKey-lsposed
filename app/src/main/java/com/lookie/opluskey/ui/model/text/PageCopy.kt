@@ -420,8 +420,11 @@ internal fun gestureLabel(gesture: Gesture): String = gestureLabel(gesture.id, g
  * 一档**触发条件**在界面上叫什么 —— 界面这一层按 [GestureTrigger] 排页之后，
  *  所有露手势名的地方（分段带、日志、场景块的动作行）都走这一支。
  *
- *  三档与原三格逐字相同（同名 id 走字典）；第 3 击起那两档（`click3` / `click4`）字典里没有，
- *  于是原样用 [GestureTrigger.label] 给的「三击 / 四击」—— 正是上面那段说的「自定义手势接口」。
+ *  内置的几档逐字取自字典（`single` / `double` / `long` / `release` / `click3` / `click4` /
+ *  `click_then_long` / `click_then_long_release`）—— 早先只收了前三档，于是英文界面下分段带里
+ *  「三击 / 四击 / 单击后长按」掉回中文常量（[GestureTrigger.label] 那一支是给日志用的中文）。
+ *  字典里没有的那些 id 才是「自定义手势接口」：第 5 击起（手改配置才到）与用户自己起名的档，
+ *  原样用传进来的名字，界面侧一行都不用改。
  */
 internal fun gestureLabel(trigger: GestureTrigger): String = gestureLabel(trigger.id, trigger.label)
 
@@ -437,7 +440,17 @@ internal fun gestureLabel(
 
         Gesture.LONG.id -> I18n.get(Strings.GESTURE_LONG)
 
-        //  认不得的 id：那是（将来的）自定义手势，名字是用户起的，不翻译
+        GestureTrigger.Release.id -> I18n.get(Strings.GESTURE_RELEASE)
+
+        GestureTrigger.Click(3).id -> I18n.get(Strings.GESTURE_CLICK3)
+
+        GestureTrigger.Click(4).id -> I18n.get(Strings.GESTURE_CLICK4)
+
+        GestureTrigger.ClickThenLong.id -> I18n.get(Strings.GESTURE_CLICK_THEN_LONG)
+
+        GestureTrigger.ClickThenLongRelease.id -> I18n.get(Strings.GESTURE_CLICK_THEN_LONG_RELEASE)
+
+        //  认不得的 id：那是（将来的）自定义手势与手改配置的第 5 击起，名字不翻译
         else -> fallback
     }
 

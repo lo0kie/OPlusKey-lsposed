@@ -90,7 +90,6 @@ internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
                     //  **不再放行尾**：那一格平时是箭头、编辑态是勾选框，状态挤在那里会把箭头
                     //  顶出可视区（用户口径「角标把行尾箭头挤掉了」）。
                     summary = sideKeyState,
-                    summaryMaxLines = 1,
                     //  行尾只剩编辑态的勾选框；平时给 `null`，回到 `arrow` 那条默认路径。
                     trailing =
                         when {
@@ -179,7 +178,6 @@ private fun SettingsPage.customKeyRow(
         title = key.label,
         //  状态走**副标题**（与内置侧键同一处口径）；行尾那一格只留编辑态的勾选框。
         summary = state,
-        summaryMaxLines = 1,
         // 停用换禁用图标（第几颗就画哪个数字，由调用点算好传进来）
         icon = rowIcon,
         enabled = pageEnabled,

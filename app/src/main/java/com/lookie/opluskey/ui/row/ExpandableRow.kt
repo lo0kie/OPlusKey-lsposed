@@ -156,7 +156,7 @@ internal fun SettingsPage.ExpandableRow(
                                 .rotate(rotation)
                                 .size(ROW_END_ICON_SIZE),
                         // 与全页其他「行尾图标」同一档色（不是强调色）：它只是个指示，不是动作项
-                        tint = COUITheme.colorScheme.onSurfaceVariantActions,
+                        tint = rowEndIconTint(enabled = true),
                     )
                 }
             } else {

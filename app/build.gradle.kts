@@ -107,8 +107,8 @@ android {
         // 没走模块仓库；`0.2.0` 没发过）。`versionCode` 仍取 3 而不是 1：1 / 2 都被历史包用掉了
         // （手动发的 0.1.0 与本地出的 0.2.0），而管理器判「有没有新版本」是**严格大于**
         // （`RepoLoader.upgradable`），安装器也不接受比已装版本小的包 —— 只增不减。
-        versionCode = 17
-        versionName = "1.5.0"
+        versionCode = 18
+        versionName = "1.6.0"
 
         // `build_id`（出包时刻，界面版本行展示）**不在这里**声明：
         //  它是 [GenerateBuildId] 这个任务的产物，由 `androidComponents.onVariants` 挂进各变体的
@@ -376,10 +376,10 @@ dependencies {
 
     // 界面：COUI（ColorOS 16 设计语言的 Compose 实现，自带色板与组件，不依赖宿主主题）
     //
-    //  `strictly` 不能去：Gradle 版本序里纯 `1.1.0` 比 `1.1.0-title2r4` 更高（带限定符算更低），
+    //  `strictly` 不能去：Gradle 版本序里纯 `1.1.0` 比 `1.1.0-title2r16` 更高（带限定符算更低），
     //  而 coui-preference / coui-nav 传递依赖 `coui-ui-android:1.1.0`，不受约束时会解析回 `1.1.0`。
-    implementation("io.github.suqi8.coui.kmp:coui-ui-android:1.1.0-title2r4") {
-        version { strictly("1.1.0-title2r4") }
+    implementation("io.github.suqi8.coui.kmp:coui-ui-android:1.1.0-title2r16") {
+        version { strictly("1.1.0-title2r16") }
     }
     // Preference 整行组件（Switch/Arrow/SliderPreference），不在 coui-ui 传递依赖里
     implementation("io.github.suqi8.coui.kmp:coui-preference-android:1.1.0")

@@ -55,6 +55,7 @@ import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT
 import com.lookie.opluskey.ui.style.AnimatedColumn
 import com.lookie.opluskey.ui.style.AppDivider
 import com.lookie.opluskey.ui.style.AppHeavyDivider
+import com.lookie.opluskey.ui.style.LocalMonetColors
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.suqi8.coui.kmp.basic.BasicComponent
@@ -503,12 +504,7 @@ private fun ItemRow(
             label = "CardRowIcon",
         )
     val arrowTint by animateColorAsState(
-        targetValue =
-            if (row.enabled) {
-                COUITheme.colorScheme.onSurfaceVariantActions
-            } else {
-                COUITheme.colorScheme.disabledOnSecondaryVariant
-            },
+        targetValue = rowEndIconTint(enabled = row.enabled),
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "CardRowArrow",
     )
@@ -743,6 +739,59 @@ internal class AccordionState(
 internal fun rememberAccordionState(): AccordionState = remember { AccordionState() }
 
 /**
+ * 行尾那颗**指示性图标**的颜色 —— 四处共用这一份（`CardRow.Item` 的箭头 / [AccordionChevron] /
+ * [RowEndIcon] / `ExpandableRow` 的箭头）。
+ *
+ *  **默认就是 `onSurfaceVariantActions` 原样**（系数 1.0）：它是「行尾指示图标」这一档的
+ *  唯一取色口，想让它比行内文字更弱时改 [rowEndIconDim] 那对常量，不要回到调用点各写一份。
+ *
+ *  真要压时**乘在它自己那一档 alpha 上，不要写死一个 alpha**：这一格本身就是半透明色
+ *  （COUI 给的 `onSurfaceVariantActions`），写成 `copy(alpha = 0.7f)` 反而可能**把它抬高**；
+ *  乘在原值上则不管那一档是 1.0 还是 0.5，结果都只会更暗。
+ *
+ * @param enabled 这一行点不点得动；`false` 走禁用色（那一档已经够淡，不再叠）
+ */
+@Composable
+internal fun rowEndIconTint(enabled: Boolean): Color =
+    if (enabled) {
+        COUITheme.colorScheme.onSurfaceVariantActions.let { it.copy(alpha = it.alpha * rowEndIconDim()) }
+    } else {
+        COUITheme.colorScheme.disabledOnSecondaryVariant
+    }
+
+/**
+ * 行尾指示图标这一档的降幅 —— 两套取色各一只旋钮（判据是 [LocalMonetColors]）。
+ *
+ *  两个系数现在都是 1.0（= 与原来一样）。要让这一档比行内文字更弱就压低它们：固定色板与
+ *  Monet 分开给，因为同一套规则落到动态色上时那一格会显得更亮。
+ */
+@Composable
+private fun rowEndIconDim(): Float = if (LocalMonetColors.current) ROW_END_ICON_DIM_MONET else ROW_END_ICON_DIM
+
+/** 行尾指示图标在原 alpha 上再乘的系数 —— 见 [rowEndIconTint]。**默认 1.0 = 与原来一样**。 */
+private const val ROW_END_ICON_DIM = 1.0f
+
+/**
+ * Monet 下那一只旋钮 —— 同一档落在动态色上更亮，要压就压低它（见 [rowEndIconDim]）。
+ * **默认 1.0 = 与固定色板同一档、也就是原来的样子**。
+ */
+private const val ROW_END_ICON_DIM_MONET = 1.0f
+
+/**
+ * 行尾**文字**那一档的颜色 —— 与 [rowEndIconTint] 同一族，但用次要不透明色、不叠降幅。
+ *
+ *  图标可以比字更弱（它只是「还有下一层」的指示），字得读得清 —— 两处共用这一份：
+ *  [RowEndSummary] 那句当前值、`SliderRow` 行尾那个值。要调这一档就改这里的色源。
+ */
+@Composable
+internal fun rowEndTextTint(enabled: Boolean): Color =
+    if (enabled) {
+        COUITheme.colorScheme.onSurfaceVariantSummary
+    } else {
+        COUITheme.colorScheme.disabledOnSecondaryVariant
+    }
+
+/**
  * 手风琴**表头行尾那颗箭头** —— 收起朝下、展开转 180°；转动与正文的展开 / 收起同一时长。
  *
  *  它只是指示，不单独挂点击：整行就是命中区（与 [CardRow.Item.onClick] 同一处）。
@@ -758,7 +807,7 @@ internal fun AccordionChevron(expanded: Boolean) {
         PageIcons.StepDown,
         contentDescription = null,
         modifier = Modifier.rotate(rotation).size(ROW_END_ICON_SIZE),
-        tint = COUITheme.colorScheme.onSurfaceVariantActions,
+        tint = rowEndIconTint(enabled = true),
     )
 }
 
@@ -821,12 +870,7 @@ internal fun RowEndIcon(
     tint: Color? = null,
 ) {
     val rowEnabled = LocalRowEnabled.current
-    val resolved =
-        tint ?: if (rowEnabled) {
-            COUITheme.colorScheme.onSurfaceVariantActions
-        } else {
-            COUITheme.colorScheme.disabledOnSecondaryVariant
-        }
+    val resolved = tint ?: rowEndIconTint(enabled = rowEnabled)
     Icon(
         icon,
         contentDescription = null,
@@ -844,44 +888,49 @@ private val ROW_END_SUMMARY_GAP = 6.dp
  *  这几行回答的是「现在选的是哪一档」：答案贴在右侧、与行尾图标同一组，
  *  读起来是「这一行 → 现在是什么 → 点开还能改」，不必再从标题下面那行副标题抬头找答案。
  *
- *  文字与副标题同一档（`body2` + `onSurfaceVariantSummary`）；整行禁用时跟着 [RowEndIcon]
- *  一起压暗，不另分一套色。
+ *  **文字与图标同一族、字的那一档更亮**：[rowEndTextTint] 给文字、[rowEndIconTint] 给图标 ——
+ *  图标只是「还有下一层」的指示，可以更弱；字要读得清。字号仍是 `body2`（与副标题同档）。
+ *  整行禁用 / 内容未配时两者一起落到禁用色。
  *
  * @param text 当前值那一句
  * @param icon 行尾那颗图标：弹一层菜单的行用默认的选择器，换页的行传 `EnterArrow`；
  *   `null` = 这一行没有「下一站」（只读的状态行），行尾只留文字
  * @param muted 这一行**内容还没配**（如场景动作的「跟随默认」）—— 文字与图标一起压到禁用色，
  *   行本身仍可点（与 `CardRow.Item.titleTint` 同一档，别用 `enabled = false`）
+ * @param modifier 这一格自己那一份 —— 调用点把它套进别的 `Row` 时在这里给 `weight`，
+ *   否则长文字会把同一行里后面的控件顶出去
  */
 @Composable
 internal fun RowEndSummary(
     text: String,
     icon: ImageVector? = PageIcons.Selector,
     muted: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     val rowEnabled = LocalRowEnabled.current
     val off = !rowEnabled || muted
+    val iconTint = rowEndIconTint(enabled = !off)
+    val textTint = rowEndTextTint(enabled = !off)
     Row(
+        //  `modifier` 挂在**这一格自己**身上：调用点若把这一行再套进别的 `Row`（手风琴那行
+        //  「当前值 + 折叠箭头」就是），限宽得由外层给 `weight`，里面这层只管文字与图标的先后。
+        modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(ROW_END_SUMMARY_GAP),
     ) {
+        //  **当前值让行尾那颗控件**：`Row` 里不带 `weight` 的子项是按「进来还剩多宽」量的，
+        //  不是按「兄弟占完之后」量 —— 所以长值会把图标整个顶出可视区（连省略号都来不及收）。
+        //  `fill = false` 只要上限、不撑满：短值仍旧紧贴图标。与 `DisabledStateWithPick` 同一条判据。
         Text(
             text = text,
+            modifier = Modifier.weight(1f, fill = false),
             style = COUITheme.textStyles.body2,
-            color =
-                if (off) {
-                    COUITheme.colorScheme.disabledOnSecondaryVariant
-                } else {
-                    COUITheme.colorScheme.onSurfaceVariantSummary
-                },
+            color = textTint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         if (icon != null) {
-            RowEndIcon(
-                icon,
-                tint = if (muted) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-            )
+            RowEndIcon(icon, tint = iconTint)
         }
     }
 }

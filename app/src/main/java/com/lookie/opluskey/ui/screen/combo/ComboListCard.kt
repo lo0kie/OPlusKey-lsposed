@@ -229,7 +229,6 @@ private fun SettingsPage.comboRow(
         //  两者不拼接 —— 这一格本来就只放一句，拼起来会把标题挤掉一截；而且停用时顺序也无意义。
         //  动作摘要仍然不写：一列下来全是小字、每行还都不一样长，扫一眼只能看见一片灰。
         summary = keyStateLabel(enabled = !off, comboOnly = false) ?: comboOrderSummary(cfg, combo),
-        summaryMaxLines = 1,
         //  行首用**第几组**的数字图标（1~9，与 `MAX_COMBOS` 同一档，用户口径）：一列下来能数清现在有几组，
         //  与首页「按键」卡那几颗自定义键同一套写法（`menuKeyNumber`）。
         //  停用的那一档换成禁用图标（与按键列表同一颗、同一个位置）；成员被删掉的那一档
@@ -319,7 +318,8 @@ private fun SettingsPage.ComboTitle(
     BasicText(
         text = text,
         style = style.copy(color = color, fontWeight = FontWeight.Medium),
-        maxLines = 2,
+        //  标题不限行数：成员多、键名长（自定义键是自己起的字面量）时也要整句念得完；
+        //  省略号只在父级把高度限住时才用得上。
         overflow = TextOverflow.Ellipsis,
     )
 }

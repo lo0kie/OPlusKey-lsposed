@@ -814,7 +814,10 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
         // 「设置同步」（配置送到注入侧没有）与「设置读取」（宿主读到的不是默认值）
         // 合成一段：对用户来说都是「设置到底生效了没有」，分开报只是把内部结构摆到脸上。
         LinkCheck(
-            icon = PageIcons.LinkConfig,
+            //  「需要重启」时这一段的结论还没定 —— 两态都换 `settings-question`：那不是故障，
+            //  用户要做的只是重启（`staleOnly` 已经把它排到最后）。
+            icon = if (restartNeeded) PageIcons.LinkConfigUnknown else PageIcons.LinkConfig,
+            iconBroken = if (restartNeeded) PageIcons.LinkConfigUnknown else PageIcons.LinkConfigOff,
             name = I18n.get(Strings.LINK_CHECK_CONFIG_EFFECTIVE),
             // 与总闸**同源**：配置侧那半直接用 [configSideOk]，免得两边各写一份慢慢跑偏。
             //  第三项是**执行侧**用不用得上那份配置 —— 前两项都在 system_server 那条线上，

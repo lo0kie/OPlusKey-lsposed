@@ -1,0 +1,18 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt
+index 517a54d..82463ac 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt
+@@ -560,7 +560,12 @@ private fun computeSegmentWidths(
+ ): List<Int> {
+     val count = naturalWidths.size
+     if (count == 0) return emptyList()
+-    if (availablePx <= 0f || availablePx / count < minWidthPx) {
++    //  放不下就按自然宽度排、让标签行横向滚。
++    //
++    //  判据比上游多一条「所有标签的自然宽度之和超过可用宽」：原来只有「平均每段连 minWidth
++    //  都分不到」那一条 —— 它只在标签很多时成立，而真正需要滚的是「文案长、段数少」那一档：
++    //  上游在那儿会去压字，长的那几段被截成省略号（`maxLines = 1` + `Ellipsis`）。
++    if (availablePx <= 0f || naturalWidths.sum() > availablePx || availablePx / count < minWidthPx) {
+         return naturalWidths.map { min(it, maxWidthPx) }
+     }
+     return distributeSegmentWidths(naturalWidths, availablePx).map { min(it, maxWidthPx) }
