@@ -181,6 +181,34 @@ object ConfigFields {
     const val CTL_SERIAL_EXTRA = "click_then_long_is_serial"
 
     /**
+     * 「双击后长按」/「三击后长按」的开关与动作 —— 与 [CLICK_THEN_LONG_ON_EXTRA] / [CTL_EXTRA]
+     * 同一对口径（开关与动作分两位，默认关 + `none`），只是前面那几击的击数不同。
+     *
+     *  这两档没有松手 / 连发那几位：它们复用「单击后长按」那一套长按设置，用 [CTL_PRESS_MS_EXTRA]
+     * 作为按住时长 —— 三档是同一件事的不同击数，按住多久不该各调一遍。
+     */
+    const val DOUBLE_THEN_LONG_ON_EXTRA = "double_then_long_on"
+    const val DOUBLE_THEN_LONG_EXTRA = "double_then_long"
+    const val TRIPLE_THEN_LONG_ON_EXTRA = "triple_then_long_on"
+    const val TRIPLE_THEN_LONG_EXTRA = "triple_then_long"
+
+    /** 两档「后长按」各自的时序与收尾 —— 与 [CTL_PRESS_MS_EXTRA] 那一族同名不同槽。 */
+    const val DOUBLE_THEN_LONG_REPEAT_EXTRA = "double_then_long_repeat"
+    const val DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS_EXTRA = "double_then_long_repeat_interval_ms"
+    const val DOUBLE_THEN_LONG_REPEAT_VIBRATE_EXTRA = "double_then_long_repeat_vibrate"
+    const val DOUBLE_THEN_LONG_RELEASE_ON_EXTRA = "double_then_long_release_on"
+    const val DOUBLE_THEN_LONG_RELEASE_EXTRA = "double_then_long_release"
+    const val DOUBLE_THEN_LONG_FIRE_ON_RELEASE_EXTRA = "double_then_long_fire_on_release"
+    const val DOUBLE_THEN_LONG_SERIAL_EXTRA = "double_then_long_is_serial"
+    const val TRIPLE_THEN_LONG_REPEAT_EXTRA = "triple_then_long_repeat"
+    const val TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS_EXTRA = "triple_then_long_repeat_interval_ms"
+    const val TRIPLE_THEN_LONG_REPEAT_VIBRATE_EXTRA = "triple_then_long_repeat_vibrate"
+    const val TRIPLE_THEN_LONG_RELEASE_ON_EXTRA = "triple_then_long_release_on"
+    const val TRIPLE_THEN_LONG_RELEASE_EXTRA = "triple_then_long_release"
+    const val TRIPLE_THEN_LONG_FIRE_ON_RELEASE_EXTRA = "triple_then_long_fire_on_release"
+    const val TRIPLE_THEN_LONG_SERIAL_EXTRA = "triple_then_long_is_serial"
+
+    /**
      * 「这颗键只参与非首键的按住组合」（`KeyConfig.comboOnly`）—— 单键手势整条不接管，只等组合成员。
      *
      *  走广播：注入侧判定要用（它决定这一下吞不吞）。
@@ -519,6 +547,46 @@ object ConfigFields {
      */
     val F_CTL = Field(CTL_EXTRA, Kind.Text(Action.NONE))
 
+    /** 「双击后长按」开关与动作（见 [DOUBLE_THEN_LONG_ON_EXTRA] / [DOUBLE_THEN_LONG_EXTRA]）。 */
+    val F_DOUBLE_THEN_LONG_ON = Field(DOUBLE_THEN_LONG_ON_EXTRA, Kind.Bool(false))
+    val F_DOUBLE_THEN_LONG = Field(DOUBLE_THEN_LONG_EXTRA, Kind.Text(Action.NONE))
+
+    /** 「三击后长按」开关与动作（见 [TRIPLE_THEN_LONG_ON_EXTRA] / [TRIPLE_THEN_LONG_EXTRA]）。 */
+    val F_TRIPLE_THEN_LONG_ON = Field(TRIPLE_THEN_LONG_ON_EXTRA, Kind.Bool(false))
+    val F_TRIPLE_THEN_LONG = Field(TRIPLE_THEN_LONG_EXTRA, Kind.Text(Action.NONE))
+
+    /** 两档「后长按」的时序与收尾（与 [F_CTL_PRESS_MS] 那一族同名不同槽）。 */
+    val F_DOUBLE_THEN_LONG_REPEAT = Field(DOUBLE_THEN_LONG_REPEAT_EXTRA, Kind.Bool(false))
+    val F_DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS =
+        Field(
+            DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS_EXTRA,
+            Kind.Number(
+                KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+                KeyConfig.MIN_REPEAT_INTERVAL_MS,
+                KeyConfig.MAX_REPEAT_INTERVAL_MS,
+            ),
+        )
+    val F_DOUBLE_THEN_LONG_REPEAT_VIBRATE = Field(DOUBLE_THEN_LONG_REPEAT_VIBRATE_EXTRA, Kind.Bool(false))
+    val F_DOUBLE_THEN_LONG_RELEASE_ON = Field(DOUBLE_THEN_LONG_RELEASE_ON_EXTRA, Kind.Bool(false))
+    val F_DOUBLE_THEN_LONG_RELEASE = Field(DOUBLE_THEN_LONG_RELEASE_EXTRA, Kind.Text(Action.NONE))
+    val F_DOUBLE_THEN_LONG_FIRE_ON_RELEASE = Field(DOUBLE_THEN_LONG_FIRE_ON_RELEASE_EXTRA, Kind.Bool(false))
+    val F_DOUBLE_THEN_LONG_SERIAL = Field(DOUBLE_THEN_LONG_SERIAL_EXTRA, Kind.Bool(false))
+    val F_TRIPLE_THEN_LONG_REPEAT = Field(TRIPLE_THEN_LONG_REPEAT_EXTRA, Kind.Bool(false))
+    val F_TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS =
+        Field(
+            TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS_EXTRA,
+            Kind.Number(
+                KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+                KeyConfig.MIN_REPEAT_INTERVAL_MS,
+                KeyConfig.MAX_REPEAT_INTERVAL_MS,
+            ),
+        )
+    val F_TRIPLE_THEN_LONG_REPEAT_VIBRATE = Field(TRIPLE_THEN_LONG_REPEAT_VIBRATE_EXTRA, Kind.Bool(false))
+    val F_TRIPLE_THEN_LONG_RELEASE_ON = Field(TRIPLE_THEN_LONG_RELEASE_ON_EXTRA, Kind.Bool(false))
+    val F_TRIPLE_THEN_LONG_RELEASE = Field(TRIPLE_THEN_LONG_RELEASE_EXTRA, Kind.Text(Action.NONE))
+    val F_TRIPLE_THEN_LONG_FIRE_ON_RELEASE = Field(TRIPLE_THEN_LONG_FIRE_ON_RELEASE_EXTRA, Kind.Bool(false))
+    val F_TRIPLE_THEN_LONG_SERIAL = Field(TRIPLE_THEN_LONG_SERIAL_EXTRA, Kind.Bool(false))
+
     /** 「单击后长按」的长按延迟（第二段按住多久算数）—— 上下限与长按那一档同一套。 */
     val F_CTL_PRESS_MS =
         Field(
@@ -599,6 +667,24 @@ object ConfigFields {
             F_EXTRA_CLICKS,
             F_CLICK_THEN_LONG_ON,
             F_CTL,
+            F_DOUBLE_THEN_LONG_ON,
+            F_DOUBLE_THEN_LONG,
+            F_TRIPLE_THEN_LONG_ON,
+            F_TRIPLE_THEN_LONG,
+            F_DOUBLE_THEN_LONG_REPEAT,
+            F_DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS,
+            F_DOUBLE_THEN_LONG_REPEAT_VIBRATE,
+            F_DOUBLE_THEN_LONG_RELEASE_ON,
+            F_DOUBLE_THEN_LONG_RELEASE,
+            F_DOUBLE_THEN_LONG_FIRE_ON_RELEASE,
+            F_DOUBLE_THEN_LONG_SERIAL,
+            F_TRIPLE_THEN_LONG_REPEAT,
+            F_TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS,
+            F_TRIPLE_THEN_LONG_REPEAT_VIBRATE,
+            F_TRIPLE_THEN_LONG_RELEASE_ON,
+            F_TRIPLE_THEN_LONG_RELEASE,
+            F_TRIPLE_THEN_LONG_FIRE_ON_RELEASE,
+            F_TRIPLE_THEN_LONG_SERIAL,
             F_CTL_PRESS_MS,
             F_CTL_REPEAT,
             F_CTL_REPEAT_INTERVAL_MS,
@@ -849,6 +935,42 @@ object ConfigFields {
     /** 公共设置里的等待窗口（0 = 跟随单击延迟）。 */
     val F_GLOBAL_MULTI_WAIT_MS =
         Field(null, Kind.Number(KeyConfig.FOLLOW_DOUBLE_CLICK_MS, KeyConfig.FOLLOW_DOUBLE_CLICK_MS, KeyConfig.MAX_MULTI_WAIT_MS))
+
+    /**
+     * 公共设置里的**「单击和多击和长按延迟」**（`GlobalConfig.clickThenLongPressMs`）——
+     * 三档「后长按」共用的那个按住时长。
+     *
+     *  与上面三项同一条：**只落盘、不进广播**。注入侧读的是每颗键的 `<keyId>_click_then_long_press_ms`，
+     *  而那一格在广播前已经按「这颗键开没开独立设置」解析成生效值了
+     *  （见 `KeyConfig.fieldValues(global)`）。
+     */
+    val F_GLOBAL_CTL_PRESS_MS =
+        Field(
+            null,
+            Kind.Number(
+                KeyConfig.DEFAULT_LONG_PRESS_MS,
+                KeyConfig.MIN_LONG_PRESS_MS,
+                KeyConfig.MAX_LONG_PRESS_MS,
+            ),
+        )
+
+    /**
+     * 公共设置里的**组合成员「连击后长按延迟」**（`GlobalConfig.comboMemberClickThenLongPressMs`）
+     * —— 成员那三档「后长按」共用的按住时长。
+     *
+     *  与上面一项同一条：**只落盘、不进广播**。注入侧读的是组合那份广播里每档的
+     *  `member_click_then_long_press_ms`，而那一格在广播前已经按「这一档开没开独立设置」
+     *  解析成生效值了（见 `Config.comboMemberThenLongPressFor` 与 `ConfigBroadcast`）。
+     */
+    val F_GLOBAL_COMBO_MEMBER_CTL_PRESS_MS =
+        Field(
+            null,
+            Kind.Number(
+                KeyConfig.DEFAULT_LONG_PRESS_MS,
+                KeyConfig.MIN_LONG_PRESS_MS,
+                KeyConfig.MAX_LONG_PRESS_MS,
+            ),
+        )
 
     /**
      * **界面振动反馈**（`GlobalConfig.uiVibrate`）—— 点行 / 拨开关 / 拖滑杆那一下的触觉。

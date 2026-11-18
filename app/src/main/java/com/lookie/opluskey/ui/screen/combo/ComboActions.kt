@@ -6,6 +6,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GlobalConfig
+import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.core.present.comboLabel
@@ -778,4 +779,25 @@ internal fun SettingsPage.setComboOwnHoldMin(
                 ms.coerceIn(GlobalConfig.COMBO_HOLD_MIN_MIN_MS, GlobalConfig.COMBO_HOLD_MIN_MAX_MS)
             }
         combo.copy(holdMinMs = value)
+    }
+
+/**
+ * 写**这一组自己**的「成员连击后长按延迟」（毫秒）—— 成员那三档「后长按」共用的按住时长。
+ *
+ *  与 [setComboOwnHoldMin] 同一个形状：写下去就是这一组自己的决定，不再跟随公共设置
+ *  （生效值见 `Config.comboMemberThenLongPressFor`）。
+ *  `0` 同样只服务老配置与手改文件（界面滑杆的下限是 `KeyConfig.MIN_LONG_PRESS_MS`）。
+ */
+internal fun SettingsPage.setComboOwnMemberThenLongPress(
+    id: String,
+    ms: Int,
+): Boolean =
+    updateCombo(id, "member_click_then_long_press_ms=$ms") { combo ->
+        val value =
+            if (ms <= 0) {
+                ComboKey.MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL
+            } else {
+                ms.coerceIn(KeyConfig.MIN_LONG_PRESS_MS, KeyConfig.MAX_LONG_PRESS_MS)
+            }
+        combo.copy(memberClickThenLongPressMs = value)
     }

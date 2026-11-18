@@ -629,8 +629,16 @@ data class ComboKey(
     /** 成员「单击后长按」那一档（成员第一击抬手后，窗口内再按下并按住）。 */
     val memberClickThenLong: Action = Action.None,
     val memberClickThenLongOn: Boolean = false,
-    /** 成员「单击后长按」自己的长按阈值 —— 与这一档普通长按 [longPressMs] 分开。 */
-    val memberClickThenLongPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
+    /**
+     * 成员「后长按」三档（单击后 / 双击后 / 三击后）**共用**的长按阈值 —— 与这一档普通长按
+     * [longPressMs] 分开。
+     *
+     *  [MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL]（0）= 没写过 ⇒ 跟随公共设置
+     *  （`GlobalConfig.comboMemberClickThenLongPressMs`）。**取值一律走
+     *  `Config.comboMemberThenLongPressFor`**：直接读这一格的话，没开独立设置的那一档会按
+     *  一个用户看不见的值判。
+     */
+    val memberClickThenLongPressMs: Int = MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL,
     /**
      * 成员「单击后长按」的**松手时触发** —— 与 [longFireOnRelease] 同义、各自一份。
      *
@@ -651,6 +659,33 @@ data class ComboKey(
      * 注入侧要读命令库才知道，而那个文件它看不到，由宿主现算带过来。
      */
     val memberClickThenLongIsSerial: Boolean = false,
+    /**
+     * 成员「双击后长按」（成员第 3 击按住）/「三击后长按」（成员第 4 击按住）——
+     * 与 [memberClickThenLongOn] 同一对口径，只差前面那几击的击数。
+     *
+     *  复用成员「单击后长按」那一套长按阈值（[memberClickThenLongPressMs]）与松手 / 连发设置：
+     *  三档是同一件事的不同击数，不各开一份。
+     */
+    val memberDoubleThenLong: Action = Action.None,
+    val memberDoubleThenLongOn: Boolean = false,
+    val memberTripleThenLong: Action = Action.None,
+    val memberTripleThenLongOn: Boolean = false,
+    /** 成员「双击后长按」自己的时序与收尾 —— 与 [memberClickThenLongPressMs] 那一族同名不同槽。 */
+    val memberDoubleThenLongRepeat: Boolean = false,
+    val memberDoubleThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    val memberDoubleThenLongRepeatVibrate: Boolean = false,
+    val memberDoubleThenLongReleaseOn: Boolean = false,
+    val memberDoubleThenLongRelease: Action = Action.None,
+    val memberDoubleThenLongFireOnRelease: Boolean = false,
+    val memberDoubleThenLongIsSerial: Boolean = false,
+    /** 成员「三击后长按」同上。 */
+    val memberTripleThenLongRepeat: Boolean = false,
+    val memberTripleThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    val memberTripleThenLongRepeatVibrate: Boolean = false,
+    val memberTripleThenLongReleaseOn: Boolean = false,
+    val memberTripleThenLongRelease: Action = Action.None,
+    val memberTripleThenLongFireOnRelease: Boolean = false,
+    val memberTripleThenLongIsSerial: Boolean = false,
 ) : OwnSettings,
     LongPressParams {
     /** 这一档现在算不算数 —— 关掉了、或成员不足两键（配置文件被手改坏）都不算。 */
@@ -710,7 +745,13 @@ data class ComboKey(
     val memberGestures: MemberGestures?
         get() =
             if (isHold && followers.size == 1) {
-                MemberGestures(memberDoubleOn, memberClicksOn, memberClickThenLongOn)
+                MemberGestures(
+                    memberDoubleOn,
+                    memberClicksOn,
+                    memberClickThenLongOn,
+                    memberDoubleThenLongOn,
+                    memberTripleThenLongOn,
+                )
             } else {
                 null
             }
@@ -748,14 +789,23 @@ data class ComboKey(
             }
 
             //  「单击后长按」= 成员连击的那一档（成员第一击抬手后、窗口内再按下并按住）。
-            GestureTrigger.ClickThenLong -> {
-                if (memberClickThenLongOn) memberClickThenLong else Action.None
+            //  成员连击没有第 3 / 4 击按住那两档（见 `ClickChainParams.doubleThenLongOn`）。
+            is GestureTrigger.ClickThenLong -> {
+                when (trigger.count) {
+                    1 -> if (memberClickThenLongOn) memberClickThenLong else Action.None
+                    2 -> if (memberDoubleThenLongOn) memberDoubleThenLong else Action.None
+                    else -> if (memberTripleThenLongOn) memberTripleThenLong else Action.None
+                }
             }
 
             //  这一档的松手**自成一路**：用它自己那一格，不借组合长按的 [longRelease]
-            //  （与单键 `KeyConfig.actionOf` 同一个理由）。
-            GestureTrigger.ClickThenLongRelease -> {
-                memberClickThenLongReleaseAction
+            //  （与单键 `KeyConfig.actionOf` 同一个理由）。成员连击三档各一格。
+            is GestureTrigger.ClickThenLongRelease -> {
+                when (trigger.count) {
+                    1 -> memberClickThenLongReleaseAction
+                    2 -> memberDoubleThenLongReleaseAction
+                    else -> memberTripleThenLongReleaseAction
+                }
             }
         }
 
@@ -790,6 +840,42 @@ data class ComboKey(
                 !memberClickThenLongFireOnRelease &&
                 !memberClickThenLongIsSerial &&
                 !((memberClickThenLong as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true)
+
+    /** 成员「双击后长按」/「三击后长按」的连发判据 —— 与上面同一条口径。 */
+    val memberDoubleThenLongRepeats: Boolean
+        get() =
+            memberDoubleThenLongRepeat &&
+                !memberDoubleThenLongFireOnRelease &&
+                !memberDoubleThenLongIsSerial &&
+                !((memberDoubleThenLong as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true)
+
+    val memberTripleThenLongRepeats: Boolean
+        get() =
+            memberTripleThenLongRepeat &&
+                !memberTripleThenLongFireOnRelease &&
+                !memberTripleThenLongIsSerial &&
+                !((memberTripleThenLong as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true)
+
+    /** 成员那两档松手那一刻该执行什么 —— 与 [memberClickThenLongReleaseAction] 同一个四位判据。 */
+    val memberDoubleThenLongReleaseAction: Action
+        get() =
+            if (memberDoubleThenLongOn && memberDoubleThenLongReleaseOn && memberDoubleThenLong.isBound &&
+                !memberDoubleThenLongFireOnRelease
+            ) {
+                memberDoubleThenLongRelease
+            } else {
+                Action.None
+            }
+
+    val memberTripleThenLongReleaseAction: Action
+        get() =
+            if (memberTripleThenLongOn && memberTripleThenLongReleaseOn && memberTripleThenLong.isBound &&
+                !memberTripleThenLongFireOnRelease
+            ) {
+                memberTripleThenLongRelease
+            } else {
+                Action.None
+            }
 
     /**
      * 松手那一下**真的有事可做** —— 开关开着、挑过动作、且不是「松手才触发」那条。
@@ -894,6 +980,12 @@ data class ComboKey(
 
         /** [holdMinMs] 取这个值表示「跟随公共设置」（同上：不是「按住 0 毫秒」）。 */
         const val HOLD_MIN_FOLLOW_GLOBAL = 0
+
+        /**
+         * [memberClickThenLongPressMs] 取这个值表示「跟随公共设置」—— 与上面两条同一条哨兵：
+         * 0 不是「按住 0 毫秒」，那会让成员的后长按一到点就触发。
+         */
+        const val MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL = 0
 
         /**
          * 触发方式（[mode]）。

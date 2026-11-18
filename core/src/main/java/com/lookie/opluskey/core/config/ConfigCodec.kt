@@ -35,7 +35,10 @@ import java.security.MessageDigest
  *
  *  · **`version == VERSION`**：`md5` 是「把 `md5` 这一格置空之后、**按 [ConfigDto] 重新编码**得到
  *    的那份文本」的 MD5（不是原文逐字节），对不上判读不懂；
- *  · **`version < VERSION`**：**不校验 `md5`**，只要求「能被解析 + 键段完整」。
+ *  · **`version != VERSION`**（老文件，以及**装回旧包**之后遇到的、更新的版本写下的文件）：
+ *    **不校验 `md5`**，只要求「能被解析 + 键段完整」。理由是同一个：`md5` 的口径绑在**当前** DTO 上，
+ *    版本一旦不等，重编码出来的字节必然与文件里那份不同 —— 校验只会把每一份这样的文件都判成
+ *    读不懂，而它们的内容其实是好的。`md5` 因此只在版本相等时才是「这份文件有没有被改过」的证据。
  *
  *  为什么老版本一律不校验：`md5` 的口径是「按**当前** [ConfigDto] 重新编码」，而 DTO 每加一个字段
  *  （`encodeDefaults = true` 会把它写进正文），老文件重编码出来的字节就必然与它自己那份 `md5`
@@ -295,13 +298,44 @@ object ConfigCodec {
      *       翻成「三档 + 这一位」（见那边的 `legacyThemeCode` / `legacyThemeMonet`），
      *       所以用户原来选的那一档不会丢。
      *
+     *  91 = **单键多出两档「后长按」**：`KeyDto` 多了 `double_then_long*` / `triple_then_long*`
+     *       四格（缺键 ⇒ 关 + `none`）。三档只差前面那几击的击数，动作与开关各一位。
+     *
+     *  92 = **按住组合的成员也跟到那两档**：`ComboDto` 多了 `member_double_then_long*` /
+     *       `member_triple_then_long*` 四格（缺键 ⇒ 关 + `none`）。
+     *       注意 91 与 92 是**同一次开发里的两笔字段**：写盘只认最后那个数 ——
+     *       只抬 91 就装过一版、之后又加组合那四格的话，那一版写出的文件（version=91）会拿
+     *       新 DTO 重算 md5 而当场判读不懂（真机踩过一次）。
+     *
+     *  93 = **「后长按」两档各有一整套参数**：`KeyDto` 多了 `double_then_long_*` / `triple_then_long_*`
+     *       各八格（按住时长 / 连发 / 间隔 / 每次都振动 / 松手开关与动作 / 松手时触发 / 是否多条命令），
+     *       缺键 ⇒ 与「单击后长按」同默认（350ms、不连发、无操作）。此前这两档借用「单击后长按」那一套。
+     *
+     *  94 = **成员「后长按」两档也各有一整套参数**：`ComboDto` 多了 `member_double_then_long_*` /
+     *       `member_triple_then_long_*` 各八格（与 93 那十六格同名、主语换成组合的成员键）。
+     *       此前这两档借用成员「单击后长按」那一套。
+     *
+     *  95 = **「后长按」三档共用一个长按延迟**：`KeyDto` / `ComboDto` 里那两格
+     *       `double_then_long_press_ms` / `triple_then_long_press_ms`（含成员的）删掉，
+     *       统一读 `click_then_long_press_ms`（成员侧是 `member_click_then_long_press_ms`）——
+     *       三档只差前面点了几下，手按下去的节奏不该跟着变。老文件里那几格按未知键丢掉。
+     *
+     *  96 = **公共设置也有一份「单击和多击和长按延迟」**：`GlobalDto` 多了
+     *       `global_click_then_long_press_ms`（缺键 ⇒ 出厂那一档）。没开「使用独立设置」的键
+     *       改读这一份 —— 在此之前它只有每颗键那一层，公共设置里没有地方能改它。
+     *
+     *  97 = **组合成员那一档也有一份公共值**：`GlobalDto` 多了
+     *       `global_combo_member_then_long_press_ms`；`ComboDto` 的
+     *       `member_click_then_long_press_ms` 改成 `0 = 跟随公共`（缺键 ⇒ 0）。
+     *       成员那三档「后长按」与单键同一条两层结构：没开独立设置的组合读公共那一份。
+     *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
      *  不抬版本的话，`version == VERSION` 那一支会拿新 DTO 去校旧文件，**每一份已有配置都当场
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 90
+    const val VERSION = 97
 
     /**
      * 「提示走流体云」由「可选增强」变成「默认落点」的那一版 —— 迁移只看「文件是不是比它旧」。
@@ -349,6 +383,22 @@ object ConfigCodec {
                 // 老文件（v0..VERSION-1）：md5 口径按当前 DTO 算，老文件重编码必然不同 —— 不校验
                 dto.version < VERSION -> {
                     if (dto.isStructurallySound()) dto.toConfig() else null
+                }
+
+                // **更新的版本写下的文件**（装回旧包之后就是这一档）：同样不校验 md5 ——
+                //  它比本版多出来的字段本版不认识，重编码时会被丢掉，那份摘要必然对不上。
+                //  判成「读不懂」的代价是整条链断掉：页面只读、切换与新建全被 `canWriteConfig` 拦下、
+                //  每一份配置在列表里都显示成「（读不出来）」并能被当成坏文件删掉 —— 而文件本身好端端的，
+                //  只是版本号更大。所以按「本版能认的字段读入」处理，只保留「能解析 + 键段完整」这道闸。
+                //  代价说清楚：本版下一次写盘会按本版 DTO 重编码，新版本那些字段就此不再出现在主文件里
+                //  （写盘前留的 `.prev` 快照是那份原文，重装新版本时可以取回）。
+                dto.version > VERSION -> {
+                    if (!dto.isStructurallySound()) {
+                        null
+                    } else {
+                        warnNewerVersion(dto.version)
+                        dto.toConfig()
+                    }
                 }
 
                 !digestMatches(dto) -> {
@@ -424,6 +474,26 @@ object ConfigCodec {
         keys.size >= KeyId.builtins.size &&
             KeyId.builtins.all { keys.containsKey(it.id) } &&
             customKeys.all { keys.containsKey(it.id) }
+
+    /**
+     * 「这份文件来自更新的版本」只报一次 W（按版本号去重）。
+     *
+     *  这条必须是 `w`：它解释了「为什么这次装回旧包之后，设置页里那几格新选项不见了」——
+     *  而用户能看到的只有「东西少了」，没有任何别的线索。去重是因为解析会被反复跑到：
+     *  `ConfigProfiles.list()` 每次展开配置菜单都逐份解码一遍，不去重会把判据行冲掉。
+     */
+    private fun warnNewerVersion(version: Int) {
+        if (!newerVersionWarned.add(version)) return
+        XLog.w(
+            "配置来自更新的版本（文件 version=$version / 本版 $VERSION）—— 按本版认得的字段读入，" +
+                "下一次写盘会按本版格式重写：更新的版本里那些字段不在本版认识范围内（原文在 .prev 快照里）",
+        )
+    }
+
+    /** 已经用 `w` 报过的「更新的版本」号（见 [warnNewerVersion]）。 */
+    private val newerVersionWarned =
+        java.util.concurrent.ConcurrentHashMap
+            .newKeySet<Int>()
 
     /** 当前版本的完整性校验：把 `md5` 置空重新编码，与文件里那一格比。 */
     private fun digestMatches(dto: ConfigDto): Boolean {

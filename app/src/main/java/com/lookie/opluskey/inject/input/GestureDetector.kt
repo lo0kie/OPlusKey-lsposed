@@ -114,6 +114,15 @@ internal class GestureDetector(
      */
     private class Pending(
         @Volatile var longPressAt: Long = 0L,
+        /**
+         * 这一枪长按是在第几击排的（1 = 第一按的长按，2/3/4 = 「某击后长按」）。
+         *
+         *  到点时拿它与当前击数比：击数超过它就说明用户还在连击，这一枪作废
+         *  （见 `ClickChainMath.longShotStillWaiting`）。**必须与 `longPressAt` 一起定格**，
+         *  否则连击链往前走了之后，旧那一枪拿到的是新击数 —— 判据永远成立，第 N 击按住会在
+         *  第 N+1 击期间凭空判一次长按。
+         */
+        @Volatile var longShotClicks: Int = 1,
         @Volatile var doubleWindowAt: Long = 0L,
         /**
          * 这一枪双击窗口的长度（`onKeyUp` 排窗时按当时的配置写死）。
@@ -268,27 +277,29 @@ internal class GestureDetector(
             //  执行侧对没有动作的档逐级回退 ⇒ **退成单击命令**（用户口径：
             //  「单击后长按为无操作后，执行手势会触发单击命令」，2026-11-15）。
             //  第几击之后该收哪一支，判据收在 `core/judge/ClickChainMath.chainStep`
-            when (chainStep(p.clicks, maxClicks, config.clickThenLongOn)) {
+            when (chainStep(p.clicks, maxClicks, config.thenLongClicks)) {
                 ChainStep.CHAINED_WAITING -> {
-                    //  后面还有第 3 击要等（三击 / 四击）：照原样继续等，只是顺手把长按枪排上。
-                    //  到点时若仍停在第 2 击 ⇒ 判单击后长按；已经数到第 3 击 ⇒ 那一枪自己作废
-                    //  （判据见 `longShotStillWaiting` 的 `clicks <= 2`）。
-                    XLog.w("${id.name}：第 2 击（这颗键配到第 $maxClicks 击，也可以按住变长按）")
+                    //  后面还有档位要等（多击 / 更长的后长按）：照原样继续等，只是顺手把长按枪排上。
+                    //  到点时若仍停在那一击 ⇒ 判「第 ${p.clicks - 1} 击后长按」；已经数到下一击 ⇒
+                    //  那一枪自己作废（判据见 `longShotStillWaiting` 的 `clicks <= shotClicks`）。
+                    XLog.w("${id.name}：第 ${p.clicks} 击（这颗键配到第 $maxClicks 击，也可以按住变长按）")
                     p.sawFirstRelease = false
                     p.doubleWindowAt = 0L
-                    p.longPressAt = now + config.clickThenLongPressMs
+                    p.longPressAt = now + (config.thenLong[p.clicks]?.pressMs ?: config.clickThenLongPressMs).toLong()
+                    p.longShotClicks = p.clicks
                     scheduleLongPress(id, config)
                 }
 
                 ChainStep.CHAINED_FINAL -> {
-                    //  这一击就是链的最后一击（没配三击 / 四击）：抬手 ⇒ 双击，按住 ⇒ 单击后长按。
+                    //  这一击就是链的最后一击（后面没有更高档）：抬手 ⇒ 普通连击，按住 ⇒ 后长按。
                     //  **不能 reset**（会摘掉刚排上的长按枪），状态自己手工收：`doubleFired` 让抬手
-                    //  派发 `Click(2)`，`longPressFired` 由那一枪到点置上后抬手走 finishLong。
-                    XLog.w("${id.name}：第 2 击（也可以按住变长按）")
+                    //  派发 `Click(clicks)`，`longPressFired` 由那一枪到点置上后抬手走 finishLong。
+                    XLog.w("${id.name}：第 ${p.clicks} 击（也可以按住变长按）")
                     p.sawFirstRelease = false
                     p.doubleWindowAt = 0L
                     p.doubleFired = true
-                    p.longPressAt = now + config.clickThenLongPressMs
+                    p.longPressAt = now + (config.thenLong[p.clicks]?.pressMs ?: config.clickThenLongPressMs).toLong()
+                    p.longShotClicks = p.clicks
                     scheduleLongPress(id, config)
                 }
 
@@ -637,8 +648,11 @@ internal class GestureDetector(
                     //  （只有一条 DOWN/UP，没有「长按」那行）。攒成一句在**锁外**打：日志出口要走
                     //  logd，与 dispatch 同理，不该占着这把状态锁。
                     when (shotDecision(id, config)) {
-                        SHOT_CHAINED -> fireChained(id, config, downAt)
+                        //  这一枪排在第几击上，就对应「第几击后长按」（`count` = 击数 - 1）
+                        SHOT_CHAINED -> fireChained(id, config, downAt, count = (pending(id).clicks - 1).coerceAtLeast(1))
+
                         SHOT_LONG -> fireLong(id, config, downAt)
+
                         else -> Unit
                     }
                 } catch (e: Throwable) {
@@ -670,10 +684,10 @@ internal class GestureDetector(
         val fire =
             synchronized(p) {
                 //  三条栅栏收在 `core/judge/ClickChainMath.longShotStillWaiting`
-                val stillWaiting = longShotStillWaiting(p.longPressAt, p.sawFirstRelease, p.clicks)
+                val stillWaiting = longShotStillWaiting(p.longPressAt, p.sawFirstRelease, p.clicks, p.longShotClicks)
                 if (stillWaiting) {
                     //  与上面那一支同一判据：开关开着就归这一档（动作是无操作时不执行，但不许退化成单击）
-                    chained = longShotIsChained(config.clickThenLongOn, p.clicks)
+                    chained = longShotIsChained(config.thenLongClicks, p.clicks)
                     p.longPressAt = 0L
                     p.longPressFired = true
                     true
@@ -707,17 +721,21 @@ internal class GestureDetector(
         id: KeyRef,
         config: ChainSpec,
         downAt: Long,
+        count: Int,
     ) {
-        if (config.clickThenLongFireOnRelease) {
-            XLog.w("${id.name}：单击后长按到点（松手时触发 ⇒ 等抬手再执行）")
-            scheduleReleaseFallback(id, config, downAt, Gesture.ClickThenLong)
+        val gesture = Gesture.ClickThenLong(count)
+        //  三档各有自己的「松手时触发」与连发参数 —— 按**击数**取（count + 1 = 这一枪排在第几击）
+        val spec = config.thenLong[count + 1]
+        if (spec?.fireOnRelease == true) {
+            XLog.w("${id.name}：${gesture.label}到点（松手时触发 ⇒ 等抬手再执行）")
+            scheduleReleaseFallback(id, config, downAt, gesture)
             return
         }
-        XLog.w("${id.name}：单击后长按")
-        dispatch(id, Gesture.ClickThenLong, config, repeat = false)
+        XLog.w("${id.name}：${gesture.label}")
+        dispatch(id, gesture, config, repeat = false)
         //  这一档自己的连发（与长按那一族各一份参数）
-        if (config.clickThenLongRepeats) {
-            scheduleRepeat(id, config, config.clickThenLongRepeatIntervalMs, Gesture.ClickThenLong)
+        if (spec != null && spec.repeats) {
+            scheduleRepeat(id, config, spec.repeatIntervalMs.toLong(), gesture)
         }
     }
 
@@ -855,8 +873,7 @@ internal class GestureDetector(
                     }
                     XLog.w(
                         "${id.name}：" +
-                            (if (trigger == Gesture.ClickThenLong) "单击后长按" else "长按") +
-                            "（松手才触发，但 ${RELEASE_FALLBACK_MS}ms 未见抬手 ⇒ 兜底执行一次）",
+                            "${trigger.label}（松手才触发，但 ${RELEASE_FALLBACK_MS}ms 未见抬手 ⇒ 兜底执行一次）",
                     )
                     dispatch(id, trigger, config, repeat = false)
                 } catch (e: Throwable) {
@@ -973,25 +990,33 @@ internal class GestureDetector(
         //  （`clickThenLongRelease`），开着且配了才补一枪，然后清状态。
         //  判据是**开关**（与第 2 击那两支同一口径）：动作是无操作时这一档也要把抬手收掉，
         //  否则会落到下面「按长按收尾」那几支去补一条单击。
-        if (config.clickThenLongOn && p.clicks >= 2) {
+        val thenLongShot = config.thenLong[p.clicks]
+        if (thenLongShot != null) {
             //  「松手时触发」（`clickThenLongFireOnRelease`）：到点只把这一按标成长按、没有派发
             //  （见 `fireChained`），动作放到这一下执行**一次** —— 与长按那一档（下面
             //  `config.longFireOnRelease` 那一支）同一支顺序。
             //  「松手执行额外动作」在这里不参与：两个动作都在抬手，同一刻执行两个没有意义
             //  （数据侧 `clickThenLongReleaseAction` 也把它排掉了，界面同样是灰的）。
-            if (config.clickThenLongFireOnRelease) {
-                XLog.w("${id.name}：单击后长按（松手时触发）")
+            if (thenLongShot.fireOnRelease) {
+                //  **击数必须在 [reset] 之前算**：它把 `p.clicks` 清成 0，之后减一就是 -1 ——
+                //  档位 id 随之变成 `click-1_then_long`，宿主按「不认识的手势」丢掉，
+                //  表现就是「开了松手时触发，抬手什么都不执行」。
+                val gesture = Gesture.ClickThenLong((p.clicks - 1).coerceAtLeast(1))
+                XLog.w("${id.name}：${gesture.label}（松手时触发）")
                 reset(id)
-                dispatch(id, Gesture.ClickThenLong, config, repeat = false)
+                dispatch(id, gesture, config, repeat = false)
                 return
             }
             //  那一档本身是「无操作」时松手也不补：松手动作是「这一档执行之后」的收尾，
             //  主语没有就不该有谓语（用户口径「设为无操作时禁用松手后额外触发」）。
             //  **场景块**给这一档配的松手也折进这一位了：宿主算好带过来的
             //  （注入侧看不到场景表），装配方把它并进 `clickThenLongReleaseActionExists`。
-            if (config.clickThenLongReleaseActionExists) {
-                XLog.w("${id.name}：单击后长按松手")
-                dispatch(id, Gesture.ClickThenLongRelease, config, repeat = false)
+            if (thenLongShot.releaseActionExists) {
+                //  击数同 `fireChained` 那条：**reset 之前**算好（之后 `p.clicks` 已清零）。
+                //  这一位决定宿主用三档里的哪一格松手动作（`click2_then_long_release` 等）。
+                val count = (p.clicks - 1).coerceAtLeast(1)
+                XLog.w("${id.name}：${Gesture.ClickThenLong(count).label}松手")
+                dispatch(id, Gesture.ClickThenLongRelease(count), config, repeat = false)
             }
             reset(id)
             return

@@ -76,8 +76,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandClick
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFingerLeft
-import io.github.lyxnx.compose.ui.tablericons.outline.HandMove
-import io.github.lyxnx.compose.ui.tablericons.outline.HandRingFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandThreeFingers
 import io.github.lyxnx.compose.ui.tablericons.outline.HandTwoFingers
 import io.github.lyxnx.compose.ui.tablericons.outline.Hash
@@ -404,15 +402,20 @@ internal object PageIcons {
                 TablerIcons.Outline.HandClick
             }
 
-            //  「单击后长按」用「移动的手」（`hand-move`，用户指定）：它说的是「两段之间换了形态」，
-            //  与前几档的「几根手指」不是一个轴，换一颗字形才区分得开。
-            GestureTrigger.ClickThenLong -> {
-                TablerIcons.Outline.HandMove
+            //  「后长按」用「点击的手」这一族（`hand-click`）：撇表示「这一下之后还要按住」，
+            //  与前几档的「几根手指」不是一个轴，换一颗字形才区分得开。三档按手指根数分开 ——
+            //  单击后长按是图标库那颗，另两档自绘（见 `DrawnIcons`），四撇位置不随根数变。
+            is GestureTrigger.ClickThenLong -> {
+                when (trigger.count) {
+                    1 -> TablerIcons.Outline.HandClick
+                    2 -> DrawnIcons.HandClickTwo
+                    else -> DrawnIcons.HandClickThree
+                }
             }
 
             //  这一档的松手不单独占一行（与 `Release` 同一个道理：它是那一档的收尾）
-            GestureTrigger.ClickThenLongRelease -> {
-                TablerIcons.Outline.HandMove
+            is GestureTrigger.ClickThenLongRelease -> {
+                TablerIcons.Outline.HandClick
             }
 
             is GestureTrigger.Click -> {
@@ -423,9 +426,9 @@ internal object PageIcons {
 
                     3 -> TablerIcons.Outline.HandThreeFingers
 
-                    //  四击起用「无名指」（`hand-ring-finger`，用户指定）——
-                    //  Tabler 没有四根手指的字形，这一颗是那套里最接近「又一个具体手指」的
-                    else -> TablerIcons.Outline.HandRingFinger
+                    //  四击起用「四根手指」（`hand-stop`，用户指定）：图标库那份 Kotlin 常量里
+                    //  还没收录这颗，形状由 `DrawnIcons` 按同一条 d 字符串画
+                    else -> DrawnIcons.HandStop
                 }
             }
         }
@@ -1125,7 +1128,7 @@ internal object PageIcons {
     /**
      * 「等待窗口」—— `clock-pause`（钟 + 暂停记号）。
      *
-     *  三处「等待窗口」（单击设置、等待组合、按住组合）都用这一颗：问的是同一件事
+     *  三处「等待窗口」的滑杆（单键那张卡的**连击等待窗口**、等待组合、按住组合）都用这一颗：问的是同一件事
      *  —— 「按下之后等多久」。
      *
      *  与 [DelayStep]（`clock-play`，命令步骤之间）分开：同一张页里两颗都是钟、都在量时间，

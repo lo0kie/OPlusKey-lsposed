@@ -44,29 +44,29 @@ class ClickChainMathTest {
 
     @Test
     fun secondClickWithChainThenLongAndNoThirdIsFinal() {
-        assertEquals(ChainStep.CHAINED_FINAL, chainStep(clicks = 2, cap = 2, clickThenLongOn = true))
+        assertEquals(ChainStep.CHAINED_FINAL, chainStep(clicks = 2, cap = 2, thenLongClicks = setOf(2)))
     }
 
     @Test
     fun secondClickWithChainThenLongAndMoreToWaitArmsTheLongShot() {
-        assertEquals(ChainStep.CHAINED_WAITING, chainStep(clicks = 2, cap = 3, clickThenLongOn = true))
-        assertEquals(ChainStep.CHAINED_WAITING, chainStep(clicks = 2, cap = 4, clickThenLongOn = true))
+        assertEquals(ChainStep.CHAINED_WAITING, chainStep(clicks = 2, cap = 3, thenLongClicks = setOf(2)))
+        assertEquals(ChainStep.CHAINED_WAITING, chainStep(clicks = 2, cap = 4, thenLongClicks = setOf(2)))
     }
 
     @Test
     fun secondClickWithoutChainThenLongKeepsWaiting() {
         //  这一档关着 ⇒ 第 2 击只是普通连击，不排长按枪
-        assertEquals(ChainStep.KEEP_WAITING, chainStep(clicks = 2, cap = 3, clickThenLongOn = false))
-        assertEquals(ChainStep.KEEP_WAITING, chainStep(clicks = 1, cap = 3, clickThenLongOn = true))
+        assertEquals(ChainStep.KEEP_WAITING, chainStep(clicks = 2, cap = 3, thenLongClicks = emptySet()))
+        assertEquals(ChainStep.KEEP_WAITING, chainStep(clicks = 1, cap = 3, thenLongClicks = setOf(2)))
     }
 
     @Test
     fun reachingCapFires() {
-        assertEquals(ChainStep.FIRE, chainStep(clicks = 3, cap = 3, clickThenLongOn = true))
+        assertEquals(ChainStep.FIRE, chainStep(clicks = 3, cap = 3, thenLongClicks = setOf(2)))
         //  超过封顶也照样判（用户连按了第 4 下而这一档只认到第 3 击，击数由 fireCount 夹回去）
-        assertEquals(ChainStep.FIRE, chainStep(clicks = 4, cap = 3, clickThenLongOn = false))
+        assertEquals(ChainStep.FIRE, chainStep(clicks = 4, cap = 3, thenLongClicks = emptySet()))
         //  cap = 1 时第 1 击就当到顶（正常走不到：`releaseStep` 把这一支提前收成当场单击）
-        assertEquals(ChainStep.FIRE, chainStep(clicks = 1, cap = 1, clickThenLongOn = false))
+        assertEquals(ChainStep.FIRE, chainStep(clicks = 1, cap = 1, thenLongClicks = emptySet()))
     }
 
     // ---- 抬手那一刻 ----
@@ -180,20 +180,70 @@ class ClickChainMathTest {
 
     @Test
     fun longShotWaitsOnlyWhileStillOnTheSecondClick() {
-        assertTrue(longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = false, clicks = 2))
-        assertTrue(longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = false, clicks = 1))
+        assertTrue(
+            longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = false, clicks = 2, shotClicks = 2),
+        )
+        assertTrue(
+            longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = false, clicks = 1, shotClicks = 2),
+        )
         //  已数到第 3 击 ⇒ 用户还在连击，这一枪作废
-        assertFalse(longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = false, clicks = 3))
+        assertFalse(
+            longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = false, clicks = 3, shotClicks = 2),
+        )
         //  已经抬过手
-        assertFalse(longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = true, clicks = 2))
+        assertFalse(
+            longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = true, clicks = 2, shotClicks = 2),
+        )
         //  没排枪 / 已经判过
-        assertFalse(longShotStillWaiting(longPressAt = 0L, sawFirstRelease = false, clicks = 2))
+        assertFalse(
+            longShotStillWaiting(longPressAt = 0L, sawFirstRelease = false, clicks = 2, shotClicks = 2),
+        )
+    }
+
+    @Test
+    fun laterThenLongShotsWaitUpToTheirOwnClick() {
+        //  「双击后长按」那一枪排在第 3 击上：停在第 3 击仍等，数到第 4 击才作废
+        assertTrue(
+            longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = false, clicks = 3, shotClicks = 3),
+        )
+        assertFalse(
+            longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = false, clicks = 4, shotClicks = 3),
+        )
+        //  「三击后长按」排在第 4 击上，同理
+        assertTrue(
+            longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = false, clicks = 4, shotClicks = 4),
+        )
+        assertFalse(
+            longShotStillWaiting(longPressAt = 1_500L, sawFirstRelease = false, clicks = 5, shotClicks = 4),
+        )
+    }
+
+    @Test
+    fun thenLongStepFollowsTheClickItWasEnabledOn() {
+        // 只开「双击后长按」（第 3 击）：第 2 击照旧只是连击
+        assertEquals(
+            ChainStep.KEEP_WAITING,
+            chainStep(clicks = 2, cap = 3, thenLongClicks = setOf(3)),
+        )
+        assertEquals(
+            ChainStep.CHAINED_FINAL,
+            chainStep(clicks = 3, cap = 3, thenLongClicks = setOf(3)),
+        )
+        // 三档一起开时，每一击都能按住变长按，但后面还有档位就继续等
+        assertEquals(
+            ChainStep.CHAINED_WAITING,
+            chainStep(clicks = 3, cap = 4, thenLongClicks = setOf(2, 3, 4)),
+        )
+        assertEquals(
+            ChainStep.CHAINED_FINAL,
+            chainStep(clicks = 4, cap = 4, thenLongClicks = setOf(2, 3, 4)),
+        )
     }
 
     @Test
     fun longShotIsChainedOnlyFromTheSecondClickWithTheSwitchOn() {
-        assertTrue(longShotIsChained(clickThenLongOn = true, clicks = 2))
-        assertFalse(longShotIsChained(clickThenLongOn = true, clicks = 1))
-        assertFalse(longShotIsChained(clickThenLongOn = false, clicks = 2))
+        assertTrue(longShotIsChained(thenLongClicks = setOf(2), clicks = 2))
+        assertFalse(longShotIsChained(thenLongClicks = setOf(2), clicks = 1))
+        assertFalse(longShotIsChained(thenLongClicks = emptySet(), clicks = 2))
     }
 }

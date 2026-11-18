@@ -16,7 +16,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -220,11 +219,13 @@ private fun TabBandSurface(
                 onTabSelected = onSelect,
                 colors = tabBandColors(),
                 listState = listState,
-                //  **每格的下限从 52dp 收到 40dp**：库的 52dp 是按「三档短标签」定的，六档时它把
-                //  五档两字标签统统顶到 182px（比文字 + 内边距还宽），整条于是 1225px > 视口
-                //  1160px，只能进滚动分支、右端标签被切。40dp 仍高于「两字 + 两侧内边距」，
-                //  收下来之后整条 1155px 装得下，带子保持静止排布。
-                minWidth = 40.dp,
+                //  **每格下限不在这儿覆盖**：交回库默认那一档（按「三档短标签」定的 52dp）。
+                //  六档两字标签因此整条宽过视口（实测 1225px > 1160px）⇒ 走 0018 那条判据的
+                //  横向滚动分支，右端标签不再被切成半截；两端收进胶囊由外层那层 `padding` + `clip` 管。
+                //
+                //  0022 之后这两档都成了可选参数（`scrollWhenLabelsOverflow`、`minSegmentPadding`），
+                //  默认值就是这里看到的行为；要回到上游「压字省略」或「内边距固定 12dp」，
+                //  等打过 0022 的那版重打包发布之后在这一处显式传 —— 现在传会编不过。
                 modifier =
                     Modifier
                         .fillMaxWidth()

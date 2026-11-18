@@ -1,0 +1,43 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
+index 34cc5a6..c4b1e11 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
+@@ -163,6 +163,13 @@ fun TopAppBar(
+     defaultWindowInsetsPadding: Boolean = true,
+     showDivider: Boolean = true,
+     hideSubtitleOnCollapse: Boolean = true,
++    /**
++     * 补丁：副标题的左缘是否跟着大标题的缩进一起走（折叠到底时两者齐左）。
++     *
++     *  `true` = 打过 0005 的那一档（顶栏折到底，副标题贴着大标题自己的 `collapsedTitleX`）；
++     *  `false` = 上游原样（恒按 `titlePadding` 摆，折到底时与标题错开一截）。
++     */
++    subtitleFollowsTitleIndent: Boolean = true,
+     titlePadding: Dp = TopAppBarDefaults.TitlePadding,
+     navigationIconPadding: Dp = TopAppBarDefaults.NavigationIconPadding,
+     actionIconPadding: Dp = TopAppBarDefaults.ActionIconPadding,
+@@ -207,6 +214,7 @@ fun TopAppBar(
+         defaultWindowInsetsPadding = defaultWindowInsetsPadding,
+         showDivider = showDivider,
+         hideSubtitleOnCollapse = hideSubtitleOnCollapse,
++        subtitleFollowsTitleIndent = subtitleFollowsTitleIndent,
+         bottomContent = bottomContent,
+     )
+ }
+@@ -755,6 +763,7 @@ private fun TopAppBarLayout(
+     defaultWindowInsetsPadding: Boolean = true,
+     showDivider: Boolean = true,
+     hideSubtitleOnCollapse: Boolean = true,
++    subtitleFollowsTitleIndent: Boolean = true,
+     bottomContent: @Composable () -> Unit = {},
+ ) {
+     // Producer lambdas — reads stay in layout/draw phases so scroll never recomposes this subtree.
+@@ -1105,7 +1114,7 @@ private fun TopAppBarLayout(
+             // collapsed and the title has moved to its own indent (`collapsedTitleX`);
+             // at the expanded end the lerp still starts at `titlePaddingPx` — nothing moves.
+             subtitlePlaceable?.placeRelativeWithLayer(
+-                x = largeTitleX.roundToInt(),
++                x = if (subtitleFollowsTitleIndent) largeTitleX.roundToInt() else titlePaddingPx,
+                 y = expandedBarHeight - subtitleHeight -
+                     (largeTitleBottomPaddingPx * (1f - collapseFraction)).roundToInt() + offsetPx,
+             ) {

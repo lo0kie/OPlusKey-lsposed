@@ -129,6 +129,50 @@ object ComboWire {
         @SerialName("member_click_then_long_serial")
         val memberClickThenLongIsSerial: Boolean = false,
         /**
+         * 成员「双击后长按」（成员第 3 击按住）/「三击后长按」（成员第 4 击按住）——
+         * 与 [memberClickThenLong] 那一对同一口径，只差前面那几击的击数。
+         *
+         *  **判定侧要靠这一位**：连击链按「哪几击按住会变长按」数击数（`ChainSpec.thenLongClicks`），
+         *  不带的话第 3 击按住不被认，会被当成普通三击派发出去。
+         */
+        @SerialName("member_double_then_long")
+        val memberDoubleThenLong: String = Action.NONE,
+        @SerialName("member_double_then_long_on")
+        val memberDoubleThenLongOn: Boolean = false,
+        @SerialName("member_triple_then_long")
+        val memberTripleThenLong: String = Action.NONE,
+        @SerialName("member_triple_then_long_on")
+        val memberTripleThenLongOn: Boolean = false,
+        /** 这两档各自的时序与收尾（与 [memberClickThenLongFireOnRelease] 那一族同名不同槽）。 */
+        @SerialName("member_double_then_long_fire_on_release")
+        val memberDoubleThenLongFireOnRelease: Boolean = false,
+        @SerialName("member_double_then_long_repeat")
+        val memberDoubleThenLongRepeat: Boolean = false,
+        @SerialName("member_double_then_long_repeat_interval_ms")
+        val memberDoubleThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+        @SerialName("member_double_then_long_repeat_vibrate")
+        val memberDoubleThenLongRepeatVibrate: Boolean = false,
+        @SerialName("member_double_then_long_release_on")
+        val memberDoubleThenLongReleaseOn: Boolean = false,
+        @SerialName("member_double_then_long_release")
+        val memberDoubleThenLongRelease: String = Action.NONE,
+        @SerialName("member_double_then_long_serial")
+        val memberDoubleThenLongIsSerial: Boolean = false,
+        @SerialName("member_triple_then_long_fire_on_release")
+        val memberTripleThenLongFireOnRelease: Boolean = false,
+        @SerialName("member_triple_then_long_repeat")
+        val memberTripleThenLongRepeat: Boolean = false,
+        @SerialName("member_triple_then_long_repeat_interval_ms")
+        val memberTripleThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+        @SerialName("member_triple_then_long_repeat_vibrate")
+        val memberTripleThenLongRepeatVibrate: Boolean = false,
+        @SerialName("member_triple_then_long_release_on")
+        val memberTripleThenLongReleaseOn: Boolean = false,
+        @SerialName("member_triple_then_long_release")
+        val memberTripleThenLongRelease: String = Action.NONE,
+        @SerialName("member_triple_then_long_serial")
+        val memberTripleThenLongIsSerial: Boolean = false,
+        /**
          * 这一组自己的**四格窗口**（毫秒，等待 / 按住 × 固定窗口起点 开 / 关）；`0` = 跟随公共设置。
          *
          *  注入侧判定组合时读的就是它们 —— 不带的话每组只能等公共那几格，
@@ -353,7 +397,11 @@ object ComboWire {
             memberClicksOn = combo.memberClicksOn.sorted(),
             memberClickThenLong = combo.memberClickThenLong.token,
             memberClickThenLongOn = combo.memberClickThenLongOn,
-            memberClickThenLongPressMs = combo.memberClickThenLongPressMs,
+            //  0 是「跟随公共」的哨兵（`ComboKey.MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL`）：发送侧
+            //  在编之前已经把它解析成生效值盖进副本（见 `ConfigBroadcast`），走到这里还是 0
+            //  只可能是有人没盖 —— 那一下按出厂值发，不能把 0 发过去（注入侧会当成「到点即长按」）。
+            memberClickThenLongPressMs =
+                combo.memberClickThenLongPressMs.takeIf { it > 0 } ?: KeyConfig.DEFAULT_LONG_PRESS_MS,
             memberClickThenLongFireOnRelease = combo.memberClickThenLongFireOnRelease,
             memberClickThenLongRepeat = combo.memberClickThenLongRepeat,
             memberClickThenLongRepeatIntervalMs = combo.memberClickThenLongRepeatIntervalMs,
@@ -361,6 +409,24 @@ object ComboWire {
             memberClickThenLongReleaseOn = combo.memberClickThenLongReleaseOn,
             memberClickThenLongRelease = combo.memberClickThenLongRelease.token,
             memberClickThenLongIsSerial = combo.memberClickThenLongIsSerial,
+            memberDoubleThenLong = combo.memberDoubleThenLong.token,
+            memberDoubleThenLongOn = combo.memberDoubleThenLongOn,
+            memberTripleThenLong = combo.memberTripleThenLong.token,
+            memberTripleThenLongOn = combo.memberTripleThenLongOn,
+            memberDoubleThenLongFireOnRelease = combo.memberDoubleThenLongFireOnRelease,
+            memberDoubleThenLongRepeat = combo.memberDoubleThenLongRepeat,
+            memberDoubleThenLongRepeatIntervalMs = combo.memberDoubleThenLongRepeatIntervalMs,
+            memberDoubleThenLongRepeatVibrate = combo.memberDoubleThenLongRepeatVibrate,
+            memberDoubleThenLongReleaseOn = combo.memberDoubleThenLongReleaseOn,
+            memberDoubleThenLongRelease = combo.memberDoubleThenLongRelease.token,
+            memberDoubleThenLongIsSerial = combo.memberDoubleThenLongIsSerial,
+            memberTripleThenLongFireOnRelease = combo.memberTripleThenLongFireOnRelease,
+            memberTripleThenLongRepeat = combo.memberTripleThenLongRepeat,
+            memberTripleThenLongRepeatIntervalMs = combo.memberTripleThenLongRepeatIntervalMs,
+            memberTripleThenLongRepeatVibrate = combo.memberTripleThenLongRepeatVibrate,
+            memberTripleThenLongReleaseOn = combo.memberTripleThenLongReleaseOn,
+            memberTripleThenLongRelease = combo.memberTripleThenLongRelease.token,
+            memberTripleThenLongIsSerial = combo.memberTripleThenLongIsSerial,
             waitWindowMs = combo.waitWindowMs,
             waitPairMs = combo.waitPairMs,
             holdWindowMs = combo.holdWindowMs,
@@ -420,6 +486,25 @@ object ComboWire {
             memberClickThenLongReleaseOn = memberClickThenLongReleaseOn,
             memberClickThenLongRelease = Action.parse(memberClickThenLongRelease),
             memberClickThenLongIsSerial = memberClickThenLongIsSerial,
+            //  「双击后长按」/「三击后长按」：判定侧按这两档数击数与排长按枪，与上面那一族成对
+            memberDoubleThenLong = Action.parse(memberDoubleThenLong),
+            memberDoubleThenLongOn = memberDoubleThenLongOn,
+            memberTripleThenLong = Action.parse(memberTripleThenLong),
+            memberTripleThenLongOn = memberTripleThenLongOn,
+            memberDoubleThenLongFireOnRelease = memberDoubleThenLongFireOnRelease,
+            memberDoubleThenLongRepeat = memberDoubleThenLongRepeat,
+            memberDoubleThenLongRepeatIntervalMs = clampRepeatInterval(memberDoubleThenLongRepeatIntervalMs),
+            memberDoubleThenLongRepeatVibrate = memberDoubleThenLongRepeatVibrate,
+            memberDoubleThenLongReleaseOn = memberDoubleThenLongReleaseOn,
+            memberDoubleThenLongRelease = Action.parse(memberDoubleThenLongRelease),
+            memberDoubleThenLongIsSerial = memberDoubleThenLongIsSerial,
+            memberTripleThenLongFireOnRelease = memberTripleThenLongFireOnRelease,
+            memberTripleThenLongRepeat = memberTripleThenLongRepeat,
+            memberTripleThenLongRepeatIntervalMs = clampRepeatInterval(memberTripleThenLongRepeatIntervalMs),
+            memberTripleThenLongRepeatVibrate = memberTripleThenLongRepeatVibrate,
+            memberTripleThenLongReleaseOn = memberTripleThenLongReleaseOn,
+            memberTripleThenLongRelease = Action.parse(memberTripleThenLongRelease),
+            memberTripleThenLongIsSerial = memberTripleThenLongIsSerial,
             //  四格窗口：0 = 跟随公共设置，原样留着；设过的钳进那一档区间（手改的越界值在这里收口）
             waitWindowMs = clampFollow(waitWindowMs),
             waitPairMs = clampFollow(waitPairMs),

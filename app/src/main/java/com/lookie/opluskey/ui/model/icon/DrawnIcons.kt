@@ -91,6 +91,129 @@ internal object DrawnIcons {
             }.build()
     }
 
+    // —— 手势那几颗：「后长按」两档自绘（图标库只到「一只手」，没有几根手指那种）——
+    //
+    //  手指与手掌直接用图标库那几颗的 path 原文（`PathParser` 解析 SVG 的 d 字符串），
+    //  只在左侧补一条运动弧：手形因此与 `hand-two-fingers` / `hand-three-fingers` 像素级一致，
+    //  不会出现「自己算的右竖线画不出来」这类偏差。
+
+    /** 双击后长按 —— `hand-two-fingers` 的手 + `hand-click` 那四撇（右两撇在最后一根手指右侧一格）。 */
+    val HandClickTwo: ImageVector by lazy { handWithClickTicks("HandClickTwo", twoFingerHand(), rightTicksAt(18f)) }
+
+    /** 三击后长按 —— `hand-three-fingers` 的手 + 同一套四撇（位置同上）。 */
+    val HandClickThree: ImageVector by lazy { handWithClickTicks("HandClickThree", threeFingerHand(), rightTicksAt(19f)) }
+
+    /**
+     * 四击 —— `hand-stop` 那只手（四根手指全竖起）。
+     *
+     *  图标库那份 Kotlin 常量里还没有这颗（上游有、这个版本没收录），所以把它的 d 字符串原样
+     *  落在这里 —— 与库里那几颗同一个来源，形状、笔画、圆头都不用手算。
+     */
+    val HandStop: ImageVector by lazy {
+        ImageVector
+            .Builder(
+                name = "HandStop",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f,
+            ).apply {
+                STOP_HAND_PATHS.forEach { d ->
+                    addPath(
+                        pathData = PathParser().parsePathString(d).toNodes(),
+                        stroke = SolidColor(Color.Black),
+                        strokeLineWidth = GESTURE_STROKE,
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                    )
+                }
+            }.build()
+    }
+
+    /** `hand-stop` 的四条 path（`hand-three-fingers` 的三根手指 + 右边那一根）。 */
+    private val STOP_HAND_PATHS: List<String> =
+        listOf(
+            "M8 13v-7.5a1.5 1.5 0 0 1 3 0v6.5",
+            "M11 5.5v-2a1.5 1.5 0 1 1 3 0v8.5",
+            "M14 5.5a1.5 1.5 0 0 1 3 0v6.5",
+            STOP_PALM_PATH,
+        )
+
+    /** `hand-stop` 的手掌 —— 比 [PALM_PATH] 低一格（上沿 7.5 起），给第四根手指让位。 */
+    private const val STOP_PALM_PATH =
+        "M17 7.5a1.5 1.5 0 0 1 3 0v8.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7" +
+            "a69.74 69.74 0 0 1 -.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728" +
+            "a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.47 1.47"
+
+    /** 两根手指那只手（`hand-two-fingers` 的四条 path，原样）。 */
+    private fun twoFingerHand(): List<String> =
+        listOf(
+            "M8 13v-8.5a1.5 1.5 0 0 1 3 0v7.5",
+            "M11 5.5v-2a1.5 1.5 0 1 1 3 0v8.5",
+            "M14 10.5a1.5 1.5 0 0 1 3 0v1.5",
+            PALM_PATH,
+        )
+
+    /** 三根手指那只手（`hand-three-fingers` 的四条 path，原样）。 */
+    private fun threeFingerHand(): List<String> =
+        listOf(
+            "M8 13v-8.5a1.5 1.5 0 0 1 3 0v7.5",
+            "M11 5.5v-2a1.5 1.5 0 1 1 3 0v8.5",
+            "M14 5.5a1.5 1.5 0 0 1 3 0v6.5",
+            PALM_PATH,
+        )
+
+    /** 手形那一族共用的手掌与拇指（`hand-finger` 起就一直是这一条）。 */
+    private const val PALM_PATH =
+        "M17 11.5a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7" +
+            "a69.74 69.74 0 0 1 -.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728" +
+            "a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.47 1.47"
+
+    /**
+     * 「点击」那四撇 —— `hand-click` 原样的左两撇，右两撇挪到手的右上外侧。
+     *
+     *  左边两撇（`M5 3l-1 -1` / `M4 7h-1`）位置固定；右边两撇跟着**最后一根手指**走
+     *  （见 [rightTicksAt]）—— 两指那只手贴着中指、三指那只贴着第三根，指针尖右侧一点才读成
+     *  「这一下点在手指上」，离得远就成了两个不相干的符号。
+     */
+    private val LEFT_CLICK_TICKS: List<String> = listOf("M5 3l-1 -1", "M4 7h-1")
+
+    /**
+     * 右两撇：起点 [x] 在手的**最后一根手指右侧、留一格间距**（笔画半径 1，贴太紧就叠上了），
+     * 两条撇各往右伸 1 格。三指那只手在 14~17 还多一根竖线，同样的间距看着更挤，所以它再往外一格
+     */
+    private fun rightTicksAt(x: Float): List<String> = listOf("M$x 3l1 -1", "M${x + 1f} 6h1")
+
+    /** 把手形与那四撇装进一颗 24 视口的图标 —— 笔画 2、圆头，与图标库同一档。 */
+    private fun handWithClickTicks(
+        name: String,
+        hand: List<String>,
+        rightTicks: List<String>,
+    ): ImageVector =
+        ImageVector
+            .Builder(
+                //  **每颗名字必须不同**：`ImageVector.equals` 只比名字与尺寸，同名的两颗会被
+                //  当成同一颗 —— 「随机染色」按图标去分配颜色时，它们就拿到同一个颜色
+                name = name,
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f,
+            ).apply {
+                (hand + LEFT_CLICK_TICKS + rightTicks).forEach { d ->
+                    addPath(
+                        pathData = PathParser().parsePathString(d).toNodes(),
+                        stroke = SolidColor(Color.Black),
+                        strokeLineWidth = GESTURE_STROKE,
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                    )
+                }
+            }.build()
+
+    /** 上面那几颗共用的笔画宽度 —— 与图标库（2.0）同一档。 */
+    private const val GESTURE_STROKE = 2f
+
     // —— 音量 / 亮度：一颗底图 + 右下角一个角标 ——
     //
     //  格子里放底图本身，菜单三行放「同一颗底图 + 右下角角标」：加、减、齿轮。**底图不缩**，

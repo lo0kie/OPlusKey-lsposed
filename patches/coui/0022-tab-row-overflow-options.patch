@@ -1,0 +1,84 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt
+index 5b1b665..c3c8b00 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt
+@@ -180,6 +180,11 @@ fun TabRowWithContour(
+     modifier: Modifier = Modifier,
+     colors: TabRowColors = TabRowDefaults.tabRowColors(),
+     minWidth: Dp = TabRowDefaults.TabRowWithContourMinWidth,
++    //  补丁 0018 / 0019 的两档，默认值 = 打过补丁之后的样子（现有使用方不动）：
++    //  · `scrollWhenLabelsOverflow = false` 回到上游「标签放不下就压字加省略号」；
++    //  · `minSegmentPadding = SegmentPaddingHorizontal`（12dp）= 内边距不替标签让位，直接进滚动。
++    scrollWhenLabelsOverflow: Boolean = true,
++    minSegmentPadding: Dp = SegmentPaddingMinHorizontal,
+     maxWidth: Dp = TabRowDefaults.TabRowWithContourMaxWidth,
+     height: Dp = TabRowDefaults.TabRowWithContourHeight,
+     cornerRadius: Dp = TabRowDefaults.TabRowWithContourCornerRadius,
+@@ -207,6 +212,8 @@ fun TabRowWithContour(
+         listState = listState,
+         interactionSource = interactionSource,
+         indication = indication,
++        scrollWhenLabelsOverflow = scrollWhenLabelsOverflow,
++        minSegmentPadding = minSegmentPadding,
+     )
+ }
+ 
+@@ -230,6 +237,8 @@ private fun SegmentButtonRow(
+     listState: LazyListState?,
+     interactionSource: MutableInteractionSource?,
+     indication: Indication?,
++    scrollWhenLabelsOverflow: Boolean = true,
++    minSegmentPadding: Dp = SegmentPaddingMinHorizontal,
+     modifier: Modifier = Modifier,
+ ) {
+     val currentOnTabSelected by rememberUpdatedState(onTabSelected)
+@@ -256,16 +265,16 @@ private fun SegmentButtonRow(
+         val maxWidthPx = if (maxWidth == Dp.Infinity) Int.MAX_VALUE else with(density) { maxWidth.roundToPx() }
+         val spacingPx = with(density) { itemSpacing.roundToPx() }
+         val maxSegmentPaddingPx = with(density) { SegmentPaddingHorizontal.roundToPx() }
+-        val minSegmentPaddingPx = with(density) { SegmentPaddingMinHorizontal.roundToPx() }
++        val minSegmentPaddingPx = with(density) { minSegmentPadding.roundToPx() }
+         val naturalTextWidthsPx = remember(tabs, textMeasurer, measureStyle) {
+             tabs.map { label -> textMeasurer.measure(text = label, style = measureStyle, maxLines = 1).size.width }
+         }
+         //  Give each segment as much inner padding as the row can afford, never less than
+-        //  [SegmentPaddingMinHorizontal]: the labels are what has to fit, the padding is the slack.
++        //  [minSegmentPadding]: the labels are what has to fit, the padding is the slack.
+         //  Only when even the minimum padding does not fit does the row start scrolling — and a row
+         //  that does not scroll is the only state in which the capsule is guaranteed to sit exactly
+-        //  under its label.
+-        val segmentPaddingPx = remember(naturalTextWidthsPx, viewportPx, spacingPx, minWidthPx) {
++        //  under its label.  Pass `SegmentPaddingHorizontal` as the floor to keep the padding fixed.
++        val segmentPaddingPx = remember(naturalTextWidthsPx, viewportPx, spacingPx, minWidthPx, minSegmentPaddingPx) {
+             //  The widest padding the row can afford. It has to be searched rather than divided:
+             //  a segment never gets narrower than `minWidth`, so the short labels contribute a
+             //  constant once they hit that floor and a plain `slack / (2 * count)` over-estimates.
+@@ -296,7 +305,7 @@ private fun SegmentButtonRow(
+                 max(textWidth + 2 * segmentPaddingPx, minWidthPx)
+             }
+             val availablePx = viewportPx - spacingPx * max(0, tabs.size - 1)
+-            computeSegmentWidths(naturalWidths, availablePx, minWidthPx, maxWidthPx)
++            computeSegmentWidths(naturalWidths, availablePx, minWidthPx, maxWidthPx, scrollWhenLabelsOverflow)
+         }
+         val segmentPaddingDp = with(density) { segmentPaddingPx.toDp() }
+         val segmentLeftsPx = remember(segmentWidthsPx, spacingPx) {
+@@ -628,15 +637,17 @@ private fun computeSegmentWidths(
+     availablePx: Float,
+     minWidthPx: Int,
+     maxWidthPx: Int,
++    scrollWhenLabelsOverflow: Boolean = true,
+ ): List<Int> {
+     val count = naturalWidths.size
+     if (count == 0) return emptyList()
+-    //  放不下就按自然宽度排、让标签行横向滚。
++    //  放不下就按自然宽度排、让标签行横向滚（补丁 0018，`scrollWhenLabelsOverflow` 那一档）。
+     //
+     //  判据比上游多一条「所有标签的自然宽度之和超过可用宽」：原来只有「平均每段连 minWidth
+     //  都分不到」那一条 —— 它只在标签很多时成立，而真正需要滚的是「文案长、段数少」那一档：
+     //  上游在那儿会去压字，长的那几段被截成省略号（`maxLines = 1` + `Ellipsis`）。
+-    if (availablePx <= 0f || naturalWidths.sum() > availablePx || availablePx / count < minWidthPx) {
++    //  传 `false` 就退回上游那一条压字的路。
++    if (availablePx <= 0f || (scrollWhenLabelsOverflow && naturalWidths.sum() > availablePx) || availablePx / count < minWidthPx) {
+         return naturalWidths.map { min(it, maxWidthPx) }
+     }
+     return distributeSegmentWidths(naturalWidths, availablePx).map { min(it, maxWidthPx) }

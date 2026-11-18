@@ -135,6 +135,16 @@ object Strings {
      */
     const val BINDING_NO_MULTI_GESTURE = "binding.no_multi_gesture"
 
+    /**
+     * 「X 击后长按延迟」那根滑杆灰着被拖一下时说的话 —— 这颗键**一档后长按都没开**，
+     * 三档共用的那个按住时长没有可判的对象。
+     *
+     *  与 [BINDING_NO_MULTI_GESTURE] 同一个格式；它**不复用** `STATUS_THEN_NOT_ENABLED`：
+     *  那一句是整组设置压灰时说的（「先在前面启用这一档手势」），这里只灰一根滑杆，
+     *  要说的是「没开的是哪一族手势」。
+     */
+    const val BINDING_NO_THEN_LONG_GESTURE = "binding.no_then_long_gesture"
+
     /** 「只参与非首键的按住组合」那行开关（开 / 关各一句副标题）—— 见 `KeyConfig.comboOnly`。 */
     const val BINDING_COMBO_ONLY = "binding.combo_only"
 
@@ -149,6 +159,14 @@ object Strings {
      */
     const val BINDING_COMBO_ONLY_BADGE = "binding.combo_only_badge"
     const val BINDING_LONG_PRESS_DELAY_TITLE = "binding.long_press_delay_title"
+
+    /**
+     * 「X 击后长按延迟」—— 「单键」那张卡第三行滑杆的**主标题**（不是小标题）。
+     *
+     *  写成这个样子是因为这一根同时管三档：单击后长按 / 双击后长按 / 三击后长按
+     *  （三档只差前面点了几下，按住多久是同一个数），「X 击」就是这三档的统称。
+     */
+    const val BINDING_LONG_PRESS_DELAY_MULTI_TITLE = "binding.long_press_delay_multi_title"
 
     /**
      * 「松手执行额外动作」那一族 —— 开关（开 / 关各一句）+ 开关为真时滑入的「额外动作」那一行。
@@ -2168,4 +2186,14 @@ object Strings {
     const val GESTURE_CLICK_THEN_LONG = "gesture.click_then_long"
 
     const val GESTURE_CLICK_THEN_LONG_RELEASE = "gesture.click_then_long_release"
+
+    const val GESTURE_DOUBLE_THEN_LONG = "gesture.double_then_long"
+
+    const val GESTURE_TRIPLE_THEN_LONG = "gesture.triple_then_long"
+
+    const val KEY_SETTINGS_DOUBLE_THEN_LONG = "key_settings.double_then_long"
+
+    const val KEY_SETTINGS_TRIPLE_THEN_LONG = "key_settings.triple_then_long"
+
+    const val STATUS_THEN_LONG_NOT_ENABLED = "status.then_long_not_enabled"
 }

@@ -51,17 +51,20 @@ fun pressEntry(
  *
  * @param clicks **已经加过这一击**之后的击数
  * @param cap 这一档的判定上限（`ClickChainParams.judgeCap`，按档位开关算出来，至少 1）
- * @param clickThenLongOn 「单击后长按」开着（看**开关**，不是看有没有动作 —— 动作设成无操作时
- *   这一档仍要认下第 2 击，见 `GestureDetector.onKeyDownLocked` 那段）
+ * @param thenLongClicks 哪几击按住会变成「后长按」—— 元素是**按下那一刻的击数**：
+ *   2 = 单击后长按、3 = 双击后长按、4 = 三击后长按（见 `GestureTrigger.ClickThenLong.count`）。
+ *   判据是**开关**，不是看有没有动作 —— 动作设成无操作时这一档仍要认下那一击，
+ *   否则会落到「数到封顶」那一支报普通连击，执行侧对没有动作的档逐级回退，
+ *   最终**退成单击命令**。
  */
 enum class ChainStep {
     /** 还没数到封顶：继续等下一击，这一击不再排长按枪（连击中不会变长按）。 */
     KEEP_WAITING,
 
-    /** 第 2 击 + 「单击后长按」+ 后面还有第 3/4 击要等：排上长按枪，同时继续等。 */
+    /** 这一击按住会变「后长按」+ 后面还有档位要等：排上长按枪，同时继续等。 */
     CHAINED_WAITING,
 
-    /** 第 2 击 + 「单击后长按」+ 这一击就是链尾：抬手双击、按住变长按，两条路都留着。 */
+    /** 这一击按住会变「后长按」+ 这一击就是链尾：抬手走连击、按住走长按，两条路都留着。 */
     CHAINED_FINAL,
 
     /** 数到这一档的封顶（或超出）：当场判，派发交给抬手那一支。 */
@@ -71,11 +74,11 @@ enum class ChainStep {
 fun chainStep(
     clicks: Int,
     cap: Int,
-    clickThenLongOn: Boolean,
+    thenLongClicks: Set<Int>,
 ): ChainStep =
     when {
-        clicks == 2 && clickThenLongOn && clicks < cap -> ChainStep.CHAINED_WAITING
-        clicks == 2 && clickThenLongOn -> ChainStep.CHAINED_FINAL
+        clicks in thenLongClicks && clicks < cap -> ChainStep.CHAINED_WAITING
+        clicks in thenLongClicks -> ChainStep.CHAINED_FINAL
         clicks < cap -> ChainStep.KEEP_WAITING
         else -> ChainStep.FIRE
     }
@@ -147,25 +150,27 @@ fun releaseStep(
  *  三条栅栏缺一不可，任何一条没过都只是「作废」，不是「判成别的」：
  *  · 长按位还在（`0` = 已经判过 / 已经重置）；
  *  · 还没抬手（抬手那一刻就摘枪，这里多读一遍兜住跨线程的陈旧值）；
- *  · 击数没超过 2 —— 数到第 3 击说明用户还在连击（三击 / 四击还在等），
- *    这一枪必须作废，否则第 2 击那一按排下的枪会在第 3 击按住期间醒来，凭空判一次长按。
+ *  · 击数没超过这一枪所属的那一击（[it]）—— 数到更多击说明用户还在连击，
+ *    这一枪必须作废，否则第 N 击那一按排下的枪会在第 N+1 击按住期间醒来，凭空判一次长按。
  *
  *  @param longPressAt 长按截止时刻（`Pending.longPressAt`，`0` = 没排 / 已判过）
+ *  @param shotClicks 这一枪是在第几击上排的（= 排枪那一刻的击数；普通长按恒为 1）
  */
 fun longShotStillWaiting(
     longPressAt: Long,
     sawFirstRelease: Boolean,
     clicks: Int,
-): Boolean = longPressAt != 0L && !sawFirstRelease && clicks <= 2
+    shotClicks: Int = 1,
+): Boolean = longPressAt != 0L && !sawFirstRelease && clicks <= shotClicks
 
 /**
- * 这一枪到点该判「单击后长按」而不是普通长按。
+ * 这一枪到点该判「后长按」而不是普通长按。
  *
  *  与 [chainStep] 里那条同一判据：看的是**开关**，不是「有没有动作」——
- *  动作设成无操作时这一档仍然要认，否则会落到「数到封顶」那一支报 `Click(2)`，
+ *  动作设成无操作时这一档仍然要认，否则会落到「数到封顶」那一支派发普通连击，
  *  执行侧对没有动作的档逐级回退，最终**退成单击命令**。
  */
 fun longShotIsChained(
-    clickThenLongOn: Boolean,
+    thenLongClicks: Set<Int>,
     clicks: Int,
-): Boolean = clickThenLongOn && clicks >= 2
+): Boolean = clicks in thenLongClicks

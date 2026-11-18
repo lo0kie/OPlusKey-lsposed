@@ -58,6 +58,15 @@
   「结束那一趟全列」的算法会跟着上一趟留下来。
 - **两档只认自己那一族**（`SettingsPage.appPickerSelectedTarget`）：键上绑的是 `proc:stop:` 时，
   进「打开应用」那一趟既不点亮那一行、也不滚过去；反过来 `app:` 进「结束」那一趟同理。
+- **熄屏起界面先点屏，只有一处判据**（`AppLauncher.wakeBeforeLaunch`）：`startActivity` 不点亮屏幕，
+  灭屏下按这一颗键等的就是那一屏，所以起界面之前问一次 `PowerManager.isInteractive`，灭着才发
+  `wakeUp`（`@hide`，靠宿主的 `DEVICE_POWER`，与「电源键」那一档共用 `requestWake`）。
+  两条路都走它：`app:` 普通启动（应用面板挑的那一批）一律点，`oplus:` 内置特性按
+  `RomProfile.BuiltIn.wakeScreen` 那一位点（相机 / 计算器登记了，录屏不登记 —— 按它不是为了看那一屏）。
+  点不亮不拦着启动：界面在幕后起来总比连起都不起好，失败只落一行日志。
+  **`window:` 小窗那一趟不在其列**（`MiniWindowLauncher` 自己起，没接这一处）。
+  取证与「锁屏上显不显示得出来」是另一件事：那取决于目标清单里有没有 `showWhenLocked`，
+  见 `docs/device/actions/lock-screen.md` 四十五。
 - **搜索框的占位带条数**（`搜索应用 (42)`，两页共用 `PickerSearchBand` 的那一个 `count`）：
   只在**搜索框空着**时才加 —— 一有输入，那行字读的是「你在搜什么」，再挂个数字会被当成搜出来的
   条数；`null` / 0 也不加（清单还没读到时不摆一个 `(0)`）。句式收在

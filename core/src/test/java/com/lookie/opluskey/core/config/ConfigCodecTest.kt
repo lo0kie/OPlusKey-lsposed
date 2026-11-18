@@ -1,6 +1,10 @@
 package com.lookie.opluskey.core.config
 
 import com.lookie.opluskey.core.model.Config
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
@@ -15,7 +19,8 @@ import org.junit.Test
  *  「读不懂」，页面只读、注入侧不接管。编译期没有任何信号（`tools/audit-config-version.py`
  *  是事后闸），所以行为这一侧也得有一条。
  *
- *  三条判据：往返不丢东西 / 老版本不看 md5 / 当前版本改过正文就拒收。
+ *  判据：往返不丢东西 / 老版本不看 md5 / **更新的版本（装回旧包）同样不看 md5，但仍要键段完整** /
+ *  当前版本改过正文就拒收。
  */
 class ConfigCodecTest {
     private val versionLine = Regex("\"version\"\\s*:\\s*\\d+")
@@ -37,6 +42,37 @@ class ConfigCodecTest {
                 .replace(versionLine, "\"version\": ${ConfigCodec.VERSION - 1}")
                 .replace(md5Line, "\"md5\": \"00000000000000000000000000000000\"")
         assertNotNull("老版本文件被 md5 拦掉了（那一支不该校验）", ConfigCodec.parseOrNull(text))
+    }
+
+    @Test
+    fun newerVersionIsReadWithoutTheMd5Check() {
+        // 装回旧包（降级）时遇到的文件：版本号比本版大，多出来的字段本版不认识、重编码时被丢掉，
+        //  于是 md5 必然对不上。判成「读不懂」会让整条链断掉（页面只读、切换与新建全被拒、
+        //  每份配置在列表里都显示成「读不出来」），所以这一支同样不校验 md5。
+        val text =
+            serialized()
+                .replace(versionLine, "\"version\": ${ConfigCodec.VERSION + 1}")
+                .replace(md5Line, "\"md5\": \"00000000000000000000000000000000\"")
+        assertNotNull("更新的版本写下的文件被 md5 拦掉了（那一支不该校验）", ConfigCodec.parseOrNull(text))
+    }
+
+    @Test
+    fun newerVersionStillNeedsAWholeKeySection() {
+        // 「不校验 md5」不等于「什么都收」：缺键段仍然算读不懂 —— 那一档拿默认值补等于静默抹掉绑定
+        assertNull("更新的版本文件缺键段却仍然解析成功", ConfigCodec.parseOrNull(newerVersionWithoutKeys()))
+    }
+
+    /** 一份「更新的版本」的文件，`keys` 段被整段删掉（`md5` 那格保持原样 —— 这一支本来就不校验它）。 */
+    private fun newerVersionWithoutKeys(): String {
+        val root = Json.parseToJsonElement(serialized()).jsonObject
+        val stripped =
+            JsonObject(
+                root.toMutableMap().apply {
+                    put("version", JsonPrimitive(ConfigCodec.VERSION + 1))
+                    remove("keys")
+                },
+            )
+        return stripped.toString()
     }
 
     @Test

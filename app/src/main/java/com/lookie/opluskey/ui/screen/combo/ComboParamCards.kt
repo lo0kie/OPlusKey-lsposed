@@ -6,6 +6,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.ComboWindows
 import com.lookie.opluskey.core.model.GlobalConfig
+import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.isOn
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
@@ -19,11 +20,13 @@ import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
+import com.lookie.opluskey.ui.screen.binding.DelayParamSource
 import com.lookie.opluskey.ui.write.setComboFixedWindowStart
 import com.lookie.opluskey.ui.write.setComboHoldFixedWindowStart
 import com.lookie.opluskey.ui.write.setComboHoldMin
 import com.lookie.opluskey.ui.write.setComboSceneOnStarter
 import com.lookie.opluskey.ui.write.setComboStarterKeepLong
+import com.lookie.opluskey.ui.write.setGlobalComboMemberThenLongPress
 
 // 「等待组合」与「按住组合」两张卡 —— **公共设置页与某一组的「独立设置」页用的是同一份**。
 //
@@ -108,6 +111,16 @@ internal class ComboParamSource(
      *  本来就不成立。
      */
     val holdWindowLive: Boolean = true,
+    /**
+     * 成员那三档「后长按」共用的**按住时长**（「连击后长按延迟」）—— `null` = 这张卡不摆这一行。
+     *
+     *  两侧都给值，**同一个参数只有一个入口**：公共那一份是「没单独设过的组合」用的默认值，
+     *  某一组那一份就是这一档自己的（与单键那张卡的第三行同一条组织，见 `ClickDelayCard`）。
+     *
+     *  `null` 只出现在**用不到它的组合**上：多成员组合 / 等待组合没有「哪一颗成员在连击」，
+     *  这一根拨了什么都不变。
+     */
+    val memberDelay: DelayParamSource? = null,
     val enabled: Boolean,
     val disabledHint: String? = null,
     val onWaitWindow: (Int) -> Boolean,
@@ -350,9 +363,45 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                     disabledHint = source.disabledHint,
                     onCheckedChange = source.onStarterKeepLong,
                 ),
-            ),
+            ) + memberDelayRows(source),
     )
 }
+
+/**
+ * 「连击后长按延迟」那一行 —— 成员那三档「后长按」共用的按住时长。
+ *
+ *  与单键那张卡的第三行（`ClickDelayCard` 里那根）同一件事、同一套刻度：先点了几下不影响
+ *  手按下去的节奏，所以三档只有这一根；10ms 取值 / 50ms 粗拖也与长按那一档同一手感。
+ *  摆在按住卡的最后一行 —— 与单键那张卡把这一根放在末尾同一个读法：窗口 / 门槛定完，再定按住多久。
+ *
+ *  两页共用这一份：公共那一页给公共值、某一组的独立设置页给这一组自己的（来源见
+ *  [ComboParamSource.memberDelay]）；用不到它的组合（多成员 / 等待）来源给 `null`，这一行不摆。
+ */
+private fun SettingsPage.memberDelayRows(source: ComboParamSource): List<CardRow> =
+    source.memberDelay
+        ?.let { delay ->
+            listOf(
+                CardRow.Custom { position ->
+                    SliderRow(
+                        position = position,
+                        spec =
+                            SliderSpec(
+                                title = I18n.get(Strings.BINDING_LONG_PRESS_DELAY_MULTI_TITLE),
+                                icon = PageIcons.DelayHold,
+                                min = KeyConfig.MIN_LONG_PRESS_MS,
+                                max = KeyConfig.MAX_LONG_PRESS_MS,
+                                value = delay.value,
+                                default = KeyConfig.DEFAULT_LONG_PRESS_MS,
+                                step = 10,
+                                dragStep = 50,
+                                enabled = delay.enabled,
+                                disabledHint = delay.disabledHint,
+                            ),
+                        onCommit = delay.onCommit,
+                    )
+                },
+            )
+        }.orEmpty()
 
 /**
  * **公共**那一份来源 —— 值读 `GlobalConfig`，写入落到全局配置（没单独设过的组都用它）。
@@ -380,6 +429,13 @@ internal fun SettingsPage.comboPublicParams(enabled: Boolean): ComboParamSource 
         //  「三颗以上的按住档」与「两键档」⇒「按键间隔和多击…」。
         //  等待那张卡两种档量的是同一件事，恒为「按键间隔…」，不取自这里。
         holdWindowLabel = WindowLabel.INTERVAL_MULTI,
+        //  成员「连击后长按延迟」的公共那一份：与单键那张卡第三行同一条 —— 公共设置始终可调
+        memberDelay =
+            DelayParamSource(
+                value = cfg.global.comboMemberClickThenLongPressMs,
+                enabled = enabled,
+                onCommit = { v -> setGlobalComboMemberThenLongPress(v) },
+            ),
         enabled = enabled,
         onWaitWindow = { setComboWaitWindow(it) },
         onWaitPair = { setComboWaitPair(it) },
@@ -411,6 +467,8 @@ internal fun SettingsPage.comboOwnParams(
     val cfg = configState.config.value
     //  「固定窗口起点」两颗的出厂值（模型上就一个默认值，见 `GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START`）
     val fixedStartDefault = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START
+    //  成员「后长按」三档开了任意一档 ⇒ 那一根按住时长才有可量的东西（判据见 `memberDelay`）
+    val anyThenLongOn = combo.memberClickThenLongOn || combo.memberDoubleThenLongOn || combo.memberTripleThenLongOn
     return ComboParamSource(
         windows = cfg.comboStoredWindowsFor(combo),
         //  回落值也是**出厂默认**：这一组没写过的那几格 = 出厂那一份（`ComboWindows.DEFAULT`）
@@ -430,6 +488,29 @@ internal fun SettingsPage.comboOwnParams(
         //  独立设置页**只写这一档自己的前缀**：两键的按住组合写「多击…」（那两行只服务
         //  那颗成员键的连击），其余写「按键间隔…」。判据见 [holdWindowLabelOf]。
         holdWindowLabel = holdWindowLabelOf(combo),
+        //  成员连击那三档共用的按住时长：只有「按住档 + 一颗成员」有成员连击（`memberGestures`），
+        //  其余组合摆一根拨了不改行为的滑杆没有意义。
+        //
+        //  两道闸与单键那张卡的第三行同一条：**没开独立设置**时写下去不生效（生效值跟公共那一份），
+        //  所以跟着上面那几根一起压灰；**三档一档都没开**时这一根也没有可量的东西。
+        memberDelay =
+            if (combo.memberGestures == null) {
+                null
+            } else {
+                DelayParamSource(
+                    //  显示的是**这一档自己那份**（没写过 ⇒ 出厂默认），与上面那几格窗口同一口径：
+                    //  取生效值的话，拨一下总开关它就从公共值跳到这一组自己的值。
+                    value = cfg.comboStoredMemberThenLongPressFor(combo),
+                    enabled = enabled && anyThenLongOn,
+                    disabledHint =
+                        if (enabled && !anyThenLongOn) {
+                            I18n.get(Strings.BINDING_NO_THEN_LONG_GESTURE)
+                        } else {
+                            disabledHint
+                        },
+                    onCommit = { ms -> setComboOwnMemberThenLongPress(combo.id, ms) },
+                )
+            },
         enabled = enabled,
         disabledHint = disabledHint,
         onWaitWindow = { ms -> setComboOwnWaitWindow(combo.id, ms) },

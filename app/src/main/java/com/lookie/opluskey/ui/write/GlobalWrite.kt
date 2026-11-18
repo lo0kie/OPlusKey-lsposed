@@ -120,6 +120,40 @@ internal fun SettingsPage.setGlobalClickWindow(v: Int): Boolean {
 }
 
 /**
+ * 写公共设置里的**「单击和多击和长按延迟」**（三档「后长按」共用的按住时长）。
+ *
+ *  与 [setGlobalClickWindow] 同族：只改全局那一份，没开「使用独立设置」的键都按它判
+ *  （生效值的取法见 `KeyConfig.fieldValues(global)`）。
+ *
+ *  返回「写盘成没成」—— 滑杆失败时要拨回原值（见 `SliderRow` 的 `commit`）。
+ */
+internal fun SettingsPage.setGlobalClickThenLongPress(v: Int): Boolean {
+    val cfg = configState.config.value
+    val next = v.coerceIn(KeyConfig.MIN_LONG_PRESS_MS, KeyConfig.MAX_LONG_PRESS_MS)
+    return write(
+        cfg.copy(global = cfg.global.copy(clickThenLongPressMs = next)),
+        "global_click_then_long_press_ms=$next",
+    ) != CommandsSave.Failed
+}
+
+/**
+ * 写公共设置里的**组合成员「连击后长按延迟」**（成员那三档「后长按」共用的按住时长）。
+ *
+ *  与 [setGlobalClickThenLongPress] 同一条：只改全局那一份，没开「使用独立设置」的组合都按它判
+ *  （生效值的取法见 `Config.comboMemberThenLongPressFor`）。
+ *
+ *  返回「写盘成没成」—— 滑杆失败时要拨回原值（见 `SliderRow` 的 `commit`）。
+ */
+internal fun SettingsPage.setGlobalComboMemberThenLongPress(v: Int): Boolean {
+    val cfg = configState.config.value
+    val next = v.coerceIn(KeyConfig.MIN_LONG_PRESS_MS, KeyConfig.MAX_LONG_PRESS_MS)
+    return write(
+        cfg.copy(global = cfg.global.copy(comboMemberClickThenLongPressMs = next)),
+        "global_combo_member_then_long_press_ms=$next",
+    ) != CommandsSave.Failed
+}
+
+/**
  * 写**振动强度**（三档，见 [GlobalConfig.VIBRATE_STRENGTH_RANGE]）。
  *
  *  只改强度、不动 [GlobalConfig.vibrate]：那一行的开关管「振不振」，这一行管「振多重」，

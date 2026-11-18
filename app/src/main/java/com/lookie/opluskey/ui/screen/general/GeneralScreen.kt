@@ -77,10 +77,11 @@ internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
         InterfaceCard(pageEnabled)
         SectionTitle(I18n.get(Strings.HOME_BINDING_CARD_TITLE))
         ActionsCard(pageEnabled)
-        //  —— 单击（判定时机 + 单击延迟）——
+        //  —— 单键（判定时机 + 连击等待窗口 + 单击和多击和长按延迟）——
         //  这一节是**全局默认值**：没开「使用独立设置」的键都按这一份判。
-        //  它不吃「有没有多击手势」那道闸 —— 单键也要有个地方改「按下之后等多久」；
-        //  逐键那一份在独立设置页里，只有开了多击才可调（同一张卡，见 `clickKeyParams`）。
+        //  前两行不吃「有没有多击手势」那道闸 —— 单键也要有个地方改「按下之后等多久」；
+        //  第三行（三档「后长按」共用的按住时长）同样一直可调（用户口径「公共设置始终不禁用」）。
+        //  逐键那一份在独立设置页里，闸门不同（见 `clickKeyParams`）。
         SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK))
         ClickDelayCard(clickGlobalParams(pageEnabled))
         //  组合键那几项 —— 从「按键功能」页搬来：它们是**全局**设置，与「有哪几颗键」无关，

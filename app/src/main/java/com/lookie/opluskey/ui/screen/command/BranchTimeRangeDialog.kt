@@ -452,7 +452,7 @@ internal fun SettingsPage.sceneGesturePages(): List<GestureTrigger> {
     }
     //  键那一支读**在编那颗键**的开关：与「按键绑定」页同一个判据，两页的档数才不会一页三一页六
     val key = configState.config.value.key(branchKeyNow())
-    return GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn, key.doubleClickOn)
+    return GestureTrigger.slotsOn(key.extraClicksOn, key.doubleClickOn, key.thenLongClicks)
 }
 
 /**

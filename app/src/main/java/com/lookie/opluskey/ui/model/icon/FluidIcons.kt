@@ -481,6 +481,10 @@ internal object FluidIcons {
             "flashlight" to DrawnIcons.Flashlight,
             "brandcoolapk" to DrawnIcons.BrandCoolapk,
             "pickring" to DrawnIcons.PickRing,
+            //  手势那几颗（四击与「后长按」两档）—— 图标库只到三根手指，这三颗是自绘的
+            "handstop" to DrawnIcons.HandStop,
+            "handclicktwo" to DrawnIcons.HandClickTwo,
+            "handclickthree" to DrawnIcons.HandClickThree,
         )
 
     /** 按 id 取；认不出返回 null（旧配置里没写图标就是这条）。 */

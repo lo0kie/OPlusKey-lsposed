@@ -116,6 +116,10 @@ internal class AppLauncher(
             return
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        //  **熄屏时先点屏**：`startActivity` 不会点亮屏幕，用户在灭屏下按这一颗键等的就是那一屏。
+        //  与内置两档（相机 / 计算器快捷）共用 [wakeBeforeLaunch] 那一份判据 —— 亮着就什么都不做。
+        //  放在两条起法之前：「原版动画」那一档会把整件事转交给宿主链路，点屏必须照样发生。
+        wakeBeforeLaunch(ctx, "app:$target")
         //  **原版动画那一档：整件事交给宿主自己那条链路**（`OriginalLaunch` 的类注释里有证据：
         //  系统里真的出现了它建的 `SpruceLauncher` RemoteTransition）。它内部会自己起界面，
         //  所以这里交出之后必须 return —— 否则会开出两个任务。
@@ -322,7 +326,7 @@ internal class AppLauncher(
         // 界面型目标：非 Activity 的 Context 起界面必须带 NEW_TASK，否则 ActivityNotFoundException
         if (target.activity) {
             //  登记了「先点亮屏幕」的那两档（锁屏相机 / 计算器）：灭着就先点一下，否则界面在幕后起来
-            if (target.wakeScreen) wakeForFeature(ctx, feature)
+            if (target.wakeScreen) wakeBeforeLaunch(ctx, "oplus:$feature")
             //  后面那几位由落点表自己声明（见 `RomProfile.BuiltIn.flags`），这里不按功能名分派
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or target.flags)
             try {
@@ -682,25 +686,31 @@ internal class AppLauncher(
         }
 
     /**
-     * 起界面之前先把屏幕点亮（[RomProfile.BuiltIn.wakeScreen] 那一档）。
+     * 起界面之前先把屏幕点亮 —— 「熄屏起界面」这一件事的**唯一出口**：`oplus:` 内置特性与
+     * `app:` 普通启动共用一份判据（原先只有登记了 [RomProfile.BuiltIn.wakeScreen] 的那两档会点屏，
+     * 用户从应用面板挑的相机 / 计算器照样点在黑屏上）。
      *
      *  侧键在**熄屏**时也照常被拦住（见 `docs/device/side-key.md` 三十九），而 `startActivity`
-     *  本身不会点亮屏幕 —— 不补这一下，相机 / 计算器在幕后起来了，用户看到的仍是黑屏。
-     *  已经亮着就什么都不做（不亮屏比亮屏更不该发生的是「多改了一次屏幕状态」）。
+     *  本身不会点亮屏幕 —— 不补这一下，界面在幕后起来了，用户看到的仍是黑屏。
+     *  已经亮着就什么都不做（多改一次屏幕状态比少改一次更不该发生）。
      *
      *  点不亮**不拦着**起界面：那是两件事，界面在幕后起来总比连起都不起好，失败只落一行日志。
+     *
+     *  @param target 这一次起的是哪一格（`oplus:camera` / `app:包名`）—— 与日志主语同一份，
+     *    排查时「点屏」与「下发」两行才对得上。
      */
-    private fun wakeForFeature(
+    private fun wakeBeforeLaunch(
         ctx: Context,
-        feature: String,
+        target: String,
     ) {
         try {
             val power = ctx.getSystemService(android.os.PowerManager::class.java)
             if (power == null || power.isInteractive) return
-            requestWake(power, "opluskey:$feature")
-            XLog.w("oplus:$feature → 熄屏，先点亮屏幕")
+            //  reason 只用来让系统那边认出「是谁点的屏」，具体起的是哪一格由下面那行日志带
+            requestWake(power, "opluskey:launch")
+            XLog.w("$target → 熄屏，先点亮屏幕")
         } catch (e: Throwable) {
-            XLog.w("oplus:$feature 点亮屏幕失败（界面仍会起来，但可能看不见）：${e.javaClass.simpleName}: ${e.message}")
+            XLog.w("$target 点亮屏幕失败（界面仍会起来，但可能看不见）：${e.javaClass.simpleName}: ${e.message}")
         }
     }
 

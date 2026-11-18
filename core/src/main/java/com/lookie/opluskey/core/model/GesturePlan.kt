@@ -22,6 +22,14 @@ private fun clickLabelOf(count: Int): String {
     return numeral + "击"
 }
 
+/** 「后长按」那一族的人话（`单击后长按` / `双击后长按` / `三击后长按`）—— 主档与它的松手共用。 */
+private fun clickThenLongLabel(count: Int): String =
+    when (count) {
+        1 -> "单击后长按"
+        2 -> "双击后长按"
+        else -> clickLabelOf(count) + "后长按"
+    }
+
 /**
  * 一档手势的**触发条件** —— 自定义手势要落地，档位就得能当数据描述。
  *
@@ -53,22 +61,36 @@ sealed interface GestureTrigger {
     data object Release : GestureTrigger
 
     /**
-     * **单击之后再按住不放**（`KeyConfig.clickThenLong`）—— 两段式：第 1 击抬手之后，
-     *  第 2 击在连击窗口内按下并按住超过长按阈值。
+     * **连点 N 下之后再按住不放** —— 两段式：前 N 击各自抬手，下一击在连击窗口内按下并按住
+     *  超过长按阈值。
      *
-     *  与 [Click] / [LongPress] 的区别在**第二击的形态**：第 2 击快速抬起 ⇒ 双击（[Click] 2），
-     *  按住不放 ⇒ 这一档。所以它与双击互斥，同一颗键不可能两档同时命中。
+     *  [count] 是**前面那几击的击数**：1 = 单击后长按（第 2 击按住）、2 = 双击后长按（第 3 击
+     *  按住）、3 = 三击后长按（第 4 击按住）。三者是同一件事的三个档位，配置、判定、界面都按
+     *  这一位索引 —— 不为每一档另写一套。
      *
-     *  它是「要自己要才有」的档位（[KeyConfig.clickThenLongOn]），关着时判定侧根本不在
-     *  第 2 击上排长按那一枪 —— 单击的等待窗口与这一位出现之前完全一样。
+     *  与 [Click] / [LongPress] 的区别在**最后一击的形态**：那一击快速抬起 ⇒ 普通多击
+     *  （[Click] count+1），按住不放 ⇒ 这一档。所以它与对应的多击档互斥，同一颗键不可能
+     *  两档同时命中。
+     *
+     *  它是「要自己要才有」的档位（`KeyConfig.clickThenLongOn` / `doubleThenLongOn` /
+     *  `tripleThenLongOn`），关着时判定侧根本不在那一击上排长按那一枪 —— 单击的等待窗口与
+     *  这一位出现之前完全一样。
      */
-    data object ClickThenLong : GestureTrigger
+    data class ClickThenLong(
+        val count: Int = 1,
+    ) : GestureTrigger
 
     /**
-     * **「单击后长按」那一档的松手**（`KeyConfig.clickThenLongRelease`）—— 与 [Release] 同一个意思，
+     * **「后长按」那一档的松手**（`KeyConfig.clickThenLongRelease` 那一族）—— 与 [Release] 同一个意思，
      *  但属于另一条路：那一档有自己的「松手执行额外动作」，不能与长按的松手格共用。
+     *
+     *  [count] 与 [ClickThenLong.count] **同一个口径**（前面那几击的击数：1 / 2 / 3）——
+     *  三档各有自己的一格松手动作，不带这一位就只能读到第 1 击那一份（真机报过：
+     *  「x 击后长按会拿单击后长按的松手动作触发」）。
      */
-    data object ClickThenLongRelease : GestureTrigger
+    data class ClickThenLongRelease(
+        val count: Int = 1,
+    ) : GestureTrigger
 
     /** 配置 / 广播里用的档位 id —— 与 `Gesture.id` 同一套字面量（多击是 `clickN`）。 */
     val id: String get() = idOf(this)
@@ -85,12 +107,12 @@ sealed interface GestureTrigger {
                     "长按松手"
                 }
 
-                GestureTrigger.ClickThenLong -> {
-                    "单击后长按"
+                is GestureTrigger.ClickThenLong -> {
+                    clickThenLongLabel(count)
                 }
 
-                GestureTrigger.ClickThenLongRelease -> {
-                    "单击后长按松手"
+                is GestureTrigger.ClickThenLongRelease -> {
+                    clickThenLongLabel(count) + "松手"
                 }
 
                 is Click -> {
@@ -159,12 +181,12 @@ sealed interface GestureTrigger {
          */
         fun slotsOn(
             on: Set<Int>,
-            clickThenLong: Boolean = false,
             doubleClick: Boolean = true,
+            thenLongClicks: Set<Int> = emptySet(),
         ): List<GestureTrigger> =
             BASE_SLOTS.filter { (it as? Click)?.count != 2 || doubleClick } +
                 HIGHER_CLICKS.filter { (it as Click).count in on } +
-                (if (clickThenLong) listOf(ClickThenLong) else emptyList())
+                thenLongClicks.sorted().map { ClickThenLong(it - 1) }
 
         /**
          * 组合键能配的几档 —— 组合没有双击、没有多击（见 `ComboKey` 的类注释）。
@@ -188,12 +210,12 @@ sealed interface GestureTrigger {
         ): List<GestureTrigger> {
             val base = if (hasLong) COMBO_SLOTS else COMBO_SLOTS - LongPress
             if (member == null) return base
-            //  成员连击那几档接在短按 / 长按之后：双击 / 第 3 击起 / 单击后长按。
+            //  成员连击那几档接在短按 / 长按之后：双击 / 第 3 击起 / 后长按（按击数三档）。
             //  （短按 `Click(1)` 与长按已在 [COMBO_SLOTS] 里，不在这里重复。）
             return base +
                 (if (member.doubleClickOn) listOf<GestureTrigger>(Click(2)) else emptyList()) +
                 HIGHER_CLICKS.filter { (it as Click).count in member.extraClicksOn } +
-                (if (member.clickThenLongOn) listOf<GestureTrigger>(ClickThenLong) else emptyList())
+                member.thenLongClicks.sorted().map { ClickThenLong(it - 1) }
         }
 
         /**
@@ -203,9 +225,28 @@ sealed interface GestureTrigger {
          */
         const val RELEASE_ID = "release"
 
-        /** 「单击后长按」两档的 id —— 同理与 `single` / `double` / `long` / `clickN` 都不冲突。 */
+        /** 「后长按」主档那一族的基础 id —— N = 1 用它，N ≥ 2 是 `click{N}` + [THEN_LONG_SUFFIX]。 */
         const val CLICK_THEN_LONG_ID = "click_then_long"
+
+        /**
+         * 「后长按」的松手那一档的 id —— 三档各一份（`click_then_long_release` /
+         * `click2_then_long_release` / `click3_then_long_release`）。
+         *
+         *  N = 1 沿用 [CLICK_THEN_LONG_RELEASE_ID]：那一档在这一位产生之前就叫这个名字，
+         *  改字面量等于让已落盘的场景配置与已发出的广播一起失效。
+         */
         const val CLICK_THEN_LONG_RELEASE_ID = "click_then_long_release"
+
+        /** `click{N}_then_long_release`（N ≥ 2）里后缀那一半 —— 与 [THEN_LONG_SUFFIX] 分开写。 */
+        const val THEN_LONG_RELEASE_SUFFIX = "_then_long_release"
+
+        /**
+         * 「第 N 击后长按」里 N ≥ 2 那几档的 id 后缀（`click2_then_long` / `click3_then_long`）。
+         *
+         *  N = 1 沿用 [CLICK_THEN_LONG_ID]：那一档在 1.6.0 之前就叫这个名字，改字面量等于让
+         *  已落盘的配置与已发出的广播一起失效。
+         */
+        const val THEN_LONG_SUFFIX = "_then_long"
 
         /**
          * 档位 id → 触发条件。
@@ -221,13 +262,46 @@ sealed interface GestureTrigger {
                 ?: when (id) {
                     RELEASE_ID -> GestureTrigger.Release
 
-                    CLICK_THEN_LONG_ID -> GestureTrigger.ClickThenLong
+                    CLICK_THEN_LONG_ID -> GestureTrigger.ClickThenLong(1)
 
-                    CLICK_THEN_LONG_RELEASE_ID -> GestureTrigger.ClickThenLongRelease
+                    CLICK_THEN_LONG_RELEASE_ID -> GestureTrigger.ClickThenLongRelease(1)
 
-                    //  `clickN`（n ≥ 3）—— 除三档与那几个具名档之外唯一认的写法
-                    else -> clickOf(id)
+                    //  `clickN`（n ≥ 3）—— 除三档与那几个具名档之外唯一认的写法。
+                    //  三个解析函数**按后缀长的先试**：`click2_then_long_release` 同时满足
+                    //  `click` 前缀，先试短后缀会把它拆成认不出的 `2_then_long_release`。
+                    else -> thenLongReleaseOf(id) ?: clickOf(id) ?: thenLongOf(id)
                 }
+
+        /** `click{N}_then_long_release`（N ≥ 2）—— 与 [thenLongOf] 分开：后缀不同，先试它。 */
+        private fun thenLongReleaseOf(id: String?): GestureTrigger? = thenLongOf(id, release = true)
+
+        /** `click{N}_then_long`（N ≥ 2）—— 与 [clickOf] 分开：两种写法的后缀不同，不共用一条解析。 */
+        private fun thenLongOf(id: String?): GestureTrigger? = thenLongOf(id, release = false)
+
+        /**
+         * `click{N}_then_long` 与 `click{N}_then_long_release` 的共用解析。
+         *
+         *  @param release `true` = 解析松手那一档（多一段后缀）
+         */
+        private fun thenLongOf(
+            id: String?,
+            release: Boolean,
+        ): GestureTrigger? {
+            val suffix = if (release) THEN_LONG_RELEASE_SUFFIX else THEN_LONG_SUFFIX
+            val text =
+                id?.takeIf {
+                    it.startsWith(CLICK_ID_PREFIX) && it.endsWith(suffix)
+                } ?: return null
+            val digits = text.removePrefix(CLICK_ID_PREFIX).removeSuffix(suffix)
+            val count = digits.toIntOrNull() ?: return null
+            //  只认规范写法（`click02_then_long` 这类不认）+ 上限按 [MAX_CLICKS] 收，理由同 [clickOf]。
+            if (count !in 2..MAX_CLICKS || digits != count.toString()) return null
+            return if (release) {
+                GestureTrigger.ClickThenLongRelease(count)
+            } else {
+                GestureTrigger.ClickThenLong(count)
+            }
+        }
 
         /** `clickN`（n ≥ 3）—— 除三档与 `release` 之外唯一认的写法。 */
         private fun clickOf(id: String?): GestureTrigger? {
@@ -249,12 +323,20 @@ sealed interface GestureTrigger {
                     RELEASE_ID
                 }
 
-                GestureTrigger.ClickThenLong -> {
-                    CLICK_THEN_LONG_ID
+                is GestureTrigger.ClickThenLong -> {
+                    if (trigger.count == 1) {
+                        CLICK_THEN_LONG_ID
+                    } else {
+                        CLICK_ID_PREFIX + trigger.count + THEN_LONG_SUFFIX
+                    }
                 }
 
-                GestureTrigger.ClickThenLongRelease -> {
-                    CLICK_THEN_LONG_RELEASE_ID
+                is GestureTrigger.ClickThenLongRelease -> {
+                    if (trigger.count == 1) {
+                        CLICK_THEN_LONG_RELEASE_ID
+                    } else {
+                        CLICK_ID_PREFIX + trigger.count + THEN_LONG_RELEASE_SUFFIX
+                    }
                 }
 
                 is GestureTrigger.Click -> {
@@ -282,7 +364,19 @@ data class MemberGestures(
     /** 开着哪几档成员多击（第 3 击起）。 */
     val extraClicksOn: Set<Int>,
     val clickThenLongOn: Boolean,
-)
+    /** 成员「双击后长按」（第 3 击按住）/「三击后长按」（第 4 击）。 */
+    val doubleThenLongOn: Boolean = false,
+    val tripleThenLongOn: Boolean = false,
+) {
+    /** 成员那几档「后长按」对应的**按下击数**（2 / 3 / 4）—— 与单键同一套口径。 */
+    val thenLongClicks: Set<Int>
+        get() =
+            buildSet {
+                if (clickThenLongOn) add(2)
+                if (doubleThenLongOn) add(3)
+                if (tripleThenLongOn) add(4)
+            }
+}
 
 /**
  * 这几档里**有开着的**吗 —— 「成员连击真的会判」的唯一判据。
@@ -291,7 +385,8 @@ data class MemberGestures(
  *  还有意义，就是因为它们是成员连击的窗口（见 `Config.comboMemberChain`）——
  *  一档都没开时那两行量不到任何东西，得如实置灰。
  */
-val MemberGestures.isOn: Boolean get() = doubleClickOn || extraClicksOn.isNotEmpty() || clickThenLongOn
+val MemberGestures.isOn: Boolean
+    get() = doubleClickOn || extraClicksOn.isNotEmpty() || thenLongClicks.isNotEmpty()
 
 /**
  * 这一档是不是**某一次按压的收尾**（松手那一刻才发）—— `Release` 与 `ClickThenLongRelease`。
@@ -301,7 +396,7 @@ val MemberGestures.isOn: Boolean get() = doubleClickOn || extraClicksOn.isNotEmp
  *  积压的按下可以丢，丢一条松手却是「这一按什么都没发生」。
  */
 val GestureTrigger.isReleasePhase: Boolean
-    get() = this == GestureTrigger.Release || this == GestureTrigger.ClickThenLongRelease
+    get() = this == GestureTrigger.Release || this is GestureTrigger.ClickThenLongRelease
 
 /**
  * 触发条件 → 现有三档；多击（`Click(n≥3)`）没有对应的 [Gesture]，返回 `null`。
@@ -322,7 +417,7 @@ fun GestureTrigger.gestureOrNull(): Gesture? =
         }
 
         //  同理：「单击后长按」是两段式，不是三档里任何一档（算成长按会取到长按的动作）
-        GestureTrigger.ClickThenLong, GestureTrigger.ClickThenLongRelease -> {
+        is GestureTrigger.ClickThenLong, is GestureTrigger.ClickThenLongRelease -> {
             null
         }
 
@@ -397,7 +492,7 @@ data class KeyGesturePlan(
  */
 fun KeyConfig.gesturePlan(): KeyGesturePlan {
     val slots =
-        buildSet {
+        buildSet<GestureTrigger> {
             if (single.isBound) add(GestureTrigger.Click(1))
             //  **双击要看开关**（与 `boundClicks` 同一条）：`doubleClickOn` 关着时执行侧对它回
             //  「无操作」，排进计划只会让判定侧按 2 击封顶、单击白等一个窗口。
@@ -405,7 +500,7 @@ fun KeyConfig.gesturePlan(): KeyGesturePlan {
             if (long.isBound) add(GestureTrigger.LongPress)
             //  「单击后长按」与双击互斥（第二击按住 vs 快速抬起），但它**不延长**连击链：
             //  判定仍然只数到第 2 击，这一档是在第 2 击按住时另判的。
-            if (clickThenLongOn && clickThenLong.isBound) add(GestureTrigger.ClickThenLong)
+            if (clickThenLongOn && clickThenLong.isBound) add(GestureTrigger.ClickThenLong(1))
             //  第 3 击起的额外档位（`click3` / `click4` …，见 `KeyConfig.extraClicks`）——
             //  **那一档自己没开时不算**：执行侧对它回「无操作」，排进计划只会让单击白等
             //  （见 `KeyConfig.extraClicksOn`）。

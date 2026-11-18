@@ -27,6 +27,7 @@ import com.lookie.opluskey.ui.screen.command.branchDraftNow
 import com.lookie.opluskey.ui.wire.appNameOf
 import com.lookie.opluskey.ui.write.BindingTarget
 import com.lookie.opluskey.ui.write.openAppPickerForRelease
+import com.lookie.opluskey.ui.write.setGlobalClickThenLongPress
 import com.lookie.opluskey.ui.write.setGlobalClickWindow
 import com.lookie.opluskey.ui.write.setGlobalWaitMultiWindow
 import com.lookie.opluskey.ui.write.setWaitMultiWindow
@@ -54,10 +55,12 @@ import com.lookie.opluskey.ui.write.updateKey
  *   写回时同一个反面（`setWaitMultiWindow(!collect)`），界面这一层不再各自取反。
  * @param windowMs 等待窗口滑杆**显示**的值（按当前判定时机取那一位；`multiWaitMs` 为 0 时回落
  *   到单击延迟 —— 老配置就长这样，滑杆要显示一个具体值）。
- * @param enabled 这两行能不能动。
+ * @param enabled 前两行能不能动。
  * @param disabledHint 灰着被点一下时的说法（`null` = 用整页那句）。
  * @param onCollect 写判定时机。`false` = 没写进去（与开关自身的回执一致）。
  * @param onWindow 写窗口那个数，返回「写盘成没成」：滑杆失败时要拨回原值（见 `SliderRow` 的 `commit`）。
+ * @param delay 第三行那根「单击和多击和长按延迟」的来源 —— 它与前两行**不是同一条闸**
+ *   （公共页一直可调、独立页还要开着一档后长按），所以各自带 `enabled` / 提示（见 [DelayParamSource]）。
  */
 internal class ClickParamSource(
     val collect: Boolean,
@@ -66,13 +69,18 @@ internal class ClickParamSource(
     val disabledHint: String? = null,
     val onCollect: (Boolean) -> Unit,
     val onWindow: (Int) -> Boolean,
+    val delay: DelayParamSource,
 )
 
 /**
- * 「单击」那张卡 —— 判定时机 + 延迟滑杆两行。
+ * 「单键」那张卡 —— 判定时机 + 等待窗口 + 单击和多击和长按延迟，三行。
  *
- *  **判定时机排在最前面**：它决定下面那根滑杆**哪一位算数** —— 关着看「单击延迟」、
+ *  **判定时机排在最前面**：它决定第二根滑杆**哪一位算数** —— 关着看「单击延迟」、
  *  开着看「多击窗口」（判据收在 `KeyConfig.clickWindowMs`）。
+ *
+ *  第三行（三档「后长按」共用的按住时长）**与上面两行同卡**：它问的是同一个「按下去怎么算」的
+ *  下一档 —— 先定按几下算几次、等多久，再定按住多久算长按。分两张卡会把同一件事切成两段。
+ *  它自己那道闸由 [ClickParamSource.delay] 单独给（公共页不看多击，独立页看）。
  *
  *  **写路径故意少判一道 `linkReady`**（按键绑定页的格子那边是 `enabled && linkReady`）：
  *  这张卡写的是**参数**（延迟 / 判定开关），写了就落盘，注入侧恢复后照样生效，不需要注入侧回话；
@@ -103,9 +111,9 @@ internal fun SettingsPage.ClickDelayCard(source: ClickParamSource) {
                         position = position,
                         spec =
                             SliderSpec(
-                                //  标题**统一叫「等待窗口」**（不带前缀）：这一根在两种判定时机下
-                                //  写的值不同，但问的是同一件事 —— 「按下去之后等多久」；
-                                //  前缀只标在上面那颗开关上（判的是哪一类时机）。
+                                //  标题恒为「连击等待窗口」（不带「双击 / 多击」那种前缀）：这一根在两种
+                                //  判定时机下写的值不同，但问的是同一件事 —— 「连击按下去之后等多久」；
+                                //  时机那一档由上面那颗开关自己标（它的副标题说清了）。
                                 //  **不画副标题**：两种时机的差别在上面那颗开关的副标题里说清了。
                                 title = I18n.get(Strings.BINDING_WAIT_WINDOW),
                                 icon = PageIcons.ComboWait,
@@ -134,6 +142,33 @@ internal fun SettingsPage.ClickDelayCard(source: ClickParamSource) {
                         onCommit = source.onWindow,
                     )
                 },
+                //  —— 单击和多击和长按延迟 ——
+                //  三档「后长按」（单击后长按 / 双击后长按 / 三击后长按）共用那一个按住时长：
+                //  先点了几下不影响手按下去的节奏，所以三档只有这一根滑杆（`click_then_long_press_ms`）。
+                //  刻度与长按那一档同一套（10ms 取值 / 50ms 粗拖，见 `LongPressDelayRow`）——
+                //  同一件事在两处不该有两种手感。
+                CardRow.Custom { position ->
+                    SliderRow(
+                        position = position,
+                        spec =
+                            SliderSpec(
+                                //  **这一段就是滑杆的主标题**：单击后 / 双击后 / 三击后那几档共用这一个
+                                //  按住时长（`click_then_long_press_ms` 只有一位），标题用「连击后长按」
+                                //  这一族名把它们一起说，不逐档列、也不再起一个小标题。
+                                title = I18n.get(Strings.BINDING_LONG_PRESS_DELAY_MULTI_TITLE),
+                                icon = PageIcons.DelayHold,
+                                min = KeyConfig.MIN_LONG_PRESS_MS,
+                                max = KeyConfig.MAX_LONG_PRESS_MS,
+                                value = source.delay.value,
+                                default = KeyConfig.DEFAULT_LONG_PRESS_MS,
+                                step = 10,
+                                dragStep = 50,
+                                enabled = source.delay.enabled,
+                                disabledHint = source.delay.disabledHint,
+                            ),
+                        onCommit = source.delay.onCommit,
+                    )
+                },
             ),
     )
 }
@@ -141,7 +176,8 @@ internal fun SettingsPage.ClickDelayCard(source: ClickParamSource) {
 /**
  * **公共**那一份来源 —— 值读 `GlobalConfig`，写入落到全局配置（没单独设过的键都用它）。
  *
- *  这一份**不判「有没有多击」**：它是全局默认值，单键也要有个地方改单击延迟。
+ *  这三行**都不判「有没有多击」**：它们是全局默认值，单键也要有个地方改单击延迟与后长按时长
+ *  （用户口径「公共设置始终不禁用」）。
  */
 internal fun SettingsPage.clickGlobalParams(enabled: Boolean): ClickParamSource {
     val g = configState.config.value.global
@@ -161,6 +197,12 @@ internal fun SettingsPage.clickGlobalParams(enabled: Boolean): ClickParamSource 
         enabled = enabled,
         onCollect = { collect -> setGlobalWaitMultiWindow(!collect) },
         onWindow = { v -> setGlobalClickWindow(v) },
+        delay =
+            DelayParamSource(
+                value = g.clickThenLongPressMs,
+                enabled = enabled,
+                onCommit = { v -> setGlobalClickThenLongPress(v) },
+            ),
     )
 }
 
@@ -212,6 +254,12 @@ internal fun SettingsPage.clickKeyParams(
         } else {
             key.doubleClickMs
         }
+    //  —— 第三行（后长按时长）自己那一道闸 ——
+    //  它比上面两行多一条：三档「后长按」一个都没开时，这一颗键根本不判后长按，
+    //  按住多久无从谈起（用户口径「启用了 x 击后长按才启用」）。
+    //  前两行是 `noMulti`（判不判多击），这一行是这几档开关本身（判不判后长按）—— 两件事，
+    //  所以不共用 `enabled`：不开多击也能单独开后长按那一档。
+    val thenLongOn = key.clickThenLongOn || key.doubleThenLongOn || key.tripleThenLongOn
     return ClickParamSource(
         collect = fixedStart,
         windowMs = windowValue,
@@ -227,6 +275,19 @@ internal fun SettingsPage.clickKeyParams(
             val now = configState.config.value.key(keyId)
             if (!now.fixedWindowStart) writeMultiWaitMs(keyId, v) else writeDoubleClickMs(keyId, v)
         },
+        delay =
+            DelayParamSource(
+                //  **显示的是生效值**：没开独立设置时就是公共那一份（与判定侧同一个取法）
+                value = if (own) key.clickThenLongPressMs else configState.config.value.global.clickThenLongPressMs,
+                enabled = pageEnabled && own && thenLongOn,
+                disabledHint =
+                    when {
+                        !own -> I18n.get(Strings.KEY_SETTINGS_NEED_OWN)
+                        pageEnabled && !thenLongOn -> I18n.get(Strings.BINDING_NO_THEN_LONG_GESTURE)
+                        else -> pageDisabledHint
+                    },
+                onCommit = { v -> writeClickThenLongPressMs(keyId, v) },
+            ),
     )
 }
 
@@ -241,6 +302,41 @@ internal fun SettingsPage.writeMultiWaitMs(
     keyId: KeyId,
     v: Int,
 ): Boolean = updateKey(keyId, "multi_wait_ms=$v") { it.copy(multiWaitMs = v) }
+
+// 「单击和多击和长按延迟」那一行 —— 「单键」卡里的第三行，**公共设置页与「独立设置」页用的是同一份**。
+//
+//  它问的是三档「后长按」（单击后长按 / 双击后长按 / 三击后长按）共用那一个按住时长：
+//  先点了几下不影响手按下去的节奏，所以三档只有这一根滑杆（见 `click_then_long_press_ms`）。
+//  两侧差别只有「值从哪来、写到哪去、能不能动」，全收在 [DelayParamSource] 里，
+//  与上面两根（判定时机 / 窗口）一起由 [ClickParamSource] 交给 [ClickDelayCard]。
+//
+//  **两侧的闸门不一样，这是有意的**：公共设置是全局默认值，单键也要有个地方改它，
+//  所以那边一直可调；独立设置页管的是「这颗键的三档后长按怎么判」，一档都没开时
+//  没有可判的东西（判据见 [clickKeyParams] 的 `delay`）。
+
+/**
+ * 这一行的**状态源** —— 同一根滑杆的两份落点（与 [ClickParamSource] 同一条纪律）。
+ *
+ *  它单独一个类型而不是并进 [ClickParamSource]：这一行的闸门与前两行不是同一条
+ *  （公共页不看多击，独立页看后长按那三档），合成一份 `enabled` 就会让两件事绑在一起。
+ *
+ * @param value 这一根滑杆显示的按住时长（毫秒）
+ * @param enabled 这一根能不能拖
+ * @param disabledHint 灰着被拖一下时的说法（`null` = 用整页那句）
+ * @param onCommit 写这个数，返回「写盘成没成」：滑杆失败时要拨回原值
+ */
+internal class DelayParamSource(
+    val value: Int,
+    val enabled: Boolean,
+    val disabledHint: String? = null,
+    val onCommit: (Int) -> Boolean,
+)
+
+/** 把「单击和多击和长按延迟」写进**这一颗键**（每颗键各一份）；`false` = 没写进去。 */
+internal fun SettingsPage.writeClickThenLongPressMs(
+    keyId: KeyId,
+    v: Int,
+): Boolean = updateKey(keyId, "click_then_long_press_ms=$v") { it.copy(clickThenLongPressMs = v) }
 
 // 「场景动作」页里**「单击后长按」的松手**那一族 —— 与长按那张卡的松手族同形，行也逐字相同。
 //

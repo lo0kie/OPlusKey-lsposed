@@ -305,6 +305,10 @@ LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，�
   关 = `holdFollower` 250ms，见 `Config.comboWindowsFor`），**不要求按住**。首键按多久都不进
   这个窗口（按住三秒再补照样成立）。**只有一颗成员时这两格没有可量的成员间隔** —— 它们转去
   当成员连击的窗口（`Config.comboMemberChain`），所以那两行在独立设置页仍可拨。
+- **成员那三档「后长按」的按住时长**（`memberClickThenLongPressMs`）与单键同一套两层结构：
+  这一档自己一份、公共设置一份（`GlobalConfig.comboMemberClickThenLongPressMs`），没开
+  「使用独立设置」的档读公共那一份。生效值只在 `Config.comboMemberThenLongPressFor` 一处解析，
+  广播之前（`ConfigBroadcast`）就按它盖成生效值 —— 注入侧读到的已经是那个数，它不认识公共值。
 - **上界是首键自己的长按**（`longPressPassed`，按这颗键的 `longPressMs` 算）：判出来之后
   它已经执行过自己的动作了，再认组合就是一次按压两个动作。「只参与组合」的键恒不受这条
   限制（它压根不判单键）。
@@ -426,11 +430,16 @@ LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，�
 
 
 
-## 二之三、单击后长按（两段式）
+## 二之三、后长按（两段式）
 
-`GestureTrigger.ClickThenLong`（配置里 `click_then_long_on` / `click_then_long`）——
-**第 1 击抬手之后，第 2 击在连击窗口内按下并按住**超过长按阈值。它和双击互斥：
-同一颗键的第 2 击，快速抬起是双击、按住不放是这一档。
+`GestureTrigger.ClickThenLong(count)`（配置里 `click_then_long*` / `double_then_long*` /
+`triple_then_long*`）—— **先连点 N 下（各自抬手），再在连击窗口内按下并按住**超过长按阈值。
+`count` 就是前面那几击的击数：1 = 单击后长按（第 2 击按住）、2 = 双击后长按（第 3 击按住）、
+3 = 三击后长按（第 4 击按住）。它与对应的普通连击互斥：同一击快速抬起是连击、按住不放是这一档。
+
+三档是**同一件事的三个击数**，不为每一档另写一套：判定侧只认一个「哪几击按住会变长按」的集合
+（`ClickChainParams.thenLongClicks` → `ChainSpec.thenLongClicks` → `chainStep`），开关与动作各一位
+（`clickThenLongOn` / `doubleThenLongOn` / `tripleThenLongOn`）。
 
 - **它不延长连击链**：判定仍只数到第 2 击，`clicksForJudge` 不受影响，单击的等待窗口
   与这一档出现之前完全一样。这也是它不能并进 `extraClicksOn` 的原因 —— 多击延长的是
@@ -440,7 +449,8 @@ LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，�
 - **与长按的区别**：松手时**不走**长按那一档的收尾（「松手执行额外动作」/「松手才触发」
   都只属于「第 1 击按住」那条路），`finishLong` 里按 `p.clicks >= 2` 让位。
 - **与三击共存**：第 2 击按住、此时链上还会继续数第 3 击 —— 到点时若已数到第 3 击，
-  那一枪作废（判据 `clicks <= 2`），三击链照常。
+  那一枪作废（判据 `clicks <= shotClicks`，`shotClicks` 是排枪那一刻的击数），三击链照常。
+  「双击后长按」「三击后长按」同理，只是各自那一枪排在第 3 / 4 击上。
 - **它有一套自己的参数**（与长按那一族**同名不同槽**，调这一档不动普通长按）：
   `click_then_long_press_ms`（第二段按多久算数）/ `_repeat`（按住期间连续触发）/
   `_repeat_interval_ms`（间隔）/ `_repeat_vibrate`（每次都振动）/ `_release_on` + `_release`

@@ -300,6 +300,30 @@ internal data class KeyDto(
     @SerialName("click_then_long_on") val clickThenLongOn: Boolean? = null,
     @SerialName("click_then_long") val clickThenLong: String = Action.NONE,
     /**
+     * 「双击后长按」/「三击后长按」—— 与 [clickThenLongOn] / [clickThenLong] 同一对口径，
+     *  只差前面那几击的击数。老文件没有这四格 ⇒ 默认关 + `none`，行为与这两档出现之前一致。
+     */
+    @SerialName("double_then_long_on") val doubleThenLongOn: Boolean? = null,
+    @SerialName("double_then_long") val doubleThenLong: String = Action.NONE,
+    @SerialName("triple_then_long_on") val tripleThenLongOn: Boolean? = null,
+    @SerialName("triple_then_long") val tripleThenLong: String = Action.NONE,
+    @SerialName("double_then_long_repeat") val doubleThenLongRepeat: Boolean = false,
+    @SerialName("double_then_long_repeat_interval_ms") val doubleThenLongRepeatIntervalMs: Int =
+        KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    @SerialName("double_then_long_repeat_vibrate") val doubleThenLongRepeatVibrate: Boolean = false,
+    @SerialName("double_then_long_release_on") val doubleThenLongReleaseOn: Boolean = false,
+    @SerialName("double_then_long_release") val doubleThenLongRelease: String = Action.NONE,
+    @SerialName("double_then_long_fire_on_release") val doubleThenLongFireOnRelease: Boolean = false,
+    @SerialName("double_then_long_is_serial") val doubleThenLongIsSerial: Boolean = false,
+    @SerialName("triple_then_long_repeat") val tripleThenLongRepeat: Boolean = false,
+    @SerialName("triple_then_long_repeat_interval_ms") val tripleThenLongRepeatIntervalMs: Int =
+        KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    @SerialName("triple_then_long_repeat_vibrate") val tripleThenLongRepeatVibrate: Boolean = false,
+    @SerialName("triple_then_long_release_on") val tripleThenLongReleaseOn: Boolean = false,
+    @SerialName("triple_then_long_release") val tripleThenLongRelease: String = Action.NONE,
+    @SerialName("triple_then_long_fire_on_release") val tripleThenLongFireOnRelease: Boolean = false,
+    @SerialName("triple_then_long_is_serial") val tripleThenLongIsSerial: Boolean = false,
+    /**
      * 「单击后长按」那一档自己的参数 —— 与长按那几格（`long_press_ms` / `long_repeat` …）
      *  **同名不同槽**：调这一档不会动普通长按。
      *
@@ -415,6 +439,26 @@ internal data class KeyDto(
             //  动作那一格也在表里：**落盘与广播读同一个字段**，两处各写一套时
             //  「广播里带、文件里不带」这种半通的状态必然出现（`click_then_long` 就是那样丢过）。
             ConfigFields.F_CTL to clickThenLong,
+            ConfigFields.F_DOUBLE_THEN_LONG_ON to (doubleThenLongOn ?: false),
+            ConfigFields.F_DOUBLE_THEN_LONG to doubleThenLong,
+            ConfigFields.F_TRIPLE_THEN_LONG_ON to (tripleThenLongOn ?: false),
+            ConfigFields.F_TRIPLE_THEN_LONG to tripleThenLong,
+            ConfigFields.F_DOUBLE_THEN_LONG_REPEAT to doubleThenLongRepeat,
+            ConfigFields.F_DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS to
+                clamp(ConfigFields.F_DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS, doubleThenLongRepeatIntervalMs),
+            ConfigFields.F_DOUBLE_THEN_LONG_REPEAT_VIBRATE to doubleThenLongRepeatVibrate,
+            ConfigFields.F_DOUBLE_THEN_LONG_RELEASE_ON to doubleThenLongReleaseOn,
+            ConfigFields.F_DOUBLE_THEN_LONG_RELEASE to doubleThenLongRelease,
+            ConfigFields.F_DOUBLE_THEN_LONG_FIRE_ON_RELEASE to doubleThenLongFireOnRelease,
+            ConfigFields.F_DOUBLE_THEN_LONG_SERIAL to doubleThenLongIsSerial,
+            ConfigFields.F_TRIPLE_THEN_LONG_REPEAT to tripleThenLongRepeat,
+            ConfigFields.F_TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS to
+                clamp(ConfigFields.F_TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS, tripleThenLongRepeatIntervalMs),
+            ConfigFields.F_TRIPLE_THEN_LONG_REPEAT_VIBRATE to tripleThenLongRepeatVibrate,
+            ConfigFields.F_TRIPLE_THEN_LONG_RELEASE_ON to tripleThenLongReleaseOn,
+            ConfigFields.F_TRIPLE_THEN_LONG_RELEASE to tripleThenLongRelease,
+            ConfigFields.F_TRIPLE_THEN_LONG_FIRE_ON_RELEASE to tripleThenLongFireOnRelease,
+            ConfigFields.F_TRIPLE_THEN_LONG_SERIAL to tripleThenLongIsSerial,
             ConfigFields.F_CTL_PRESS_MS to
                 clamp(ConfigFields.F_CTL_PRESS_MS, clickThenLongPressMs ?: KeyConfig.DEFAULT_LONG_PRESS_MS),
             ConfigFields.F_CTL_REPEAT to (clickThenLongRepeat ?: false),
@@ -484,6 +528,24 @@ internal data class KeyDto(
                 extraClicksOn = JsonArray(key.extraClicksOn.sorted().map { JsonPrimitive(it) }),
                 clickThenLongOn = key.clickThenLongOn,
                 clickThenLong = key.clickThenLong.token,
+                doubleThenLongOn = key.doubleThenLongOn,
+                doubleThenLong = key.doubleThenLong.token,
+                tripleThenLongOn = key.tripleThenLongOn,
+                tripleThenLong = key.tripleThenLong.token,
+                doubleThenLongRepeat = key.doubleThenLongRepeat,
+                doubleThenLongRepeatIntervalMs = key.doubleThenLongRepeatIntervalMs,
+                doubleThenLongRepeatVibrate = key.doubleThenLongRepeatVibrate,
+                doubleThenLongReleaseOn = key.doubleThenLongReleaseOn,
+                doubleThenLongRelease = key.doubleThenLongRelease.token,
+                doubleThenLongFireOnRelease = key.doubleThenLongFireOnRelease,
+                doubleThenLongIsSerial = key.doubleThenLongIsSerial,
+                tripleThenLongRepeat = key.tripleThenLongRepeat,
+                tripleThenLongRepeatIntervalMs = key.tripleThenLongRepeatIntervalMs,
+                tripleThenLongRepeatVibrate = key.tripleThenLongRepeatVibrate,
+                tripleThenLongReleaseOn = key.tripleThenLongReleaseOn,
+                tripleThenLongRelease = key.tripleThenLongRelease.token,
+                tripleThenLongFireOnRelease = key.tripleThenLongFireOnRelease,
+                tripleThenLongIsSerial = key.tripleThenLongIsSerial,
                 clickThenLongPressMs = key.clickThenLongPressMs,
                 clickThenLongRepeat = key.clickThenLongRepeat,
                 clickThenLongRepeatIntervalMs = key.clickThenLongRepeatIntervalMs,
@@ -725,8 +787,51 @@ internal data class ComboDto(
     val memberClickThenLong: String = Action.NONE,
     @SerialName("member_click_then_long_on")
     val memberClickThenLongOn: Boolean = false,
+    /** 成员「双击后长按」/「三击后长按」—— 与上一对同一口径，只差前面那几击的击数。 */
+    @SerialName("member_double_then_long")
+    val memberDoubleThenLong: String = Action.NONE,
+    @SerialName("member_double_then_long_on")
+    val memberDoubleThenLongOn: Boolean = false,
+    @SerialName("member_triple_then_long")
+    val memberTripleThenLong: String = Action.NONE,
+    @SerialName("member_triple_then_long_on")
+    val memberTripleThenLongOn: Boolean = false,
+    @SerialName("member_double_then_long_repeat")
+    val memberDoubleThenLongRepeat: Boolean = false,
+    @SerialName("member_double_then_long_repeat_interval_ms")
+    val memberDoubleThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    @SerialName("member_double_then_long_repeat_vibrate")
+    val memberDoubleThenLongRepeatVibrate: Boolean = false,
+    @SerialName("member_double_then_long_release_on")
+    val memberDoubleThenLongReleaseOn: Boolean = false,
+    @SerialName("member_double_then_long_release")
+    val memberDoubleThenLongRelease: String = Action.NONE,
+    @SerialName("member_double_then_long_fire_on_release")
+    val memberDoubleThenLongFireOnRelease: Boolean = false,
+    @SerialName("member_double_then_long_is_serial")
+    val memberDoubleThenLongIsSerial: Boolean = false,
+    @SerialName("member_triple_then_long_repeat")
+    val memberTripleThenLongRepeat: Boolean = false,
+    @SerialName("member_triple_then_long_repeat_interval_ms")
+    val memberTripleThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    @SerialName("member_triple_then_long_repeat_vibrate")
+    val memberTripleThenLongRepeatVibrate: Boolean = false,
+    @SerialName("member_triple_then_long_release_on")
+    val memberTripleThenLongReleaseOn: Boolean = false,
+    @SerialName("member_triple_then_long_release")
+    val memberTripleThenLongRelease: String = Action.NONE,
+    @SerialName("member_triple_then_long_fire_on_release")
+    val memberTripleThenLongFireOnRelease: Boolean = false,
+    @SerialName("member_triple_then_long_is_serial")
+    val memberTripleThenLongIsSerial: Boolean = false,
+    /**
+     * 成员那三档「后长按」共用的按住时长（毫秒，`ComboKey.memberClickThenLongPressMs`）；
+     * `0` = 跟随公共设置（`global_combo_member_then_long_press_ms`）。
+     *
+     *  老文件缺这一项 ⇒ 0 ⇒ 跟随公共（与 [holdMinMs] 同一条哨兵）。
+     */
     @SerialName("member_click_then_long_press_ms")
-    val memberClickThenLongPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
+    val memberClickThenLongPressMs: Int = ComboKey.MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL,
     /**
      * 成员「单击后长按」的**时序与收尾** —— 与组合长按那一套（`long_fire_on_release` /
      * `long_repeat` / `long_release*`）各自一份：它们挂在两个不同的档位上。
@@ -916,7 +1021,32 @@ internal data class ComboDto(
             memberClicksOn = memberClicksOn.filter { it >= 3 }.toSet(),
             memberClickThenLong = Action.parse(memberClickThenLong),
             memberClickThenLongOn = memberClickThenLongOn,
-            memberClickThenLongPressMs = clamp(ConfigFields.F_LONG_PRESS_MS, memberClickThenLongPressMs),
+            memberDoubleThenLong = Action.parse(memberDoubleThenLong),
+            memberDoubleThenLongOn = memberDoubleThenLongOn,
+            memberTripleThenLong = Action.parse(memberTripleThenLong),
+            memberTripleThenLongOn = memberTripleThenLongOn,
+            memberDoubleThenLongRepeat = memberDoubleThenLongRepeat,
+            memberDoubleThenLongRepeatIntervalMs = memberDoubleThenLongRepeatIntervalMs,
+            memberDoubleThenLongRepeatVibrate = memberDoubleThenLongRepeatVibrate,
+            memberDoubleThenLongReleaseOn = memberDoubleThenLongReleaseOn,
+            memberDoubleThenLongRelease = Action.parse(memberDoubleThenLongRelease),
+            memberDoubleThenLongFireOnRelease = memberDoubleThenLongFireOnRelease,
+            memberDoubleThenLongIsSerial = memberDoubleThenLongIsSerial,
+            memberTripleThenLongRepeat = memberTripleThenLongRepeat,
+            memberTripleThenLongRepeatIntervalMs = memberTripleThenLongRepeatIntervalMs,
+            memberTripleThenLongRepeatVibrate = memberTripleThenLongRepeatVibrate,
+            memberTripleThenLongReleaseOn = memberTripleThenLongReleaseOn,
+            memberTripleThenLongRelease = Action.parse(memberTripleThenLongRelease),
+            memberTripleThenLongFireOnRelease = memberTripleThenLongFireOnRelease,
+            memberTripleThenLongIsSerial = memberTripleThenLongIsSerial,
+            //  成员「后长按」那三档的按住时长：与 [holdMinMs] 同一条 —— 0 是「跟随公共」，
+            //  不能被 `clamp` 抬到下限（那就成了「这一档显式设了 200ms」，界面上再也回不到跟随）。
+            memberClickThenLongPressMs =
+                if (memberClickThenLongPressMs <= 0) {
+                    ComboKey.MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL
+                } else {
+                    clamp(ConfigFields.F_LONG_PRESS_MS, memberClickThenLongPressMs)
+                },
             //  这一档的时序与收尾：与组合长按那一套各自一份（老文件缺 ⇒ 全关着 / 无操作）
             memberClickThenLongFireOnRelease = memberClickThenLongFireOnRelease,
             memberClickThenLongRepeat = memberClickThenLongRepeat,
@@ -984,6 +1114,24 @@ internal data class ComboDto(
                 memberClicksOn = combo.memberClicksOn.sorted(),
                 memberClickThenLong = combo.memberClickThenLong.token,
                 memberClickThenLongOn = combo.memberClickThenLongOn,
+                memberDoubleThenLong = combo.memberDoubleThenLong.token,
+                memberDoubleThenLongOn = combo.memberDoubleThenLongOn,
+                memberTripleThenLong = combo.memberTripleThenLong.token,
+                memberTripleThenLongOn = combo.memberTripleThenLongOn,
+                memberDoubleThenLongRepeat = combo.memberDoubleThenLongRepeat,
+                memberDoubleThenLongRepeatIntervalMs = combo.memberDoubleThenLongRepeatIntervalMs,
+                memberDoubleThenLongRepeatVibrate = combo.memberDoubleThenLongRepeatVibrate,
+                memberDoubleThenLongReleaseOn = combo.memberDoubleThenLongReleaseOn,
+                memberDoubleThenLongRelease = combo.memberDoubleThenLongRelease.token,
+                memberDoubleThenLongFireOnRelease = combo.memberDoubleThenLongFireOnRelease,
+                memberDoubleThenLongIsSerial = combo.memberDoubleThenLongIsSerial,
+                memberTripleThenLongRepeat = combo.memberTripleThenLongRepeat,
+                memberTripleThenLongRepeatIntervalMs = combo.memberTripleThenLongRepeatIntervalMs,
+                memberTripleThenLongRepeatVibrate = combo.memberTripleThenLongRepeatVibrate,
+                memberTripleThenLongReleaseOn = combo.memberTripleThenLongReleaseOn,
+                memberTripleThenLongRelease = combo.memberTripleThenLongRelease.token,
+                memberTripleThenLongFireOnRelease = combo.memberTripleThenLongFireOnRelease,
+                memberTripleThenLongIsSerial = combo.memberTripleThenLongIsSerial,
                 memberClickThenLongPressMs = combo.memberClickThenLongPressMs,
                 memberClickThenLongFireOnRelease = combo.memberClickThenLongFireOnRelease,
                 memberClickThenLongRepeat = combo.memberClickThenLongRepeat,
@@ -1043,6 +1191,22 @@ internal data class GlobalDto(
      */
     @SerialName("global_multi_wait_ms")
     val multiWaitMs: Int? = null,
+    /**
+     * 公共设置里的**「单击和多击和长按延迟」**（`GlobalConfig.clickThenLongPressMs`）。
+     *
+     *  `null` = 老文件没有这一项 ⇒ 出厂 [KeyConfig.DEFAULT_LONG_PRESS_MS]（与这一位出现之前一致：
+     *  那时三档「后长按」用的就是每颗键出厂那一档）。
+     */
+    @SerialName("global_click_then_long_press_ms")
+    val clickThenLongPressMs: Int? = null,
+    /**
+     * 公共设置里的**组合成员「连击后长按延迟」**（`GlobalConfig.comboMemberClickThenLongPressMs`）。
+     *
+     *  `null` = 老文件没有这一项 ⇒ 出厂 [KeyConfig.DEFAULT_LONG_PRESS_MS]（与这一位出现之前一致：
+     *  那时成员那三档「后长按」用的就是出厂那一档）。
+     */
+    @SerialName("global_combo_member_then_long_press_ms")
+    val comboMemberThenLongPressMs: Int? = null,
     /**
      * **界面振动反馈**（`GlobalConfig.uiVibrate`）。
      *
@@ -1233,6 +1397,9 @@ internal data class GlobalDto(
                 ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS to (doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS),
                 ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to (waitMultiWindow ?: true),
                 ConfigFields.F_GLOBAL_MULTI_WAIT_MS to (multiWaitMs ?: KeyConfig.FOLLOW_DOUBLE_CLICK_MS),
+                ConfigFields.F_GLOBAL_CTL_PRESS_MS to (clickThenLongPressMs ?: KeyConfig.DEFAULT_LONG_PRESS_MS),
+                ConfigFields.F_GLOBAL_COMBO_MEMBER_CTL_PRESS_MS to
+                    (comboMemberThenLongPressMs ?: KeyConfig.DEFAULT_LONG_PRESS_MS),
                 ConfigFields.F_GLOBAL_UI_VIBRATE to (uiVibrate ?: true),
                 ConfigFields.F_GLOBAL_PREDICTIVE_BACK to (predictiveBack ?: true),
                 ConfigFields.F_GLOBAL_DETAILED_KEY_SETTINGS to (detailedKeySettings ?: false),
@@ -1276,6 +1443,8 @@ internal data class GlobalDto(
                 doubleClickMs = g.doubleClickMs,
                 waitMultiWindow = g.waitMultiWindow,
                 multiWaitMs = g.multiWaitMs,
+                clickThenLongPressMs = g.clickThenLongPressMs,
+                comboMemberThenLongPressMs = g.comboMemberClickThenLongPressMs,
                 uiVibrate = g.uiVibrate,
                 predictiveBack = g.predictiveBack,
                 detailedKeySettings = g.detailedKeySettings,

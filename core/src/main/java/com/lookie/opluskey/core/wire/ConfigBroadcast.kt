@@ -183,7 +183,17 @@ object ConfigBroadcast {
             //  （命令库在宿主私有目录，注入侧读不到），来路与单键那两位一样。
             //  **盖进副本再编**：线格式只读 `ComboKey` 自己那一位，不必为它多开一个编码参数；
             //  指纹也算在同一份 intent 上（`tag(config, …)` = `tag(intent(…))`），两边不会各算一份。
-            val stamped = config.combos.map { it.copy(memberClickThenLongIsSerial = comboChainSerialOf(it)) }
+            //
+            //  「成员后长按的按住时长」同一条：盘上那一格可能是 0（跟随公共），
+            //  注入侧读不到 `GlobalConfig` 那一份（`F_GLOBAL_COMBO_MEMBER_CTL_PRESS_MS` 不进广播），
+            //  所以在这一步按「这一档开没开独立设置」解析成生效值再发。
+            val stamped =
+                config.combos.map {
+                    it.copy(
+                        memberClickThenLongIsSerial = comboChainSerialOf(it),
+                        memberClickThenLongPressMs = config.comboMemberThenLongPressFor(it),
+                    )
+                }
             intent.putExtra(ComboWire.EXTRA, ComboWire.encode(stamped))
         }
         return intent

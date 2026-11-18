@@ -269,81 +269,192 @@ private fun longPressBlockedReason(
  */
 @Composable
 internal fun SettingsPage.ClickThenLongCard(
+    count: Int,
+    /** 这一档的开关开着吗 —— 关着时整组设置压灰（「没有启用就不让它配」）。 */
+    switchOn: Boolean,
     pageEnabled: Boolean,
     disabledReason: String? = null,
+    /**
+     * 摆哪几族行。绑定页那一档用 [LongPressSections.NoDelay]：三档共用的那一根长按延迟不摆在这里
+     * （单键那一份在「单键」那张卡、组合那一份在「按住组合」那张卡）。
+     */
+    sections: LongPressSections = LongPressSections.NoDelay,
 ) {
     val cfg = configState.config.value
     val id = KeyWatchState.editing(cfg)
     val key = cfg.key(id)
     //  「每次触发都振动」的前置：这一颗键的**振动反馈**（独立设置优先）—— 与长按那张卡同一条
     val hapticOn = cfg.effectiveFor(key).vibrate
-    val release = key.clickThenLongRelease
+
+    //  —— 这一档自己的取 / 写：三档只差字段名，按 [count] 分一次，下面每一行都走这两个小函数 ——
+
+    /** 三档共用「后长按」的那一个延迟 —— 这一张卡不摆它（见 [sections]），这里只把值递进去。 */
+    fun pressMs(): Int = key.clickThenLongPressMs
+
+    fun repeatOn(): Boolean =
+        when (count) {
+            1 -> key.clickThenLongRepeat
+            2 -> key.doubleThenLongRepeat
+            else -> key.tripleThenLongRepeat
+        }
+
+    fun vibrate(): Boolean =
+        when (count) {
+            1 -> key.clickThenLongRepeatVibrate
+            2 -> key.doubleThenLongRepeatVibrate
+            else -> key.tripleThenLongRepeatVibrate
+        }
+
+    fun intervalMs(): Int =
+        when (count) {
+            1 -> key.clickThenLongRepeatIntervalMs
+            2 -> key.doubleThenLongRepeatIntervalMs
+            else -> key.tripleThenLongRepeatIntervalMs
+        }
+
+    fun fireOnRelease(): Boolean =
+        when (count) {
+            1 -> key.clickThenLongFireOnRelease
+            2 -> key.doubleThenLongFireOnRelease
+            else -> key.tripleThenLongFireOnRelease
+        }
+
+    fun releaseOn(): Boolean =
+        when (count) {
+            1 -> key.clickThenLongReleaseOn
+            2 -> key.doubleThenLongReleaseOn
+            else -> key.tripleThenLongReleaseOn
+        }
+
+    fun release(): Action =
+        when (count) {
+            1 -> key.clickThenLongRelease
+            2 -> key.doubleThenLongRelease
+            else -> key.tripleThenLongRelease
+        }
+
+    fun actionExists(): Boolean =
+        when (count) {
+            1 -> key.clickThenLongActionExists
+            2 -> key.doubleThenLong.isBound
+            else -> key.tripleThenLong.isBound
+        }
+
+    fun write(f: (KeyConfig) -> KeyConfig) = commit(id, f)
+    val picked = release()
     var picking by remember { mutableStateOf(false) }
     LongPressSettingsCard(
         LongPressSpec(
-            repeat = key.clickThenLongRepeat,
-            vibrate = key.clickThenLongRepeatVibrate,
-            intervalMs = key.clickThenLongRepeatIntervalMs,
-            pressMs = key.clickThenLongPressMs,
-            //  「松手时触发」与长按那一档同义：到点不执行，抬手执行一次。开着它，
-            //  下面「松手执行额外动作」与「连续触发」那三行由 `LongPressGates` 自动压灰。
-            fireOnRelease = key.clickThenLongFireOnRelease,
+            repeat = repeatOn(),
+            vibrate = vibrate(),
+            intervalMs = intervalMs(),
+            pressMs = pressMs(),
+            fireOnRelease = fireOnRelease(),
             releaseSupported = true,
-            releaseOn = key.clickThenLongReleaseOn,
-            //  行上写**动作名**（与长按那张卡同一条）：用户挑的可能是某条命令
-            releaseLabel = releaseActionTitle(release.token) { appNameOf(it) },
-            releaseIcon = actionIcon(release.token),
-            //  「松手时触发」开着时这一位不算占位（`fireEnabled` 会读到它）：否则两颗开关
-            //  会互相锁死 —— 都开着时谁也关不掉对方，只能先清配置。「松手额外动作」本身
-            //  在抬手那一刻让位（见 `GestureDetector.finishLong` 与 `clickThenLongReleaseAction`）。
-            releaseBound = key.clickThenLongReleaseOn && release.isBound && !key.clickThenLongFireOnRelease,
-            //  这一档本身是「无操作」时，松手额外动作那一族跟着焊死（同长按那张卡）
-            releaseAvailable = key.clickThenLongActionExists,
-            enabled = pageEnabled,
-            delayEnabled = pageEnabled,
-            sections = LongPressSections.All,
-            //  多条命令 / 灵感语音不支持连发 —— 与长按那张卡同一份判据（`repeatBlockedReason`）
-            repeatBlockedReason = repeatBlockedReason(key.clickThenLong),
+            releaseOn = releaseOn(),
+            releaseLabel = releaseActionTitle(picked.token) { appNameOf(it) },
+            releaseIcon = actionIcon(picked.token),
+            releaseBound = releaseOn() && picked.isBound && !fireOnRelease(),
+            releaseAvailable = actionExists(),
+            enabled = pageEnabled && switchOn,
+            delayEnabled = pageEnabled && switchOn,
+            sections = sections,
+            repeatBlockedReason =
+                repeatBlockedReason(
+                    when (count) {
+                        1 -> key.clickThenLong
+                        2 -> key.doubleThenLong
+                        else -> key.tripleThenLong
+                    },
+                ),
             blockedReason =
                 disabledReason
-                    ?: if (!pageEnabled) I18n.get(Strings.STATUS_KEY_DISABLED) else null,
-            onRepeat = { on -> commit(id) { it.copy(clickThenLongRepeat = on) } },
+                    ?: when {
+                        !pageEnabled -> I18n.get(Strings.STATUS_KEY_DISABLED)
+
+                        //  这一档没开：整组压灰并说明「先启用」，不是页面停用
+                        !switchOn -> I18n.get(Strings.STATUS_THEN_LONG_NOT_ENABLED)
+
+                        else -> null
+                    },
+            onRepeat = { on ->
+                write {
+                    when (count) {
+                        1 -> it.copy(clickThenLongRepeat = on)
+                        2 -> it.copy(doubleThenLongRepeat = on)
+                        else -> it.copy(tripleThenLongRepeat = on)
+                    }
+                }
+            },
             onVibrate = { on ->
-                //  与长按那张卡同一条：振动反馈没开时先拦一下（那一档的取值走 `effectiveFor`）
                 if (on && !hapticOn) {
                     RepeatVibrateBlocked.ask()
                 } else {
-                    commit(id) { it.copy(clickThenLongRepeatVibrate = on) }
+                    write {
+                        when (count) {
+                            1 -> it.copy(clickThenLongRepeatVibrate = on)
+                            2 -> it.copy(doubleThenLongRepeatVibrate = on)
+                            else -> it.copy(tripleThenLongRepeatVibrate = on)
+                        }
+                    }
                 }
             },
-            onInterval = { v -> commit(id) { it.copy(clickThenLongRepeatIntervalMs = v) } },
-            onPressMs = { v -> commit(id) { it.copy(clickThenLongPressMs = v) } },
-            onFireOnReleaseToggle = { on -> commit(id) { it.copy(clickThenLongFireOnRelease = on) } },
-            onReleaseToggle = { on -> commit(id) { it.copy(clickThenLongReleaseOn = on) } },
+            onInterval = { v ->
+                write {
+                    when (count) {
+                        1 -> it.copy(clickThenLongRepeatIntervalMs = v)
+                        2 -> it.copy(doubleThenLongRepeatIntervalMs = v)
+                        else -> it.copy(tripleThenLongRepeatIntervalMs = v)
+                    }
+                }
+            },
+            onPressMs = { v -> write { it.copy(clickThenLongPressMs = v) } },
+            onFireOnReleaseToggle = { on ->
+                write {
+                    when (count) {
+                        1 -> it.copy(clickThenLongFireOnRelease = on)
+                        2 -> it.copy(doubleThenLongFireOnRelease = on)
+                        else -> it.copy(tripleThenLongFireOnRelease = on)
+                    }
+                }
+            },
+            onReleaseToggle = { on ->
+                write {
+                    when (count) {
+                        1 -> it.copy(clickThenLongReleaseOn = on)
+                        2 -> it.copy(doubleThenLongReleaseOn = on)
+                        else -> it.copy(tripleThenLongReleaseOn = on)
+                    }
+                }
+            },
             onReleasePick = { picking = true },
         ),
     )
-    //  「每次触发都振动」拨不动时那一窗（振动反馈没开，见上面 `onVibrate`）
     RepeatVibrateBlockedDialog()
-    //  挑额外动作：与长按那张卡**同一个抽屉**（项目里挑动作只有这一个清单）
     StepPickerSheet(
         show = picking,
         sheet =
             StepSheetSpec(
                 title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE),
-                current = release,
+                current = picked,
                 onOpenPicker = { page ->
                     picking = false
                     when (page) {
-                        //  `chain = true`：挑完写的是这一档的松手格（见 `PickTarget.Release.chain`）
                         StepPickerPage.App -> openAppPickerForRelease(chain = true)
-
                         StepPickerPage.AppStop -> openAppPickerForRelease(stop = true, chain = true)
-
                         StepPickerPage.Vars -> Unit
                     }
                 },
-                onPick = { token -> commit(id) { it.copy(clickThenLongRelease = Action.parse(token)) } },
+                onPick = { token ->
+                    val action = Action.parse(token)
+                    write {
+                        when (count) {
+                            1 -> it.copy(clickThenLongRelease = action)
+                            2 -> it.copy(doubleThenLongRelease = action)
+                            else -> it.copy(tripleThenLongRelease = action)
+                        }
+                    }
+                },
                 onDismiss = { picking = false },
                 filter = StepSheetFilter(excludeTiles = true, includeNone = true),
             ),
@@ -363,50 +474,157 @@ internal fun SettingsPage.ClickThenLongCard(
 @Composable
 internal fun SettingsPage.ComboMemberChainCard(
     combo: ComboKey,
+    count: Int,
+    switchOn: Boolean,
     pageEnabled: Boolean,
     disabledReason: String? = null,
+    sections: LongPressSections = LongPressSections.NoDelay,
 ) {
     val cfg = configState.config.value
     //  「每次触发都振动」的前置：这一档的**振动反馈**（独立设置优先）
     val hapticOn = cfg.effectiveFor(combo).vibrate
-    val release = combo.memberClickThenLongRelease
+
+    //  —— 这一档自己的取 / 写：三档只差字段名，按 [count] 分一次 ——
+
+    /** 成员那三档「后长按」共用的按住时长 —— **生效值**（没开独立设置就是公共那一份）。 */
+    fun pressMs(): Int = cfg.comboMemberThenLongPressFor(combo)
+
+    fun repeatOn(): Boolean =
+        when (count) {
+            1 -> combo.memberClickThenLongRepeat
+            2 -> combo.memberDoubleThenLongRepeat
+            else -> combo.memberTripleThenLongRepeat
+        }
+
+    fun vibrate(): Boolean =
+        when (count) {
+            1 -> combo.memberClickThenLongRepeatVibrate
+            2 -> combo.memberDoubleThenLongRepeatVibrate
+            else -> combo.memberTripleThenLongRepeatVibrate
+        }
+
+    fun intervalMs(): Int =
+        when (count) {
+            1 -> combo.memberClickThenLongRepeatIntervalMs
+            2 -> combo.memberDoubleThenLongRepeatIntervalMs
+            else -> combo.memberTripleThenLongRepeatIntervalMs
+        }
+
+    fun fireOnRelease(): Boolean =
+        when (count) {
+            1 -> combo.memberClickThenLongFireOnRelease
+            2 -> combo.memberDoubleThenLongFireOnRelease
+            else -> combo.memberTripleThenLongFireOnRelease
+        }
+
+    fun releaseOn(): Boolean =
+        when (count) {
+            1 -> combo.memberClickThenLongReleaseOn
+            2 -> combo.memberDoubleThenLongReleaseOn
+            else -> combo.memberTripleThenLongReleaseOn
+        }
+
+    fun release(): Action =
+        when (count) {
+            1 -> combo.memberClickThenLongRelease
+            2 -> combo.memberDoubleThenLongRelease
+            else -> combo.memberTripleThenLongRelease
+        }
+
+    fun actionExists(): Boolean =
+        when (count) {
+            1 -> combo.memberClickThenLongActionExists
+            2 -> combo.memberDoubleThenLong.isBound
+            else -> combo.memberTripleThenLong.isBound
+        }
+
+    fun write(f: (ComboKey) -> ComboKey) = commitCombo(combo.id, f)
+    val picked = release()
     var picking by remember { mutableStateOf(false) }
     LongPressSettingsCard(
         LongPressSpec(
-            repeat = combo.memberClickThenLongRepeat,
-            vibrate = combo.memberClickThenLongRepeatVibrate,
-            intervalMs = combo.memberClickThenLongRepeatIntervalMs,
-            pressMs = combo.memberClickThenLongPressMs,
-            fireOnRelease = combo.memberClickThenLongFireOnRelease,
+            repeat = repeatOn(),
+            vibrate = vibrate(),
+            intervalMs = intervalMs(),
+            pressMs = pressMs(),
+            fireOnRelease = fireOnRelease(),
             releaseSupported = true,
-            releaseOn = combo.memberClickThenLongReleaseOn,
-            releaseLabel = releaseActionTitle(release.token) { appNameOf(it) },
-            releaseIcon = actionIcon(release.token),
-            //  「松手时触发」开着时这一位不算占位（`fireEnabled` 会读到它）：否则两颗开关会互相锁死
-            releaseBound =
-                combo.memberClickThenLongReleaseOn &&
-                    release.isBound &&
-                    !combo.memberClickThenLongFireOnRelease,
-            releaseAvailable = combo.memberClickThenLongActionExists,
-            enabled = pageEnabled,
-            delayEnabled = pageEnabled,
-            sections = LongPressSections.All,
-            repeatBlockedReason = repeatBlockedReason(combo.memberClickThenLong),
+            releaseOn = releaseOn(),
+            releaseLabel = releaseActionTitle(picked.token) { appNameOf(it) },
+            releaseIcon = actionIcon(picked.token),
+            releaseBound = releaseOn() && picked.isBound && !fireOnRelease(),
+            releaseAvailable = actionExists(),
+            enabled = pageEnabled && switchOn,
+            delayEnabled = pageEnabled && switchOn,
+            sections = sections,
+            repeatBlockedReason =
+                repeatBlockedReason(
+                    when (count) {
+                        1 -> combo.memberClickThenLong
+                        2 -> combo.memberDoubleThenLong
+                        else -> combo.memberTripleThenLong
+                    },
+                ),
             blockedReason =
                 disabledReason
-                    ?: if (!pageEnabled) I18n.get(Strings.STATUS_KEY_DISABLED) else null,
-            onRepeat = { on -> commitCombo(combo.id) { it.copy(memberClickThenLongRepeat = on) } },
+                    ?: when {
+                        !pageEnabled -> I18n.get(Strings.STATUS_KEY_DISABLED)
+
+                        //  这一档没开：整组压灰并说明「先启用」，不是页面停用
+                        !switchOn -> I18n.get(Strings.STATUS_THEN_LONG_NOT_ENABLED)
+
+                        else -> null
+                    },
+            onRepeat = { on ->
+                write {
+                    when (count) {
+                        1 -> it.copy(memberClickThenLongRepeat = on)
+                        2 -> it.copy(memberDoubleThenLongRepeat = on)
+                        else -> it.copy(memberTripleThenLongRepeat = on)
+                    }
+                }
+            },
             onVibrate = { on ->
                 if (on && !hapticOn) {
                     RepeatVibrateBlocked.ask()
                 } else {
-                    commitCombo(combo.id) { it.copy(memberClickThenLongRepeatVibrate = on) }
+                    write {
+                        when (count) {
+                            1 -> it.copy(memberClickThenLongRepeatVibrate = on)
+                            2 -> it.copy(memberDoubleThenLongRepeatVibrate = on)
+                            else -> it.copy(memberTripleThenLongRepeatVibrate = on)
+                        }
+                    }
                 }
             },
-            onInterval = { v -> commitCombo(combo.id) { it.copy(memberClickThenLongRepeatIntervalMs = v) } },
-            onPressMs = { v -> commitCombo(combo.id) { it.copy(memberClickThenLongPressMs = v) } },
-            onFireOnReleaseToggle = { on -> commitCombo(combo.id) { it.copy(memberClickThenLongFireOnRelease = on) } },
-            onReleaseToggle = { on -> commitCombo(combo.id) { it.copy(memberClickThenLongReleaseOn = on) } },
+            onInterval = { v ->
+                write {
+                    when (count) {
+                        1 -> it.copy(memberClickThenLongRepeatIntervalMs = v)
+                        2 -> it.copy(memberDoubleThenLongRepeatIntervalMs = v)
+                        else -> it.copy(memberTripleThenLongRepeatIntervalMs = v)
+                    }
+                }
+            },
+            onPressMs = { v -> write { it.copy(memberClickThenLongPressMs = v) } },
+            onFireOnReleaseToggle = { on ->
+                write {
+                    when (count) {
+                        1 -> it.copy(memberClickThenLongFireOnRelease = on)
+                        2 -> it.copy(memberDoubleThenLongFireOnRelease = on)
+                        else -> it.copy(memberTripleThenLongFireOnRelease = on)
+                    }
+                }
+            },
+            onReleaseToggle = { on ->
+                write {
+                    when (count) {
+                        1 -> it.copy(memberClickThenLongReleaseOn = on)
+                        2 -> it.copy(memberDoubleThenLongReleaseOn = on)
+                        else -> it.copy(memberTripleThenLongReleaseOn = on)
+                    }
+                }
+            },
             onReleasePick = { picking = true },
         ),
     )
@@ -416,19 +634,25 @@ internal fun SettingsPage.ComboMemberChainCard(
         sheet =
             StepSheetSpec(
                 title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE),
-                current = release,
+                current = picked,
                 onOpenPicker = { page ->
                     picking = false
                     when (page) {
-                        //  带 `combo`：挑完写的是这一档组合的成员松手格（见 `writeReleaseTo`）
-                        StepPickerPage.App -> openAppPickerForRelease(chain = true, combo = combo.id)
-
-                        StepPickerPage.AppStop -> openAppPickerForRelease(stop = true, chain = true, combo = combo.id)
-
+                        StepPickerPage.App -> openAppPickerForRelease(chain = true)
+                        StepPickerPage.AppStop -> openAppPickerForRelease(stop = true, chain = true)
                         StepPickerPage.Vars -> Unit
                     }
                 },
-                onPick = { token -> commitCombo(combo.id) { it.copy(memberClickThenLongRelease = Action.parse(token)) } },
+                onPick = { token ->
+                    val action = Action.parse(token)
+                    write {
+                        when (count) {
+                            1 -> it.copy(memberClickThenLongRelease = action)
+                            2 -> it.copy(memberDoubleThenLongRelease = action)
+                            else -> it.copy(memberTripleThenLongRelease = action)
+                        }
+                    }
+                },
                 onDismiss = { picking = false },
                 filter = StepSheetFilter(excludeTiles = true, includeNone = true),
             ),

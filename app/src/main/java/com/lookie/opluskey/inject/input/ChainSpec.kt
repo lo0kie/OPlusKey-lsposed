@@ -1,5 +1,7 @@
 package com.lookie.opluskey.inject.input
 
+import com.lookie.opluskey.core.model.ThenLongParams
+
 /**
  * 判定器判一次按键**需要知道的全部** —— 十来个时间与开关，没有一样认识配置、不认识动作。
  *
@@ -24,6 +26,8 @@ package com.lookie.opluskey.inject.input
  * @param judgeCap 数到第几击就**封顶**（按开着的档算，不看绑没绑动作，至少 1）
  * @param doubleClickOn 双击这一档开着吗
  * @param clickThenLongOn 「单击后长按」开着吗 —— 判据是**开关**，不是「有没有动作」
+ * @param thenLongClicks 哪几击按住会变「后长按」—— 元素是按下那一刻的击数：
+ *  2 = 单击后长按、3 = 双击后长按、4 = 三击后长按（见 `GestureTrigger.ClickThenLong.count`）
  * @param clickThenLongPressMs 第二击按住多久算「单击后长按」
  * @param clickThenLongFireOnRelease 这一档松手才触发
  * @param clickThenLongRepeatIntervalMs 「单击后长按」连续触发的间隔
@@ -42,6 +46,14 @@ internal data class ChainSpec(
     val judgeCap: Int,
     val doubleClickOn: Boolean,
     val clickThenLongOn: Boolean,
+    val thenLongClicks: Set<Int>,
+    /**
+     * 击数（2 / 3 / 4）→ 那一档「后长按」的判定参数；没开的那几档不在表里。
+     *
+     *  三档各有一套按住时长 / 连发 / 松手判据（`core.model.ThenLongParams`），判定器只按击数取，
+     *  不再读单份的 `clickThenLong*`（那几个字段只留给「这一档本身开没开」与成员连击的松手档）。
+     */
+    val thenLong: Map<Int, ThenLongParams>,
     val clickThenLongPressMs: Long,
     val clickThenLongFireOnRelease: Boolean,
     val clickThenLongRepeatIntervalMs: Long,

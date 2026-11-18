@@ -321,6 +321,40 @@ data class KeyConfig(
      */
     override val clickThenLongFireOnRelease: Boolean = false,
     /**
+     * **「双击后长按」（第 3 击按住）/「三击后长按」（第 4 击按住）** 那两档的开关 ——
+     * 与 [clickThenLongOn] 同一条口径，只差前面那几击的击数（见 `GestureTrigger.ClickThenLong` 的 `count`）。
+     *
+     *  三档是同一件事的不同击数：按住时长共用 [clickThenLongPressMs]（[thenLongAt] 里那一份），
+     *  其余时序与收尾各有一份 —— 调「双击后长按」的连发不会动另外两档。
+     *
+     *  同样**不跟随** [useOwnSettings]（理由同 [clickThenLongOn]）：它们是这颗键自己的形态。
+     */
+    override val doubleThenLongOn: Boolean = false,
+    /** 「双击后长按」绑定什么 —— 只在 [doubleThenLongOn] 开着时算数。 */
+    val doubleThenLong: Action = Action.None,
+    override val tripleThenLongOn: Boolean = false,
+    /** 「三击后长按」绑定什么 —— 只在 [tripleThenLongOn] 开着时算数。 */
+    val tripleThenLong: Action = Action.None,
+    /** 「双击后长按」按住期间**连续触发**（与 [clickThenLongRepeat] 各自一份）。 */
+    val doubleThenLongRepeat: Boolean = false,
+    val doubleThenLongRepeatIntervalMs: Int = DEFAULT_REPEAT_INTERVAL_MS,
+    val doubleThenLongRepeatVibrate: Boolean = false,
+    /** 「双击后长按」**松手时**再执行一个动作（与 [clickThenLongReleaseOn] 各自一份）。 */
+    val doubleThenLongReleaseOn: Boolean = false,
+    val doubleThenLongRelease: Action = Action.None,
+    /** 「双击后长按」的**松手时触发** —— 与 [clickThenLongFireOnRelease] 同义、各自一份。 */
+    val doubleThenLongFireOnRelease: Boolean = false,
+    /** 「双击后长按」绑的是不是**多条命令**（只由宿主算好、随广播带过来，同 [clickThenLongIsSerial]）。 */
+    val doubleThenLongIsSerial: Boolean = false,
+    /** 「三击后长按」同上一整族 —— 与「双击后长按」同一条口径，各占一套槽。 */
+    val tripleThenLongRepeat: Boolean = false,
+    val tripleThenLongRepeatIntervalMs: Int = DEFAULT_REPEAT_INTERVAL_MS,
+    val tripleThenLongRepeatVibrate: Boolean = false,
+    val tripleThenLongReleaseOn: Boolean = false,
+    val tripleThenLongRelease: Action = Action.None,
+    val tripleThenLongFireOnRelease: Boolean = false,
+    val tripleThenLongIsSerial: Boolean = false,
+    /**
      * 宿主算好的**最高绑定击数**（含场景里绑的那几档）—— **只由宿主算好、随配置广播带过来**
      * （同 [longIsSerial] 那一套）。
      *
@@ -363,15 +397,19 @@ data class KeyConfig(
             //  它由第二击的形态决定，与长按的「按住第一击」不是同一件事。
             //  判据用 [clickThenLongCounts]（开着**且**有动作）：开着但动作是无操作时，
             //  这一档按「不存在」处理 —— 判定侧那一侧根本不会派发它（见那边的三处读点）。
-            GestureTrigger.ClickThenLong -> {
-                if (clickThenLongCounts) clickThenLong else Action.None
+            is GestureTrigger.ClickThenLong -> {
+                when (trigger.count) {
+                    1 -> if (clickThenLongCounts) clickThenLong else Action.None
+                    2 -> if (doubleThenLongOn) doubleThenLong else Action.None
+                    else -> if (tripleThenLongOn) tripleThenLong else Action.None
+                }
             }
 
             //  这一档的松手也**自成一路**：用它自己那一格，不借长按的 [longRelease]。
             //  **主档无操作时整条不成立**：松手动作是「这一档执行完之后」的收尾，
             //  主语没有就不该有谓语（用户口径「设为无操作时已设置的额外动作也不应该触发」）。
-            GestureTrigger.ClickThenLongRelease -> {
-                clickThenLongReleaseAction
+            is GestureTrigger.ClickThenLongRelease -> {
+                thenLongReleaseAction(trigger.count)
             }
 
             is GestureTrigger.Click -> {
@@ -413,12 +451,20 @@ data class KeyConfig(
                 copy(longRelease = action)
             }
 
-            GestureTrigger.ClickThenLong -> {
-                if (clickThenLongOn) copy(clickThenLong = action) else this
+            is GestureTrigger.ClickThenLong -> {
+                when (trigger.count) {
+                    1 -> if (clickThenLongOn) copy(clickThenLong = action) else this
+                    2 -> if (doubleThenLongOn) copy(doubleThenLong = action) else this
+                    else -> if (tripleThenLongOn) copy(tripleThenLong = action) else this
+                }
             }
 
-            GestureTrigger.ClickThenLongRelease -> {
-                if (clickThenLongOn) copy(clickThenLongRelease = action) else this
+            is GestureTrigger.ClickThenLongRelease -> {
+                when (trigger.count) {
+                    1 -> if (clickThenLongOn) copy(clickThenLongRelease = action) else this
+                    2 -> if (doubleThenLongOn) copy(doubleThenLongRelease = action) else this
+                    else -> if (tripleThenLongOn) copy(tripleThenLongRelease = action) else this
+                }
             }
 
             is GestureTrigger.Click -> {
@@ -520,9 +566,10 @@ data class KeyConfig(
      *  而注入侧收到的 `judgeClicks` 在 [ConfigFields.F_JUDGE_CLICKS] 那里被钳到 9 ——
      *  不钳的话宿主等 20 击、注入侧只派发到 9，第 10 击以后永远出不来。
      *
-     *  **[clickThenLongCounts] 时下限是 2**：这一档要数到第 2 击才判得出来。不这么写的话，
-     *  只绑了「单击后长按」的键 `boundClicks` 是 0，注入侧会认为「最多一击」，第 1 击抬手时
-     *  就把单击派发掉，第二击永远等不到 —— 表现就是这个手势怎么按都不生效。
+     *  **[thenLongClicks] 的最高那一击就是下限**：这三档要数到那一击才判得出来（单击后长按是第 2 击、
+     *  双击后长按是第 3 击、三击后长按是第 4 击）。不这么写的话，只绑了「双击后长按」的键
+     *  `boundClicks` 是 0，注入侧会认为「最多一击」，第 1 击抬手时就把单击派发掉，那一档永远等不到
+     *  —— 表现就是这个手势怎么按都不生效。
      *  它是**同一个数的下限**而不是另一个开关：注入侧只认 `judge_clicks` 这一位，
      *  多一位就多一处「两边不一致」的可能。
      */
@@ -530,7 +577,8 @@ data class KeyConfig(
         get() =
             maxOf(
                 judgeLimit,
-                if (clickThenLongCounts) 2 else 0,
+                //  「后长按」那几档的下限：判定侧要数到那一击才判得出来（2 / 3 / 4 见 `thenLongClicks`）
+                thenLongClicks.maxOrNull() ?: 0,
             ).coerceIn(0, ConfigFields.MAX_JUDGE_CLICKS)
 
     /**
@@ -539,7 +587,7 @@ data class KeyConfig(
      *  写成属性只为一件事：判定器里「数到哪一档立刻判」与「逐次等时把多按的那几下
      *  夹回来」必须是同一个数。两处各写一遍，改一处漏一处就是「配了双击、按三下却判成无操作」。
      *
-     *  **按「开了哪几档」算**（[doubleClickOn] / [extraClicksOn] / [clickThenLongOn]），
+     *  **按「开了哪几档」算**（[doubleClickOn] / [extraClicksOn] / [thenLongClicks]），
      *  **不看那一档绑没绑动作**。用户口径（2026-11-15 真机反馈）：**多击开关开着就要等**，
      *  不想等就把那一档关掉。理由也直接：同时开两档、其中一档暂时是「无操作」时，
      *  另一档照样要等那次窗口，所以「没绑动作就不等」这条捷径在部分生效的配置上本来就不成立，
@@ -553,7 +601,7 @@ data class KeyConfig(
             maxOf(
                 if (doubleClickOn) 2 else 1,
                 extraClicksOn.maxOrNull() ?: 1,
-                if (clickThenLongOn) 2 else 1,
+                thenLongClicks.maxOrNull() ?: 1,
                 clicksForJudge,
             ).coerceAtMost(ConfigFields.MAX_JUDGE_CLICKS)
 
@@ -739,6 +787,111 @@ data class KeyConfig(
                 !((clickThenLong as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true)
 
     /**
+     * 「双击后长按」/「三击后长按」的松手动作 —— 与 [clickThenLongReleaseAction] **同一个四位判据**：
+     * 开关开着、松手开关开着、主档本身有动作，且没开「松手时触发」（那一条把动作推到了抬手）。
+     *
+     *  「主档有动作」这两档只认**直接绑定**（`isBound`）：注入侧能读到的场景标记只有「单击后长按」
+     * 那一份（`F_SCENE_CHAIN`），为这两档再开广播字段就成了两份判据，注入侧还要自己挑一份用。
+     */
+    val doubleThenLongReleaseAction: Action
+        get() =
+            if (doubleThenLongOn && doubleThenLongReleaseOn && doubleThenLong.isBound && !doubleThenLongFireOnRelease) {
+                doubleThenLongRelease
+            } else {
+                Action.None
+            }
+
+    val tripleThenLongReleaseAction: Action
+        get() =
+            if (tripleThenLongOn && tripleThenLongReleaseOn && tripleThenLong.isBound && !tripleThenLongFireOnRelease) {
+                tripleThenLongRelease
+            } else {
+                Action.None
+            }
+
+    /** 第 [count] 击「后长按」的松手动作（1 / 2 / 3 各一格）—— 读侧的唯一出口。 */
+    private fun thenLongReleaseAction(count: Int): Action =
+        when (count) {
+            1 -> clickThenLongReleaseAction
+            2 -> doubleThenLongReleaseAction
+            else -> tripleThenLongReleaseAction
+        }
+
+    /**
+     * 「双击后长按」/「三击后长按」要不要排连发 —— 与 [clickThenLongRepeats] 四条一字不差
+     * （开关 / 没走「松手时触发」/ 不是多条命令 / 不是灵感语音）。
+     */
+    val doubleThenLongRepeats: Boolean
+        get() =
+            doubleThenLongRepeat &&
+                !doubleThenLongFireOnRelease &&
+                !doubleThenLongIsSerial &&
+                !((doubleThenLong as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true)
+
+    val tripleThenLongRepeats: Boolean
+        get() =
+            tripleThenLongRepeat &&
+                !tripleThenLongFireOnRelease &&
+                !tripleThenLongIsSerial &&
+                !((tripleThenLong as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true)
+
+    /**
+     * 第 [clicks] 击那一档「后长按」的判定参数（`clicks` = 2 / 3 / 4 = 单击 / 双击 / 三击后长按）——
+     * `null` = 这一档没开。
+     *
+     *  **按住时长三档共用一个**（[clickThenLongPressMs]）：两段式里「第二段按住多久算数」是同一件事，
+     *  按击数各调一遍只会让手感分叉。其余时序与收尾各读自己那一份（见 `ThenLongParams`）。
+     */
+    override fun thenLongAt(clicks: Int): ThenLongParams? =
+        when (clicks) {
+            2 -> {
+                if (clickThenLongOn) {
+                    ThenLongParams(
+                        pressMs = clickThenLongPressMs,
+                        fireOnRelease = clickThenLongFireOnRelease,
+                        repeatIntervalMs = clickThenLongRepeatIntervalMs,
+                        repeats = clickThenLongRepeats,
+                        releaseActionExists = clickThenLongActionExists,
+                    )
+                } else {
+                    null
+                }
+            }
+
+            3 -> {
+                if (doubleThenLongOn) {
+                    ThenLongParams(
+                        pressMs = clickThenLongPressMs,
+                        fireOnRelease = doubleThenLongFireOnRelease,
+                        repeatIntervalMs = doubleThenLongRepeatIntervalMs,
+                        repeats = doubleThenLongRepeats,
+                        releaseActionExists = doubleThenLongReleaseAction.isBound,
+                    )
+                } else {
+                    null
+                }
+            }
+
+            4 -> {
+                if (tripleThenLongOn) {
+                    ThenLongParams(
+                        pressMs = clickThenLongPressMs,
+                        fireOnRelease = tripleThenLongFireOnRelease,
+                        repeatIntervalMs = tripleThenLongRepeatIntervalMs,
+                        repeats = tripleThenLongRepeats,
+                        releaseActionExists = tripleThenLongReleaseAction.isBound,
+                    )
+                } else {
+                    null
+                }
+            }
+
+            else -> {
+                null
+            }
+        }
+
+    /**
      * 本对象在每个配置字段上的取值 —— 「字段 → 属性」映射的**广播那一半**。
      *
      *  广播（`ConfigBroadcast.intent`）按它取值，读回来是 [ofFields]；**落盘另一条通道**
@@ -808,7 +961,10 @@ data class KeyConfig(
                 ConfigFields.F_CTL to clickThenLong.token,
                 //  「单击后长按」那几项参数：注入侧要它们排第二段的长按枪与连发，
                 //  所以整族都广播（动作那两格仍只落盘 —— 注入侧不挑动作）
-                ConfigFields.F_CTL_PRESS_MS to clickThenLongPressMs,
+                //
+                //  按住时长这一格按「这颗键开没开独立设置」解析成生效值：三档「后长按」共用它，
+                //  没开独立设置的键跟着公共那一份走（`GlobalConfig.clickThenLongPressMs`）。
+                ConfigFields.F_CTL_PRESS_MS to if (own) clickThenLongPressMs else global.clickThenLongPressMs,
                 ConfigFields.F_CTL_REPEAT to clickThenLongRepeat,
                 ConfigFields.F_CTL_REPEAT_INTERVAL_MS to clickThenLongRepeatIntervalMs,
                 ConfigFields.F_CTL_REPEAT_VIBRATE to clickThenLongRepeatVibrate,
@@ -819,6 +975,26 @@ data class KeyConfig(
                 //  `map[f] as? String` 取值 —— 塞对象进去会静默退回默认值（空串），
                 //  注入侧 `isBound` 恒假，松手那一档永远不发（真机上就是「配了不生效」）。
                 ConfigFields.F_CTL_RELEASE to clickThenLongRelease.token,
+                //  「双击后长按」/「三击后长按」两档：开关 + 动作 + 各自那一套时序与收尾。
+                //  与上面「单击后长按」同一条成对纪律 —— 这里加一行，[ofFields] 必须读回来。
+                ConfigFields.F_DOUBLE_THEN_LONG_ON to doubleThenLongOn,
+                ConfigFields.F_DOUBLE_THEN_LONG to doubleThenLong.token,
+                ConfigFields.F_TRIPLE_THEN_LONG_ON to tripleThenLongOn,
+                ConfigFields.F_TRIPLE_THEN_LONG to tripleThenLong.token,
+                ConfigFields.F_DOUBLE_THEN_LONG_REPEAT to doubleThenLongRepeat,
+                ConfigFields.F_DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS to doubleThenLongRepeatIntervalMs,
+                ConfigFields.F_DOUBLE_THEN_LONG_REPEAT_VIBRATE to doubleThenLongRepeatVibrate,
+                ConfigFields.F_DOUBLE_THEN_LONG_RELEASE_ON to doubleThenLongReleaseOn,
+                ConfigFields.F_DOUBLE_THEN_LONG_RELEASE to doubleThenLongRelease.token,
+                ConfigFields.F_DOUBLE_THEN_LONG_FIRE_ON_RELEASE to doubleThenLongFireOnRelease,
+                ConfigFields.F_DOUBLE_THEN_LONG_SERIAL to doubleThenLongIsSerial,
+                ConfigFields.F_TRIPLE_THEN_LONG_REPEAT to tripleThenLongRepeat,
+                ConfigFields.F_TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS to tripleThenLongRepeatIntervalMs,
+                ConfigFields.F_TRIPLE_THEN_LONG_REPEAT_VIBRATE to tripleThenLongRepeatVibrate,
+                ConfigFields.F_TRIPLE_THEN_LONG_RELEASE_ON to tripleThenLongReleaseOn,
+                ConfigFields.F_TRIPLE_THEN_LONG_RELEASE to tripleThenLongRelease.token,
+                ConfigFields.F_TRIPLE_THEN_LONG_FIRE_ON_RELEASE to tripleThenLongFireOnRelease,
+                ConfigFields.F_TRIPLE_THEN_LONG_SERIAL to tripleThenLongIsSerial,
             ),
         )
     }
@@ -918,16 +1094,16 @@ data class KeyConfig(
         const val MIN_LONG_PRESS_MS = 200
 
         /**
-         * 长按阈值上限 —— **1000ms**（用户口径）。
+         * 长按阈值上限 —— **800ms**（用户口径）。
          *
          *  上限不参与判定正确性：判定只拿它排长按那一枪，越长只是越不容易误判成长按，
-         *  代价是长按动作要等更久（`GestureDetector.scheduleLongPress`）。一秒是「按住一下」与
-         *  「一直按着」的分界，再长就不像一次长按了。
+         *  代价是长按动作要等更久（`GestureDetector.scheduleLongPress`）。它与三档「后长按」共用
+         *  这一档：那三档是同一件事的不同击数，按住多久的可行区间不该按档分叉。
          *
          *  滑杆与 `ConfigFields` 的钳制都取这一个数 —— 各写一份时，滑杆尽头的值与落盘被压回的
          *  值会不一样。
          */
-        const val MAX_LONG_PRESS_MS = 1000
+        const val MAX_LONG_PRESS_MS = 800
 
         /**
          * 「长按连续触发」的出厂间隔 —— 200ms。
@@ -1044,6 +1220,25 @@ data class KeyConfig(
                 clickThenLongReleaseOn = v.bool(ConfigFields.F_CTL_RELEASE_ON),
                 clickThenLongRelease = Action.parse(v.text(ConfigFields.F_CTL_RELEASE)),
                 clickThenLongFireOnRelease = v.bool(ConfigFields.F_CTL_FIRE_ON_RELEASE),
+                //  「双击后长按」/「三击后长按」—— 与上面「单击后长按」那几行成对（见 `fieldValues()`）
+                doubleThenLongOn = v.bool(ConfigFields.F_DOUBLE_THEN_LONG_ON),
+                doubleThenLong = Action.parse(v.text(ConfigFields.F_DOUBLE_THEN_LONG)),
+                tripleThenLongOn = v.bool(ConfigFields.F_TRIPLE_THEN_LONG_ON),
+                tripleThenLong = Action.parse(v.text(ConfigFields.F_TRIPLE_THEN_LONG)),
+                doubleThenLongRepeat = v.bool(ConfigFields.F_DOUBLE_THEN_LONG_REPEAT),
+                doubleThenLongRepeatIntervalMs = v.number(ConfigFields.F_DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS),
+                doubleThenLongRepeatVibrate = v.bool(ConfigFields.F_DOUBLE_THEN_LONG_REPEAT_VIBRATE),
+                doubleThenLongReleaseOn = v.bool(ConfigFields.F_DOUBLE_THEN_LONG_RELEASE_ON),
+                doubleThenLongRelease = Action.parse(v.text(ConfigFields.F_DOUBLE_THEN_LONG_RELEASE)),
+                doubleThenLongFireOnRelease = v.bool(ConfigFields.F_DOUBLE_THEN_LONG_FIRE_ON_RELEASE),
+                doubleThenLongIsSerial = v.bool(ConfigFields.F_DOUBLE_THEN_LONG_SERIAL),
+                tripleThenLongRepeat = v.bool(ConfigFields.F_TRIPLE_THEN_LONG_REPEAT),
+                tripleThenLongRepeatIntervalMs = v.number(ConfigFields.F_TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS),
+                tripleThenLongRepeatVibrate = v.bool(ConfigFields.F_TRIPLE_THEN_LONG_REPEAT_VIBRATE),
+                tripleThenLongReleaseOn = v.bool(ConfigFields.F_TRIPLE_THEN_LONG_RELEASE_ON),
+                tripleThenLongRelease = Action.parse(v.text(ConfigFields.F_TRIPLE_THEN_LONG_RELEASE)),
+                tripleThenLongFireOnRelease = v.bool(ConfigFields.F_TRIPLE_THEN_LONG_FIRE_ON_RELEASE),
+                tripleThenLongIsSerial = v.bool(ConfigFields.F_TRIPLE_THEN_LONG_SERIAL),
                 sceneLong = v.bool(ConfigFields.F_SCENE_LONG),
                 sceneChain = v.bool(ConfigFields.F_SCENE_CHAIN),
                 sceneChainRelease = v.bool(ConfigFields.F_SCENE_CHAIN_RELEASE),
@@ -1103,6 +1298,22 @@ data class GlobalConfig(
     val waitMultiWindow: Boolean = true,
     /** 公共设置里的**等待窗口**（出厂 250；0 = 跟随 [doubleClickMs]，只留给老配置，见 `KeyConfig.multiWaitMs`）。 */
     val multiWaitMs: Int = KeyConfig.DEFAULT_MULTI_WAIT_MS,
+    /**
+     * 公共设置里的**「单击和多击和长按延迟」**（毫秒）—— 三档「后长按」共用的那个按住时长。
+     *
+     *  与 [doubleClickMs] 同一条两层结构：`KeyConfig.clickThenLongPressMs` 是「这颗键自己的一份」，
+     *  这一层是「大家都用这一份」；没开「使用独立设置」的键读这一份
+     *  （见 `KeyConfig.fieldValues(global)`）。
+     */
+    val clickThenLongPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
+    /**
+     * 公共设置里的**组合成员「连击后长按延迟」**（毫秒）—— 成员那三档「后长按」共用的按住时长。
+     *
+     *  与 [clickThenLongPressMs] 同一条两层结构：`ComboKey.memberClickThenLongPressMs` 是
+     *  「这一档组合自己的一份」，这一层是「没开独立设置的那几档用这一份」——
+     *  生效值的取法只有一处（`Config.comboMemberThenLongPressFor`）。
+     */
+    val comboMemberClickThenLongPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
     override val vibrate: Boolean,
     /**
      * **振动强度** —— 三档（[VIBRATE_WEAK] / [VIBRATE_MEDIUM] / [VIBRATE_STRONG]）。
@@ -1391,6 +1602,8 @@ data class GlobalConfig(
                 ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS to doubleClickMs,
                 ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW to waitMultiWindow,
                 ConfigFields.F_GLOBAL_MULTI_WAIT_MS to multiWaitMs,
+                ConfigFields.F_GLOBAL_CTL_PRESS_MS to clickThenLongPressMs,
+                ConfigFields.F_GLOBAL_COMBO_MEMBER_CTL_PRESS_MS to comboMemberClickThenLongPressMs,
                 ConfigFields.F_GLOBAL_UI_VIBRATE to uiVibrate,
                 ConfigFields.F_GLOBAL_PREDICTIVE_BACK to predictiveBack,
                 ConfigFields.F_GLOBAL_DETAILED_KEY_SETTINGS to detailedKeySettings,
@@ -1670,6 +1883,8 @@ data class GlobalConfig(
                 doubleClickMs = v.number(ConfigFields.F_GLOBAL_DOUBLE_CLICK_MS),
                 waitMultiWindow = v.bool(ConfigFields.F_GLOBAL_WAIT_MULTI_WINDOW),
                 multiWaitMs = v.number(ConfigFields.F_GLOBAL_MULTI_WAIT_MS),
+                clickThenLongPressMs = v.number(ConfigFields.F_GLOBAL_CTL_PRESS_MS),
+                comboMemberClickThenLongPressMs = v.number(ConfigFields.F_GLOBAL_COMBO_MEMBER_CTL_PRESS_MS),
                 uiVibrate = v.bool(ConfigFields.F_GLOBAL_UI_VIBRATE),
                 //  只落盘、不进广播（与 [uiVibrate] 同一档，`extra` 为 null 不随广播走）：
                 //  这里读不到广播值，靠 [readFields] 对缺项兜成字段默认（开）。它只在宿主进程
@@ -2057,6 +2272,31 @@ data class Config(
      *  判定侧（`ComboDetector` 的 `holdMinFor`）与界面都只走这一处。
      */
     fun comboHoldMinFor(combo: ComboKey): Int = effective(combo.useOwnSettings, global.comboHoldMinMs, comboStoredHoldMinFor(combo))
+
+    /**
+     * 这一组**自己存着**的「成员连击后长按延迟」（毫秒）—— 与 [comboStoredHoldMinFor] 同一条：
+     * 不看总开关，滑杆要的就是这一份；没写过（[ComboKey.MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL]）
+     * ⇒ 出厂默认。
+     */
+    fun comboStoredMemberThenLongPressFor(combo: ComboKey): Int =
+        stored(
+            combo.memberClickThenLongPressMs.takeIf { it > ComboKey.MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL },
+            KeyConfig.DEFAULT_LONG_PRESS_MS,
+        )
+
+    /**
+     * 这一组**实际生效**的「成员连击后长按延迟」（毫秒）—— 与 [comboHoldMinFor] 同一条：
+     * 独立设置关着就跟随公共，开着就是这一组自己那份。
+     *
+     *  界面（那一根滑杆的取值）与广播（`ConfigBroadcast` 把它盖进组合那份副本）都只走这一处；
+     *  判定侧读的是广播里那一格（`ComboWire`），不自己再解析一遍。
+     */
+    fun comboMemberThenLongPressFor(combo: ComboKey): Int =
+        effective(
+            combo.useOwnSettings,
+            global.comboMemberClickThenLongPressMs,
+            comboStoredMemberThenLongPressFor(combo),
+        )
 
     /**
      * 这一档**整串**的容忍跨度（毫秒）—— **按这一档自己的触发方式取格**。

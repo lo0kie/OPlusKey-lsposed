@@ -257,8 +257,12 @@ private fun SettingsPage.withTargetBound(
                                     c.copy(long = action)
                                 }
 
-                                GestureTrigger.ClickThenLong -> {
-                                    c.copy(memberClickThenLong = action)
+                                is GestureTrigger.ClickThenLong -> {
+                                    when (g.count) {
+                                        1 -> c.copy(memberClickThenLong = action)
+                                        2 -> c.copy(memberDoubleThenLong = action)
+                                        else -> c.copy(memberTripleThenLong = action)
+                                    }
                                 }
 
                                 else -> {
@@ -523,24 +527,29 @@ internal fun SettingsPage.BindingGroups(
         //
         //  三击 / 四击那两页一张卡都不摆：它们没有自己的判据可调（什么时候算数由「单击延迟」与
         //  最高档决定，那一位归这一颗键，在独立设置页）。
-        //  「单击后长按」这一页摆它**自己那套**参数（长按延迟 / 连发 / 松手额外动作）——
-        //  与长按那一页同一张卡的行、不同的字段（见 `ClickThenLongCard`）。
-        //  只有单键有这一档：组合的两段建立在单键连击上。
-        if (keyScoped && g == GestureTrigger.ClickThenLong) {
+        //  「后长按」三档：这一页摆**这一档自己的**那几族（松手时触发 / 松手额外动作 / 连发），
+        //  长按延迟是三档**共用**的一个值，收在独立设置页的「多击手势」那一段（见
+        //  `KeySettingsScreen`）—— 所以这里传的是 `NoDelay` 那一形态。
+        //  能排到这一页的档位必然已经开着（`GestureTrigger.slotsOn` 只排开着的档），开关位给 true。
+        if (keyScoped && g is GestureTrigger.ClickThenLong) {
             SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION))
-            ClickThenLongCard(settingsEnabled, followHint)
+            ClickThenLongCard(g.count, switchOn = true, pageEnabled = settingsEnabled, disabledReason = followHint)
         }
 
-        //  组合键那一侧：「单击后长按」就是成员连击那一档，摆它自己那一根「长按延迟」
-        //  （`ComboKey.memberClickThenLongPressMs`）。不摆上面那张卡 —— 它读写的是
-        //  `KeyWatchState.editing` 那颗键，摆在这一页改的会是另一颗键。
-        if (target is BindingTarget.Combo && g == GestureTrigger.ClickThenLong) {
+        //  组合键那一侧同理：成员「后长按」这一档自己的那几族摆在这里。
+        if (target is BindingTarget.Combo && g is GestureTrigger.ClickThenLong) {
             val combo =
                 configState.config.value.combos
                     .firstOrNull { it.id == target.id }
             if (combo != null) {
                 SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION))
-                ComboMemberChainCard(combo, settingsEnabled, followHint)
+                ComboMemberChainCard(
+                    combo = combo,
+                    count = g.count,
+                    switchOn = true,
+                    pageEnabled = settingsEnabled,
+                    disabledReason = followHint,
+                )
             }
         }
 
@@ -556,7 +565,7 @@ internal fun SettingsPage.BindingGroups(
         //  的东西（用户报「长按下面有两个一样的」）。它属于哪一档，就摆在哪一档的页面上。
         //  组合的场景页没有这一档（`sceneGesturePages` 只给单击 / 长按），于是那一侧也不该出现。
         //  单键 / 组合那一页的松手格在 `ClickThenLongCard` 里，不在这里。
-        if (target is BindingTarget.Scene && g == GestureTrigger.ClickThenLong) {
+        if (target is BindingTarget.Scene && g is GestureTrigger.ClickThenLong && g.count == 1) {
             SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION))
             SceneChainReleaseCard(target, settingsEnabled, followHint)
         }

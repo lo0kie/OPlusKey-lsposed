@@ -446,9 +446,17 @@ internal fun gestureLabel(
 
         GestureTrigger.Click(4).id -> I18n.get(Strings.GESTURE_CLICK4)
 
-        GestureTrigger.ClickThenLong.id -> I18n.get(Strings.GESTURE_CLICK_THEN_LONG)
+        GestureTrigger.ClickThenLong(1).id -> I18n.get(Strings.GESTURE_CLICK_THEN_LONG)
 
-        GestureTrigger.ClickThenLongRelease.id -> I18n.get(Strings.GESTURE_CLICK_THEN_LONG_RELEASE)
+        GestureTrigger.ClickThenLong(2).id -> I18n.get(Strings.GESTURE_DOUBLE_THEN_LONG)
+
+        GestureTrigger.ClickThenLong(3).id -> I18n.get(Strings.GESTURE_TRIPLE_THEN_LONG)
+
+        //  三档「后长按」的松手共用一份文案：槽位是同一件事的收尾，击数由前面那一档说
+        GestureTrigger.ClickThenLongRelease(1).id,
+        GestureTrigger.ClickThenLongRelease(2).id,
+        GestureTrigger.ClickThenLongRelease(3).id,
+        -> I18n.get(Strings.GESTURE_CLICK_THEN_LONG_RELEASE)
 
         //  认不得的 id：那是（将来的）自定义手势与手改配置的第 5 击起，名字不翻译
         else -> fallback

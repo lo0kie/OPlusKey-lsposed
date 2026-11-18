@@ -89,7 +89,7 @@ done
 sed -i "s/$VER_FROM/$VER_TO/g" "$DST/coui-ui-android-$VER_TO.pom" "$DST/coui-ui-android-$VER_TO.module"
 # 上游那几张校验和随版本改写失效 ⇒ 先删掉，**最后再统一重生成**（见文件末尾）。
 #   不留空：`patches/repo` 里的 aar 是被 CI 直接解析的二进制，没有校验和时**被换掉也看不出来**；
-#   重生成之后 `tools/verify-patches.sh`（CI 里跑）能发现仓库里那份被人动过 / 传坏了。
+#   重生成之后 `tools/verify-patches.py`（CI 里跑）能发现仓库里那份被人动过 / 传坏了。
 rm -f "$DST"/*.md5 "$DST"/*.sha1 "$DST"/*.sha256 "$DST"/*.sha512
 
 # 内部依赖版本改回上游号

@@ -42,6 +42,14 @@ internal enum class LongPressSections {
      *  这一族就得灰着（见 [LongPressGates.releaseEnabled]）。
      */
     ReleaseOnly,
+
+    /**
+     * 除「长按延迟」之外全摆 —— 「后长按」那几档在**绑定页**用的形态：延迟是这三档共用的一个值，
+     *  统一摆在独立设置页的那张参数卡里（单键是「单键」那张卡的第三行，`ClickDelayCard`；
+     *  组合成员是「按住组合」那张卡的末行，`ComboParamSource.memberDelay`），
+     *  这一页只摆这一档自己的那几族。
+     */
+    NoDelay,
 }
 
 /**
@@ -242,6 +250,7 @@ internal fun SettingsPage.LongPressSettingsCard(spec: LongPressSpec) {
         rows =
             when (spec.sections) {
                 LongPressSections.All -> allRows(spec, gates)
+                LongPressSections.NoDelay -> allRows(spec, gates, withDelay = false)
                 LongPressSections.ReleaseOnly -> releaseRows(spec, gates)
             },
     )
@@ -251,30 +260,22 @@ internal fun SettingsPage.LongPressSettingsCard(spec: LongPressSpec) {
 private fun SettingsPage.allRows(
     spec: LongPressSpec,
     gates: LongPressGates,
+    withDelay: Boolean = true,
 ): List<CardRow> =
     buildList {
         addAll(timingRows(spec, gates))
-        addAll(lowerRows(spec, gates))
-    }
-
-/**
- * 「松手执行额外动作 + 连发 + 长按延迟」那三族 —— 全摆那一形态与「单击后长按」共用这一份。
- *
- *  收成一支是为了让「摆哪几族」只有一处行序：两个调用点各写一遍的话，
- *  「先振动后间隔」这种细节迟早只在其中一边生效。
- */
-private fun SettingsPage.lowerRows(
-    spec: LongPressSpec,
-    gates: LongPressGates,
-): List<CardRow> =
-    buildList {
         addAll(releaseRows(spec, gates))
         addAll(repeatRows(spec, gates))
-        add(
-            CardRow.Custom { position ->
-                LongPressDelayRow(position, spec.pressMs, gates.delayLive, null, spec.onPressMs)
-            },
-        )
+        if (withDelay) add(delayRow(spec, gates))
+    }
+
+/** 「长按延迟」那一行 —— 整族摆（[LongPressSections.All]）里那一段。 */
+private fun SettingsPage.delayRow(
+    spec: LongPressSpec,
+    gates: LongPressGates,
+): CardRow =
+    CardRow.Custom { position ->
+        LongPressDelayRow(position, spec.pressMs, gates.delayLive, null, spec.onPressMs)
     }
 
 /**

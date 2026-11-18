@@ -102,6 +102,20 @@ internal fun chainSpecOf(params: ClickChainParams): ChainSpec =
         judgeCap = params.judgeCap,
         doubleClickOn = params.doubleClickOn,
         clickThenLongOn = params.clickThenLongOn,
+        thenLongClicks =
+            buildSet {
+                if (params.clickThenLongOn) add(2)
+                if (params.doubleThenLongOn) add(3)
+                if (params.tripleThenLongOn) add(4)
+            },
+        thenLong =
+            buildMap {
+                //  detekt 的 `ForEachOnRange`：这一步在装配期只跑一次，但同一页里没有理由
+                //  留一条会被静态检查点名的写法 —— 用普通 for。
+                for (n in 2..4) {
+                    params.thenLongAt(n)?.let { put(n, it) }
+                }
+            },
         clickThenLongPressMs = params.clickThenLongPressMs.toLong(),
         clickThenLongFireOnRelease = params.clickThenLongFireOnRelease,
         clickThenLongRepeatIntervalMs = params.clickThenLongRepeatIntervalMs.toLong(),
@@ -198,8 +212,8 @@ internal fun triggerOf(gesture: Gesture): GestureTrigger =
         is Gesture.Click -> GestureTrigger.Click(gesture.count)
         Gesture.LongPress -> GestureTrigger.LongPress
         Gesture.Release -> GestureTrigger.Release
-        Gesture.ClickThenLong -> GestureTrigger.ClickThenLong
-        Gesture.ClickThenLongRelease -> GestureTrigger.ClickThenLongRelease
+        is Gesture.ClickThenLong -> GestureTrigger.ClickThenLong(gesture.count)
+        is Gesture.ClickThenLongRelease -> GestureTrigger.ClickThenLongRelease(gesture.count)
     }
 
 /**
@@ -213,6 +227,6 @@ internal fun gestureOf(trigger: GestureTrigger): Gesture =
         is GestureTrigger.Click -> Gesture.Click(trigger.count)
         GestureTrigger.LongPress -> Gesture.LongPress
         GestureTrigger.Release -> Gesture.Release
-        GestureTrigger.ClickThenLong -> Gesture.ClickThenLong
-        GestureTrigger.ClickThenLongRelease -> Gesture.ClickThenLongRelease
+        is GestureTrigger.ClickThenLong -> Gesture.ClickThenLong(trigger.count)
+        is GestureTrigger.ClickThenLongRelease -> Gesture.ClickThenLongRelease(trigger.count)
     }

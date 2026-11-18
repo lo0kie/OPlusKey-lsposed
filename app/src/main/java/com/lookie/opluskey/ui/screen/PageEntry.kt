@@ -588,7 +588,7 @@ internal fun SettingsPage.rememberPagePagers(): PagePagers {
 private fun SettingsPage.bindingSlotCount(): Int {
     val cfg = configState.config.value
     val key = cfg.key(KeyWatchState.editing(cfg))
-    return GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn, key.doubleClickOn).size
+    return GestureTrigger.slotsOn(key.extraClicksOn, key.doubleClickOn, key.thenLongClicks).size
 }
 
 // 「挑中的东西怎么落到配置里」—— 与 `PageEntry.kt` 分开：那边是**铺页面**（每页一份滚动行为、
@@ -808,7 +808,7 @@ private fun SettingsPage.writeReleaseTo(
     if (pick.chain) {
         //  场景块走草稿（与 `writeReleaseTo` 的长按那一支同一条纪律：这一页只改草稿）
         if (pick.sceneAt >= 0) {
-            val block = BindingTarget.Scene(branchDraftNow(), pick.sceneAt, GestureTrigger.ClickThenLong, pick.comboId)
+            val block = BindingTarget.Scene(branchDraftNow(), pick.sceneAt, GestureTrigger.ClickThenLong(1), pick.comboId)
             val ok = block.bindChainRelease(action = action)
             XLog.w("额外动作：${block.what} ← ${action.token}（草稿）${if (ok) "" else "（那一块已不在草稿里）"}")
             return ok

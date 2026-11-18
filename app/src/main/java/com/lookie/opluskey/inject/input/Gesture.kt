@@ -31,11 +31,26 @@ sealed interface Gesture {
     /** 长按之后松手那一刻（只有这一按已经判成长按才会发）。 */
     data object Release : Gesture
 
-    /** 单击之后再按住不放（两段式的第二击按住）。 */
-    data object ClickThenLong : Gesture
+    /**
+     * 连点 [count] 下之后再按住不放（两段式的下一击按住）。
+     *
+     *  [count] 是**前面那几击的击数**：1 = 单击后长按（第 2 击按住）、2 = 双击后长按、
+     *  3 = 三击后长按。判定层只按形态分档，具体哪一档对应什么动作仍由装配方翻译。
+     */
+    data class ClickThenLong(
+        val count: Int = 1,
+    ) : Gesture
 
-    /** 「单击后长按」那一档的松手。 */
-    data object ClickThenLongRelease : Gesture
+    /**
+     * 「后长按」那一档的松手 —— 三档各有自己那一格松手动作，`count` 与
+     * [ClickThenLong.count] **同一个口径**（前面那几击的击数）。
+     *
+     *  不带这一位的话，注入侧只能报「有一档松手该执行」，装配方无从知道是三档里的哪一档 ——
+     *  三档会全部落到第 1 击那一格（`clickThenLongRelease`）。
+     */
+    data class ClickThenLongRelease(
+        val count: Int = 1,
+    ) : Gesture
 
     /** 日志用的人话 —— 判定层只说到「形态」为止，不进字典、不带配置 id。 */
     val label: String
@@ -44,8 +59,8 @@ sealed interface Gesture {
                 is Click -> if (count == 1) "单击" else "$count 击"
                 LongPress -> "长按"
                 Release -> "长按松手"
-                ClickThenLong -> "单击后长按"
-                ClickThenLongRelease -> "单击后长按松手"
+                is ClickThenLong -> if (count == 1) "单击后长按" else "$count 击后长按"
+                is ClickThenLongRelease -> if (count == 1) "单击后长按松手" else "$count 击后长按松手"
             }
 }
 

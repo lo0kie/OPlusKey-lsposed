@@ -447,12 +447,12 @@ internal object GestureExec {
         //  （`OwnSettings.vibrateOnNone`）、同一个理由：没有这一位时，「这一档没绑」与
         //  「模块没生效」在手上完全一样。这条路原先直接往下走 `comboShouldVibrate`，
         //  而它要求 `action.isBound` ⇒ 组合上按了永远没有反馈。
-        //  **连发的重复也看这一档的「每次触发都振动」**（`ComboKey.longRepeatVibrate`）：
-        //  这一档本来就没有动作，按住不放时那几十下重复若也不振，整段按住就是完全静默的
-        //  —— 与单键那条（`runAction` 里同一处）一字不差。
+        //  **连发的重复也看这一档的「每次触发都振动」**（按 trigger 取那一格，见
+        //  [comboRepeatVibrate]）：这一档本来就没有动作，按住不放时那几十下重复若也不振，
+        //  整段按住就是完全静默的 —— 与单键那条（`runAction` 里同一处）一字不差。
         if (!action.isBound) {
             XLog.w("$subject：这一档是无操作，不执行")
-            if (!repeat || combo.longRepeatVibrate) haptic(config, combo, force = true)
+            if (!repeat || comboRepeatVibrate(combo, trigger)) haptic(config, combo, force = true)
             return
         }
         val log =
@@ -468,7 +468,7 @@ internal object GestureExec {
         //  「独立设置」开着才看这一组自己那份）；传给 `run` 的第二位也是同一份结论。
         val own = config.effectiveFor(combo)
         val colorOsApi = own.colorOsApi
-        if (comboShouldVibrate(action, colorOsApi) && (!repeat || combo.longRepeatVibrate)) haptic(config, combo)
+        if (comboShouldVibrate(action, colorOsApi) && (!repeat || comboRepeatVibrate(combo, trigger))) haptic(config, combo)
         val pending = if (repeat) null else noticeIfNeeded(config, action, keyLabel, gestureLabel, combo)
         //  执行结果只有成功才算数：失败回执已经由执行器那边弹过（`notifyFailure`），
         //  这里不再补报；而 `lastActionAt` / 报活是「真的做成了」的凭证，失败时置位就是假绿灯。
@@ -924,8 +924,14 @@ internal object GestureExec {
 }
 
 /**
- * 连发的重复要不要振 —— **两档各问各的**：「单击后长按」自己有「每次触发都振动」
- * （`KeyConfig.clickThenLongRepeatVibrate`），不能拿长按那一档的值顶。
+ * 连发的重复要不要振 —— **每一档各问各的**，不能拿长按那一档的值顶。
+ *
+ *  「后长按」那一族有三档（单击后 / 双击后 / 三击后），配置侧每档一份「每次触发都振动」
+ *  （`KeyConfig.clickThenLongRepeatVibrate` / `doubleThenLong…` / `tripleThenLong…`）。
+ *  早先只认第一档，双击 / 三击后长按的连发一律落到长按那一格 —— 用户在那两档上打开
+ *  「每次触发都振动」时，按住不放一次都不振（真机 2026-11-19）。
+ *
+ *  [GestureTrigger.ClickThenLong.count] 与配置同一个口径（1 / 2 / 3）。
  *
  *  两处读它：真的执行了动作那一支（[GestureExec] 的 `shouldVibrate`）与「按了但没动作」那一支
  *  （`runAction` 里 `resolveAction` 返回 `null` 之后）—— 后者也要跟「每次触发都振动」走，
@@ -938,10 +944,42 @@ private fun repeatVibrate(
     keyConfig: KeyConfig,
     trigger: GestureTrigger,
 ): Boolean =
-    if (trigger == GestureTrigger.ClickThenLong) {
-        keyConfig.clickThenLongRepeatVibrate
+    if (trigger is GestureTrigger.ClickThenLong) {
+        when (trigger.count) {
+            1 -> keyConfig.clickThenLongRepeatVibrate
+            2 -> keyConfig.doubleThenLongRepeatVibrate
+            else -> keyConfig.tripleThenLongRepeatVibrate
+        }
     } else {
         keyConfig.longRepeatVibrate
+    }
+
+/**
+ * 组合键的同一问 —— **成员连击那三档各有一份**「每次触发都振动」。
+ *
+ *  组合自己只有「长按」这一档的连发（`ComboKey.longRepeatVibrate`）；「单击后长按」那一族
+ *  是**成员连击**判出来的，开关也在成员那三格（`memberClickThenLongRepeatVibrate` /
+ *  `memberDoubleThenLong…` / `memberTripleThenLong…`）。早先两支都读组合长按那一格，
+ *  成员连击的连发在真机上一次都不振（用户 2026-11-19 报的「多击后长按连续触发振动无效」）。
+ *
+ *  `count` 与 [GestureTrigger.ClickThenLong.count] 同一个口径（1 / 2 / 3）。
+ */
+private fun comboRepeatVibrate(
+    combo: ComboKey,
+    trigger: GestureTrigger,
+): Boolean =
+    when (trigger) {
+        is GestureTrigger.ClickThenLong -> {
+            when (trigger.count) {
+                1 -> combo.memberClickThenLongRepeatVibrate
+                2 -> combo.memberDoubleThenLongRepeatVibrate
+                else -> combo.memberTripleThenLongRepeatVibrate
+            }
+        }
+
+        else -> {
+            combo.longRepeatVibrate
+        }
     }
 
 /**

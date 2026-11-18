@@ -286,6 +286,39 @@ interface ClickChainParams : LongPressParams {
 
     val doubleClickOn: Boolean
     val clickThenLongOn: Boolean
+
+    /**
+     * 「双击后长按」（第 3 击按住）与「三击后长按」（第 4 击按住）—— 与 [clickThenLongOn] 同一条
+     *  口径的另外两档，只按击数区分（[GestureTrigger.ClickThenLong] 的 `count`）。
+     *
+     *  成员连击没有这两档（那里只有一颗成员键、也没有第 3 击的概念），实现方恒给 `false`。
+     */
+    val doubleThenLongOn: Boolean
+    val tripleThenLongOn: Boolean
+
+    /**
+     * 开着的「后长按」那几档对应的**按下击数**（2 = 单击后长按、3 = 双击后长按、4 = 三击后长按）。
+     *
+     *  界面排页（`GestureTrigger.slotsOn`）、判定装配（`inject/key/GestureBridge`）与判定数学
+     *  （`chainStep` / `longShotIsChained`）都读这一位 —— 三处口径只在这里拼一次。
+     */
+    val thenLongClicks: Set<Int>
+        get() =
+            buildSet {
+                if (clickThenLongOn) add(2)
+                if (doubleThenLongOn) add(3)
+                if (tripleThenLongOn) add(4)
+            }
+
+    /**
+     * 第 [clicks] 击那一档「后长按」的参数（`clicks` = 2 / 3 / 4 = 单击 / 双击 / 三击后长按）；
+     * `null` = 这一档没开。
+     *
+     *  三档各有**自己的一整套**（按住时长 / 连续触发 / 松手额外动作 / 松手时触发），与长按那一档
+     *  同名不同槽 —— 调「双击后长按」的按住时长不会动另外两档。
+     */
+    fun thenLongAt(clicks: Int): ThenLongParams?
+
     val clickThenLongPressMs: Int
     val clickThenLongReleaseOn: Boolean
     val clickThenLongRelease: Action
@@ -313,6 +346,27 @@ interface ClickChainParams : LongPressParams {
 }
 
 /**
+ * 一档「后长按」的全部判定参数 —— 判定侧要的那几样，不带动作本身。
+ *
+ *  与 `LongPressParams` 同族：长按那一档一份，三档「后长按」各一份（见
+ *  `ClickChainParams.thenLongAt`）。动作是什么由 `KeyConfig.actionOf` 回答，这里只回答
+ *  「按多久算数、要不要排连发、松手还有没有事」。
+ *
+ * @param pressMs 这一档的按住时长（第二段按多久算数）
+ * @param fireOnRelease 松手才触发（到点不执行）
+ * @param repeatIntervalMs 连续触发的间隔
+ * @param repeats 排不排连发（已并入「松手才触发」与串行命令那两条互斥）
+ * @param releaseActionExists 松手那一刻还有事可做（决定要不要发 `ClickThenLongRelease`）
+ */
+data class ThenLongParams(
+    val pressMs: Int,
+    val fireOnRelease: Boolean,
+    val repeatIntervalMs: Int,
+    val repeats: Boolean,
+    val releaseActionExists: Boolean,
+)
+
+/**
  * [GlobalConfig] 那一份的同名正向说法 —— 与 [ClickChainParams.fixedWindowStart] 同一条规矩。
  *
  *  它没有实现 [ClickChainParams]（判定侧不直接读公共那一份），但公共设置页那颗「固定窗口起点」
@@ -338,6 +392,17 @@ internal class MemberChainView(
     override val clickWindowMs: Int,
     override val waitMultiWindow: Boolean,
 ) : ClickChainParams {
+    /**
+     * 成员那三档「后长按」共用的按住时长。
+     *
+     *  判定这一层拿到的 `ComboKey` 来自广播，那一格已经是**生效值**（发送侧按「这一档开没开
+     * 独立设置」解析过，见 `Config.comboMemberThenLongPressFor`）。
+     *  [ComboKey.MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL]（0）是「跟随公共」的哨兵：走到这里还是 0
+     *  只可能是没解析过，按出厂值判 —— 绝不能把 0 当毫秒数用。
+     */
+    private val memberThenLongPressMs: Int =
+        combo.memberClickThenLongPressMs.takeIf { it > ComboKey.MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL }
+            ?: KeyConfig.DEFAULT_LONG_PRESS_MS
     override val longPressMs: Int get() = combo.longPressMs
     override val longRepeat: Boolean get() = combo.longRepeat
     override val longRepeatIntervalMs: Int get() = combo.longRepeatIntervalMs
@@ -348,7 +413,62 @@ internal class MemberChainView(
     override val releaseBound: Boolean get() = combo.releaseBound
     override val doubleClickOn: Boolean get() = combo.memberDoubleOn
     override val clickThenLongOn: Boolean get() = combo.memberClickThenLongOn
-    override val clickThenLongPressMs: Int get() = combo.memberClickThenLongPressMs
+
+    /** 成员连击只有「单击后长按」一档，第 3 / 4 击按住不成立。 */
+    override val doubleThenLongOn: Boolean get() = combo.memberDoubleThenLongOn
+    override val tripleThenLongOn: Boolean get() = combo.memberTripleThenLongOn
+
+    /** 成员连击那三档**各有一套**时序（与单键同一套字段名，主语换成 `ComboKey`）。 */
+    override fun thenLongAt(clicks: Int): ThenLongParams? =
+        when (clicks) {
+            2 -> {
+                if (combo.memberClickThenLongOn) {
+                    ThenLongParams(
+                        pressMs = memberThenLongPressMs,
+                        fireOnRelease = combo.memberClickThenLongFireOnRelease,
+                        repeatIntervalMs = combo.memberClickThenLongRepeatIntervalMs,
+                        repeats = combo.memberClickThenLongRepeats,
+                        releaseActionExists = combo.memberClickThenLongActionExists,
+                    )
+                } else {
+                    null
+                }
+            }
+
+            3 -> {
+                if (combo.memberDoubleThenLongOn) {
+                    ThenLongParams(
+                        pressMs = memberThenLongPressMs,
+                        fireOnRelease = combo.memberDoubleThenLongFireOnRelease,
+                        repeatIntervalMs = combo.memberDoubleThenLongRepeatIntervalMs,
+                        repeats = combo.memberDoubleThenLongRepeats,
+                        releaseActionExists = combo.memberDoubleThenLongReleaseAction.isBound,
+                    )
+                } else {
+                    null
+                }
+            }
+
+            4 -> {
+                if (combo.memberTripleThenLongOn) {
+                    ThenLongParams(
+                        pressMs = memberThenLongPressMs,
+                        fireOnRelease = combo.memberTripleThenLongFireOnRelease,
+                        repeatIntervalMs = combo.memberTripleThenLongRepeatIntervalMs,
+                        repeats = combo.memberTripleThenLongRepeats,
+                        releaseActionExists = combo.memberTripleThenLongReleaseAction.isBound,
+                    )
+                } else {
+                    null
+                }
+            }
+
+            else -> {
+                null
+            }
+        }
+
+    override val clickThenLongPressMs: Int get() = memberThenLongPressMs
     override val clickThenLongReleaseOn: Boolean get() = combo.memberClickThenLongReleaseOn
     override val clickThenLongRelease: Action get() = combo.memberClickThenLongRelease
 
@@ -367,6 +487,9 @@ internal class MemberChainView(
                 if (combo.memberDoubleOn) 2 else 1,
                 combo.memberClicksOn.maxOrNull() ?: 1,
                 if (combo.memberClickThenLongOn) 2 else 1,
+                //  「双击后长按」在第 3 击、「三击后长按」在第 4 击（与单键 `judgeCap` 同一条）
+                if (combo.memberDoubleThenLongOn) 3 else 1,
+                if (combo.memberTripleThenLongOn) 4 else 1,
             ).coerceAtMost(ConfigFields.MAX_JUDGE_CLICKS)
 }
 

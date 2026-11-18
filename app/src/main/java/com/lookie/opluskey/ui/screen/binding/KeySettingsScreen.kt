@@ -125,6 +125,9 @@ internal fun SettingsPage.KeySettingsScreen(
                 combo = memberCombo,
                 enabled = gate.page,
             )
+            //  成员「后长按」三档**共用**的那一个「连击后长按延迟」**不在这张卡里**：它是
+            //  下面「按住组合」那张卡的末行（与公共设置页同一份，见 `ComboParamSource.memberDelay`）——
+            //  它问的是「按住多久算长按」，与这一张卡「有哪几档」不是同一件事。
         }
 
         //  一个小标题带一张卡（与「按键设置」页同构）—— 页面顶部不再另放一个与顶栏同名的
@@ -141,11 +144,11 @@ internal fun SettingsPage.KeySettingsScreen(
             titles = ownCardTitles(),
         ) { values, field -> commitOwnField(target, values, field) }
 
-        //  —— 单击（判定时机 + 等待窗口）——
-        //  **排在总开关下面**（用户口径）：这两项也吃那颗「使用独立设置」——
+        //  —— 单键（判定时机 + 连击等待窗口 + 单击和多击和长按延迟）——
+        //  **排在总开关下面**（用户口径）：这三行也吃那颗「使用独立设置」——
         //  关着时跟随公共设置里那一份、这一页只把生效值摆出来并灰着。
-        //  又多一道「有没有多击手势」：这一页管的是「这颗键的多击怎么判」，一档都没开时
-        //  没有可判的东西。卡片与公共设置页是同一份（`ClickDelayCard`），只是状态源换成这颗键。
+        //  前两行多一道「有没有多击手势」，第三行多一道「三档后长按开没开」（各在自己的来源里判，
+        //  见 `clickKeyParams`）—— 这是两件事，不共用一道闸。
         if (target is SettingsTarget.Key) {
             SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK))
             ClickDelayCard(clickKeyParams(target.id, gate.keyRows))
@@ -206,9 +209,14 @@ private fun SettingsPage.ExtraClicksCard(
                 doubleClickOnRow(target, key, gate.keyRows),
                 extraClickRow(target, key, COUNT3, gate.keyRows),
                 extraClickRow(target, key, COUNT4, gate.keyRows),
-                clickThenLongRow(target, key, gate.keyRows),
+                thenLongRow(target, key, 1, gate.keyRows),
+                thenLongRow(target, key, 2, gate.keyRows),
+                thenLongRow(target, key, 3, gate.keyRows),
             ),
     )
+    //  三档「后长按」共用的那个按住时长**不在这一张卡里**：它是「单键」那张卡的第三行
+    //  （`ClickDelayCard`，与公共设置页同一份）。留这一句只为说明它为什么不在这儿 ——
+    //  它说的是「按下去之后多久算按住」，与这一张卡「有哪几档」不是同一件事。
 }
 
 /**
@@ -231,7 +239,9 @@ private fun SettingsPage.MemberClicksCard(
                 memberDoubleOnRow(combo, enabled),
                 memberClickRow(combo, COUNT3, enabled),
                 memberClickRow(combo, COUNT4, enabled),
-                memberClickThenLongRow(combo, enabled),
+                memberThenLongRow(combo, 1, enabled),
+                memberThenLongRow(combo, 2, enabled),
+                memberThenLongRow(combo, 3, enabled),
             ),
     )
 }
@@ -276,22 +286,42 @@ private fun SettingsPage.memberClickRow(
     }
 }
 
-/** 成员「单击后长按」那一行。 */
+/**
+ * 成员「后长按」那三行（单击后长按 / 双击后长按 / 三击后长按）—— 与单键那一族同一套口径，
+ *  [count] 是前面那几击的击数（1/2/3），文案与字段按它取。
+ */
 @Composable
-private fun SettingsPage.memberClickThenLongRow(
+private fun SettingsPage.memberThenLongRow(
     combo: ComboKey,
+    count: Int,
     enabled: Boolean,
-): CardRow =
-    CardRow.Switch(
-        title = I18n.get(Strings.SETTING_CLICK_THEN_LONG),
-        icon = PageIcons.gestureIcon(GestureTrigger.ClickThenLong),
-        checked = combo.memberClickThenLongOn,
+): CardRow {
+    val title =
+        when (count) {
+            1 -> Strings.SETTING_CLICK_THEN_LONG
+            2 -> Strings.KEY_SETTINGS_DOUBLE_THEN_LONG
+            else -> Strings.KEY_SETTINGS_TRIPLE_THEN_LONG
+        }
+    return CardRow.Switch(
+        title = I18n.get(title),
+        icon = PageIcons.gestureIcon(GestureTrigger.ClickThenLong(count)),
+        checked =
+            when (count) {
+                1 -> combo.memberClickThenLongOn
+                2 -> combo.memberDoubleThenLongOn
+                else -> combo.memberTripleThenLongOn
+            },
         enabled = enabled,
     ) { on ->
-        updateCombo(combo.id, "member_click_then_long=${if (on) 1 else 0}") {
-            it.copy(memberClickThenLongOn = on)
+        updateCombo(combo.id, "member_then_long$count=${if (on) 1 else 0}") {
+            when (count) {
+                1 -> it.copy(memberClickThenLongOn = on)
+                2 -> it.copy(memberDoubleThenLongOn = on)
+                else -> it.copy(memberTripleThenLongOn = on)
+            }
         }
     }
+}
 
 /**
  * 「只参与非首键的按住组合」那一行 —— 这颗键不判单键手势、只等组合成员（见 `KeyConfig.comboOnly`）。
@@ -361,30 +391,51 @@ private fun SettingsPage.comboOnlyRow(
     }
 
 /**
- * 「单击后长按」那颗开关 —— 与三击 / 四击并列，但它是**另一位**而不是击数集合里的一员：
- *  它描述的是「第 2 击按住不放」这另一种形态，与双击互斥。
+ * 「后长按」那三颗开关（单击后长按 / 双击后长按 / 三击后长按）—— 与三击 / 四击并列，但它们是
+ *  **另一条轴**而不是击数集合里的一员：描述的是「再下一击按住不放」这另一种形态。
  *
- *  **它不延长连击链**：开三击要单击多等一个窗，开这一档不多等 —— 判定侧只在第 2 击
- *  按下时顺手排一枪长按，抬手照样立刻派发双击（见 `GestureDetector`）。
+ *  **它不延长连击链**：开三击要单击多等一个窗，开这几档不多等 —— 判定侧只在对应那一击按下时
+ *  顺手排一枪长按，抬手照样立刻派发普通连击（见 `GestureDetector`）。
+ *
+ *  [count] 是前面那几击的击数（1/2/3），文案与字段按它取 —— 三档是同一件事的不同击数。
  */
 @Composable
-private fun SettingsPage.clickThenLongRow(
+private fun SettingsPage.thenLongRow(
     target: SettingsTarget.Key,
     key: KeyConfig,
+    count: Int,
     enabled: Boolean,
-): CardRow =
-    CardRow.Switch(
-        title = I18n.get(Strings.SETTING_CLICK_THEN_LONG),
-        icon = PageIcons.gestureIcon(GestureTrigger.ClickThenLong),
-        checked = key.clickThenLongOn,
+): CardRow {
+    val title =
+        when (count) {
+            1 -> Strings.SETTING_CLICK_THEN_LONG
+            2 -> Strings.KEY_SETTINGS_DOUBLE_THEN_LONG
+            else -> Strings.KEY_SETTINGS_TRIPLE_THEN_LONG
+        }
+    return CardRow.Switch(
+        title = I18n.get(title),
+        icon = PageIcons.gestureIcon(GestureTrigger.ClickThenLong(count)),
+        checked =
+            when (count) {
+                1 -> key.clickThenLongOn
+                2 -> key.doubleThenLongOn
+                else -> key.tripleThenLongOn
+            },
         enabled = enabled,
     ) { on ->
         updateKey(
             target.id,
-            "click_then_long=${if (on) 1 else 0}",
-            notice = { switchNotice(I18n.get(Strings.SETTING_CLICK_THEN_LONG), on) },
-        ) { it.copy(clickThenLongOn = on) }
+            "then_long$count=${if (on) 1 else 0}",
+            notice = { switchNotice(I18n.get(title), on) },
+        ) {
+            when (count) {
+                1 -> it.copy(clickThenLongOn = on)
+                2 -> it.copy(doubleThenLongOn = on)
+                else -> it.copy(tripleThenLongOn = on)
+            }
+        }
     }
+}
 
 /**
  * 「启用双击」那一行 —— 双击这一档存不存在（见 `KeyConfig.doubleClickOn`）。

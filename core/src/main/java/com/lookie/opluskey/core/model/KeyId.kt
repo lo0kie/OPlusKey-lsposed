@@ -537,7 +537,7 @@ data class SceneRule(
         when (trigger) {
             //  「单击后长按」的松手**不在 `actions` 表里**（它是这一块的收尾，与长按的松手同一类）：
             //  开关关着回 `Follow`，于是 `matches` 为假、`pickAction` 会看下一块 —— 与「缺项」同义。
-            GestureTrigger.ClickThenLongRelease -> if (chainReleaseOn) chainRelease else Action.Follow
+            is GestureTrigger.ClickThenLongRelease -> if (chainReleaseOn) chainRelease else Action.Follow
 
             else -> actions[trigger] ?: Action.Follow
         }
@@ -579,7 +579,8 @@ data class SceneRule(
     val longBound: Boolean get() = enabled && isReady && (actions[GestureTrigger.LongPress] ?: Action.None).isBound
 
     /** 同上，这一块给「单击后长按」配了动作。 */
-    val chainBound: Boolean get() = enabled && isReady && (actions[GestureTrigger.ClickThenLong] ?: Action.None).isBound
+    val chainBound: Boolean
+        get() = enabled && isReady && (actions[GestureTrigger.ClickThenLong(1)] ?: Action.None).isBound
 
     /**
      * 配完了没有 —— 至少一条条件、且每一条都**认得出并且取值填了**（`isUsable`）。

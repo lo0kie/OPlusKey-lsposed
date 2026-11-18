@@ -245,6 +245,30 @@ internal class ComboDetector(
     private var memberChainCombo: ComboBinding? = null
 
     /**
+     * 正在把成员的**抬手**喂给连击链（[onUp] 那一支）—— 这一段里判出来的 trigger 都是
+     * 「抬手上执行」的：`fireOnRelease` 那一档到点只记状态、动作押在抬手，松手那一档更是
+     * 只在抬手时才存在。
+     */
+    @Volatile
+    private var feedingMemberUp: Boolean = false
+
+    /**
+     * 这一轮成员连击**已经派发过动作**（到点派、连发派、抬手补派都算）。
+     *
+     *  两个读者都在 [onUp]：
+     *   · 成员抬手 —— 这一按已经有结果，连击链没有下一棒可等，**当场收尾**。不收的话组合会
+     *     一直挂到首键抬手，在那里被当成「两颗一起短按」再派一次组合的单击动作
+     *     （真机 2026-11-19：「松手后多出一下语音助手 / 首键长按那一格」）。
+     *   · 首键抬手 —— 连发期间首键先松时，组合收尾那支不能再补一次单击（见那里）。
+     *
+     *  **不能在第一档回调里就把组合收掉**：「单击后长按 + 松手动作」是连着派发，
+     *  而且带连发时按住期间还要继续派 —— 收了 `memberChainCombo` 之后那些派发
+     *  全被丢掉（用户报的「连发只触发一次」）。
+     */
+    @Volatile
+    private var memberChainFired: Boolean = false
+
+    /**
      * **成员连击**的连击链 —— 复用 [GestureDetector]（单键那套连击链，状态机一行不新写）。
      *
      *  按住组合成立、且这一档开了成员连击时，那颗唯一成员键的按下 / 抬手就喂给它
@@ -289,6 +313,13 @@ internal class ComboDetector(
                 //  首键可能还按着 —— 它的抬手随后会因 `consumed` 而被吞，不会再误派一次短按。
                 XLog.w("组合键：${key.members.joinToString(" + ") { it.name }} 成员连击 ${trigger.label}（${key.name}）")
                 onCombo(key, trigger, repeat)
+                //  这一轮成员连击**已经有结果** ⇒ 记下来，抬手时据此收尾（见 [memberChainFired]）。
+                //  **不在这里收尾**：带连发时按住期间还要接着派，收了 `memberChainCombo`
+                //  后续那几发全被丢掉 —— 用户看到的就是「连续触发只来了一次」。
+                memberChainFired = true
+                //  抬手这一下派发的东西由 [onUp] 在喂完连击链之后统一收尾：这里再判
+                //  「还要不要等抬手」已经没有意义。
+                if (feedingMemberUp) return@GestureDetector
                 //  **「单击后长按」不能当场收尾**：这一档松手时还有一档「松手动作」
                 //  （`ClickThenLongRelease`），而那一档要靠**成员抬手继续喂连击链**才判得出来
                 //  （见 `onUp` 里把 UP 递给 `memberChain` 那一支）。
@@ -297,13 +328,30 @@ internal class ComboDetector(
                 //  抬手那条路就走不进连击链 —— 判据层永远等不到 `ClickThenLongRelease`
                 //  （真机 2026-11-18：「组合的单击后长按，松手额外动作不触发」，日志里只有单键那一档）。
                 //
-                //  只在**这一档真配了松手动作**时才留着：没配的话抬手会再判一次单击，
-                //  等于一次按压两个动作。
+                //  「抬手上还有事」有三件，三件都要算：
+                //   · `releaseActionExists` —— 松手执行额外动作（四位判据，装配方算好带过来）；
+                //   · `fireOnRelease` —— 到点没派发，动作本身就等着抬手执行；
+                //   · `repeats` —— 这一档带连发，按住期间还会接着派，链不能拆。
+                //  前两件只看第 1 档的话，双击 / 三击后长按这两条永远收不到抬手（当场收尾后
+                //  `memberChainCombo` 已清空，`onUp` 就不再把 UP 喂进连击链）。
+                //
+                //  逐档取：第 1 档的松手那一位单独存在 `clickThenLongReleaseActionExists`
+                //  （场景块折进来的是它），后两档在 `thenLong` 里。
                 val awaitMemberRelease =
-                    trigger == Gesture.ClickThenLong &&
-                        key.memberChain?.clickThenLongReleaseActionExists == true
+                    (trigger as? Gesture.ClickThenLong)?.let { chained ->
+                        val chain = key.memberChain
+                        val spec = chain?.thenLong?.get(chained.count + 1)
+                        val releaseExists =
+                            if (chained.count == 1) {
+                                chain?.clickThenLongReleaseActionExists == true
+                            } else {
+                                spec?.releaseActionExists == true
+                            }
+                        releaseExists || spec?.fireOnRelease == true || spec?.repeats == true
+                    } == true
                 if (!awaitMemberRelease) {
                     memberChainCombo = null
+                    memberChainFired = false
                     combo?.let { c ->
                         //  「首键松手后仍触发长按」也在这条收尾里结算：成员连击判出一档就把组合收了，
                         //  而首键往往还按着 —— 它的长按照旧要等抬手时补（见 [keepStarterLong] 与
@@ -540,6 +588,7 @@ internal class ComboDetector(
                 if (memberChainCombo === c.key) {
                     memberChain.reset(null)
                     memberChainCombo = null
+                    memberChainFired = false
                 }
                 members.filterTo(consumed) { down.containsKey(it) }
                 for (k in members) resetKey(k)
@@ -913,7 +962,33 @@ internal class ComboDetector(
                     finishCombo(c)
                     return true
                 }
-                memberChainParams(c.key)?.let { chain -> memberChain.onKeyUp(id, chain) }
+                feedingMemberUp = true
+                try {
+                    memberChainParams(c.key)?.let { chain -> memberChain.onKeyUp(id, chain) }
+                } finally {
+                    feedingMemberUp = false
+                }
+                //  **这一轮成员连击已经出过动作** ⇒ 这一按到此为止。
+                //
+                //  三种都算：「到点派发」（连发时那第一发就在到点）、连发期间按住不放的那几发、
+                //  抬手这一下才派的（`fireOnRelease` 的主档 / 松手动作那一档）。它们都是这一按的
+                //  结果 —— 链里没有下一击可等（窗口已经随抬手结束）。
+                //
+                //  不收的话组合会一直挂到**首键抬手**，在那条正常收尾里看见 `longFired == false`，
+                //  于是按「两颗一起短按」再派一次组合的单击动作。真机 2026-11-19 的形状：
+                //  `成员连击 单击后长按 → ringervolume:+10` 之后紧跟
+                //  `短按（先松开 按键 3）→ cmb4 单击 → oplus:voice_assist`，
+                //  而「首键松手后仍执行它自己的长按」明明是关的。
+                //
+                //  收尾仍走与「到点派发」同一条路（[keepStarterLong] + [finishCombo]）：
+                //  开关开着时首键仍该补它自己的长按，关着时那里只留一行 d 日志。
+                if (memberChainFired) {
+                    memberChainFired = false
+                    memberChainCombo = null
+                    keepStarterLong(c, id)
+                    finishCombo(c)
+                    return true
+                }
                 //  **成员松过手 ⇒ 这一组不再是「两颗一起按住」**：撤掉组合自己那一枪长按。
                 //  不撤的话，第 2 击按住时首键与成员又都按着，那一枪照样到点判出组合长按 ——
                 //  表现就是「单击后长按触发了，组合的长按动作也跟着执行一次」（用户报的）。
@@ -947,11 +1022,14 @@ internal class ComboDetector(
                 )
                 return true
             }
-            // 组合结束：没判过长按 ⇒ 这一次是「一起短按」（取消的那一档不派发）
-            if (short && !c.longFired) {
+            // 组合结束：没判过长按、这一轮成员连击也没出过动作 ⇒ 这一次是「一起短按」
+            //  （取消的那一档不派发）。
+            //  **成员连击已经派过的不能补**：那是连续触发演到一半、首键先松了 —— 这一按的结果
+            //  已经在成员那几发里，再补一次单击就是同一按两个动作。
+            if (short && !c.longFired && !memberChainFired) {
                 XLog.w("组合键：${c.keys.joinToString(" + ") { it.name }} 短按（先松开 ${id.name}）")
                 fire(c, Gesture.Click(1), repeat = false)
-            } else if (short) {
+            } else if (short && !memberChainFired) {
                 //  长按已经判出来过：这一下按那颗键自己的「松手」两档收尾（与单键同一条口径）——
                 //  · 松手才触发：到点只标了状态，动作放到这一下执行一次；
                 //  · 松手执行额外动作：按住期间已经执行过，这一下再补一条。
@@ -975,6 +1053,7 @@ internal class ComboDetector(
             //  等于这个开关从没生效过（真机反馈：「拨了没效果」）。
             //  取消（`short = false`）仍不补：那一下不算数。
             if (short) keepStarterLong(c, id)
+            memberChainFired = false
             finishCombo(c)
         }
         // 组合的另一颗键可能还按着 —— 它的抬手同样要吞（`consumed` 里还留着它）
@@ -1055,6 +1134,7 @@ internal class ComboDetector(
         combo?.let(::finishCombo)
         //  成员连击的连击链状态跟着一起作废：改配置 / 关主开关后，那颗成员键不该再按旧档判。
         memberChainCombo = null
+        memberChainFired = false
         memberChain.reset(null)
         //  这一笔欠账跟着配置一起作废：关掉主开关 / 改了配置之后，那颗键的抬手不该再派旧动作
         starterKeepPending = null
@@ -1178,6 +1258,8 @@ internal class ComboDetector(
     private fun finishCombo(c: Combo) {
         cancelShots(c)
         combo = null
+        //  「这一轮成员连击出过动作」随组合一起作废：下一按是新的账（见 [memberChainFired]）。
+        memberChainFired = false
     }
 
     /**
