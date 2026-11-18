@@ -17,7 +17,7 @@ import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.kit.ConfirmDialog
 import com.lookie.opluskey.ui.model.icon.actionIcon
 import com.lookie.opluskey.ui.model.text.releaseActionTitle
 import com.lookie.opluskey.ui.row.LongPressSections

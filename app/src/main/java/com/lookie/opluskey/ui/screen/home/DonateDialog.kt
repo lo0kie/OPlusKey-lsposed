@@ -28,8 +28,8 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.seal.Seal
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.FrostedDialog
-import com.lookie.opluskey.ui.dialog.dialogSideMargin
+import com.lookie.opluskey.ui.kit.FrostedDialog
+import com.lookie.opluskey.ui.kit.dialogSideMargin
 import com.lookie.opluskey.ui.model.page.DONATE_CODE_SIZE
 import com.lookie.opluskey.ui.model.target.DonateTarget
 import io.github.suqi8.coui.kmp.basic.Icon

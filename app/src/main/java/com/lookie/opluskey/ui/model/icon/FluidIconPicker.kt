@@ -45,12 +45,12 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.FluidCard
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.FrostedDialog
 import com.lookie.opluskey.ui.feedback.LocalTick
+import com.lookie.opluskey.ui.kit.FrostedDialog
+import com.lookie.opluskey.ui.kit.TitleSmallText
 import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
-import com.lookie.opluskey.ui.row.TitleSmallText
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.layout.DialogDefaults
 import io.github.suqi8.coui.kmp.theme.COUITheme

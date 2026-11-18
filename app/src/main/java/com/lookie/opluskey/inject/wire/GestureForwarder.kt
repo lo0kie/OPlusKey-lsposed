@@ -1,4 +1,4 @@
-package com.lookie.opluskey.inject.input
+package com.lookie.opluskey.inject.wire
 
 import android.content.ComponentName
 import android.content.Context

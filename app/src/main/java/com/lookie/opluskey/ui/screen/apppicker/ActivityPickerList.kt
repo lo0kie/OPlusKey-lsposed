@@ -36,6 +36,7 @@ import com.lookie.opluskey.ui.chrome.collapseHeader
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.chrome.headerStatusBarPadding
 import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.kit.SectionTitle
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.GRID_GAP
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
@@ -43,7 +44,6 @@ import com.lookie.opluskey.ui.model.target.LaunchableActivity
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.RowEndIcon
-import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.spacedItems
 import com.lookie.opluskey.ui.state.picker.PickedDetail
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior

@@ -16,7 +16,8 @@ import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.core.model.values
 import com.lookie.opluskey.core.model.withNoticeMode
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.NameDialog
+import com.lookie.opluskey.ui.kit.NameDialog
+import com.lookie.opluskey.ui.kit.SectionTitle
 import com.lookie.opluskey.ui.model.icon.PageIcons
 
 /**

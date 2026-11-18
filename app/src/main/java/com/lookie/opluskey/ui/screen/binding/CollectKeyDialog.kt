@@ -29,11 +29,11 @@ import com.lookie.opluskey.core.model.withCustomKey
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.FrostedDialog
-import com.lookie.opluskey.ui.dialog.NameDialog
-import com.lookie.opluskey.ui.dialog.dialogSideMargin
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.kit.FrostedDialog
+import com.lookie.opluskey.ui.kit.NameDialog
+import com.lookie.opluskey.ui.kit.dialogSideMargin
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.state.binding.KeyWatchState
 import com.lookie.opluskey.ui.state.command.CommandsSave

@@ -13,9 +13,9 @@ import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
-import com.lookie.opluskey.ui.dialog.MenuEntry
-import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.kit.ConfirmDialog
+import com.lookie.opluskey.ui.kit.MenuEntry
+import com.lookie.opluskey.ui.kit.PageMenu
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.target.AuthorTarget
 import com.lookie.opluskey.ui.model.target.FeedbackTarget
@@ -27,6 +27,7 @@ import com.lookie.opluskey.ui.model.theme.PagePalette
 import com.lookie.opluskey.ui.screen.home.openUrl
 import com.lookie.opluskey.ui.screen.linkSettled
 import com.lookie.opluskey.ui.write.setLanguage
+import com.lookie.opluskey.ui.write.setMonetColors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -128,7 +129,12 @@ internal fun SettingsPage.ExternalLinkDialog(ui: AboutUiState) {
     )
 }
 
-/** 「语言」那一行的菜单（跟随系统 / 简体中文 / English）。 */
+/**
+ * 「语言」那一行的菜单（跟随系统 / 简体中文 / English）。
+ *
+ *  **「跟随系统」与另外两档之间是一条加深带**（与 [PaletteMenu] 同一口径）：前者说「跟系统走」，
+ *  后两档是「自己定死一个」，换的是类别不是行。
+ */
 @Composable
 internal fun SettingsPage.LanguageMenu(
     ui: AboutUiState,
@@ -137,7 +143,7 @@ internal fun SettingsPage.LanguageMenu(
     PageMenu(
         entries =
             AppLanguage.entries
-                .map { lang ->
+                .mapIndexed { index, lang ->
                     MenuEntry.Row(
                         title = languageLabel(lang),
                         // 三项各自的字形（齿轮 / 汉字「文」/ abc）—— 见 [PageIcons.LanguageAuto] 那一段
@@ -149,6 +155,9 @@ internal fun SettingsPage.LanguageMenu(
                                 AppLanguage.EN -> PageIcons.LanguageEnglish
                             },
                         selected = lang == currentLang,
+                        //  判据同 [PaletteMenu]：看**上一档**是不是「跟随系统」，不写死是哪一档 ——
+                        //  将来再多一种语言，这条带的落点不会跟着挪错。
+                        dividerBefore = AppLanguage.entries.getOrNull(index - 1) == AppLanguage.AUTO,
                     ) {
                         ui.showLangMenu = false
                         if (lang != currentLang) {
@@ -163,40 +172,60 @@ internal fun SettingsPage.LanguageMenu(
 }
 
 /**
- * 「主题」那一行的菜单 —— 三档：跟随系统 / 浅色 / 深色。
+ * 「主题」那一行的菜单 —— 上面三档深浅：跟随系统 / 浅色 / 深色；最底部一行「Monet 配色」。
  *
  *  与 [LanguageMenu] 同一套：各档全列出来、当前那一档打勾、点别的档才写配置。
  *  各档各有各的字形 —— 共用一颗的话菜单里几行长得一模一样（语言那边踩过同一个坑）。
  *
- *  这一层**只有深浅**：用不用 Monet 配色是外观卡里紧挨着的那一行开关（`setMonetColors`），
- *  不进这个菜单 —— 深浅与配色是两件事，混进同一个单选框就得为每种搭配列一行。
+ *  配色那一行**排在最后、用加深带隔开**：它和深浅是同一件事的两半，但不是一个单选框里的
+ *  第四个选项（深浅定明暗、配色定那套色从哪来）；混在一起会让人以为只能四选一。
+ *  它是开关：点一下就地翻，菜单留着，打勾跟着变。
  */
 @Composable
 internal fun SettingsPage.ThemeMenu(
     ui: AboutUiState,
     currentTheme: AppTheme,
 ) {
+    val monet = configState.config.value.global.monetColors
     PageMenu(
         entries =
-            AppTheme.entries
-                .map { theme ->
-                    MenuEntry.Row(
-                        title = themeTitle(theme),
-                        icon =
-                            when (theme) {
-                                AppTheme.AUTO -> PageIcons.ThemeAuto
-                                AppTheme.LIGHT -> PageIcons.ThemeLight
-                                AppTheme.DARK -> PageIcons.ThemeDark
+            if (!ui.showThemeMenu) {
+                emptyList()
+            } else {
+                buildList {
+                    AppTheme.entries.forEach { theme ->
+                        add(
+                            MenuEntry.Row(
+                                title = themeTitle(theme),
+                                icon =
+                                    when (theme) {
+                                        AppTheme.AUTO -> PageIcons.ThemeAuto
+                                        AppTheme.LIGHT -> PageIcons.ThemeLight
+                                        AppTheme.DARK -> PageIcons.ThemeDark
+                                    },
+                                selected = theme == currentTheme,
+                            ) {
+                                ui.showThemeMenu = false
+                                if (theme != currentTheme) {
+                                    setTheme(theme.code)
+                                }
                             },
-                        selected = theme == currentTheme,
-                    ) {
-                        ui.showThemeMenu = false
-                        if (theme != currentTheme) {
-                            setTheme(theme.code)
-                        }
+                        )
                     }
-                }.takeIf { ui.showThemeMenu }
-                .orEmpty(),
+                    //  最底部：用不用 Monet 配色 —— 加深带与上面三档分开（`dividerBefore`）
+                    add(
+                        MenuEntry.Row(
+                            title = I18n.get(Strings.MORE_MONET_COLORS),
+                            icon = PageIcons.MonetColors,
+                            selected = monet,
+                            dividerBefore = true,
+                        ) {
+                            //  开关：点一下就地翻，不关菜单 —— 打勾要留给用户看见
+                            setMonetColors(!monet)
+                        },
+                    )
+                }
+            },
         preciseClick = ui.themeClick,
         onDismiss = { ui.showThemeMenu = false },
     )
@@ -434,7 +463,7 @@ private fun SettingsPage.profileRows(
 }
 
 /**
- * 「系统配色」那一行的菜单（五套常量色 + 一档「系统取色」）。
+ * 「系统配色」那一行的菜单（一档「系统默认」+ 五套常量色）。
  *
  *  与 [ThemeMenu] 同一套：全列出来、当前那一套打勾、点别的才写配置。
  *  行首是**这一套的色块**（[PageIcons.accentSwatch]，颜色由 `iconTint` 给的那个种子色），
@@ -442,6 +471,9 @@ private fun SettingsPage.profileRows(
  *
  *  色块形状跟**用不用 Monet 配色**走：开了整页按系统取色，色块画成四格色阶；关着只有一个
  *  强调色，画成**一个整块** —— 四格在那几档会被读成「四块不同的色」。
+ *
+ *  **头一档与后面五套之间是一条加深带**：前者说的是「跟系统走」，后者是「自己挑一个色」，
+ *  换的是类别不是行（见 [MenuEntry.Row.dividerBefore]）。
  */
 @Composable
 internal fun SettingsPage.PaletteMenu(
@@ -452,13 +484,16 @@ internal fun SettingsPage.PaletteMenu(
     PageMenu(
         entries =
             PagePalette.entries
-                .map { palette ->
+                .mapIndexed { index, palette ->
                     MenuEntry.Row(
                         title = paletteLabel(palette),
                         icon = PageIcons.accentSwatch(configState.config.value.global.monetColors),
-                        // 行首那块色就是这一套的强调色（「系统取色」那一档现取系统强调色）
+                        // 行首那块色就是这一套的强调色（「系统默认」那一档现取系统强调色）
                         iconTint = palette.seed(context),
                         selected = palette == currentPalette,
+                        //  判据写成「**上一档**是不是系统默认」而不是「这一档是不是蓝色」：
+                        //  将来再往后面插一档预设色，那条带的落点不会跟着挪错。
+                        dividerBefore = PagePalette.entries.getOrNull(index - 1) == PagePalette.DEFAULT,
                     ) {
                         ui.showPaletteMenu = false
                         if (palette != currentPalette) {

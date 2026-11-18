@@ -25,11 +25,11 @@ import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.core.wire.LogWire
 import com.lookie.opluskey.core.wire.ModuleWire
-import com.lookie.opluskey.inject.input.GestureForwarder
 import com.lookie.opluskey.inject.system.ShortcutRead
 import com.lookie.opluskey.inject.system.SystemToast
 import com.lookie.opluskey.inject.system.SystemVolume
 import com.lookie.opluskey.inject.wire.ConfigChannel
+import com.lookie.opluskey.inject.wire.GestureForwarder
 import com.lookie.opluskey.inject.wire.NetChannel
 import com.lookie.opluskey.inject.wire.ProbeChannel
 import io.github.libxposed.api.XposedInterface
@@ -500,6 +500,9 @@ internal object KeyHooks {
                 interceptor.handle(point, chain)
             } catch (e: Throwable) {
                 XLog.w("侧键处理失败（放行给系统）：$point", e)
+                //  判定状态机可能只写了一半（键 id 查不到时 `keyIdOf` 就是在这里抛的）：
+                //  不清掉的话，下一次按压会带着旧状态判，且一声不响（见 `resetJudgement`）。
+                runCatching { interceptor.resetJudgement() }
                 false
             }
 

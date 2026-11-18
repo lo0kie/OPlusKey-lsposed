@@ -54,8 +54,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.DIALOG_LINE_HEIGHT_STYLE
-import com.lookie.opluskey.ui.dialog.DIALOG_PLATFORM_STYLE
+import com.lookie.opluskey.ui.kit.DIALOG_LINE_HEIGHT_STYLE
+import com.lookie.opluskey.ui.kit.DIALOG_PLATFORM_STYLE
 import com.lookie.opluskey.ui.model.page.FROSTED_BLUR_RADIUS
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.DARK_SCHEME

@@ -28,12 +28,12 @@ import com.lookie.opluskey.ui.chrome.HeaderIconButton
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.feedback.Feedback
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.kit.SectionTitle
+import com.lookie.opluskey.ui.kit.TitleCounter
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
-import com.lookie.opluskey.ui.row.SectionTitle
-import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.state.signal.VarListSignal
 import com.lookie.opluskey.ui.style.VisibleAreaCentered
 import com.lookie.opluskey.ui.style.visibleAreaHeight

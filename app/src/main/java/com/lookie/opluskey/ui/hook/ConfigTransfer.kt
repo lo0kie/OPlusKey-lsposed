@@ -12,7 +12,9 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.ui.PendingImport
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_LOG_EXPORT
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.retireHint
 import com.lookie.opluskey.ui.model.text.UNKNOWN_CONFIG_FORMAT
 import com.lookie.opluskey.ui.screen.configWritable
 import com.lookie.opluskey.ui.write.dedupeByName
@@ -197,6 +199,15 @@ internal object ConfigTransfer {
         // 先把另外两个进程的缓冲收上来（最多等 `LogPull.WAIT_MS`），再落盘：
         //  以前只导本进程，用户交回来的日志里连一条按键行都没有（见 `LogPull` 的说明）。
         //  收的过程要等广播，不能在主线程上做，所以整条导出挪到 IO 作用域，拼好再回主线程弹选择器。
+        //
+        //  **收之前先在页面上挂一条 loading**：跨进程等广播这段时间屏幕上什么都不动，
+        //  用户会以为没点上。收完（成 / 败 / 空）立刻收掉，结论接着顶上来；5 秒只是防它赖着不走。
+        HostSession.page?.hint(
+            I18n.get(Strings.TOAST_LOG_COLLECTING),
+            slot = HINT_SLOT_LOG_EXPORT,
+            loading = true,
+            holdMs = 5_000L,
+        )
         val ctx = activity.applicationContext ?: activity
         fileScope.launch {
             //  这一段必须自己包一层：`collect` 里要跨进程收日志、还要拼文本，
@@ -204,6 +215,9 @@ internal object ConfigTransfer {
             try {
                 val remote = LogPull.collect(ctx, HostApp.PACKAGE)
                 mainHandler.post {
+                    //  **收集结束就收 loading**（不管下面成不成）：其后由「已导出 / 失败 / 暂无日志」
+                    //  接话，两条同时挂会让提示条自己往下推一格。
+                    HostSession.page?.retireHint(HINT_SLOT_LOG_EXPORT)
                     try {
                         //  **头部在收集之后拼**：它要写三个进程各回没回包、各几行，
                         //  还要写本进程被裁掉多少条 —— 那都是这次收集之后才有的事实。
@@ -220,6 +234,7 @@ internal object ConfigTransfer {
                     }
                 }
             } catch (e: Throwable) {
+                mainHandler.post { HostSession.page?.retireHint(HINT_SLOT_LOG_EXPORT) }
                 XLog.w("导出日志：收日志失败（已忽略）：${e.javaClass.simpleName}", e)
             }
         }

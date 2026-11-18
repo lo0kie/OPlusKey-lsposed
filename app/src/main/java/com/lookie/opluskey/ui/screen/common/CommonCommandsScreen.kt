@@ -35,15 +35,17 @@ import com.lookie.opluskey.ui.chrome.PageFabButton
 import com.lookie.opluskey.ui.chrome.PageFabIcon
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
-import com.lookie.opluskey.ui.dialog.MenuEntry
-import com.lookie.opluskey.ui.dialog.NameDialog
-import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.dialog.PickerActionDialog
 import com.lookie.opluskey.ui.dialog.PickerOption
 import com.lookie.opluskey.ui.feedback.Feedback
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
+import com.lookie.opluskey.ui.kit.ConfirmDialog
+import com.lookie.opluskey.ui.kit.MenuEntry
+import com.lookie.opluskey.ui.kit.NameDialog
+import com.lookie.opluskey.ui.kit.PageMenu
+import com.lookie.opluskey.ui.kit.SectionTitle
+import com.lookie.opluskey.ui.kit.TitleCounter
 import com.lookie.opluskey.ui.model.icon.FluidIconPicker
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.icon.commonCommandIcon
@@ -56,8 +58,6 @@ import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.PickBox
 import com.lookie.opluskey.ui.row.RowEndIcon
-import com.lookie.opluskey.ui.row.SectionTitle
-import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.screen.addCommonCommand
 import com.lookie.opluskey.ui.screen.apppicker.AppKindTag
 import com.lookie.opluskey.ui.screen.command.StepPickerPage
@@ -102,7 +102,7 @@ import kotlinx.coroutines.withContext
  *  · 点一行 → 一层菜单（修改 / 重命名 / 图标 / 显示在按键绑定页 / 删除）；
  *  · 顶栏那颗「编辑 / 完成」→ 编辑态：点一行是**勾选**，勾了东西右下角滑进「固定 / 取消固定」
  *    与「删除」两颗（见 `CommonCommandsEditState`）；
- *  · 右下角那颗 → **先问来源**（内置常用命令 / 手动选择）：内置那一档开居中的勾选窗，手动那一档
+ *  · 右下角那颗 → **先问来源**（内置命令 / 手动选择）：内置那一档开居中的勾选窗，手动那一档
  *    开抽屉（复用命令页那一支，与「额外动作」同一套过滤）；
  *  · 空清单时给居中的空态（见 [CommonCommandsSection]），别让页面看起来像坏了。
  *
@@ -303,7 +303,7 @@ private class CommonCommandsUiState {
     /** 加号那颗开出来的「先问来源」那层窗（内置 / 手动）。 */
     var choosing by mutableStateOf(false)
 
-    /** 内置常用命令那层勾选窗开着没有（见 `BuiltInCommandsDialog`）。 */
+    /** 内置命令那层勾选窗开着没有（见 `BuiltInCommandsDialog`）。 */
     var builtin by mutableStateOf(false)
 
     /**
@@ -561,7 +561,7 @@ private fun SettingsPage.CommonCommandsAdd(
 }
 
 /**
- * 加号那颗的**第一层**：「内置常用命令」还是「手动选择」。
+ * 加号那颗的**第一层**：「内置命令」还是「手动选择」。
  *
  *  两条路各自开各自的浮层，形态也不同（用户口径）：
  *  · **内置** → 居中的勾选窗（[BuiltInCommandsDialog]）：模块自带的那几条，勾完一次性落两张表；
@@ -582,12 +582,11 @@ private fun SettingsPage.CommonCommandsSources(st: CommonCommandsUiState) {
         options =
             listOf(
                 PickerOption(I18n.get(Strings.COMMON_COMMANDS_SOURCE_BUILTIN)),
-                //  「手动选择」这一行点开的是**底部抽屉**（下一层），行尾摆一颗 `selector`
-                //  读作「点了还得选点什么」；内置那一行点开是勾选窗，也是下一层，但用户口径只点名
-                //  这一行，不加第二颗。
+                //  「手动选择」这一行点开的是**底部抽屉**，行尾摆**右箭头**（`RowEndIcon` 的默认那颗，
+                //  与「点进去还有一层」别处同一颗）；早先是 `selector` 那枚双向箭头，用户口径改成这个。
                 PickerOption(
                     I18n.get(Strings.COMMON_COMMANDS_SOURCE_MANUAL),
-                    trailing = { RowEndIcon(PageIcons.Selector) },
+                    trailing = { RowEndIcon() },
                 ),
             ),
         onDismiss = { st.choosing = false },

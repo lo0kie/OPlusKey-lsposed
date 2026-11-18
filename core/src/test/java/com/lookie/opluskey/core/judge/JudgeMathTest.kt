@@ -135,7 +135,7 @@ class JudgeMathTest {
     @Test
     fun pressOrderSortsBySequenceAndPutsUnknownLast() {
         val seq = mapOf(b to 1, a to 2)
-        assertEquals("按序号排；查不到序号的排末尾", listOf(b.id, a.id, c.id), pressOrder(listOf(a, b, c), seq))
+        assertEquals("按序号排；查不到序号的排末尾", listOf(b.id, a.id, c.id), pressOrder(listOf(a, b, c), seq) { it.id })
     }
 
     // ---- 有序档筛选 ----
@@ -144,7 +144,7 @@ class JudgeMathTest {
     fun orderMatchReturnsSameListWhenNothingIsOrdered() {
         val candidates = listOf(ComboKey(id = "cmb1", keys = listOf(a.id, b.id)), ComboKey(id = "cmb2", keys = listOf(b.id, a.id)))
         //  全是等窗口 / 不分顺序那一档 ⇒ 原表原样返回（省掉一次遍历的那条近路）
-        assertSame(candidates, orderMatch(candidates, listOf(b.id, a.id)))
+        assertSame(candidates, orderMatch(candidates, listOf(b.id, a.id), ordered = { it.ordered }) { k, s -> k.matchesOrdered(s) })
     }
 
     @Test
@@ -152,7 +152,8 @@ class JudgeMathTest {
         val forward = ComboKey(id = "cmb1", keys = listOf(a.id, b.id), ordered = true)
         val backward = ComboKey(id = "cmb2", keys = listOf(b.id, a.id), ordered = true)
         val anyOrder = ComboKey(id = "cmb3", keys = listOf(a.id, b.id))
-        val matched = orderMatch(listOf(forward, backward, anyOrder), listOf(a.id, b.id))
+        val matched =
+            orderMatch(listOf(forward, backward, anyOrder), listOf(a.id, b.id), ordered = { it.ordered }) { k, s -> k.matchesOrdered(s) }
         assertEquals("只有顺着按的那一档与不分顺序那档留下", listOf(forward, anyOrder), matched)
     }
 
@@ -160,7 +161,7 @@ class JudgeMathTest {
     fun orderedComboIgnoresAnEarlierUnrelatedKey() {
         val ordered = ComboKey(id = "cmb1", keys = listOf(a.id, b.id, c.id), ordered = true)
         //  这一组开始之前先点过一下 c（还在同一个扫描窗口里），真实顺序是 c → a → b → c
-        val matched = orderMatch(listOf(ordered), listOf(c.id, a.id, b.id, c.id))
+        val matched = orderMatch(listOf(ordered), listOf(c.id, a.id, b.id, c.id), ordered = { it.ordered }) { k, s -> k.matchesOrdered(s) }
         assertEquals("开头多一颗不该把有序组合判掉", listOf(ordered), matched)
     }
 
@@ -168,7 +169,9 @@ class JudgeMathTest {
     fun orderedComboStillRejectsAKeyBetweenMembers() {
         val ordered = ComboKey(id = "cmb1", keys = listOf(a.id, b.id, c.id), ordered = true)
         //  成员之间夹了一颗别的键：结尾三位是 c → b → c，与 a → b → c 不同
-        assertTrue(orderMatch(listOf(ordered), listOf(a.id, c.id, b.id, c.id)).isEmpty())
+        assertTrue(
+            orderMatch(listOf(ordered), listOf(a.id, c.id, b.id, c.id), ordered = { it.ordered }) { k, s -> k.matchesOrdered(s) }.isEmpty(),
+        )
     }
 
     // ---- 挂住的组合自愈 ----

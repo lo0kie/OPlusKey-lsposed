@@ -13,7 +13,7 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.addCommand
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.kit.ConfirmDialog
 import com.lookie.opluskey.ui.model.text.COMMAND_DISCLAIMER_TEXT
 import com.lookie.opluskey.ui.model.text.COMMAND_DISCLAIMER_TITLE
 import com.lookie.opluskey.ui.state.command.CommandListEditState

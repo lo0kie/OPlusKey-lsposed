@@ -464,7 +464,7 @@ internal fun languageLabel(lang: AppLanguage): String =
 /**
  * 系统配色在界面上叫什么 —— 「系统配色」那一行的副标题与它那一层菜单共用这一份。
  *
- *  一套色板在界面上就是一枚颜色，没有别的可写：菜单里只能靠名字区分，所以五个名字都得给。
+ *  一套色板在界面上就是一枚颜色，没有别的可写：菜单里只能靠名字区分，所以六个名字都得给。
  *  与 [languageLabel] 同一个理由：[PagePalette] 上只留 `id` 与种子色（`id` 原样进配置文件）。
  */
 internal fun paletteLabel(palette: PagePalette): String =

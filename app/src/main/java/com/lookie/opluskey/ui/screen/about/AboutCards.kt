@@ -44,7 +44,6 @@ import com.lookie.opluskey.ui.state.page.deviceModel
 import com.lookie.opluskey.ui.state.page.deviceSupport
 import com.lookie.opluskey.ui.wire.linkChecks
 import com.lookie.opluskey.ui.write.setDetailedKeySettings
-import com.lookie.opluskey.ui.write.setMonetColors
 import com.lookie.opluskey.ui.write.setPageScale
 import com.lookie.opluskey.ui.write.setPredictiveBack
 import com.lookie.opluskey.ui.write.setRandomIconTint
@@ -363,9 +362,10 @@ internal fun SettingsPage.currentProfileName(): String {
 }
 
 /**
- * 「外观」那张卡 —— 模块页面**自己的样子与手感**：主题、使用 Monet 配色、强调色、随机图标配色、
- * 减少界面图标、界面缩放、界面振动反馈。这一卡里没有一项碰「按键怎么执行」，
- * 所以它们与总闸无关，主开关关着时照样能改。
+ * 「外观」那张卡 —— 模块页面**自己的样子与手感**：主题、使用 Monet 配色、强调色、界面缩放，
+ * 末尾再收一格手风琴「更多外观设置」（随机图标配色 / 减少界面图标 / 界面振动反馈 /
+ * 使用预测性返回）。这一卡里没有一项碰「按键怎么执行」，所以它们与总闸无关，
+ * 主开关关着时照样能改。
  *
  *  行序：**先深浅、后强调色** —— 深浅定的是整页的明暗，强调色是在它上面挑一个点缀；
  *  反过来摆的话，用户会先去挑颜色，再发现整页明暗变了、那一套色在他刚看到的底色上并不好看。
@@ -382,29 +382,29 @@ internal fun SettingsPage.AppearanceCard(
     currentPalette: PagePalette,
     ui: AboutUiState,
 ) {
+    //  末尾那一组「更多外观设置」的开合状态：与页面同寿命，进出子页不重置
+    //  （见 `rememberAccordionState`）。
+    val more = rememberAccordionState()
     CardList(
         rows =
             listOf(
-                // 第 1 行：主题 —— 只管深浅（跟随系统 / 浅色 / 深色），配色是下面那一行
+                // 第 1 行：主题 —— 只管深浅（跟随系统 / 浅色 / 深色）；「Monet 配色」那一行在
+                //  菜单最底部，行尾把开关状态一并带上（`浅色 - Monet`），不点开也看得出两件事。
                 CardRow.Item(
                     title = I18n.get(Strings.MORE_THEME),
                     icon = PageIcons.Theme,
-                    trailing = { RowEndSummary(themeTitle(currentTheme)) },
+                    trailing = {
+                        val title = themeTitle(currentTheme)
+                        RowEndSummary(
+                            if (configState.config.value.global.monetColors) "$title - Monet" else title,
+                        )
+                    },
                     modifier = Modifier.preciseClickAnchor(ui.themeClick),
                     onClick = {
                         ui.showThemeMenu = true
                     },
                 ),
-                // 第 2 行：使用 Monet 配色 —— 整页那套色板换不换成系统按壁纸生成的那一套。
-                //  紧挨着「主题」摆：这两行是同一件事的两半（深浅 + 配色），隔开就分家了。
-                //  纯显示项：拨完整页当场重画（`PageContent` 那一层读它算色板），不必重进。
-                CardRow.Switch(
-                    title = I18n.get(Strings.MORE_MONET_COLORS),
-                    icon = PageIcons.MonetColors,
-                    checked = configState.config.value.global.monetColors,
-                    onCheckedChange = { setMonetColors(it) },
-                ),
-                // 第 3 行：强调色 —— 行尾写的是**当前那一套的名字**，不是「页面强调色」这种说明句：
+                // 第 2 行：强调色 —— 行尾写的是**当前那一套的名字**，不是「页面强调色」这种说明句：
                 //  这一行回答的是「现在是哪一套」，与「语言」那一行同一个口径。
                 //  行首直接摆**当前那一套的色块**（与菜单里那五行同一颗字形、同一个种子色）：
                 //  这一行回答的就是「现在是什么色」，画一颗调色板图标等于把答案藏起来。
@@ -420,30 +420,43 @@ internal fun SettingsPage.AppearanceCard(
                         ui.showPaletteMenu = true
                     },
                 ),
-                // 第 3 行：随机图标配色 —— 开的那一下生成一个种子并落盘，之后一直用这一份
+                // 第 4 行：界面缩放 —— 页面大小的**唯一**一档（不再跟随系统「显示大小」，
+                //  见 `GlobalConfig.pageScale`）。整行另起一支（[PageScaleRow]）：这一卡已经四行了，
+                //  再平铺下去就数不清行序。
+                CardRow.Custom { position ->
+                    PageScaleRow(position)
+                },
+                // 第 5 行：**更多外观设置**（手风琴表头）—— 把「不属于主流程」的四行收进一格：
+                //  随机图标配色 / 减少界面图标 / 界面振动反馈 / 使用预测性返回。
+                //  为什么收：前四行回答的是「这一页长什么样、多大」（深浅 + 配色 + 缩放），
+                //  这四行是**各自的偏好开关**，平铺在一起会把上面那种「一条主线」的读法冲掉。
+                //  表头不给副标题：它答的是「还有几项」，展开后自己也说得清。
+                CardRow.Item(
+                    title = I18n.get(Strings.MORE_APPEARANCE_MORE),
+                    icon = PageIcons.MoreAppearance,
+                    trailing = { AccordionChevron(more.expanded) },
+                    onClick = { more.toggle() },
+                ),
+                // 第 6 行：随机图标配色 —— 开的那一下生成一个种子并落盘，之后一直用这一份
                 //  （关掉再打开才换一批，见 `setRandomIconTint`）。颜色本身是手挑的色相，
                 //  不是随机 RGB（见 `IconTint`）。
                 CardRow.Switch(
                     title = I18n.get(Strings.MORE_RANDOM_ICON_TINT),
                     icon = PageIcons.RandomIconTint,
                     checked = configState.config.value.global.iconTintSeed != 0,
+                    visible = more.expanded,
                     onCheckedChange = { setRandomIconTint(it) },
                 ),
-                // 第 4 行：减少界面图标 —— 卡片行行首那些字形收起（应用图标与网格不收，见
+                // 第 7 行：减少界面图标 —— 卡片行行首那些字形收起（应用图标与网格不收，见
                 //  `LocalReduceRowIcons`）。纯显示项，拨完整页当场重画。
                 CardRow.Switch(
                     title = I18n.get(Strings.MORE_REDUCE_ICONS),
                     icon = PageIcons.ReduceIcons,
                     checked = configState.config.value.global.reduceIcons,
+                    visible = more.expanded,
                     onCheckedChange = { setReduceIcons(it) },
                 ),
-                // 第 5 行：界面缩放 —— 页面大小的**唯一**一档（不再跟随系统「显示大小」，
-                //  见 `GlobalConfig.pageScale`）。整行另起一支（[PageScaleRow]）：这一卡已经四行了，
-                //  再平铺下去就数不清行序。
-                CardRow.Custom { position ->
-                    PageScaleRow(position)
-                },
-                // 第 6 行：界面振动反馈 —— 点行 / 拨开关 / 拖滑杆那一下的触觉。
+                // 第 8 行：界面振动反馈 —— 点行 / 拨开关 / 拖滑杆那一下的触觉。
                 //  **它在这一页、不在「按键设置」页**：那一页管的是「按键触发之后振不振」
                 //  （`home.vibrate_title` 那一颗），这一颗管的是**模块页面自己**的手感，
                 //  与上面那几行「页面长什么样、多大」同一类。
@@ -452,15 +465,17 @@ internal fun SettingsPage.AppearanceCard(
                     title = I18n.get(Strings.MORE_UI_VIBRATE_TITLE),
                     icon = PageIcons.Vibrate,
                     checked = configState.config.value.global.uiVibrate,
+                    visible = more.expanded,
                     onCheckedChange = { setUiVibrate(it) },
                 ),
-                // 第 7 行：使用预测性返回手势 —— 返回时整页跟不跟手。
+                // 第 9 行：使用预测性返回手势 —— 返回时整页跟不跟手。
                 //  与上面几行同一类（页面自己的手感），同样不吃总闸；拨完立刻重挂返回回调
                 //  （见 `setPredictiveBack`），不需要退出重进。
                 CardRow.Switch(
                     title = I18n.get(Strings.MORE_PREDICTIVE_BACK_TITLE),
                     icon = PageIcons.PredictiveBack,
                     checked = configState.config.value.global.predictiveBack,
+                    visible = more.expanded,
                     onCheckedChange = { setPredictiveBack(it) },
                 ),
             ),

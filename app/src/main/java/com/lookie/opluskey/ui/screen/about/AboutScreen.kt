@@ -24,11 +24,13 @@ import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.appVersionShort
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.chrome.updateHost
-import com.lookie.opluskey.ui.dialog.MenuEntry
-import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_PAGE
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.retireHint
+import com.lookie.opluskey.ui.kit.MenuEntry
+import com.lookie.opluskey.ui.kit.PageMenu
+import com.lookie.opluskey.ui.kit.SECTION_TITLE_PAD_TOP
+import com.lookie.opluskey.ui.kit.SectionTitle
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.AUTHOR
 import com.lookie.opluskey.ui.model.page.REPO_URL
@@ -40,8 +42,6 @@ import com.lookie.opluskey.ui.row.ExpandableRow
 import com.lookie.opluskey.ui.row.ExpandableRowSpec
 import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.row.RowEndSummary
-import com.lookie.opluskey.ui.row.SECTION_TITLE_PAD_TOP
-import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.state.host.UpdateState
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.PreciseClickState

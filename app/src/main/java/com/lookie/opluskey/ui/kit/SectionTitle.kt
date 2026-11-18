@@ -1,4 +1,4 @@
-package com.lookie.opluskey.ui.row
+package com.lookie.opluskey.ui.kit
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -329,8 +329,7 @@ internal fun SectionTitle(
     click: SectionTitleClick? = null,
     trailing: (@Composable () -> Unit)? = null,
     trailingEndPadding: Dp = SECTION_TITLE_TRAILING_END,
-) {
-    //  **区块间距由组件统一给**（上 16 / 下 0，见常量那段）：页面里不再为标题补 `Spacer`，
+) { //  **区块间距由组件统一给**（上 16 / 下 0，见常量那段）：页面里不再为标题补 `Spacer`，
     //  第一个标题也不做特例 —— 页面顶上那一档由各页的顶栏占位量管，标题这一层只管「两块之间」。
     //  自带上下边距（上多下少）：调用点不用管标题前后该留多少
     val box = modifier.padding(top = SECTION_TITLE_PAD_TOP, bottom = SECTION_TITLE_PAD_BOTTOM)

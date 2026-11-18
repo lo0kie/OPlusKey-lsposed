@@ -102,19 +102,12 @@ internal class ComboParamSource(
      *  `false` ⇒ 界面把这两行置灰并说明（[Strings.COMBO_HOLD_WINDOW_IDLE]），
      *  不摆一根空转的旋钮。
      *
-     *  公共那一份给的是「配置里存在这样的按住组合吗」（不看启停）：一条都没有时公共这两项同样空转。
+     *  **这条判据只对独立设置那一份成立**（公共那一份取默认 `true`）：公共值是「没单独设过的组」与
+     *  还没建出来的那一档的默认值，按当前有没有档用得到来禁用它，等于要求先建档再调它的默认值；
+     *  而回落走的是出厂默认（`Config.comboWindowsFor`），也不是公共 —— 用「有没有档在用它」推公共的空转
+     *  本来就不成立。
      */
-    val holdWindowLive: Boolean,
-    /**
-     * 这一份来源里**有没有开着成员连击的档** —— 只决定「等待窗口」那根滑杆要不要挂一句
-     * 「成员连击的单击窗口也用它」。
-     *
-     *  那句话说的事是真的：按住卡那两格同时是「成员之间接收的窗口」（按下 vs 按下）与
-     *  「成员连击的单击窗口」（抬手 vs 按下，见 `Config.comboMemberChain`），起点都不一样，
-     *  调一边必然拖动另一边。这层耦合是按用户口径**有意保留**的（组合的连击不另开一套窗口），
-     *  所以不拆，只在会受影响的那一档上把它说明白。
-     */
-    val memberWindowShare: Boolean,
+    val holdWindowLive: Boolean = true,
     val enabled: Boolean,
     val disabledHint: String? = null,
     val onWaitWindow: (Int) -> Boolean,
@@ -205,8 +198,8 @@ internal fun SettingsPage.WaitComboCard(source: ComboParamSource) {
                                 dragStep = 50,
                                 enabled = source.enabled,
                                 disabledHint = source.disabledHint,
-                                //  行尾写「80 ms」—— 这一行问的就是「等多久」，不写数看不出来
-                                valueText = { "$it ms" },
+                                //  行尾写「80ms」—— 这一行问的就是「等多久」，不写数看不出来
+                                valueText = { I18n.format(Strings.COMMON_TIME_MS, it) },
                             ),
                         onCommit = if (wholeString) source.onWaitWindow else source.onWaitPair,
                     )
@@ -275,20 +268,16 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                         position = position,
                         spec =
                             SliderSpec(
-                                //  与上面那颗开关同一套前缀（同一个来源字段）
+                                //  滑杆标题**不随上面那颗开关的前缀变**，恒为「等待窗口」：前缀标的是
+                                //  「这一格量什么」（按键间隔 / 多击），标题说的是「这一格本身」。
+                                //  两键按住档上它就是多击窗口，而这个数承载的仍是「固定窗口起点」
+                                //  开 / 关那两格（整串一个 / 每颗各自一个）—— 名字不必跟着换。
                                 title = I18n.get(Strings.COMBO_WINDOW_TITLE),
                                 //  这一格管「整串」还是「每颗各自等」由上面那颗开关说清，不另写副标题。
-                                //  **例外**：这一档开着成员连击时，同一个数还被 `Config.comboMemberChain`
-                                //  当成「连击的单击窗口」用（起点是抬手，与「成员之间接收」的起点不同）——
-                                //  调它两边一起变，这层耦合得让人看得见。
-                                //  **公共那页不写这句**：那里一份默认值同时服务两类档，
-                                //  只说「成员连击也用它」等于把另一半漏掉。
-                                summary =
-                                    if (source.memberWindowShare && source.holdWindowLabel != WindowLabel.INTERVAL_MULTI) {
-                                        I18n.get(Strings.COMBO_MEMBER_WINDOW_SHARE)
-                                    } else {
-                                        null
-                                    },
+                                //  **不写「成员连击也用它」**：`memberGestures` 只在两键按住档上非空，
+                                //  而那一档这一格本来就**只**服务成员连击（`Config.comboMemberChain`；
+                                //  「成员之间接收」要三颗起）—— 上面的开关已经叫「多击固定窗口起点」，
+                                //  再补一句是同义反复。三颗以上那一档读的是「成员之间接收」，与连击无关。
                                 icon = PageIcons.ComboWait,
                                 min = GlobalConfig.COMBO_WINDOW_MIN_MS,
                                 //  同「等待组合」那一根：上限按当前那一格取（固定等 1000 / 逐次等 500）
@@ -305,7 +294,7 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                                 dragStep = 50,
                                 enabled = source.enabled && source.holdWindowLive,
                                 disabledHint = windowHint,
-                                valueText = { "$it ms" },
+                                valueText = { I18n.format(Strings.COMMON_TIME_MS, it) },
                             ),
                         onCommit = if (wholeString) source.onHoldWindow else source.onHoldFollower,
                     )
@@ -332,7 +321,7 @@ internal fun SettingsPage.HoldComboCard(source: ComboParamSource) {
                                 step = 50,
                                 enabled = source.enabled,
                                 disabledHint = source.disabledHint,
-                                valueText = { "$it ms" },
+                                valueText = { I18n.format(Strings.COMMON_TIME_MS, it) },
                             ),
                         onCommit = source.onHoldMin,
                     )
@@ -383,11 +372,10 @@ internal fun SettingsPage.comboPublicParams(enabled: Boolean): ComboParamSource 
         //  两颗开关、两个变量：等待组合读 `comboFixedWindowStart`，按住组合读 `comboHoldFixedWindowStart`
         waitFixedWindowStart = cfg.global.comboFixedWindowStart,
         holdFixedWindowStart = cfg.global.comboHoldFixedWindowStart,
-        //  公共这两项算不算法：整份配置里**没有一个用得到它们的按住组合**时，它们不会被任何
-        //  判定读到（成员之间接收 ≥3 颗、成员连击两颗就够，见 [ComboParamSource.holdWindowLive]）。
-        //  这里看「配置里有没有这样一档」，不看启停 —— 临时停用一档不该让滑杆变灰。
-        holdWindowLive = cfg.combos.any { it.isHold && (it.followers.size > 1 || it.memberGestures?.isOn == true) },
-        memberWindowShare = cfg.combos.any { it.memberGestures?.isOn == true },
+        //  公共这两行**不按现有档位置灰**（`holdWindowLive` 取默认 `true`）：这一份是给「没单独设过的组」
+        //  与还没建出来的那一档用的默认值，按「当前有没有档用得到」禁用它，等于要求用户先把档建出来
+        //  再调它的默认值。而且那句理由（「未开启多击手势」）说的是别的档的开关，摆在公共页站不住。
+        //
         //  公共那张按住卡的前缀（只标在「固定窗口起点」那一行上）：那里的默认值同时服务
         //  「三颗以上的按住档」与「两键档」⇒「按键间隔和多击…」。
         //  等待那张卡两种档量的是同一件事，恒为「按键间隔…」，不取自这里。
@@ -439,7 +427,6 @@ internal fun SettingsPage.comboOwnParams(
         //  这一档用不用得到按住那两行：成员多于一颗（成员之间接收），或成员连击开着（连击窗口）
         //  —— 见 [ComboParamSource.holdWindowLive]
         holdWindowLive = combo.followers.size > 1 || combo.memberGestures?.isOn == true,
-        memberWindowShare = combo.memberGestures?.isOn == true,
         //  独立设置页**只写这一档自己的前缀**：两键的按住组合写「多击…」（那两行只服务
         //  那颗成员键的连击），其余写「按键间隔…」。判据见 [holdWindowLabelOf]。
         holdWindowLabel = holdWindowLabelOf(combo),

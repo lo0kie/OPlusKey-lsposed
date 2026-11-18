@@ -1,4 +1,4 @@
-package com.lookie.opluskey.ui.dialog
+package com.lookie.opluskey.ui.kit
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,9 +17,6 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.input.IconInputView
 import com.lookie.opluskey.ui.input.InputSpec
-import com.lookie.opluskey.ui.row.ChipLegend
-import com.lookie.opluskey.ui.row.TitleCounter
-import com.lookie.opluskey.ui.row.codePointLength
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 

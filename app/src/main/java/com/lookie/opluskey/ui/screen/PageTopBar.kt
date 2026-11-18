@@ -20,6 +20,7 @@ import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageHeader
+import com.lookie.opluskey.ui.kit.ChipSentence
 import com.lookie.opluskey.ui.model.page.HEADER_ICON_GAP
 import com.lookie.opluskey.ui.model.text.ABOUT_TITLE
 import com.lookie.opluskey.ui.model.text.ACTIVITY_PICKER_TITLE
@@ -30,7 +31,6 @@ import com.lookie.opluskey.ui.model.text.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.text.DONATE_LIST_TITLE
 import com.lookie.opluskey.ui.model.text.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.text.KEYS_TITLE
-import com.lookie.opluskey.ui.row.ChipSentence
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand

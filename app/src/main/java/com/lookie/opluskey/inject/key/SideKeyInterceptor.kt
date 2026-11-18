@@ -17,6 +17,7 @@ import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.core.rom.RomKeyFamilies
+import com.lookie.opluskey.inject.input.ComboBinding
 import com.lookie.opluskey.inject.input.ComboDetector
 import com.lookie.opluskey.inject.input.DetectorBinds
 import com.lookie.opluskey.inject.input.GestureDetector
@@ -93,7 +94,10 @@ internal class SideKeyInterceptor(
         GestureDetector(
             handler,
             onGestureNoted = onGestureNoted,
-            onGesture = { id, gesture, _, repeat -> forward(id, gesture, repeat) },
+            //  **翻译的唯一出口**：判定层吐的是它自己的形态（`inject.input.Gesture`）与键引用，
+            //  这里翻回业务的手势档位与 `KeyId`，再交给 `GestureForwarder` —— 下游（执行、日志、
+            //  广播）一个字都不用改。
+            onGesture = { id, gesture, _, repeat -> forward(keyIdOf(id, ConfigChannel.config), triggerOf(gesture), repeat) },
             holdAwake = holdAwake,
         )
 
@@ -106,6 +110,78 @@ internal class SideKeyInterceptor(
     private val held = HeldPresses(handler, feed = detector::onKeyDown, feedUp = detector::onKeyUp)
 
     /**
+     * 一档组合 → 判定层的 [ComboBinding]。
+     *
+     *  单独一个函数而不是在 `bindingsFor` 那个 lambda 里就地写：那一行会挤到 `MaxLineLength`
+     *  的边上，而「成员连击参数」与「松手有没有事可做」两样都得先查一次配置才知道。
+     *
+     *  ## 按配置快照缓存
+     *
+     *  一次按压里这条会被问好几遍（`pairFor` 逐颗候选问一次、`multiFor` 再问一次，
+     *  `absorb` 升级时又问）—— 每次现造就是 N 个 15 字段对象 + N 条成员引用列表，
+     *  还要为每个成员键在 `allKeys` 里线性查一遍名字。配置快照（[ConfigChannel.config]）
+     *  一次广播才换一份，所以按它的**身份**做键：换了一份（或还没收到配置、用 `DEFAULT` 顶着）
+     *  就整表作废，同一份里每档只造一次。
+     *
+     *  缓存的是**判定视图**，不持有键状态：判定器那边每按一次自己算，这里没有可变状态跨按传播。
+     *
+     *  ## 谁在问它（线程归属）
+     *
+     *  只有判定器的两个回调会走到这里：`bindingsFor`（每次按下扫候选）与 `widerFor`（凑成后问有没有
+     *  更宽的一档），两者都在**输入线程**上被 `ComboDetector` 调用；主 looper 上那几枪（长按 / 连发 /
+     *  更宽等待 / 成员连击）**不碰这张表** —— 与 `down` / `recent` 不同，那两张之所以用并发容器，
+     *  是因为配置广播线程会来清。
+     *
+     *  即便如此，容器仍取并发版、快照引用仍带 `@Volatile`：将来某条延时枪顺手在这里问一次时，
+     *  最坏只是多造一份（幂等），不会把表写坏或读到半构造的对象。
+     */
+    private fun bindingOf(combo: ComboKey): ComboBinding {
+        val cfg = ConfigChannel.config
+        if (bindingCacheConfig !== cfg) {
+            bindingCache.clear()
+            bindingCacheConfig = cfg
+        }
+        return bindingCache.getOrPut(combo.id) {
+            comboBindingOf(
+                combo = combo,
+                memberChain = chainSpecOf(cfg.comboMemberChain(combo)),
+                longReleaseActionExists = combo.releaseBound,
+                //  **成员名按 id 现查**：日志里要看的是「电源键 / 我起的名字」而不是 `plus` / `ck1`。
+                //  查不到（那颗键刚被删、组合还没跟着更新）就退回字面量，不至于把这一档判掉。
+                nameOf = { id -> cfg.keyIdOf(id)?.label },
+            )
+        }
+    }
+
+    /** [bindingOf] 的缓存所在的那份配置快照；`null` = 还没算过。 */
+    @Volatile
+    private var bindingCacheConfig: Config? = null
+
+    /** 组合 id → 判定层那一份（见 [bindingOf] 的「按配置快照缓存」与「谁在问它」）。 */
+    private val bindingCache = ConcurrentHashMap<String, ComboBinding>()
+
+    /**
+     * 判定状态机那一半的重置 —— 只在**回调路径抛异常**时用（见 `KeyHooks.onIntercept` 的 catch）。
+     *
+     *  为什么不能指望下一次按压自愈：异常抛出时 `onDown` / `onUp` 可能只写了一半（`recent` 记了、
+     *  组合挂上了、延时枪还没排或没撤），下一次按压会带着这份旧状态判 —— 表现是「组合键忽然一直
+     *  凑不成」或「某颗键抬手要按两次才认」，而且不带任何报错。
+     *
+     *  **影响面是「所有键」，不只是抛错那一颗**：`detector.reset(null)` 与 `held.drop(null)` 的 `null`
+     *  就是「全部」的意思 —— 别的键此刻正在等的连击窗口也会被一起摘掉。这是这条降级路径的代价：
+     *  异常之后的一瞬间，其它键可能少判一次手势（那一下退回系统原生行为），但不会**错判**成别的动作。
+     *  比留着半份状态继续判（可能把下一按算成双击、或让组合永远凑不成）划算。
+     *
+     *  这里**只清判定侧**，不动发给系统的事件：那是 `ComboOnlyNative.reset` 的事（它会替按着的
+     *  键补一条 UP，重得多）。
+     */
+    fun resetJudgement() {
+        runCatching { detector.reset(null) }
+        runCatching { held.drop(null) }
+        runCatching { combo.reset() }
+    }
+
+    /**
      * 「两颗键一起按」的判定 —— 与单键判定器并排，**先于它**看每一个事件。
      *
      *  组合成立时会把这两颗键的单键状态机摘掉（`resetKey`），所以两颗键那一下只出一个结果：
@@ -114,9 +190,11 @@ internal class SideKeyInterceptor(
     private val combo =
         ComboDetector(
             handler = handler,
-            onCombo = onCombo,
-            onHoldStarter = onHoldStarter,
-            onComboFormed = onComboFormed,
+            //  **组合这边同一个出口**：判定层回传的是它自己的档位视图，这里翻回 `ComboKey`
+            //  再交给 `GestureForwarder`（执行侧读 `ComboKey.mode` 决定做什么）。
+            onCombo = { binding, gesture, repeat -> onCombo(comboKeyOf(binding), triggerOf(gesture), repeat) },
+            onHoldStarter = { id -> onHoldStarter(keyIdOf(id, ConfigChannel.config)) },
+            onComboFormed = { binding -> onComboFormed(comboKeyOf(binding)) },
             resetKey = { id ->
                 //  这一颗已经归组合了 ⇒ 压着等窗口的那一下不必再喂单键（否则一次按压执行两个动作）
                 held.drop(id)
@@ -125,24 +203,28 @@ internal class SideKeyInterceptor(
             // 这一组能凑成哪几档 —— 注入侧手上只有广播来的那份配置（配置文件它读不到），
             //  所以判据收在 `ConfigChannel.combosFor` 一处：空表就交回单键判定器。
             //  一张列表而不是一档：同一组键可以配几档、各自一种触发方式（`ComboKey.mode`）。
-            bindingsFor = { keys -> ConfigChannel.combosFor(keys) },
+            //
+            //  **这里就是「业务 → 判定」的翻面**：`ConfigChannel` 给的是 `ComboKey`，
+            //  判定层要 `ComboBinding`，逐个用 `comboBindingOf` 包一层。判定器回传的
+            //  `key` 原样就是那个 `ComboKey`，`comboKeyOf` 直接取回。
+            bindingsFor = { keys -> ConfigChannel.combosFor(keyIdsOf(keys, ConfigChannel.config)).map(::bindingOf) },
             //  扫的时候按最宽的那一档扫，命中后由「那一组自己的窗口」复核（见 `ComboDetector`）
             windowMs = { ConfigChannel.scanWindowMs() },
             //  按住那两档的下限：起点键必须按满这么久、且还没抬手，另一颗落下才算这一档组合
             //  （「一起按」只归窗口那条）
-            holdMinFor = { combo -> ConfigChannel.holdMinFor(combo) },
+            holdMinFor = { binding -> ConfigChannel.holdMinFor(comboKeyOf(binding)) },
             //  多成员那一档的**整串跨度**（相邻两颗的窗口 × (成员数-1)）—— 三颗按一个
             //  窗口复核等于要求三根手指同时落，真机上永远凑不齐
-            spanFor = { combo -> ConfigChannel.spanFor(combo) },
+            spanFor = { binding -> ConfigChannel.spanFor(comboKeyOf(binding)) },
             //  凑成之后还有更宽的一档来得及时（配了 {A,B} 又配了 {A,B,C}）⇒ 先不派发，
             //  等它窗口结束（见 `ComboDetector.awaitWider`）。判据在 `Config.widerComboOf`
             //  一处（与 `comboFor` 同一个家），这一层只把键 id 递进去。
-            widerFor = { keys -> ConfigChannel.config.widerComboOf(keys) },
+            widerFor = { keys -> ConfigChannel.config.widerComboOf(keyIdsOf(keys, ConfigChannel.config))?.let(::bindingOf) },
             //  只有参与某组已启用组合的键才先等一个窗口，其余键一点不受影响
-            joinsCombo = { id -> ConfigChannel.joinsCombo(id) },
+            joinsCombo = { id -> ConfigChannel.joinsCombo(keyIdOf(id, ConfigChannel.config)) },
             //  多成员判定那条路的头道闸：**任何一档**（含按住档）的成员都算 —— 按住档的
             //  后续成员不等窗口，但它照样要能凑齐（见 `ConfigChannel.inAnyCombo`）
-            inAnyCombo = { id -> ConfigChannel.inAnyCombo(id) },
+            inAnyCombo = { id -> ConfigChannel.inAnyCombo(keyIdOf(id, ConfigChannel.config)) },
             //  「先按住这颗、再按另一颗」的上界：这颗键的长按判出来之后，它已经执行过自己的
             //  长按动作了，再认组合就是一次按压两个动作。判定层读不到 `KeyConfig`，所以由这里
             //  按那颗键自己的阈值算。「只参与非首键的按住组合」的键恒为 false —— 它压根不判单键。
@@ -152,7 +234,7 @@ internal class SideKeyInterceptor(
             //  要的正是「按住久一点再补一颗」。组合一旦凑成，这颗键的状态机会被摘掉（`resetKey`），
             //  押着的那一次长按跟着没，抬手只出组合那一套。
             longPressPassed = { id, at, now ->
-                val key = ConfigChannel.config.key(id)
+                val key = ConfigChannel.config.key(keyIdOf(id, ConfigChannel.config))
                 !key.comboOnly && !key.longFireOnRelease && now - at >= key.longPressMs
             },
             binds =
@@ -161,22 +243,22 @@ internal class SideKeyInterceptor(
                     //  （独立设置关着就看公共那份），派发交给 `KeyHooks` 那条单键通道。
                     starterKeepLong =
                         DetectorBinds.StarterKeepLong(
-                            enabled = { c -> ConfigChannel.config.comboStarterKeepLongFor(c) },
-                            fire = onStarterLong,
+                            enabled = { b -> ConfigChannel.config.comboStarterKeepLongFor(comboKeyOf(b)) },
+                            fire = { id -> onStarterLong(keyIdOf(id, ConfigChannel.config)) },
                         ),
                     //  按住档成员的「固定窗口起点」—— 判据在 `Config.comboHoldWindowStartFor` 一处。
                     //  **这一位与等待组合那颗开关是两个变量**：两张卡各管一种按法，共用一个的话
                     //  在「按住组合」卡上拨一下，等待组合那根滑杆也会跟着换一格。它还按
                     //  「这一档是不是按顺序触发」挑一组（顺序组合自己那两颗开关），所以这里取
                     //  的是那支合并后的判据、不是 `comboHoldFixedWindowStartFor`。
-                    holdFixedWindowStartFor = { c -> ConfigChannel.config.comboHoldWindowStartFor(c) },
+                    holdFixedWindowStartFor = { b -> ConfigChannel.config.comboHoldWindowStartFor(comboKeyOf(b)) },
                     //  这一档的四格窗口（等待 / 按住 × 固定窗口起点 开 / 关）—— 取值只在
-                    //  `Config.comboWindowsFor` 一处，这里只把那一份递进去
-                    windowsFor = { c -> ConfigChannel.windowsFor(c) },
+                    //  `Config.comboWindowsFor` 一处，这里把那一份铺成判定层自己的四个数
+                    windowsFor = { b -> detectorWindowsOf(ConfigChannel.windowsFor(comboKeyOf(b))) },
                     //  **成员连击参数**（按住首键、唯一成员键连击）—— 判据在
                     //  `Config.comboMemberChain` 一处（窗口按「独立设置优先」解析），
-                    //  这里只把那一份递进去；`null` = 这档不支持成员连击。
-                    memberChainFor = { c -> ConfigChannel.config.comboMemberChain(c) },
+                    //  这里把那一份翻成判定层的 `ChainSpec`；`null` = 这档不支持成员连击。
+                    memberChainFor = { b -> chainSpecOf(ConfigChannel.config.comboMemberChain(comboKeyOf(b))) },
                 ),
         )
 
@@ -397,7 +479,7 @@ internal class SideKeyInterceptor(
         keyEvent: KeyEvent,
     ): Boolean {
         if (keyEvent.action == KeyEvent.ACTION_UP) {
-            detector.onRomGesture(d.config.id, d.gesture.trigger(), d.config)
+            detector.onRomGesture(keyRefOf(d.config.id), gestureOf(d.gesture.trigger()), chainSpecOf(d.config))
         }
         return true
     }
@@ -607,7 +689,11 @@ internal class SideKeyInterceptor(
                         }
                         // 两颗键一起按 ⇒ 这一下归组合，不再喂单键判定器
                         //  （组合成立时那两颗键的单键状态机已被摘掉）
-                        when (combo.onDown(id)) {
+                        //  组合与单键两条判定器都只吃判定层的类型 —— 翻译在这一处发生一次，
+                        //  下面几支就都用同一个 `ref` / `spec`，不再逐处翻。
+                        val ref = keyRefOf(id)
+                        val spec = chainSpecOf(keyConfig)
+                        when (combo.onDown(ref)) {
                             //  归组合：两颗键那一下只出一个结果
                             ComboDetector.Down.TAKEN -> {
                                 return true
@@ -616,14 +702,16 @@ internal class SideKeyInterceptor(
                             //  参与组合但还没凑成：先压一个窗口，看第二颗键来不来。
                             //  等多久按**这一颗键**参与的几组里最长的那一档（各组窗口可能不同）
                             ComboDetector.Down.HOLD -> {
-                                held.hold(id, keyConfig, ConfigChannel.holdWindowMsFor(id))
-                                return true
+                                //  压住 ⇒ 吞掉这条 DOWN，等窗口到点再补交。
+                                //  **压不住**（快速连按的第二击、且这颗键配了多击）⇒ 落到下面那条
+                                //  单键判定 —— 连击看的是两击间隔，再压一遍必断（见 `HeldPresses.hold`）。
+                                if (held.hold(ref, spec, ConfigChannel.holdWindowMsFor(id))) return true
                             }
 
                             //  与组合无关：照旧立刻判单键（这条路上没有可等的东西）
                             ComboDetector.Down.PASS -> {}
                         }
-                        detector.onKeyDown(id, keyConfig)
+                        detector.onKeyDown(ref, spec)
                         true
                     }
 
@@ -632,25 +720,25 @@ internal class SideKeyInterceptor(
                         //  **不在这里就补**：配对看的只是两颗键的 DOWN 相差（`ComboDetector.recent`），
                         //  松手那一刻还看不出结果 —— 立刻补的话先按的那颗单击会先跑掉，
                         //  窗口内第二颗键再来，组合也跟着响（一次按键三下动作）。
-                        val waiting = held.release(id)
+                        val waiting = held.release(keyRefOf(id))
                         //  取消优先于一切（`FLAG_CANCELED`）：KeyEvent 没有 ACTION_CANCEL 这个
                         //  action，取消只是这一个位。排在组合 / 等窗之前判，是因为那两条路都会
                         //  把它当成一次**正常松手** —— 组合那边当场派发短按，等窗那边到点补一次
                         //  完整按压，两种都是「窗口失焦 / 来电打断后凭空触发一下」。
                         if (keyEvent.isCanceled) {
-                            held.drop(id)
-                            combo.onUp(id, short = false)
+                            held.drop(keyRefOf(id))
+                            combo.onUp(keyRefOf(id), short = false)
                             //  取消也是「这一按结束了」：长按若已判过，连发链与这一按的状态都要撤掉。
                             XLog.w("${id.label}（$point）：这一按被取消（FLAG_CANCELED）→ 撤掉判定")
-                            detector.reset(id)
+                            detector.reset(keyRefOf(id))
                             return true
                         }
                         //  组合那笔账无论走哪条路都要结：它要把「还按着」那颗的状态清掉。
                         //  顺序不能反 —— 组合在窗口内成立时会把压着的那一枪摘掉，
                         //  所以 `waiting` 与它不会同时为真。
-                        if (combo.onUp(id) || waiting) return true
+                        if (combo.onUp(keyRefOf(id)) || waiting) return true
                         XLog.w("${id.label}（$point）：UP keyCode=${keyEvent.keyCode}")
-                        detector.onKeyUp(id, keyConfig)
+                        detector.onKeyUp(keyRefOf(id), chainSpecOf(keyConfig))
                         true
                     }
 
@@ -902,7 +990,7 @@ internal class ComboOnlyNative(
             return true
         }
         val downAt = SystemClock.uptimeMillis()
-        val taken = combo.onDown(id) == ComboDetector.Down.TAKEN
+        val taken = combo.onDown(keyRefOf(id)) == ComboDetector.Down.TAKEN
         //  两条「要不要压」的判据各查一次表（按键热路径，别为了一句注释查两遍）；
         //  压不压、压到哪一步收在 `core/intercept/KeyClaim.holdStepOf`（顺序就是语义）。
         val step = holdStepOf(taken = taken, windowMember = windowMember(id), holdStarter = holdStarter(id))
@@ -962,7 +1050,7 @@ internal class ComboOnlyNative(
     ): Boolean {
         //  组合那笔账要结（`down` / `consumed` / 待发的短按都在 `onUp` 里）。
         //  返回值 = 这一下被组合认领了 —— 压到抬手那一档据此决定还要不要补发。
-        val claimed = combo.onUp(id, short = !keyEvent.isCanceled)
+        val claimed = combo.onUp(keyRefOf(id), short = !keyEvent.isCanceled)
         var heldCode: Int? = null
         var deferredCode: Int? = null
         //  这一下还压着（窗口没走完就松手了）—— 抬手照样吞，等窗口到点补一对
@@ -1079,7 +1167,7 @@ internal class ComboOnlyNative(
         synchronized(lock) {
             if (pending.remove(id.id) == downAt) {
                 when {
-                    combo.comboCovers(id) -> {
+                    combo.comboCovers(keyRefOf(id)) -> {
                         swallowed.remove(id.id)
                         released.remove(id.id)
                         outcome = 1

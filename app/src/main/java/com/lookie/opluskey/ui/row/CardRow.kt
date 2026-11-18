@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.LocalTick
+import com.lookie.opluskey.ui.kit.rememberRowIconColor
 import com.lookie.opluskey.ui.model.icon.DrawnIcons
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.CARD_CORNER
@@ -292,7 +293,7 @@ internal fun CardList(
         //  **行序按「这一行此刻还在（或正赶来）」算** —— 既不是 `rows.size`，也不是 `visible`
         //  一变就让位。两个边界各自对应一种真机上能看出来的毛病：
         //   · 按 `rows.size` 算：末行藏起来时上面那行还是 Middle —— 少掉 Tail 那一档的内缩与圆角，
-        //     看着像卡片缺了一个角（真机上「更多 → 外观」那张卡就是这么看出来的）；
+        //     看着像卡片缺了一个角（真机上一张行数会变少的卡就是这么看出来的）；
         //   · 让位时机对不上：这一档内缩在换档那一帧整体挪到另一行身上，谁在它下面谁就被顶一下。
         //     退场行让位太早 ⇒ 还在收缩的行先被顶下去；进场行算得太晚 ⇒ 它自己先在低一档的位置
         //     出现、长完再弹回原位。

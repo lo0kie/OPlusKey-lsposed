@@ -1,4 +1,4 @@
-package com.lookie.opluskey.ui.row
+package com.lookie.opluskey.ui.kit
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable

@@ -23,8 +23,8 @@ import com.lookie.opluskey.ui.feedback.HINT_SLOT_PAGE
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
+import com.lookie.opluskey.ui.kit.plain
 import com.lookie.opluskey.ui.model.text.gestureLabel
-import com.lookie.opluskey.ui.row.plain
 import com.lookie.opluskey.ui.screen.PagePagers
 import com.lookie.opluskey.ui.screen.command.LeaveDiscardDialog
 import com.lookie.opluskey.ui.screen.command.SceneBlockSave

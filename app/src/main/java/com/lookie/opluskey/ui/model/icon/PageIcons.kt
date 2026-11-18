@@ -429,6 +429,16 @@ internal object PageIcons {
     val MoreOptions: ImageVector get() = TablerIcons.Outline.DotsCircleHorizontal
 
     /**
+     * 「更多外观设置」那把手风琴的表头 —— `settings-plus`（齿轮带一个加号）：
+     * 齿轮说「这些是设置」、加号说「这一格里还多出几项」。
+     *
+     *  与行尾的 [AccordionChevron] 各管一半：表头说「这里还有东西」，箭头说「现在开着没有」。
+     *  与 [DetailedKeySettings] 同一颗不算重复：那里是「同一页里多放出一批参数」，
+     *  这里是「这一格里多收着几项」，两颗分处不同的卡、不同页，各自读一遍都成立。
+     */
+    val MoreAppearance: ImageVector get() = TablerIcons.Outline.SettingsPlus
+
+    /**
      * 「反馈问题」菜单三行的字形 —— 菜单里三行都是「一个去处」，只有各自的字形能一眼分清。
      *
      *  **三支全是品牌字形**（QQ / Telegram / GitHub）：「QQ 群」那一档用的就是 `brand-qq`，

@@ -21,6 +21,9 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
+import com.lookie.opluskey.ui.kit.SectionTitle
+import com.lookie.opluskey.ui.kit.SectionTitleClick
+import com.lookie.opluskey.ui.kit.titleWithCount
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.icon.commonCommandIcon
 import com.lookie.opluskey.ui.model.page.GRID_GAP
@@ -30,9 +33,6 @@ import com.lookie.opluskey.ui.model.page.gridColumnCount
 import com.lookie.opluskey.ui.model.text.commonCommandName
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
-import com.lookie.opluskey.ui.row.SectionTitle
-import com.lookie.opluskey.ui.row.SectionTitleClick
-import com.lookie.opluskey.ui.row.titleWithCount
 import com.lookie.opluskey.ui.wire.linkReady
 import com.lookie.opluskey.ui.write.BindingTarget
 

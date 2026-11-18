@@ -556,6 +556,16 @@ internal const val HINT_SLOT_OWN_SETTINGS = "own_settings"
 internal const val HINT_SLOT_CHECKING = "checking"
 
 /**
+ * 「导出日志 → 正在整理日志…」那一条的语义位 —— 与自检那条同一条纪律：**挂在收日志结束上**，
+ * 不靠秒数自己走。
+ *
+ *  收日志要跨进程等广播（最多 `LogPull.WAIT_MS`），这段时间屏幕上什么都不动；收完（成 / 败 /
+ *  取消）由 `ConfigTransfer` 立刻把它收掉，结论（「已导出日志」/ 失败）接着顶上来。
+ *  单开一位：不要把别处的回执顺带收掉。
+ */
+internal const val HINT_SLOT_LOG_EXPORT = "log_export"
+
+/**
  * 「正在检查模块…」那条的**兜底**停留时长 —— 只是防它赖着不走：正常路径是自检一结束就收。
  *
  *  按自检最长那一趟给（[QUERY_ROUNDS] 轮 × [HOST_ALIVE_TIMEOUT_MS]）再留 1 秒余量 ——

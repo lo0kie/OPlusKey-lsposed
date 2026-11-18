@@ -34,11 +34,13 @@ internal enum class PagePalette(
     private val fixedSeed: Color?,
 ) {
     /**
-     * **默认** —— 跟随系统取色。在 [colorsOf] 里，Monet 档走 [platformDynamicColors] 拿系统
+     * **系统默认** —— 跟随系统取色。在 [colorsOf] 里，Monet 档走 [platformDynamicColors] 拿系统
      *  那整套（含调色风格与 colorSpec）；非 Monet 档的强调色用 [seed]（取 [systemAccent]）换到
      *  COUI 底子上。用户换了壁纸 / 换了系统配色，这一档跟着变。
      *
      *  这是第一档（菜单里排最上）：没选过、或者配置里是认不出的 id 都落回它。
+     *  界面上那一档的名字是**「系统默认」**（`more.palette_default`）—— 它说的就是「跟系统走」，
+     *  不叫「默认」是怕被读成「模块自带的那个蓝」（那个蓝另有一档 [BLUE]）。
      */
     DEFAULT(GlobalConfig.DEFAULT_PALETTE, null),
 
@@ -145,7 +147,7 @@ private fun logSchemeOnce(
     XLog.w(line)
 }
 
-/** 默认档那个蓝 —— 也是「系统取色」取不到时的兜底。 */
+/** [PagePalette.BLUE] 的种子 —— 也是「系统取色」三级都取不到时的兜底。 */
 private val PALETTE_DEFAULT_SEED = Color(0xFF0066FF)
 
 /**
@@ -163,7 +165,7 @@ private fun monetColorSpec(): ThemeColorSpec = if (Build.VERSION.SDK_INT >= 36) 
  * 系统强调色 —— 「默认」那一档在**配色菜单色块**上要显示的色。
  *
  *  注意：**不再参与 [colorsOf] 的主取色**（那一处 Monet 档已交给 [platformDynamicColors] /
- *   [ThemeController] 的权威实现）。这里只回答「菜单里『系统取色』那一档的色点画什么」，
+ *   [ThemeController] 的权威实现）。这里只回答「菜单里『系统默认』那一档的色点画什么」，
  *  所以取 `system_accent1_500`（≈ 系统强调色，比主色 tone 40 更贴近「壁纸那个色」的直觉）。
  *
  *  按顺序取第一个能拿到的：框架动态色 → 宿主主题主色 → 常量蓝。

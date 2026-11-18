@@ -29,12 +29,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.LocalTick
+import com.lookie.opluskey.ui.kit.ChipText
+import com.lookie.opluskey.ui.kit.DialogButtonRow
+import com.lookie.opluskey.ui.kit.DialogPositiveStyle
+import com.lookie.opluskey.ui.kit.FrostedDialog
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.row.AppScrollBar
-import com.lookie.opluskey.ui.row.ChipText
 import com.lookie.opluskey.ui.style.AppDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text

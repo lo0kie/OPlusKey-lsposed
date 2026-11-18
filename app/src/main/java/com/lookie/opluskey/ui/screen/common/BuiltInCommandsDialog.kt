@@ -10,24 +10,24 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.mergeCommandSeeds
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.DialogButtonRow
-import com.lookie.opluskey.ui.dialog.DialogPositiveStyle
-import com.lookie.opluskey.ui.dialog.FrostedDialog
 import com.lookie.opluskey.ui.dialog.PickerOption
 import com.lookie.opluskey.ui.dialog.PickerRows
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.kit.DialogButtonRow
+import com.lookie.opluskey.ui.kit.DialogPositiveStyle
+import com.lookie.opluskey.ui.kit.FrostedDialog
 import com.lookie.opluskey.ui.row.AddedTag
 import com.lookie.opluskey.ui.screen.addBuiltInCommands
 import com.lookie.opluskey.ui.state.page.builtInCommandSeeds
 
-// 「内置常用命令」那一窗 —— 加号先问来源（内置 / 手动），这一支是「内置」那一半。
+// 「内置命令」那一窗 —— 加号先问来源（内置 / 手动），这一支是「内置」那一半。
 //
 // 与抽屉那一条的分工：抽屉从**所有动作**里挑一条（命令库、应用、系统开关……），这一窗只列模块
 // 自带的那几条（[builtInCommandSeeds]），勾选后**一次落两张表**（自定义命令 + 常用命令）。
 // 所以它是一条「批量收录」的路，不是「挑一条动作」的路 —— 落点与去重都在 `addBuiltInCommands`。
 
 /**
- * 内置常用命令的勾选窗（居中）。
+ * 内置命令的勾选窗（居中）。
  *
  * ## 为什么默认全勾
  *
@@ -84,8 +84,12 @@ internal fun SettingsPage.BuiltInCommandsDialog(
                 },
                 positiveStyle =
                     DialogPositiveStyle(
-                        //  一条都没勾时添加没有意义（勾一下就有；全收过时这一颗就是灰的）
+                        //  一条都没勾时添加没有意义（勾一下就有；全收过时这一颗就是灰的）。
+                        //  但**不是按不动**：按禁用色画、点一下说「没有选择」——
+                        //  灰着一颗按钮、点了没反应，是最容易被当成「坏了」的形态
+                        //  （见 `DialogPositiveStyle.onDisabledClick`）。
                         enabled = picked.isNotEmpty(),
+                        onDisabledClick = { hint(I18n.get(Strings.COMMON_COMMANDS_NONE_SELECTED)) },
                         label = I18n.get(Strings.COMMON_COMMANDS_BUILTIN_ADD),
                     ),
             )

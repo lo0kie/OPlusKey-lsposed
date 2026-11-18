@@ -30,6 +30,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.kit.ICON_ACTION_SIZE
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.CARD_GAP
 import com.lookie.opluskey.ui.model.text.stepIcon
@@ -38,7 +39,6 @@ import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
-import com.lookie.opluskey.ui.row.ICON_ACTION_SIZE
 import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.screen.openVarOpsForStep
 import com.lookie.opluskey.ui.state.picker.ResumeSheet

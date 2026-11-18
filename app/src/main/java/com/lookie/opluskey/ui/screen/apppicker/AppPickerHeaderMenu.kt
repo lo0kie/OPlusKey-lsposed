@@ -20,8 +20,8 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.HEADER_ACTION_GAP
 import com.lookie.opluskey.ui.chrome.HeaderIconButton
 import com.lookie.opluskey.ui.chrome.HeaderMenuButton
-import com.lookie.opluskey.ui.dialog.MenuEntry
-import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.kit.MenuEntry
+import com.lookie.opluskey.ui.kit.PageMenu
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.state.page.UiState

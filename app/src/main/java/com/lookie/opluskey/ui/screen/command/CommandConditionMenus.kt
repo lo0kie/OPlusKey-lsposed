@@ -13,10 +13,10 @@ import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.MenuEntry
-import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.dialog.PickerOption
 import com.lookie.opluskey.ui.dialog.SinglePickerDialog
+import com.lookie.opluskey.ui.kit.MenuEntry
+import com.lookie.opluskey.ui.kit.PageMenu
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.icon.conditionIcon
 import com.lookie.opluskey.ui.model.text.conditionChoiceLabel

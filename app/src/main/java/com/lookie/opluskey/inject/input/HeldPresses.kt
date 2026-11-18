@@ -4,8 +4,6 @@ import android.os.Handler
 import android.os.SystemClock
 import android.view.MotionEvent
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.ClickChainParams
-import com.lookie.opluskey.core.model.KeyId
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -50,40 +48,66 @@ import java.util.concurrent.ConcurrentHashMap
  *  写在输入线程（DOWN / UP），读在 main looper 的定时任务里 —— 与 `ComboDetector.down` 同一条
  *  理由：volatile 只管引用，集合必须用并发容器。
  *
+ *  **本层只吃判定层自己的类型**（[KeyRef] / [ChainSpec]）：这一类的全部职责就是「压一压、
+ *  到点补发」，压着的那一份参数原样递回给判定器即可 —— 它不必知道那颗键在配置里长什么样。
+ *  业务侧那两型由装配方（`inject/key/GestureBridge`）换成 [ChainSpec] 再送进来。
+ *
  * @param feed 到点把压着的按下补交给单键判定器（`GestureDetector::onKeyDown`）；
  *   第三个参数是**原始按下时刻**，判定器据此算长按截止，而不是按补发时刻算
  * @param feedUp 松手早于窗口时，到点连着把抬起一起补交（`GestureDetector::onKeyUp`）
  */
 internal class HeldPresses(
     private val handler: Handler,
-    private val feed: (KeyId, ClickChainParams, Long) -> Unit,
-    private val feedUp: (KeyId, ClickChainParams) -> Unit,
+    private val feed: (KeyRef, ChainSpec, Long) -> Unit,
+    private val feedUp: (KeyRef, ChainSpec) -> Unit,
 ) {
     /** 压着的那几颗键 —— key → 那一枪 + 按下那一刻的判定参数。 */
-    private val held = ConcurrentHashMap<KeyId, Press>()
+    private val held = ConcurrentHashMap<KeyRef, Press>()
 
     /**
      * 压住 [id] 这一下，[windowMs] 之后再补给单键判定器。
      *
      *  同一颗键又按下来时，压着的那一下**先补进去再换新的**：新的 DOWN 就是「上一次按压已经结束」
      *  的证据。直接顶掉的话，快速双击的第一下会整个消失（第二下到来时第一下还在窗口里没补发）。
+     *
+     * @return 这一下**压住了**没有。`false` = 调用方照常把它交给单键判定器（见下面「连击」那一段）
      */
     fun hold(
-        id: KeyId,
-        keyConfig: ClickChainParams,
+        id: KeyRef,
+        config: ChainSpec,
         windowMs: Long,
-    ) {
+    ): Boolean {
         held.remove(id)?.let { prev ->
             handler.removeCallbacks(prev.shot)
             deliver(id, prev)
         }
+        //  **配了多击的键一律不压窗**（不只是「第二击」那一下）。
+        //
+        //  压窗把每一击的交付都推迟一个窗口。第二击还好：它的按下本身会把上一击催出来
+        //  （上面那段 `deliver`）。但**第三击没有任何东西催它** —— 它压着等满整窗才交给
+        //  单键判定器，那时三击的收集窗口早关了。真机现象正是「电源键加进等待组合之后，
+        //  裸键三击判不出来、四击反而正常」（四击是两两成对：2 催出 1、4 催出 3）。
+        //
+        //  不压窗的代价 —— **明确的口径，不是遗留问题**：
+        //
+        //  不压 ⇒ 这一下按**它自己的连击窗口**到点就判（单击 / 双击该出就出），而组合还能等到
+        //  自己的窗口（`ConfigChannel.holdWindowMsFor`）。两个窗口一长一短就会交叉：
+        //   · 连击窗口 **≥** 组合窗口：组合先到位，`resetKey` 把那颗键待定的判定摘掉，只出组合；
+        //   · 连击窗口 **<** 组合窗口：单击先派发，随后组合又凑成 —— **两个动作各执行一次**。
+        //  连击窗口与 `COMBO_PAIR_MAX_MS` 都能配到 800，所以第二种**用户配得出来**，
+        //  不靠「通常不会」兜着；口径与取舍写在 `docs/runtime/key-to-gesture.md`
+        //  的「多击与组合抢同一段时间」。
+        //
+        //  为什么不用 `min(组合窗口, 连击窗口)` 去压：那样只是把单击也提前，交叉照旧（组合仍在后面
+        //  凑成），却把「窗口内补第二颗」这条组合前提弄丢 —— 两件事抢的是同一段时间，只能选一边。
+        if (config.judgeCap >= 2) return false
         //  按下这一刻就记下来（本方法由 DOWN 那条路同步调进来）：补发要晚一个窗口，
         //  这一份时刻是「这一按到底什么时候按的」的唯一凭据（见类注释）。
         val downAt = SystemClock.elapsedRealtime()
         lateinit var press: Press
         press =
             Press(
-                keyConfig,
+                config,
                 downAt,
                 Runnable {
                     //  与 [release] 抢同一把锁：摘 `held` 与「读 released」必须是一段临界区。
@@ -102,7 +126,7 @@ internal class HeldPresses(
         //  长按检测枪：按住超过长按阈值就提前补发（不再傻等窗口到点，长按才判得出来）。
         //  只在长按阈值**短于**窗口时排 —— 阈值比窗口长的话，窗口枪先到点、这一按已经补发了，
         //  长按枪没有意义（它到点时这一按早不在 `held` 里）。
-        val longMs = keyConfig.longPressMs.toLong()
+        val longMs = config.longPressMs
         if (longMs < windowMs) {
             lateinit var longShot: Runnable
             longShot =
@@ -127,7 +151,8 @@ internal class HeldPresses(
             handler.postDelayed(longShot, longMs)
         }
         //  d 级：调大窗口之后这一行会多起来，属于「正常但值得看一眼」的那一档
-        XLog.d { "${id.label}：参与组合，先等 ${windowMs}ms 再判单键" }
+        XLog.d { "${id.name}：参与组合，先等 ${windowMs}ms 再判单键" }
+        return true
     }
 
     /**
@@ -137,7 +162,7 @@ internal class HeldPresses(
      *
      * @return 这一下是不是还压着（是的话调用方吞掉这条 UP，别再走单键那条路）
      */
-    fun release(id: KeyId): Boolean {
+    fun release(id: KeyRef): Boolean {
         val press = held[id] ?: return false
         synchronized(press) {
             //  补发已经开始了（它读到的是 `released = false`）：这一下交回给调用方按普通 UP 处理。
@@ -157,7 +182,7 @@ internal class HeldPresses(
      *  与 [drop] 相反：drop 是「作废不补」，这里是「补了再清」。场景见 [onEarlyLongPress]：
      *  某颗成员键长按到点，别的键不该再傻等窗口到点，它们的单击现在就该补出来。
      */
-    fun flushOthers(except: KeyId) {
+    fun flushOthers(except: KeyRef) {
         held.keys.toList().forEach { id ->
             if (id == except) return@forEach
             val press = held[id] ?: return@forEach
@@ -173,7 +198,7 @@ internal class HeldPresses(
     }
 
     /** 丢掉压着的那一颗（`null` = 全部丢掉）—— 组合接管了它，或配置变了不该再补旧的那一下。 */
-    fun drop(id: KeyId?) {
+    fun drop(id: KeyRef?) {
         if (id == null) {
             held.keys.toList().forEach { drop(it) }
             return
@@ -199,15 +224,15 @@ internal class HeldPresses(
 
     /** 把压着的一按按原顺序补交给单键判定器（先 DOWN；松过手再补 UP）。 */
     private fun deliver(
-        id: KeyId,
+        id: KeyRef,
         press: Press,
     ) {
         try {
             //  带上原始按下时刻：判定器的长按截止 = 按下时刻 + `longPressMs`，不是补发时刻 +
             //  `longPressMs`，否则参与组合的键长按阈值会整体后移一个窗口。
-            feed(id, press.keyConfig, press.downAt)
+            feed(id, press.config, press.downAt)
             //  松手早于窗口：这一按在窗口里没等到第二颗键，按「一次完整按压」补进去
-            if (press.released) feedUp(id, press.keyConfig)
+            if (press.released) feedUp(id, press.config)
         } catch (e: Throwable) {
             XLog.w("补发单键失败（已忽略）：${e.javaClass.simpleName}", e)
         }
@@ -215,7 +240,7 @@ internal class HeldPresses(
 
     /** 压着等窗口的一次按压。 */
     private class Press(
-        val keyConfig: ClickChainParams,
+        val config: ChainSpec,
         /** 手指按下那一刻（`elapsedRealtime`）—— 补发晚一个窗口，判定仍要用它当按下时刻。 */
         val downAt: Long,
         val shot: Runnable,

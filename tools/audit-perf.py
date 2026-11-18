@@ -49,7 +49,7 @@ HOT_FILES = [
     'inject/input/GestureDetector.kt',
     'inject/input/ComboDetector.kt',
     'inject/input/HeldPresses.kt',
-    'inject/input/GestureForwarder.kt',
+    'inject/wire/GestureForwarder.kt',
 ]
 ALLOCATION = [
     ('新建集合', r'\b(HashSet|HashMap|ArrayList|LinkedHashMap|ArrayDeque)\s*[(<]'),
@@ -80,7 +80,7 @@ MT_ALLOW = {
 HOT_ALLOW = {
     ('inject/input/GestureDetector.kt', '序列/集合流水线'): 'reset(null) 只在配置变化时跑，且必须拷快照才敢边遍历边重排',
     ('inject/input/HeldPresses.kt', '序列/集合流水线'): 'drop(null) 同上，只在配置变化 / 组合接管时跑',
-    ('inject/input/GestureForwarder.kt', '字符串模板'): 'guard 的说明文字一次手势拼一条（判据日志）',
+    ('inject/wire/GestureForwarder.kt', '字符串模板'): 'guard 的说明文字一次手势拼一条（判据日志）',
     ('inject/input/ComboDetector.kt', '序列/集合流水线'): 'upgradeTo 只在「小组合升级成大组合」那一下跑（三颗以上成立时），不是每次按压；Combo 要持有 List<KeyId> 供后续遍历，必须拷一份',
     ('inject/key/SideKeyInterceptor.kt', '序列/集合流水线'): '只在与组合有关的那本账 reset 时跑（配置变化 / 撤销待定手势），必须拷快照才敢边遍历边重排 —— 与 GestureDetector.reset 同一情形',
     ('inject/input/ComboDetector.kt', '字符串模板'): '`describe` 是自检 / 诊断通道把结论翻成人话的那一支，不在按键路径上（它只是和判定器同处一个文件）',

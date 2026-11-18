@@ -34,13 +34,13 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.kit.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.target.Donor
 import com.lookie.opluskey.ui.model.target.donors
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
-import com.lookie.opluskey.ui.row.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.style.AppDivider
 import com.lookie.opluskey.ui.style.appDividerColor
 import io.github.suqi8.coui.kmp.basic.CardDefaults

@@ -31,7 +31,6 @@ import com.lookie.opluskey.ui.chrome.PageFabButton
 import com.lookie.opluskey.ui.chrome.PageFabIcon
 import com.lookie.opluskey.ui.chrome.PageTabBand
 import com.lookie.opluskey.ui.chrome.addCommand
-import com.lookie.opluskey.ui.dialog.MAX_NAME_LENGTH
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.rememberTick
@@ -39,11 +38,12 @@ import com.lookie.opluskey.ui.input.IconInputView
 import com.lookie.opluskey.ui.input.InputSpec
 import com.lookie.opluskey.ui.input.hideIme
 import com.lookie.opluskey.ui.input.isImeVisible
+import com.lookie.opluskey.ui.kit.MAX_NAME_LENGTH
+import com.lookie.opluskey.ui.kit.TitleCounter
+import com.lookie.opluskey.ui.kit.codePointLength
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.text.commandKindLabel
-import com.lookie.opluskey.ui.row.TitleCounter
-import com.lookie.opluskey.ui.row.codePointLength
 import com.lookie.opluskey.ui.screen.configWritable
 import com.lookie.opluskey.ui.state.command.CommandListEditState
 import com.lookie.opluskey.ui.state.command.CommandUiState

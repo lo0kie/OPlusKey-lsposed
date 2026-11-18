@@ -1,4 +1,4 @@
-package com.lookie.opluskey.ui.dialog
+package com.lookie.opluskey.ui.kit
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ScrollState
@@ -49,7 +49,6 @@ import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.POPUP_FROSTED_ALPHA
 import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.row.LocalReduceRowIcons
-import com.lookie.opluskey.ui.row.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.style.AppHeavyDivider
 import com.lookie.opluskey.ui.style.frosted
 import com.lookie.opluskey.ui.style.tinted

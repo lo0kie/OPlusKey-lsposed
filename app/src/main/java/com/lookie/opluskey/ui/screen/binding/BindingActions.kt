@@ -18,11 +18,11 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.writeAndNotice
+import com.lookie.opluskey.ui.kit.SectionTitle
+import com.lookie.opluskey.ui.kit.SectionTitleClick
+import com.lookie.opluskey.ui.kit.titleWithCount
 import com.lookie.opluskey.ui.model.text.MODULE_UNAVAILABLE_HINT
 import com.lookie.opluskey.ui.model.text.stepTitle
-import com.lookie.opluskey.ui.row.SectionTitle
-import com.lookie.opluskey.ui.row.SectionTitleClick
-import com.lookie.opluskey.ui.row.titleWithCount
 import com.lookie.opluskey.ui.state.binding.KeysAsk
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.wire.appLabelOf

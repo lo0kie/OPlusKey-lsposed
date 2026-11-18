@@ -19,13 +19,13 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.ImportOverwrite
 import com.lookie.opluskey.ui.PendingImport
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
-import com.lookie.opluskey.ui.dialog.DialogButtonRow
-import com.lookie.opluskey.ui.dialog.DialogPositiveStyle
-import com.lookie.opluskey.ui.dialog.FrostedDialog
 import com.lookie.opluskey.ui.dialog.PickerRow
 import com.lookie.opluskey.ui.dialog.PickerRowTraits
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.kit.ConfirmDialog
+import com.lookie.opluskey.ui.kit.DialogButtonRow
+import com.lookie.opluskey.ui.kit.DialogPositiveStyle
+import com.lookie.opluskey.ui.kit.FrostedDialog
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.style.AppDivider
 import com.lookie.opluskey.ui.style.AppHeavyDivider

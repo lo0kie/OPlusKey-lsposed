@@ -531,7 +531,7 @@ ActionButtonKeyService.e()V
 游戏模式（`debug_gamemode_value`）/ `isScreenOff()` / 超级省电（`super_powersave_mode_state`）。
 
 ⇒ **锁屏、熄屏、游戏里 `startService(ActionButtonKeyService)` 就会把设置页带到前台。**
-模块有两条路打这个服务、都是为了「唤醒 / 保活」（`inject/input/GestureForwarder.wakeHost` 与
+模块有两条路打这个服务、都是为了「唤醒 / 保活」（`inject/wire/GestureForwarder.wakeHost` 与
 `host/GestureReceiver.keepProcessAwake`），于是：
 
 - 开机后那一段设备正锁屏 —— 按一下被接管的侧键 ⇒ 注入侧转发手势 ⇒ 唤醒宿主 ⇒ 设置页弹出来；

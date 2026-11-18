@@ -16,11 +16,11 @@ import com.lookie.opluskey.ui.chrome.HEADER_ACTION_GAP
 import com.lookie.opluskey.ui.chrome.HeaderIconButton
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.HintText
+import com.lookie.opluskey.ui.kit.SectionTitle
+import com.lookie.opluskey.ui.kit.rememberRowIconColor
 import com.lookie.opluskey.ui.model.icon.FluidIconRow
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.row.SectionTitle
-import com.lookie.opluskey.ui.row.rememberRowIconColor
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.command.CommandListEditState
 import com.lookie.opluskey.ui.state.page.CommandForm

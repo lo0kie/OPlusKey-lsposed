@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -24,9 +25,10 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.NameDialog
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.kit.NameDialog
+import com.lookie.opluskey.ui.kit.rememberRowIconColor
 import com.lookie.opluskey.ui.model.page.ROW_START_ICON_GAP
 import com.lookie.opluskey.ui.model.page.SLIDER_EDGE_BLEED
 import com.lookie.opluskey.ui.model.page.SLIDER_ICON_INSET
@@ -152,8 +154,9 @@ private fun SettingsPage.SliderRowBody(
     // 改用库底下的 `BasicComponent`（自定义内容变体）+ 公开的 `Slider` 自己拼：
     // 滑杆走 [SLIDER_ICON_INSET] 左内缩，与标题文字同一个左边界。
     // 代价是标题 / 摘要 / 当前值这三处要自己画 —— 样式逐项照抄库那一版
-    // （`BasicComponent` 的 headline1 + Medium、body2、2dp 行距；`SliderPreference` 的
-    // `valueText` 走 body2 字号 + `onSurfaceSecondary`；位置从「行尾」挪到了标题行右侧，见 [SliderRowTexts]）。
+    // （`BasicComponent` 的 headline1 + Medium、body2、2dp 行距）；当前值改成与**卡片行尾同一份**
+    // （整份 `body2`，用户口径「都用 cardrow 那份」），比原先只取 `body2.fontSize` 多了行高 /
+    // 字重 / 字距那几项；位置从「行尾」挪到了标题行右侧，见 [SliderRowTexts]。
     BasicComponent(
         insideMargin = SLIDER_INSIDE_MARGIN,
         cardListPosition = position,
@@ -190,11 +193,22 @@ private fun SettingsPage.SliderRowBody(
                     )
                 }
             },
-        // 行尾**不再站一列**：当前值挪到主标题那一行的右侧（见 [SliderRowTexts]）。
+        //  行尾那颗「点了能改」的箭头（用户口径）—— 放 `endActions`。
+        //  **它不挤滑杆**：库的 `bottomAction` 铺满整行、在 `start / center / end` 之外（见上面
+        //  那一段），所以这一列只把中间的标题 / 摘要挤窄，滑杆的宽度与那两档内缩一点不变
+        //  （用户口径「不要挤到 slider，挤文字」）。
+        //  禁用态得自己递下去：`RowEndIcon` 读 [LocalRowEnabled] 压暗，而 `enabled` 只交给库
+        //  那一层、它只管它自己画的东西 —— 不递的话整行灰着、行尾这颗还亮着。
+        endActions = {
+            CompositionLocalProvider(LocalRowEnabled provides spec.enabled) {
+                RowEndIcon()
+            }
+        },
+        // 行尾**不再站当前值那一列**：值挪到主标题那一行的右侧（见 [SliderRowTexts]）。
         //  这不是纯排版偏好 —— 行尾那一列会把「摘要」挤窄，而摘要是这一行唯一的长句
-        //  （「按住超过这么久才算长按」那种），挤窄之后它比标题还早折行。
-        //  值放到标题行之后，`endActions` 空着，`BasicComponent` 的中间那一格就拿到整行宽度，
-        //  摘要跟着全宽。文案走 `spec.valueText`（毫秒那几档是 `durationText`：1000ms 以上写成秒；
+        //  （「按住超过这么久才算长按」那种），挤窄之后它比标题还早折行。上面那颗箭头只占一格
+        //  图标宽，比原来那一列窄得多，所以这一笔仍然成立。
+        //  文案走 `spec.valueText`（毫秒那几档是 `durationText`：1000ms 以上写成秒；
         //  振动强度那档写「弱 / 中 / 强」）；给 `null` 的一档不画。
         //  读的是**拖动中的那个值**（`dragging`），所以它跟着滑杆实时变，不用等抬手写盘回来 ——
         //  那条回来时 `dragging` 会被重组归位到同一个值，不跳。
@@ -309,7 +323,11 @@ private fun SliderRowTexts(
                 Text(
                     text = format(value),
                     modifier = Modifier.padding(start = 8.dp),
-                    fontSize = COUITheme.textStyles.body2.fontSize,
+                    //  **与卡片行尾那份逐项相同**（用户口径「都用 cardrow 那份」）：
+                    //  原先只取 `body2.fontSize`，行高 / 字重 / 字距落在 `Text` 的默认 style 上，
+                    //  于是同一个应用里两处「行尾的那句话」粗细与行距各走各的
+                    //  （对照 `CardRow.RowEndSummary`，它给的是整份 `body2`）。
+                    style = COUITheme.textStyles.body2,
                     color = colors.value,
                 )
             }

@@ -8,10 +8,10 @@ import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.MenuEntry
-import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.kit.MenuEntry
+import com.lookie.opluskey.ui.kit.PageMenu
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.state.binding.BranchDraft
 import com.lookie.opluskey.ui.state.picker.AppPickerState

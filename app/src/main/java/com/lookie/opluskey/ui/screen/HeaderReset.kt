@@ -13,10 +13,10 @@ import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.HeaderIconButton
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.feedback.DisabledHint
+import com.lookie.opluskey.ui.kit.ConfirmDialog
+import com.lookie.opluskey.ui.kit.rememberRowIconColor
 import com.lookie.opluskey.ui.model.icon.PageIcons
-import com.lookie.opluskey.ui.row.rememberRowIconColor
 import com.lookie.opluskey.ui.state.page.SettingsTarget
 import com.lookie.opluskey.ui.state.page.SettingsTargetState
 import com.lookie.opluskey.ui.wire.disabledClickReason

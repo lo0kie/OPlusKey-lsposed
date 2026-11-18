@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -23,6 +24,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.kit.SectionTitle
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.target.DonateTarget
 import com.lookie.opluskey.ui.model.theme.HOST_ALIVE_TIMEOUT_MS
@@ -30,7 +32,6 @@ import com.lookie.opluskey.ui.model.theme.QUERY_ROUNDS
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.RowEndIcon
-import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.screen.variables.openVariablesForManage
 import com.lookie.opluskey.ui.state.page.LINK_SILENT_RETRY_MS
@@ -87,7 +88,9 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
 
         // 「按键操作」那一节 —— 组合按键与「添加按键」两行（用户口径：与清单分开一张卡）。
         //  这两行不是清单里的东西，是**对这颗键 / 这组键做的事**。
-        SectionTitle(I18n.get(Strings.HOME_KEY_OPS_SECTION))
+        //  **不再带小标题**（用户口径），间距按 **24dp** 补：标题那一档（上内边距 + 标题行）
+        //  整块留出来太空，16dp 又让两张卡粘在一起 —— 24 是中间那一档（用户口径）。
+        Spacer(Modifier.height(24.dp))
         HomeKeyOpsCard(pageEnabled)
 
         // 「按键行为」那一整块搬进了「公共设置」页（入口在上一张「按键操作」卡的第二行）——

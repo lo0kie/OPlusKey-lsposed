@@ -23,6 +23,9 @@ import com.lookie.opluskey.core.present.ClockCatalog
 import com.lookie.opluskey.core.present.actionDetail
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.kit.DialogButtonRow
+import com.lookie.opluskey.ui.kit.FrostedDialog
+import com.lookie.opluskey.ui.kit.dialogSideMargin
 import com.lookie.opluskey.ui.model.page.SLIDER_TRACK_HEIGHT
 import com.lookie.opluskey.ui.model.page.SliderTapTrack
 import com.lookie.opluskey.ui.row.TrackSlider

@@ -47,6 +47,7 @@ import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.feedback.NoSwitchHaptic
 import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.feedback.scrollBarTick
+import com.lookie.opluskey.ui.kit.rememberRowIconColor
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.page.ROW_START_ICON_GAP

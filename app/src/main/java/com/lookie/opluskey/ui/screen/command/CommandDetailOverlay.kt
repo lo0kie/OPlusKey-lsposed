@@ -25,8 +25,8 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.present.commandExecIdentity
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.FrostedDialog
-import com.lookie.opluskey.ui.dialog.dialogSideMargin
+import com.lookie.opluskey.ui.kit.FrostedDialog
+import com.lookie.opluskey.ui.kit.dialogSideMargin
 import com.lookie.opluskey.ui.model.page.SUMMARY_REF_GAP
 import com.lookie.opluskey.ui.model.text.durationText
 import com.lookie.opluskey.ui.model.text.isTypingCommandPrefix

@@ -1,4 +1,4 @@
-package com.lookie.opluskey.ui.dialog
+package com.lookie.opluskey.ui.kit
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

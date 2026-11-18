@@ -1,4 +1,4 @@
-package com.lookie.opluskey.ui.dialog
+package com.lookie.opluskey.ui.kit
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box

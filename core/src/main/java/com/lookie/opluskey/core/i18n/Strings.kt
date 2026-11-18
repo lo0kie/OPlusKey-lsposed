@@ -360,7 +360,7 @@ object Strings {
     /** 点在那种灰行上时说的原因 —— 与上面那枚小字同一件事，但被问的是「为什么点不动」。 */
     const val COMMON_COMMANDS_ADDED_HINT = "common_commands.added_hint"
 
-    // —— 加号那颗「先挑来源」的窗口 +「内置常用命令」那一窗 ——
+    // —— 加号那颗「先挑来源」的窗口 +「内置命令」那一窗 ——
     //
     //  加号不再直接开抽屉：先问一句「用内置的还是自己挑」（两行），内置那一档再开一层勾选窗。
 
@@ -375,6 +375,14 @@ object Strings {
 
     /** 内置勾选窗那颗动作键的字（「添加」）—— 窗口标题已经说明加什么，按钮不必重复。 */
     const val COMMON_COMMANDS_BUILTIN_ADD = "common_commands.builtin_add"
+
+    /**
+     * 一条都没勾时点「添加」说的那句话（「没有选择」）。
+     *
+     *  与 `app_picker.none_selected` 不是同一条：那一条是**顶栏那行小字**（常驻说明），
+     *  这一条是**点下去才说**的一句，走 `DialogPositiveStyle.onDisabledClick` 那条通道。
+     */
+    const val COMMON_COMMANDS_NONE_SELECTED = "common_commands.none_selected"
 
     /** 内置那一次的回执（全都进去了）：`%1$d` = 进清单了几条。 */
     const val COMMON_COMMANDS_BUILTIN_ADDED = "common_commands.builtin_added"
@@ -503,9 +511,6 @@ object Strings {
 
     /** 同一行在「一组组合都还没配」时的副标题：这一页里有什么。 */
     const val KEYS_ENTRY_DESC = "keys.entry_desc"
-
-    /** 「按键功能」页第一块的小标题 —— 装内置那颗侧键（与「自定义按键」那一块相对）。 */
-    const val KEYS_SECTION_DEFAULT = "keys.section_default"
 
     /** 组合要两颗键时的那句：只有内置侧键、配不出组合（「添加组合按键」那一行的禁用原因）。 */
     const val COMBO_NEED_KEY = "combo.need_key"
@@ -1519,14 +1524,6 @@ object Strings {
     const val HOME_OTHER_SECTION = "home.other_section"
 
     /**
-     * 首页「按键操作」那一节的小标题 —— 组合按键与「添加按键」两行。
-     *
-     *  这两行原先并进首页那张「按键列表」卡里，于是那张卡同时装着「已经有哪些键」与
-     *  「还能做什么」两件事，读起来像同一类东西排在一起（用户口径：分开）。
-     */
-    const val HOME_KEY_OPS_SECTION = "home.key_ops_section"
-
-    /**
      * 首页顶上那块「模块状态」—— 四档状态各一句，外加「未激活」那一句说明。
      *
      *  开 / 关那两句说明**不在这里**：它们就是主开关原来的副标题（[HOME_SWITCH_DESC_ON] /
@@ -2110,8 +2107,6 @@ object Strings {
 
     const val COMBO_HOLD_FIXED_WINDOW_DESC_OFF = "combo.hold_fixed_window_desc_off"
 
-    const val COMBO_MEMBER_WINDOW_SHARE = "combo.member_window_share"
-
     const val COMMAND_SHIZUKU_SUI_RESTART = "command.shizuku_sui_restart"
 
     const val HOME_TOAST_MODE_NONE = "home.toast_mode_none"
@@ -2157,4 +2152,8 @@ object Strings {
     const val MORE_REDUCE_ICONS = "more.reduce_icons"
 
     const val MORE_MONET_COLORS = "more.monet_colors"
+
+    const val MORE_APPEARANCE_MORE = "more.appearance_more"
+
+    const val TOAST_LOG_COLLECTING = "toast.log_collecting"
 }

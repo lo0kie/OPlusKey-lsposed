@@ -17,12 +17,12 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
-import com.lookie.opluskey.ui.dialog.NameDialog
+import com.lookie.opluskey.ui.kit.NameDialog
+import com.lookie.opluskey.ui.kit.SectionTitle
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.SHOW_HOME_MINI_ANIM
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
-import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.row.noticeModeMenu

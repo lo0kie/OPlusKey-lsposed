@@ -27,9 +27,9 @@ import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.core.present.comboLabelOf
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.DialogButtonRow
-import com.lookie.opluskey.ui.dialog.FrostedDialog
-import com.lookie.opluskey.ui.dialog.dialogSideMargin
+import com.lookie.opluskey.ui.kit.DialogButtonRow
+import com.lookie.opluskey.ui.kit.FrostedDialog
+import com.lookie.opluskey.ui.kit.dialogSideMargin
 import com.lookie.opluskey.ui.screen.editingKeyName
 import com.lookie.opluskey.ui.state.binding.BranchDraft
 import com.lookie.opluskey.ui.state.binding.SceneBinding

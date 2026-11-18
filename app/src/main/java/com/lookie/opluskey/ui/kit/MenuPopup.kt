@@ -1,4 +1,4 @@
-package com.lookie.opluskey.ui.dialog
+package com.lookie.opluskey.ui.kit
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,7 +26,6 @@ import com.lookie.opluskey.ui.model.theme.POPUP_SURFACE_DARK
 import com.lookie.opluskey.ui.model.theme.POPUP_SURFACE_LIGHT
 import com.lookie.opluskey.ui.model.theme.isDarkScheme
 import com.lookie.opluskey.ui.row.LocalReduceRowIcons
-import com.lookie.opluskey.ui.row.titleWithCount
 import com.lookie.opluskey.ui.style.AppDivider
 import com.lookie.opluskey.ui.style.LocalMonetColors
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults

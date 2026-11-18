@@ -1,5 +1,6 @@
 package com.lookie.opluskey.core.model
 
+import com.lookie.opluskey.core.judge.matchesOrderedTail
 import com.lookie.opluskey.core.rom.RomProfile
 import java.util.Locale
 
@@ -875,10 +876,11 @@ data class ComboKey(
      *  **比的必须是结尾而不是开头**：当前这一下一定是成员里的最后一颗（组合在它落下那一刻成立），
      *  而扫描窗口里可能还兜着这组开始之前按过的键。按开头比时，前面多一颗（比如先点了一下音量键）
      *  就会把整条有序组合判成「顺序不对」，用户看到的是这一组没生效、只落下两颗键各自的单击。
+     *
+     *  判据本体在 `core/judge` 的 `matchesOrderedTail` —— 判定侧 `ComboBinding.matchesOrdered`
+     *  调的是同一份，单测覆盖的就是线上那一条（原先两处各写一遍，单测喂的其实是没人用的那份）。
      */
-    fun matchesOrdered(sequence: List<String>): Boolean =
-        sequence.size >= keys.size &&
-            keys.indices.all { sequence[sequence.size - keys.size + it] == keys[it] }
+    fun matchesOrdered(sequence: List<String>): Boolean = matchesOrderedTail(keys, sequence)
 
     companion object {
         /** 组合键 id 的前缀：`cmb1` / `cmb2` ……（序号由收集侧维护，只增不减）。 */

@@ -18,7 +18,7 @@
 
 | 项                                       | 值                                                                     | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行）                       |
 | ---------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 包级环 / 边                              | **0 / 31**（细分档位口径）                                             | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
+| 包级环 / 边                              | **0 / 41**（细分档位口径）                                             | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
 | `SettingsPage` 状态字段                  | **24**                                                                 | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
 | `SettingsPage.xxx` 扩展                  | **368** 个，散在 97 文件                                               | `python3 tools/audit-arch.py`（规模那一节）                                         |
 | `ui/SettingsPage.kt` 行数                | **681**                                                                | `wc -l ui/SettingsPage.kt`                                                          |
@@ -44,6 +44,11 @@
 `30 → 32` 是这两天新增的 `combo/` 与 `general/` 两个屏目录，`32 → 31` 是把 `IconInput` 从
 `ui/screen/command/` 搬回共用层之后，那条 `ui → ui.screen` 反向边不见了（现在它由禁止边兜住，见五）。
 
+**`31 → 41` 是 2026-11-17 那批拆档带来的记账，同样不是新增耦合**：`inject.input`、`inject.wire`、
+`ui.kit` 三个档位从原来的粗档位里分出来，原先一条「`inject` → `core.model`」被拆成按文件归位后
+的 10 条边，并新增两条禁止边（`inject.input` / `ui.kit` 各不许引 `core.model`）。量具变细，
+每一条都是原来就存在的依赖换了个名字记账。
+
 
 新的分层（方向是单向的，`ui.hook` 在最上层，只往 `ui.screen` → `ui` → `ui.state` / `ui.model` 走；
 2026-10-19 起「下层反向引 `ui.hook`」由 `audit-coupling.py` 逐条禁止，不再只靠人守）：
@@ -55,11 +60,31 @@ ui.screen 屏 + 装配（PageRoot 建页）
    ↓
 ui       页面模型与页面行为（SettingsPage、Screen、页面组件、主题）
    ↓
+ui.kit   业务无关的界面通用件（对话框 / 浮层菜单 / 标题 / 小组件）      ← 2026-11-17 新增
+   ↓
 ui.state 纯状态类（不扩展页面）      ui.model 纯展示数据
 ```
 
 「页面行为」原先散在 `ui/state`，与「纯状态类」混住；现在 `fun SettingsPage.*` 一律在 `ui` 或
 `ui.screen`，`ui/state` 里只剩不反持页面的状态类 —— 这是 `ui ↔ ui.state` 环消失的原因。
+
+**`ui/kit` 与 `inject/input` 是同一件事的两端**（2026-11-17 一起做的）：两处都把「与业务无关的那一层」
+单独成包，并各由 `audit-coupling.py` 一条禁止边看着 ——
+
+| 包            | 禁止引                                         | 理由                                                             |
+| ------------- | ---------------------------------------------- | ---------------------------------------------------------------- |
+| `inject/input` | `core.model.*`                                | 手势判定层只吃毫秒 / 布尔 / 次数与带名字的键引用；翻译收在 `inject/key/GestureBridge` |
+| `ui/kit`      | `core.model.*`                                | 通用件不该认识动作 / 配置 / 组合键；业务行留在 `ui/row` / `ui/dialog` 等 |
+
+判据都是「拿到别的 App 里还能用」：`inject/input` 换成别的输入源照样判得出单击双击；
+`ui/kit` 那七件（`ConfirmDialog` / `MenuPopup` / `PageMenuPopup` / `PageConfirmDialog` /
+`PageNameDialog` / `SectionTitle` / `ChipLabel`）换成别的数据照样画得出来。
+
+**`ui/kit` 的边界怎么定的**：判据是「**它依赖谁**」而不是「它看起来通不通用」——
+`PageSlider` / `CardRow` / `PageSheet` / `IconInput` / `EmphasisText` / `Dividers` 因为要
+`SliderSpec` / `SwitchRow` / `OwnSettingsCard` 这些**业务行的参数类型**，反向依赖了留在
+`ui/row` 的东西，所以留在原地（搬过去就成了「通用件依赖业务行」，比不搬更糟）。
+这条线以后要动，先看 `grep '^import com.lookie.opluskey.ui.row' ui/kit/` 是不是空。
 
 ---
 

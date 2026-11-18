@@ -1,13 +1,14 @@
 package com.lookie.opluskey.core.judge
 
-import com.lookie.opluskey.core.model.ComboKey
-
 // 两颗那一对组合的判定 —— 「这一档配不配得上这一对按下」「几档都配得上时挑哪一档」
 // 「已经成立的那一档还能不能升级成更宽的一档」。
 //
 //  与 [JudgeMath] / [ClickChainMath] 同一族：纯函数，只吃数字与档位本身的形态，不碰状态、
 //  不读时钟、不调 Android API。三处判据原先都是 `ComboDetector` 里 if / for 的条件表达式，
 //  `:app` 没有 test 源集，那几个「哪一条先短路」「哪一档优先」的顺序只能靠手按验。
+//
+//  **不认任何业务类型**：档位一律是泛型 `T`，「这一档是不是等待档」由调用方给的谓词回答。
+//  原先这两处读 `ComboKey.isWait` / `ComboKey.mode`，判定层于是被业务模型的字段名绑住。
 
 /**
  * 等窗口那一档：这一对按下算不算这一档。
@@ -44,24 +45,26 @@ fun pairHoldMatches(
 /**
  * 逐档试出这一对到底归哪一档 —— **按住那一档优先**。
  *
- *  同一组键可以配几档、各一种触发方式（`ComboKey.mode`），只看成员数最大的那一档会把另一种
+ *  同一组键可以配几档、各一种触发方式（`ComboBinding.isWait`），只看成员数最大的那一档会把另一种
  *  方式整条遮掉；而两档同时命中时（那一颗既在窗口内、又按满了按住下限）取**按住**那档 ——
  *  它的前提更严，是更明确的表态，等窗口那档留给「没按住那么久」的情形。
  *
  *  实现就是「命中就记下，命中按住档立刻停」：等窗口档继续往后看（后面的档可能更合适），
  *  按住档不看了（不会再有比它更严的）。返回值是最后命中的那一档，`null` = 一档都不配。
  *
+ *  @param isWait 这一档是不是等待档（`false` = 按住档）
  *  @param matches 逐档判据（`pairWaitMatches` / `pairHoldMatches` 按这一档的方式挑一个）
  */
-fun pickPairHit(
-    candidates: List<ComboKey>,
-    matches: (ComboKey) -> Boolean,
-): ComboKey? {
-    var hit: ComboKey? = null
+fun <T> pickPairHit(
+    candidates: List<T>,
+    isWait: (T) -> Boolean,
+    matches: (T) -> Boolean,
+): T? {
+    var hit: T? = null
     for (b in candidates) {
         if (!matches(b)) continue
         hit = b
-        if (!b.isWait) break
+        if (!isWait(b)) break
     }
     return hit
 }

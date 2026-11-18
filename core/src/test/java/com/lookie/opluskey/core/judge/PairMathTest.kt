@@ -63,31 +63,31 @@ class PairMathTest {
 
     @Test
     fun pickPairReturnsNullWhenNothingMatches() {
-        assertNull(pickPairHit(listOf(wait, hold)) { false })
-        assertNull(pickPairHit(emptyList()) { true })
+        assertNull(pickPairHit(listOf(wait, hold), isWait = { it.isWait }) { false })
+        assertNull(pickPairHit(emptyList<ComboKey>(), isWait = { it.isWait }) { true })
     }
 
     @Test
     fun pickPairPrefersTheHoldCombo() {
         //  两档都命中 ⇒ 取按住那档（前提更严、表态更明确），与它在表里的先后无关
-        assertEquals(hold, pickPairHit(listOf(wait, hold)) { true })
-        assertEquals(hold, pickPairHit(listOf(hold, wait)) { true })
+        assertEquals(hold, pickPairHit(listOf(wait, hold), isWait = { it.isWait }) { true })
+        assertEquals(hold, pickPairHit(listOf(hold, wait), isWait = { it.isWait }) { true })
     }
 
     @Test
     fun pickPairTakesTheLastWaitingHitWhenNoHoldMatches() {
         val other = ComboKey(id = "cmb3", keys = listOf("k1", "k2"))
         //  等窗口那档不会提前收工：后命中的覆盖前面的（与原实现「逐个赋值」一致）
-        assertEquals(other, pickPairHit(listOf(wait, other)) { true })
+        assertEquals(other, pickPairHit(listOf(wait, other), isWait = { it.isWait }) { true })
         //  按住那档没命中时不参与，剩下最后命中的等窗口档
-        assertEquals(other, pickPairHit(listOf(wait, hold, other)) { it != hold })
+        assertEquals(other, pickPairHit(listOf(wait, hold, other), isWait = { it.isWait }) { it != hold })
     }
 
     @Test
     fun pickPairStopsAtTheFirstHoldHit() {
         val later = ComboKey(id = "cmb4", keys = listOf("k1", "k2"))
         //  命中按住档就收工：后面的等窗口档不得再覆盖它
-        assertEquals(hold, pickPairHit(listOf(hold, later)) { true })
+        assertEquals(hold, pickPairHit(listOf(hold, later), isWait = { it.isWait }) { true })
     }
 
     // ---- 升级判据 ----

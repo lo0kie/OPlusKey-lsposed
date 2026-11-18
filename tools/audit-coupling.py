@@ -91,7 +91,26 @@ RULES: list[tuple[str, tuple[str, ...], str]] = [
         (r"^com\.lookie\.opluskey\.ui\.hook\.", r"^com\.lookie\.opluskey\.ui\.screen\."),
         "共用件 / 页面模型不许反向依赖 ui.hook 与具体屏（分层图是单向的）",
     ),
+    # `ui/kit/` 是**业务无关的界面通用件**：以 `SettingsPage` 为接收者的扩展（页面自己把状态递给它）
+    # 是唯一允许的入口，**不许 import `core.model`**（那是业务模型，会随需求改）。
+    # 判据的含义：这个包里的东西拿到别的 App 里也应该能用 —— `SettingsPage` 只是「借个
+    #   Composable 作用域 + 一份 overlays / chrome 状态」，它自己不搬业务值。
+    # 对应地，业务页面与业务行留在 `ui/row` / `ui/dialog` / `ui/chrome` / `ui/screen` 里。
+    ("ui.kit", (r"^com\.lookie\.opluskey\.core\.model\.",), "ui/kit 是业务无关的通用件：不吃 core.model（业务行留在 ui/row 等）"),
     ("core", (r"^com\.lookie\.opluskey\.(inject|bridge|host|ui)\.",), "core 是最底层，不引任何上层包"),
+    # `inject/input/` 是**业务无关的判定层**：手势状态机、组合判定、连击链、滑动判定与它们
+    # 吃的那几个值对象（`Gesture` / `KeyRef` / `ChainSpec` / `ComboBinding` / `DetectorWindows`）。
+    # 这一层只认「毫秒 / 布尔 / 次数」与「带名字的键引用」，**一个业务模型都不该出现** ——
+    # 业务侧的 `ComboKey` / `KeyConfig` / `ClickChainParams` / `KeyId` 都在 `core.model` 里，
+    # 会随需求改；判定层跟着它们改，就是上一轮耦合的原样重演。
+    # 翻译收在 `inject/key/GestureBridge` 一处（那一处同时认识两边，是唯一的交接点）。
+    # 例外只有 `core.log.XLog`（打日志）与 `core.judge`（纯数学，本身就是判定的一部分），
+    # 它们不在 `core.model` 下，所以下面这条禁令正好放过它们。
+    (
+        "inject.input",
+        (r"^com\.lookie\.opluskey\.core\.model\.",),
+        "inject/input 是业务无关的判定层：不吃 core.model 的业务类型（翻译在 inject/key/GestureBridge）",
+    ),
     # KeyModule 在注入侧被加载，但它**允许** import ui/（界面 hook 只在设置页进程分支里装，
     # 见它的类注释）—— 所以这里只拦「一加载就崩」的那几样，与 CI 的 (5)' 同口径。
     ("root", (r"^(androidx\.|io\.github\.suqi8|io\.github\.lyxnx|com\.composables)",), "KeyModule 不引界面库（CI 5'）"),
@@ -130,12 +149,17 @@ def bucket_of(rel: str) -> str:
     # 注入侧用 —— 拿错档位判「这段会不会在 system_server 里跑」就会判错。
     if parts[0] == "bridge" and len(parts) >= 2 and parts[1] in ("host", "inject"):
         return "bridge." + parts[1]
-    if parts[0] == "ui" and len(parts) >= 2 and parts[1] in ("hook", "state", "screen"):
+    if parts[0] == "ui" and len(parts) >= 2 and parts[1] in ("hook", "state", "screen", "kit"):
         # `ui/hook` 单独成档（2026-10-19）：它是 ui 内部的**顶层**（宿主页注入：换页 / 返回拦截 /
         #   配置导入导出 / 窗口色），分层图上 `ui.hook → ui.screen → ui → ui.state / ui.model` 是单向的。
         #   不拆出来的话它会被折进 `ui` 档，于是「`ui.screen` 反过来认识 `ui.hook`」这种事脚本抓不到 ——
         #   实测当时那条 `ui → ui.screen` 边正是 `ui/hook/SettingsPageHooks.kt` 贡献的，看不出方向对不对。
         return "ui." + parts[1]
+    # `inject/input` 单独成档（2026-11-17）：判定层要与业务模型彻底分开，判据见 RULES 里那一条。
+    # `inject/key` / `inject/wire` / `inject/system` 仍是 `inject` 档 —— 它们是装配 / 通道 / 宿主
+    # 接线，本来就该认识业务模型。
+    if parts[0] == "inject" and len(parts) >= 2 and parts[1] == "input":
+        return "inject.input"
     return parts[0]
 
 

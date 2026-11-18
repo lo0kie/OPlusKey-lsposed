@@ -7,10 +7,10 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.NoticeMode
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.MenuEntry
-import com.lookie.opluskey.ui.dialog.MenuState
-import com.lookie.opluskey.ui.dialog.PageMenu
-import com.lookie.opluskey.ui.dialog.rememberMenuState
+import com.lookie.opluskey.ui.kit.MenuEntry
+import com.lookie.opluskey.ui.kit.MenuState
+import com.lookie.opluskey.ui.kit.PageMenu
+import com.lookie.opluskey.ui.kit.rememberMenuState
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor

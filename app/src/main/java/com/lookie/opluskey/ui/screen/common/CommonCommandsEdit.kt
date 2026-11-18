@@ -19,12 +19,12 @@ import com.lookie.opluskey.ui.chrome.HeaderIconButton
 import com.lookie.opluskey.ui.chrome.PageCornerFab
 import com.lookie.opluskey.ui.chrome.PageFabButton
 import com.lookie.opluskey.ui.chrome.PageFabIcon
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.kit.ConfirmDialog
+import com.lookie.opluskey.ui.kit.rememberRowIconColor
 import com.lookie.opluskey.ui.model.icon.PageIcons
-import com.lookie.opluskey.ui.row.rememberRowIconColor
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.state.common.CommonCommandsEditState

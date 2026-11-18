@@ -19,10 +19,12 @@ import com.lookie.opluskey.core.model.systemVarRef
 import com.lookie.opluskey.core.model.systemVarTextRef
 import com.lookie.opluskey.host.action.condition.ConditionProbe
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.MenuEntry
-import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.dialog.PickerActionDialog
-import com.lookie.opluskey.ui.dialog.rememberMenuState
+import com.lookie.opluskey.ui.kit.MenuEntry
+import com.lookie.opluskey.ui.kit.PageMenu
+import com.lookie.opluskey.ui.kit.SectionTitle
+import com.lookie.opluskey.ui.kit.rememberMenuState
+import com.lookie.opluskey.ui.kit.titleWithCount
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.icon.conditionIcon
 import com.lookie.opluskey.ui.model.text.conditionKindLabel
@@ -30,8 +32,6 @@ import com.lookie.opluskey.ui.model.text.conditionValueText
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.RowEndIcon
-import com.lookie.opluskey.ui.row.SectionTitle
-import com.lookie.opluskey.ui.row.titleWithCount
 import com.lookie.opluskey.ui.state.command.CommandUiState
 import com.lookie.opluskey.ui.state.page.CommandForm
 import com.lookie.opluskey.ui.wire.appNameOf

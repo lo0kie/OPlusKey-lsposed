@@ -171,7 +171,7 @@ internal object Framework {
     // 宿主（`com.oplus.gesture`）侧的接管点：系统自己判好的侧键手势真正的落点。
     //
     // 注意：这两个服务名与那个混淆 Handler 的类名**只有本文件写**（一、7）：它们散在
-    // `host/SideKeyGestureHooks`、`host/GestureReceiver`、`inject/input/GestureForwarder`
+    // `host/SideKeyGestureHooks`、`host/GestureReceiver`、`inject/wire/GestureForwarder`
     // 三处各写一遍，改 ROM 时漏改任何一处，表现都是「按键拦下来了但什么都不做」，
     // 而且从日志上看不出漏在哪一层。
     //

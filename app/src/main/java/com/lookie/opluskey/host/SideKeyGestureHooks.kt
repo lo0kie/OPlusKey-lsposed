@@ -222,7 +222,7 @@ internal object SideKeyGestureHooks {
      * ```
      *
      * `lb.d.d()` 是「当前有任一拦截条件成立」：锁屏 / 熄屏 / 游戏模式 / 免打扰 / 超级省电 /
-     * 用户还没设置完。**开机后那一段正是锁屏**，而模块的唤醒（`inject/input/GestureForwarder` 与
+     * 用户还没设置完。**开机后那一段正是锁屏**，而模块的唤醒（`inject/wire/GestureForwarder` 与
      * `host/GestureReceiver` 的 keepProcessAwake）都走 `startService` ⇒ 用户看到的是
      * 「刚开机按一下侧键，模块页自己弹出来」。
      *

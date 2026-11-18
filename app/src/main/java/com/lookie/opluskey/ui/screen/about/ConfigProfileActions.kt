@@ -11,9 +11,9 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
-import com.lookie.opluskey.ui.dialog.NameDialog
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.kit.ConfirmDialog
+import com.lookie.opluskey.ui.kit.NameDialog
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.state.signal.VarListSignal

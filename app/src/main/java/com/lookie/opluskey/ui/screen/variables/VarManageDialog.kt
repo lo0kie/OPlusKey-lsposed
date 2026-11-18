@@ -20,11 +20,11 @@ import com.lookie.opluskey.core.model.Variable
 import com.lookie.opluskey.core.model.VariableRefs
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
-import com.lookie.opluskey.ui.dialog.NameDialog
 import com.lookie.opluskey.ui.dialog.PickerActionDialog
 import com.lookie.opluskey.ui.dialog.SinglePickerDialog
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.kit.ConfirmDialog
+import com.lookie.opluskey.ui.kit.NameDialog
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.screen.writeToken
 import com.lookie.opluskey.ui.state.signal.VarListSignal

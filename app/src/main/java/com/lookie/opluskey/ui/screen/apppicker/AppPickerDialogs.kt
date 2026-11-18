@@ -14,7 +14,7 @@ import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.kit.ConfirmDialog
 import com.lookie.opluskey.ui.state.picker.AppPickerUiState
 import com.lookie.opluskey.ui.state.picker.PickedDetail
 import com.lookie.opluskey.ui.state.picker.PickerToggle

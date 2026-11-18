@@ -56,10 +56,10 @@ import com.lookie.opluskey.ui.feedback.CHECKING_HINT_FALLBACK_MS
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_CHECKING
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.retireHint
+import com.lookie.opluskey.ui.kit.ChipText
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.text.CHECKING_HINT
 import com.lookie.opluskey.ui.model.theme.FROSTED_SURFACE_ALPHA
-import com.lookie.opluskey.ui.row.ChipText
 import com.lookie.opluskey.ui.state.signal.HintItem
 import com.lookie.opluskey.ui.style.frosted
 import com.lookie.opluskey.ui.wire.noticeReason

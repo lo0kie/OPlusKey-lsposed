@@ -16,10 +16,10 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.present.comboKeyNames
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.writeAndNotice
-import com.lookie.opluskey.ui.row.ChipSentence
+import com.lookie.opluskey.ui.kit.ChipSentence
+import com.lookie.opluskey.ui.kit.ConfirmDialog
 import com.lookie.opluskey.ui.screen.combo.ComboNameLines
 import com.lookie.opluskey.ui.screen.combo.holdSentenceTemplate
 import com.lookie.opluskey.ui.screen.combo.waitSentenceTemplate

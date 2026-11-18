@@ -181,7 +181,7 @@ internal object GestureExec {
                 return true
             }
         }
-        // 去重：转发侧对同一次手势会发两条（立刻 + 300ms 后补发，见 inject/input/GestureForwarder），
+        // 去重：转发侧对同一次手势会发两条（立刻 + 300ms 后补发，见 inject/wire/GestureForwarder），
         // 两条 sent_at 相同 —— 按 (键, 手势) 记下最近处理过的时刻，sent_at <= 它的一律忽略。
         // 判据用 <= 而非 ==：两次按压间隔小于补发延迟时，补发那条会晚于下一次按压到达。
         val token = "$subject/$phaseId"

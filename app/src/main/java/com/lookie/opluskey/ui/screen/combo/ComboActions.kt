@@ -15,7 +15,7 @@ import com.lookie.opluskey.core.present.comboOrderedBetween
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.hint
-import com.lookie.opluskey.ui.row.CHIP_SLOT
+import com.lookie.opluskey.ui.kit.CHIP_SLOT
 import com.lookie.opluskey.ui.screen.binding.ComboModeAsk
 import com.lookie.opluskey.ui.screen.binding.ComboStarterBlocked
 import com.lookie.opluskey.ui.state.binding.KeysAsk

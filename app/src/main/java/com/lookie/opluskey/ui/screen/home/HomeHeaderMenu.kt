@@ -23,9 +23,9 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.HeaderMenuButton
 import com.lookie.opluskey.ui.chrome.openStockPage
 import com.lookie.opluskey.ui.chrome.restartModule
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
-import com.lookie.opluskey.ui.dialog.MenuEntry
-import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.kit.ConfirmDialog
+import com.lookie.opluskey.ui.kit.MenuEntry
+import com.lookie.opluskey.ui.kit.PageMenu
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.target.DonateTarget
 import com.lookie.opluskey.ui.model.text.DISCLAIMER_TEXT
@@ -127,6 +127,10 @@ internal fun SettingsPage.HomeHeaderMenu() {
                         title = I18n.get(Strings.MENU_DEFAULT_PAGE),
                         icon = PageIcons.MenuStock,
                         enabled = true,
+                        //  行尾那颗右箭头（用户口径）。`submenu` 这一位读作「行尾那一格要不要画」——
+                        //  它是库的 `DropdownImpl(hasSubmenu = …)`，不是「这行有子菜单」，见
+                        //  `MenuEntry.Row` 的说明。字形用默认那颗（跳出去那一档）。
+                        submenu = true,
                     ) {
                         open = false
                         openStockPage()
@@ -155,6 +159,8 @@ internal fun SettingsPage.HomeHeaderMenu() {
                         summary = logSummary,
                         icon = PageIcons.MenuExport,
                         enabled = rowsEnabled,
+                        //  行尾右箭头（用户口径），与上面「默认界面」同一笔（见那里的说明）。
+                        submenu = true,
                     ) {
                         open = false
                         hooks.onExportLog?.invoke()

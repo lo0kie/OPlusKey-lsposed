@@ -1,8 +1,5 @@
 package com.lookie.opluskey.core.judge
 
-import com.lookie.opluskey.core.model.ComboKey
-import com.lookie.opluskey.core.model.KeyId
-
 // 判定里那些**只跟数字有关**的部分 —— 候选窗口、成员新鲜度、整串跨度、派发击数、按序比对。
 //
 //  为什么收进 `core`：这些函数原先都是 `inject/input/ComboDetector` 与 `GestureDetector`
@@ -12,9 +9,15 @@ import com.lookie.opluskey.core.model.KeyId
 //  `:core:test` 里可以直接喂时刻表验证边界。
 //
 //  **参数一律传数据、不传容器**：`presses` / `held` 传的是判定器自己那两张表的只读视图
-//  （函数不复制、不改写），`KeyId` 之外的语义一概不带进来。这样它们既是纯函数，
-//  又不会因为多一次 map 拷贝把「每次按下都要走一遍」的那条热路径变慢
-//  （`tools/audit-perf.py` 判据 2 管着这件事）。
+//  （函数不复制、不改写）。这样它们既是纯函数，又不会因为多一次 map 拷贝把
+//  「每次按下都要走一遍」的那条热路径变慢（`tools/audit-perf.py` 判据 2 管着这件事）。
+//
+//  ## 为什么这几处是泛型
+//
+//  这一包里一个业务类型都不该出现 —— 判定是两进程共用的纯数学，业务模型（`ComboKey` / `KeyId`）
+//  在 `core.model` 里，会随需求改。调用方（`inject/input`）有自己那套键引用与档位视图，
+//  两边只需在这几个函数上对齐**「怎么比、怎么念」**：`K` 是键的类型，`T` 是档位的类型。
+//  泛型把它交给调用方，这一层于是只剩索引、排序、比较。
 
 /**
  * 多成员组合的**候选池**：这一下按下的那颗 + 窗口内按下过的 + **仍按着的**。
@@ -31,13 +34,13 @@ import com.lookie.opluskey.core.model.KeyId
  *  @param held 此刻还按着的键（`ComboDetector.down` 的键集）
  *  @param self 当前这一下按下的那颗
  */
-fun poolWithinWindow(
+fun <K> poolWithinWindow(
     now: Long,
     window: Long,
-    presses: Map<KeyId, Long>,
-    held: Set<KeyId>,
-    self: KeyId,
-): List<KeyId> {
+    presses: Map<K, Long>,
+    held: Set<K>,
+    self: K,
+): List<K> {
     //  只量一次 `now - at`：这是每次按下都要走的一段
     val pool = arrayListOf(self)
     for ((key, at) in presses) {
@@ -54,9 +57,9 @@ fun poolWithinWindow(
  *    其余成员都要落在这段时间内 —— 首键按住多久都不计时；
  *  · 否则：每颗成员各自往前等 [perFollowerWindowMs]（量的是相邻两次按下之间）。
  *
- *  @param followerPressAt 后续成员的按下时刻（按 [ComboKey.keys] 的顺序，首键不在其中）
- *  @param wholeWindowMs 整串共用的那个窗口（`ComboWindows.hold`）
- *  @param perFollowerWindowMs 每颗各自往前等的窗口（`ComboWindows.holdFollower`）
+ *  @param followerPressAt 后续成员的按下时刻（按成员清单的顺序，首键不在其中）
+ *  @param wholeWindowMs 整串共用的那个窗口（四格里的 `hold`）
+ *  @param perFollowerWindowMs 每颗各自往前等的窗口（四格里的 `holdFollower`）
  *  @return `true` = 这一档成立；成员为空时恒 `true`（两颗的组合没有待量的间隔）
  */
 fun followersFresh(
@@ -93,7 +96,7 @@ fun spanFrom(
  *  连击链数出来的击数可能为 0（老配置 / 抬手丢失）、也可能超过这一档的封顶
  *  （用户连按了第 5 下而这一档只认到第 3 击），两处到点判定都按这个数派发。
  *
- *  @param cap 这一档的判定上限（`ClickChainParams.judgeCap`，至少 1）
+ *  @param cap 这一档的判定上限（`ChainSpec.judgeCap`，至少 1）
  */
 fun fireCount(
     clicks: Int,
@@ -101,34 +104,62 @@ fun fireCount(
 ): Int = clicks.coerceIn(1, cap.coerceAtLeast(1))
 
 /**
- * [pool] 里这几颗键按**按下序号**排出的真实顺序（id 序列）—— 只给「按顺序触发」那档用。
+ * [pool] 里这几颗键按**按下序号**排出的真实顺序 —— 只给「按顺序触发」那档用。
  *
  *  序号查不到的那颗（不太可能：池里的键都在 `presses` 里，也就都在序号表里）排在末尾，
  *  兜住「读不到序号」的边角 —— 那它基本不会命中任何有序档，但不会崩。
  *
  *  @param seq 每颗键的按下序号（`ComboDetector.pressSeq`，只增不减）
+ *  @param ref 怎么把一颗键念成它在这份配置里的身份（有序档按这一串比）
  */
-fun pressOrder(
-    pool: List<KeyId>,
-    seq: Map<KeyId, Int>,
-): List<String> = pool.sortedBy { seq[it] ?: Int.MAX_VALUE }.map { it.id }
+fun <K, R> pressOrder(
+    pool: List<K>,
+    seq: Map<K, Int>,
+    ref: (K) -> R,
+): List<R> = pool.sortedBy { seq[it] ?: Int.MAX_VALUE }.map(ref)
+
+/**
+ * [sequence] 的**结尾**是不是与 [members] 逐位相同 —— 「按顺序触发」那条判据的唯一实现。
+ *
+ *  判定侧（`inject/input/ComboBinding.matchesOrdered`）与业务侧（`ComboKey.matchesOrdered`）
+ *  都调它。这条判据原先各写一份：线上跑的是判定侧那一条，而单测喂的是业务侧那一条 ——
+ *  两份一旦走岔，测试全绿而真机是坏的（2026-11-18 复核发现）。
+ *
+ *  **比的必须是结尾而不是开头**：当前这一下一定是成员里的最后一颗（组合在它落下那一刻成立），
+ *  而扫描窗口里可能还兜着这一组开始之前按过的键。按开头比时，前面多一颗（比如先点了一下音量键）
+ *  就会把整条有序组合判成「顺序不对」，用户看到的是一组没生效、只落下两颗键各自的单击。
+ *
+ *  @param members 这一档的成员（顺序即按下顺序）
+ *  @param sequence 真实按下顺序
+ */
+fun <T> matchesOrderedTail(
+    members: List<T>,
+    sequence: List<T>,
+): Boolean =
+    sequence.size >= members.size &&
+        members.indices.all { sequence[sequence.size - members.size + it] == members[it] }
 
 /**
  * 这几档里，[sequence] 这一**真实按下顺序**能命中的有序档（含不分顺序档）。
  *
- *  有序档（`ComboKey.ordered`）按序比（`ComboKey.matchesOrdered`）；不分顺序档本就不看顺序，
+ *  有序档（`ComboBinding.ordered`）按序比（`ComboBinding.matchesOrdered`）；不分顺序档本就不看顺序，
  *  照旧留下。两者合成一张候选，调用方再按触发方式逐档挑。
  *
  *  **一档有序的都没有时直接把原表返回**：这条在「全是等窗口的两颗组合」的常见配置上省掉一次遍历。
+ *
+ *  @param ordered 这一档要不要求按顺序
+ *  @param matches 这一档认不认这个顺序
  */
-fun orderMatch(
-    candidates: List<ComboKey>,
-    sequence: List<String>,
-): List<ComboKey> =
-    if (candidates.none { it.ordered }) {
+fun <T, R> orderMatch(
+    candidates: List<T>,
+    sequence: List<R>,
+    ordered: (T) -> Boolean,
+    matches: (T, List<R>) -> Boolean,
+): List<T> =
+    if (candidates.none(ordered)) {
         candidates
     } else {
-        candidates.filter { !it.ordered || it.matchesOrdered(sequence) }
+        candidates.filter { !ordered(it) || matches(it, sequence) }
     }
 
 /**

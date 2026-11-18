@@ -24,12 +24,12 @@ import com.lookie.opluskey.ui.chrome.PageFabButton
 import com.lookie.opluskey.ui.chrome.PageFabIcon
 import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
-import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.feedback.Feedback
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_PAGE
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.kit.ConfirmDialog
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.screen.pageWritable

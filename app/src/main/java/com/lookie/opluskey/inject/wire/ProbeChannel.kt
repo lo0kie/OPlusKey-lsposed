@@ -12,15 +12,15 @@ import com.lookie.opluskey.bridge.instanceOf
 import com.lookie.opluskey.core.DEBUG_PROBE
 import com.lookie.opluskey.core.judge.Swipe
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.ComboKey
-import com.lookie.opluskey.core.model.ComboPlan
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.ZoomWindowWire
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.inject.input.ComboDown
+import com.lookie.opluskey.inject.input.ComboPlan
 import com.lookie.opluskey.inject.input.ComboSequence
+import com.lookie.opluskey.inject.input.KeyRef
 import com.lookie.opluskey.inject.input.RawInput
 import com.lookie.opluskey.inject.input.TouchJudge
 import com.lookie.opluskey.inject.system.ShortcutRead
@@ -1382,19 +1382,24 @@ internal fun ProbeChannel.combo() {
     val ck2 = KeyId.customId(2)
     val ck3 = KeyId.customId(3)
 
+    /**
+     * 字符串 id → 判定层的 [KeyRef]。
+     *
+     *  探针从命令行拿的是字符串（`--es` 只有字符串），判定层只认 [KeyRef]；而 [combo] 判的是
+     *  「凑没凑齐」，只按**身份相等**比 —— 所以这里拿字符串本身当身份，不绕去 [KeyId]。
+     */
+    fun ref(id: String): KeyRef = KeyRef(id, id)
+
     fun plan(
-        id: String,
+        name: String,
         vararg keys: String,
     ): ComboPlan =
         ComboPlan(
-            id = id,
-            keys = keys.toSet(),
+            name = name,
+            keys = keys.map(::ref).toSet(),
             //  探针按「相邻两颗一个窗口」摆跨度：与 `Config.comboSpanFor` 在
             //  「固定窗口起点关着」时同一个算法，期望值才好写成人能算的数
-            spanMs = 300 * (keys.size - 1),
-            longPressMs = 500,
-            //  探针只模拟「等窗口」那一档：其余两档的判据要读按键的按下状态，不是这一层能造的
-            mode = ComboKey.MODE_WAIT,
+            spanMs = 300L * (keys.size - 1),
         )
 
     val plans = listOf(plan("cmb1", plus, ck1), plan("cmb2", plus, ck1, ck2), plan("cmb3", plus, ck1, ck2, ck3))
@@ -1406,7 +1411,7 @@ internal fun ProbeChannel.combo() {
     ) {
         val gather =
             ComboSequence.resolve(
-                downs.map { (key, at) -> ComboDown(key, at) },
+                downs.map { (key, at) -> ComboDown(ref(key), at) },
                 plans,
             )
         val actual = ComboSequence.describe(gather)

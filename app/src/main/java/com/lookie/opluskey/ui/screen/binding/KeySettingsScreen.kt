@@ -25,13 +25,13 @@ import com.lookie.opluskey.ui.feedback.HINT_SLOT_OWN_SETTINGS
 import com.lookie.opluskey.ui.feedback.switchNotice
 import com.lookie.opluskey.ui.feedback.switchToNotice
 import com.lookie.opluskey.ui.feedback.writeAndNotice
+import com.lookie.opluskey.ui.kit.SectionTitle
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.EditGate
 import com.lookie.opluskey.ui.row.OwnCardTitles
 import com.lookie.opluskey.ui.row.OwnSettingsCard
-import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.noticeModeLabel
 import com.lookie.opluskey.ui.screen.combo.HoldComboCard
 import com.lookie.opluskey.ui.screen.combo.WaitComboCard
