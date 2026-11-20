@@ -307,16 +307,12 @@ internal val COMMAND_DISCLAIMER_TEXT: String
 /**
  * 「支持的命令格式」卡上的几行 —— 讲**命令输入框里能写什么**。
  *
- *  与 `Action.PREFIXES` 的关系：那边是闸（`hasSupportedFormat` 决定存不存得下），这里是它的说法
- *  （一行一个前缀 + 一句说明）。**两者不是逐项相等**：时钟那两条在闸里、却不在这张卡上 ——
- *  它们有图形入口（「快捷功能」里的「计时」那一格），按下面那条收录规则不教手写，
- *  但仍要能当单条命令的正文存下来（从格子里挑出来那一步只过闸）。
+ *  **这份清单就是判据本身**：名单只有一份（`Action.HANDWRITTEN`），`Action.hasSupportedFormat`
+ *  直接读它，这里只负责给它配上界面要的两样东西 —— 行首那颗图例记号、两列文案。
+ *  于是「卡上列不列」与「存不存得下」不再是两个问题：卡上没列的一律手写不进去。
  *
- *  注意：**收录规则：只列「没有内置入口」的格式**。内置命令已经给了入口的那些
- *  不在这里重复教手写：`app:` / `window:` 有「打开应用」那一格（小窗是它菜单里的开关）、
- *  `oplus:` / `setting:` / `proc:` / `volume:` 那些都是格子或菜单里选出来的 —— 同一个能力摆两个
- *  入口，手写那条还更容易写错（载荷是内部 id，记不住）。剩下的这几行是**没有图形入口**的：
- *  shell / keyevent / intent / notify / fluid / toast / shortcut。
+ *  `timer:` 就是这一档：它在「快捷功能」里有入口，按「只列没有图形入口的格式」不列，
+ *  因此也不再接受手写（以前为了让格子挑出来的动作能存成单条命令，它曾在闸里多留一格）。
  *
  *  点带 `prefix` 的那一行 = 把前缀填进命令输入框；输入框里已经带了格式时只换前缀、正文留着
  *  （不是追加，见 `CommandFormats.fillPrefix`）。
@@ -346,60 +342,36 @@ private fun formatLineOf(text: String?): CommandFormatLine? {
 
 internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
     get() =
-        listOf(
-            //  **没有「默认为 shell 命令」那一行了**：现在命令必须显式带前缀（用户口径
-            //  「去掉默认为 shell 和 cmd:，对命令详情限制，必须以支持的格式开头」）。
-            //  这一列就是「能写什么」，每行都可点、把前缀整段填进输入框。
-            //  左列写法 / 右列说明分成两条键取 —— 卡片排的是两列，各自要能单独对齐。
+        //  **从 `Action.HANDWRITTEN` 生成**：那一份同时是 `hasSupportedFormat` 的判据，
+        //  所以这里不再逐行写前缀 —— 加一种格式只改 core 那一处，卡与闸同时变。
+        //  **没有「默认为 shell 命令」那一行**：现在命令必须显式带前缀（用户口径
+        //  「去掉默认为 shell 和 cmd:，对命令详情限制，必须以支持的格式开头」）。
+        Action.HANDWRITTEN.map { format ->
             CommandFormatLine(
-                icon = PageIcons.FormatShell,
-                label = I18n.get(Strings.COMMAND_FORMAT_SHELL),
-                desc = I18n.get(Strings.COMMAND_FORMAT_SHELL_DESC),
-                prefix = Action.SHELL_PREFIX,
-            ),
-            CommandFormatLine(
-                icon = PageIcons.FormatKeyEvent,
-                label = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT),
-                desc = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT_DESC),
-                prefix = Action.KEYEVENT_PREFIX,
-            ),
-            CommandFormatLine(
-                icon = PageIcons.FormatIntent,
-                label = I18n.get(Strings.COMMAND_FORMAT_INTENT),
-                desc = I18n.get(Strings.COMMAND_FORMAT_INTENT_DESC),
-                prefix = Action.INTENT_PREFIX,
-            ),
-            //  发通知（`notify:`）放这里：它是**通知中心里那条**通知，与「执行时提示」那个 toast
-            //  不是一回事 —— 后者是模块自己的反馈，这一条是用户主动要的、能留着的通知。
-            CommandFormatLine(
-                icon = PageIcons.FormatNotify,
-                label = I18n.get(Strings.COMMAND_FORMAT_NOTIFY),
-                desc = I18n.get(Strings.COMMAND_FORMAT_NOTIFY_DESC),
-                prefix = Action.NOTIFY_PREFIX,
-            ),
-            //  流体云（`fluid:`）紧跟其后：同样是「让用户看见一句话」，但它是状态栏 / AOD 上
-            //  那颗几秒就收起的胶囊，通知中心里不留记录 —— 两行的说明各自说清这一点。
-            CommandFormatLine(
-                icon = PageIcons.FormatFluid,
-                label = I18n.get(Strings.COMMAND_FORMAT_FLUID),
-                desc = I18n.get(Strings.COMMAND_FORMAT_FLUID_DESC),
-                prefix = Action.FLUID_PREFIX,
-            ),
-            //  提示（`toast:`）与上面两行是同一件事的第三个落点：「说完就没」的那一档 ——
-            //  通知中心不留、状态栏不挂。排在这里是因为三者按「留多久」递减排：留着 / 几秒 / 不挂。
-            CommandFormatLine(
-                icon = PageIcons.FormatToast,
-                label = I18n.get(Strings.COMMAND_FORMAT_TOAST),
-                desc = I18n.get(Strings.COMMAND_FORMAT_TOAST_DESC),
-                prefix = Action.TOAST_PREFIX,
-            ),
-            CommandFormatLine(
-                icon = PageIcons.FormatShortcut,
-                label = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT),
-                desc = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_DESC),
-                prefix = Action.SHORTCUT_PREFIX,
-            ),
-        )
+                icon = formatIconFor(format.prefix),
+                label = I18n.get(format.label),
+                desc = I18n.get(format.desc),
+                prefix = format.prefix,
+            )
+        }
+
+/**
+ * 前缀 → 行首那颗图例记号。
+ *
+ *  **这里只决定画什么，不决定认什么**：认哪几种由 `Action.HANDWRITTEN` 定。所以新增一种格式时
+ *  这里没跟上，只会落到通用那颗（观感问题），不会出现「能写但没列」或「列了但写不进」。
+ */
+private fun formatIconFor(prefix: String): ImageVector =
+    when (prefix) {
+        Action.SHELL_PREFIX -> PageIcons.FormatShell
+        Action.KEYEVENT_PREFIX -> PageIcons.FormatKeyEvent
+        Action.INTENT_PREFIX -> PageIcons.FormatIntent
+        Action.NOTIFY_PREFIX -> PageIcons.FormatNotify
+        Action.FLUID_PREFIX -> PageIcons.FormatFluid
+        Action.TOAST_PREFIX -> PageIcons.FormatToast
+        Action.SHORTCUT_PREFIX -> PageIcons.FormatShortcut
+        else -> PageIcons.CommandSingle
+    }
 
 /**
  * 一档手势在界面上叫什么 —— **所有露出手势名的地方都走这里**（分段带、场景块的动作行、

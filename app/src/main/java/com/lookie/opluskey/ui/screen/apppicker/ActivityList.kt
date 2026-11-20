@@ -7,8 +7,8 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.icu.text.Transliterator
 import android.os.SystemClock
-import com.lookie.opluskey.bridge.AppCloneCatalog
-import com.lookie.opluskey.bridge.AppClonePackages
+import com.lookie.opluskey.command.platform.AppCloneCatalog
+import com.lookie.opluskey.command.platform.AppClonePackages
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.SettingsPage

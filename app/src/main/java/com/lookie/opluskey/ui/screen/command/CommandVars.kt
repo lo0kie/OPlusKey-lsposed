@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.lookie.opluskey.command.action.condition.ConditionProbe
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -17,7 +18,6 @@ import com.lookie.opluskey.core.model.SYSTEM_VAR_TEXT_SUFFIX
 import com.lookie.opluskey.core.model.systemVarName
 import com.lookie.opluskey.core.model.systemVarRef
 import com.lookie.opluskey.core.model.systemVarTextRef
-import com.lookie.opluskey.host.action.condition.ConditionProbe
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialog.PickerActionDialog
 import com.lookie.opluskey.ui.kit.MenuEntry

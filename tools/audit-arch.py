@@ -21,6 +21,9 @@ import unicodedata
 
 APP = 'app/src/main/java/com/lookie/opluskey'
 CORE = 'core/src/main/java/com/lookie/opluskey/core'
+#  命令能力层（`:command`）：动作派发与各执行器都在这里。凡是「这条规则只许有一份实现」的判据，
+#  扫描范围都必须带上它 —— 判据数的是**全项目**的实现在几处，漏一个模块就等于给那个模块放行。
+COMMAND = 'command/src/main/java/com/lookie/opluskey/command'
 
 BLOCK_COMMENT = re.compile(r'/\*.*?\*/', re.S)
 LINE_COMMENT = re.compile(r'//[^\n]*')
@@ -91,14 +94,23 @@ def main() -> int:
     )
 
     # 2) 「包还在吗 → 报哪一档失败」：唯一实现是 `entryFailure`。
+    #    **扫描范围是 app + command**：动作派发与两个启动器（应用 / 小窗）在 `:command` 里，
+    #    只看 `app/` 时这一条会读成「0 / ≥3」—— 红的原因不是又长出一份实现，而是脚本还在认旧位置。
     add(
         'entryFailure 的调用点',
-        count(r'\bentryFailure\(', APP),
+        count(r'\bentryFailure\(', APP, COMMAND),
         '≥ 3（解析不到 / 拉起被拒 / 小窗）',
-        count(r'\bentryFailure\(', APP) >= 3,
+        count(r'\bentryFailure\(', APP, COMMAND) >= 3,
     )
-    #  这条要排除 helper 自己（`entryFailure` 的实现就是那一句）
-    inline_failure = count(r'if\s*\(\s*installed\s*\)\s*CommandFailure\.APP_NO_ENTRY', APP) - 1
+    #  这条要排除 helper 自己（`entryFailure` 的实现就是那一句）。**按文件排除、不拿总数减一**：
+    #  减一的写法在「一处都匹配不到」时会算出 -1，读起来像「有负一处手写」—— 判据本身要能分清
+    #  「没有旁路」与「脚本没找到代码」。
+    inline_failure = count_excluding(
+        r'if\s*\(\s*installed\s*\)\s*CommandFailure\.APP_NO_ENTRY',
+        ('command/CustomCommandRunner.kt',),
+        APP,
+        COMMAND,
+    )
     add(
         '失败分类就地手写（if (installed) APP_NO_ENTRY）',
         inline_failure,
@@ -124,6 +136,7 @@ def main() -> int:
         ('i18n/Strings.kt', 'present/CommandTitle.kt'),
         CORE,
         APP,
+        COMMAND,
     )
     add(
         '拼句子的格式键（工厂之外）',
@@ -143,7 +156,7 @@ def main() -> int:
     )
     #  两处就是两套语序（谁先拼父、状态粘在谁身上会不一致），所以这里卡死 1。
     #  它必须是 `private` 的，这一点 grep 数不出来，但文件里没有第二个 `fun` 拼句子时也就没处调。
-    labels = count(r'ActionCatalog\.label\(', CORE, APP)
+    labels = count(r'ActionCatalog\.label\(', CORE, APP, COMMAND)
     add(
         'ActionCatalog.label 的直接调用',
         labels,
@@ -176,7 +189,13 @@ def main() -> int:
     #    · 键码归不归模块 —— 唯一答案 `KeyId.claimsBuiltin`。再有人拿 `builtins` 跑一遍
     #      any/flatMap 就是第二份；漏改一处的后果分别是「system_server 里自持循环」与
     #      「用户自己收的键被误拦」，两者都不编译报错。
-    key_claims = count_excluding(r'KeyId\.builtins\.(?:any|flatMap|filter|firstOrNull)\s*\{', ('model/KeyId.kt',), CORE, APP)
+    key_claims = count_excluding(
+        r'KeyId\.builtins\.(?:any|flatMap|filter|firstOrNull)\s*\{',
+        ('model/KeyId.kt',),
+        CORE,
+        APP,
+        COMMAND,
+    )
     add(
         '键码归属就地推（builtins 上跑遍历）',
         key_claims,
@@ -186,7 +205,7 @@ def main() -> int:
     #    · 有没有绑定 —— 唯一答案 `Action.isBound`。`!is Action.None` / `== Action.None`
     #      这类取反/相等判断一处都不该再有（`when` 里的 `is Action.None ->` 不算：那是结构分派，
     #      不是判「有没有绑」）。
-    bound = count(r'(?:!\s*is|==|!=)\s*Action\.None', CORE, APP)
+    bound = count(r'(?:!\s*is|==|!=)\s*Action\.None', CORE, APP, COMMAND)
     add(
         '「有没有绑定」就地取反（!is / == Action.None）',
         bound,
@@ -195,7 +214,13 @@ def main() -> int:
     )
     #    · 老配置那个 `|名字` 后缀 —— 只在名字优先级链（`core/model/AppName`）里读。
     #      外面再切一次就是又一条自己的顺序。
-    legacy = count_excluding(r'AppTarget\.label\(', ('model/AppName.kt', 'model/AppTarget.kt'), CORE, APP)
+    legacy = count_excluding(
+        r'AppTarget\.label\(',
+        ('model/AppName.kt', 'model/AppTarget.kt'),
+        CORE,
+        APP,
+        COMMAND,
+    )
     add(
         '老 |名字 后缀在优先级链之外被读',
         legacy,
@@ -221,7 +246,7 @@ def main() -> int:
     #    开关种类那一半同样交给编译器（`ActionIcons` 里对 `SwitchKind` 的 `when` 是穷尽的），
     #    但「种类 id 又变成裸字面量」这件事编译管不了 —— 那种写法散开之后，加一条开关就要
     #    满地找 `"rotation"` 这种串。这里数的是它。
-    switch_literals = count(r'id\s*==\s*"', CORE, APP)
+    switch_literals = count(r'id\s*==\s*"', CORE, APP, COMMAND)
     add(
         '开关种类 id 裸字面量比较',
         switch_literals,

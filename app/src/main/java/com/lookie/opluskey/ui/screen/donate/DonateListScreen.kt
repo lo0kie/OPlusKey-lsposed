@@ -1,7 +1,5 @@
 package com.lookie.opluskey.ui.screen.donate
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,7 +17,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -36,6 +32,7 @@ import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.kit.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.CARD_CORNER
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.target.Donor
 import com.lookie.opluskey.ui.model.target.donors
@@ -43,10 +40,11 @@ import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.style.AppDivider
 import com.lookie.opluskey.ui.style.appDividerColor
-import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.VerticalDivider
+import io.github.suqi8.coui.kmp.squircle.squircleBorder
+import io.github.suqi8.coui.kmp.squircle.squircleSurface
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -105,14 +103,6 @@ internal fun SettingsPage.DonateListScreen(scrollBehavior: ScrollBehavior) {
  */
 private val TABLE_LINE = 1.dp
 
-/**
- * 表格的圆角 —— **直接引 [CardDefaults.CornerRadius]**（`coui_round_corner_m`，12dp）：
- *  这一页上下的 listview 就是卡片，圆角取同一档才对得上；写死一个数迟早会和主题走散。
- *
- *  底色同理，取卡片那档默认色 `surfaceContainer`（见 [DonorTable]）—— 一块和卡片一样的板子。
- */
-private val TABLE_CORNER = CardDefaults.CornerRadius
-
 /** 格子四周的内边距 —— 上下左右等宽，格子里的字才在正中。 */
 private val TABLE_CELL_PADDING = 16.dp
 
@@ -153,21 +143,24 @@ private fun EmptyDonorCard() {
  *  **表头下面那条横线也在这套里**（它就是第一条横线），不靠「表头自带的边界」——
  *  手写的东西不该有两处画线的地方。笔宽仍走 [TABLE_LINE]（框与格线同宽，那是排版账）。
  *
- *  **圆角靠 `clip`**：表头那一行与横线都要铺满整块板子，不裁的话方角会顶穿圆角。
- *  裁在板子上、描边描在裁之后（`border` 排在 `clip` 后面），框线才不会被裁掉半条。
+ *  **圆角与卡片行同一份**：半径取 [CARD_CORNER]、形状取库的 squircle（`squircleSurface` /
+ *  `squircleBorder`，与 `Card(cornerRadius = …)` 内部那一支是同一份实现）。这一页上下都是
+ *  `CardList`，表格夹在中间 —— 半径差一档、或者一个是正圆角一个是超椭圆，并排看就是
+ *  「这块板子不属于这一页」。
+ *
+ *  `squircleSurface` 自己会裁：表头那一行与横线都要铺满整块板子，不裁的话方角会顶穿圆角；
+ *  描边排在它后面，框线才不会被裁掉半条。
  */
 @Composable
 private fun DonorTable(rows: List<Donor>) {
     val scheme = COUITheme.colorScheme
-    val shape = RoundedCornerShape(TABLE_CORNER)
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = PAGE_MARGIN)
-                .clip(shape)
-                .background(scheme.surfaceContainer)
-                .border(TABLE_LINE, appDividerColor(), shape),
+                .squircleSurface(color = scheme.surfaceContainer, cornerRadius = CARD_CORNER)
+                .squircleBorder(width = TABLE_LINE, color = appDividerColor(), cornerRadius = CARD_CORNER),
     ) {
         DonorRow(
             name = I18n.get(Strings.DONATE_LIST_COL_NAME),

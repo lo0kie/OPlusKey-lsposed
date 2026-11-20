@@ -151,6 +151,9 @@ internal fun SettingsPage.CollectKeyDialog(
     FrostedDialog(
         show = show && waiting,
         title = I18n.get(Strings.KEY_WATCH_TITLE),
+        //  「按下想添加的按键」是这一窗的**说明**，不是状态 —— 它归标题下面那一行
+        //  （与标题同属头区，正文那两行状态再变也不带走它）。
+        subTitle = I18n.get(Strings.KEY_WATCH_HINT),
         onDismiss = onDismiss,
         // 退场动画播完才算「让位」—— 库在这一刻会收一次键盘，命名的聚焦必须排在这之后。
         //  只在**该关**那一档置位：用户自己关掉弹窗时「上一个窗收场了」这件事对命名窗毫无意义。
@@ -358,29 +361,20 @@ private fun SettingsPage.claimableNow(code: Int): Boolean =
     }
 
 /**
- * 弹窗正文：三行，居中。
+ * 弹窗正文：两行，居中。
  *
  *  **没有底部按钮**：这一步只是等按键，没有第二步可确认；关掉靠返回键 / 点遮罩
  *  （[FrostedDialog] 里的 `OverlayDialog` 自带 `onDismissRequest`）。
  *
- *  **也没有「被拒」那行红字**：那类答复走底部的消息条（用户口径），正文只保留
- *  「按下想添加的按键 / 正在等待按键… / N 秒后自动关闭」这三行，高度恒定、不随按错而跳动。
+ *  **正文只放「此刻在做什么」**（正在等待 / 还有几秒）：那句「按下想添加的按键」是说明，
+ *  走外壳的 `subTitle`（标题下面那一行）。
+ *
+ *  **也没有「被拒」那行红字**：那类答复走底部的消息条（用户口径），高度恒定、不随按错而跳动。
  *  倒计时**单独一行**：与「正在等待按键」挤在一句里时，那个括号会把前半句推得长短不一。
  */
 @Composable
 private fun CollectKeyBody(secondsLeft: Int) {
     Column(Modifier.fillMaxWidth()) {
-        Text(
-            text = I18n.get(Strings.KEY_WATCH_HINT),
-            style = COUITheme.textStyles.body2,
-            color = COUITheme.colorScheme.onSurfaceSecondary,
-            textAlign = TextAlign.Center,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .dialogSideMargin()
-                    .padding(bottom = 4.dp),
-        )
         Text(
             text = I18n.get(Strings.KEY_WATCH_WAITING),
             style = COUITheme.textStyles.body2,

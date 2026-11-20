@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.model.page
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.github.suqi8.coui.kmp.layout.DialogDefaults
 
 // 尺寸 / 边距 / 行数 / 触达区（拆分后剩下的一档）。 —— 从 PageConst.kt 拆出（同包搬迁，调用点不变）。
 
@@ -222,7 +223,7 @@ internal const val COLUMNS = 2
 /**
  * 网格**一格的最小宽度** —— 列数按它算：可用宽度除一下、向下取整，最少一列。
  *
- *  取 150dp 是照 [COLUMNS] 那条注释反推的：363dp 机身在 `PAGE_MARGIN` 之后剩约 331dp，
+ *  取 150dp 是照 [COLUMNS] 那条注释反推的：363dp 机身在 [PAGE_MARGIN] 之后剩约 331dp，
  *  331 / 150 = 2.2 ⇒ 仍是两列（与改之前一模一样）；横屏 / 平板 / 大字模式下宽到 450dp 才会变三列。
  *  窗口窄到一格都放不下两列时（分屏、超大字号）落回**一列**，不硬塞 —— 那时两列每格只有百来 dp，
  *  14sp 的标题会被省略号截掉。
@@ -286,12 +287,20 @@ internal val SUMMARY_REF_ICON = 14.dp
 internal val SUMMARY_REF_GAP = 4.dp
 
 /**
- * 页面左右边距 —— 取 12dp，网格列距与分段控件共用同一值。
+ * 页面左右留白 —— 取**弹窗面板离屏幕边那一档**（`DialogDefaults.outsideMargin`，16dp）。
  *
- * 不用 16dp：网格那边 16dp 撑不下（机身 363dp 宽，中间槽位只剩 ~63dp，而最长的一项「锁屏 / 电源」
- * 在 14sp 下要 ~70dp）。
+ *  卡片行、顶栏、抽屉、固定带、空态说明、网格全部落在这一条线上：弹窗压上来时，面板左右边缘与
+ *  卡片边缘同一条竖线（用户口径「card row / 捐赠列表和 header 的左右留白改成和 dialog 一样」）。
+ *  以前这里是 12dp，比弹窗窄一档，一开弹窗就露出两套边距。
+ *
+ *  取的是**面板外边距**而不是正文那 24dp：那一档是面板自己内缩给标题 / 正文用的，卡片没有
+ *  「面板」这一层，照它对齐会比弹窗还宽。
+ *
+ *  网格页的列数按可用宽度算（见 [GRID_MIN_TILE_WIDTH]），这一档同时是它的列距（[GRID_GAP]）：
+ *  16dp 下 363dp 机身仍排两列（每格约 158dp），窄到 348dp 以下才落到一列 —— 那是按宽度算的
+ *  结果，不是硬塞。
  */
-internal val PAGE_MARGIN = 12.dp
+internal val PAGE_MARGIN = DialogDefaults.outsideMargin.width
 
 /**
  * 各页内容区底部 padding —— 统一取 32dp（各页不统一的话翻页时会看出来）。
@@ -358,7 +367,7 @@ internal val APP_KIND_TAG_INSIDE = PaddingValues(horizontal = 5.dp, vertical = 1
 internal val APP_TITLE_SUMMARY_GAP = 2.dp
 
 /**
- * 网格的横向间距：页面边距与列距共用同一个值（[PAGE_MARGIN]）；行距另见 [GRID_ROW_GAP]。
+ * 网格的横向间距：与页面左右留白（[PAGE_MARGIN]）同值；行距另见 [GRID_ROW_GAP]。
  * 焦点圈画在格子之上、不占空间，格子占满分配宽度，不需要留补偿。
  */
 internal val GRID_GAP = PAGE_MARGIN

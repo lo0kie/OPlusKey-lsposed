@@ -11,8 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.lookie.opluskey.bridge.AppEntry
-import com.lookie.opluskey.bridge.MiniWindowSupport
+import com.lookie.opluskey.command.platform.AppEntry
+import com.lookie.opluskey.command.platform.MiniWindowSupport
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog

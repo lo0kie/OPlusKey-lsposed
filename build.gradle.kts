@@ -62,7 +62,12 @@ fun com.android.build.api.dsl.Lint.applyProjectPolicy() {
     // 与本项目无关的检查：
     //  · `GradleDependency` / `NewerVersionAvailable` 是「有新版可升」，不是缺陷
     //  · `AndroidGradlePluginVersion` 同上（AGP 版本由 compileSdk 37 这条硬约束钉着）
-    disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion")
+    //  · `NotificationPermission` —— 通知**挂在宿主名下**，模块从不用自己的身份发通知
+    //    （也没有自己的通知渠道），所以清单里本就不该声明 `POST_NOTIFICATIONS`。
+    //    这条检查在**合并后的清单**上跑，源码里的 `@SuppressLint` 与清单里的 `tools:ignore`
+    //    都覆盖不到它（执行层搬进 `:command` 之后才冒出来，之前那段代码在本模块源集里、
+    //    注解挂得住）。判据与理由见 `NotifyAction.post` 与 `postAllowed` 的注释。
+    disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "NotificationPermission")
 }
 
 /**
@@ -95,6 +100,9 @@ tasks.register("gate") {
         ":core:spotlessCheck",
         ":core:detekt",
         ":core:lintDebug",
+        ":command:spotlessCheck",
+        ":command:detekt",
+        ":command:lintDebug",
         // 单测（只有 `:core` 有：那一层是纯函数最集中的地方）。放进 `gate` 而不是单列一条口令，
         // 是因为「提交前必过」这套判据只有一份 —— 另起一条口令，它迟早没人在跑。
         ":core:testDebugUnitTest",

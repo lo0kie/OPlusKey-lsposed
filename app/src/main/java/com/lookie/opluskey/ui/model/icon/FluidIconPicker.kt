@@ -47,7 +47,6 @@ import com.lookie.opluskey.core.model.FluidCard
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.kit.FrostedDialog
-import com.lookie.opluskey.ui.kit.TitleSmallText
 import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
@@ -125,16 +124,14 @@ internal fun SettingsPage.FluidIconPicker(
         show = show,
         title = I18n.get(Strings.COMMAND_FLUID_ICON_TITLE),
         onDismiss = onDismiss,
-        //  标题行尾那一格：一共几颗可选。与入口行副标题是同一个数，但两处的用法不一样 ——
-        //  那一行是「后面有多少东西」的预告，这一格是「现在看见的就是全部」的确认
+        //  标题**下面**那一行：一共几颗可选。与入口行副标题是同一个数，但两处的用法不一样 ——
+        //  那一行是「后面有多少东西」的预告，这一行是「现在看见的就是全部」的确认
         //  （网格到了 `ICON_GRID_MAX_HEIGHT` 会自己滚，滚动条不在窄面板上显眼）。
-        //  这一格不参与标题的居中计算（见 `FrostedDialog` 的同名参数），所以只放很短的一格。
         //
-        //  **套一对半角括号**（`(48)`）：这一格与标题在同一行上、只隔一段空白，裸数字会被读成
-        //  标题的一部分（「图标 48」）；括号把「这是附注」这件事写明白。格式与分组标题那条
-        //  `titleWithCount`（`响铃状态 (4)`）一致 —— 同一个界面里两种括号，像两套控件。
-        //  样式走 `TitleSmallText`（这一格的本体），不自己拼 `Text`。
-        titleTrailing = { TitleSmallText("(${FluidIcons.ALL.size})") },
+        //  **套一对半角括号**（`(48)`）：裸数字单摆一行读不出是什么数；括号把「这是附注」这件事
+        //  写明白。格式与分组标题那条 `titleWithCount`（`响铃状态 (4)`）一致 —— 同一个界面里
+        //  两种括号，像两套控件。
+        subTitle = "(${FluidIcons.ALL.size})",
     ) {
         //  这一块的高度**自己算**（[iconGridHeight]），不靠 `matchParentSize` 跟着网格量：
         //  滚动条的高度取的是约束里的 maxHeight，那个数在 Column 里是「剩下的空间」而不是

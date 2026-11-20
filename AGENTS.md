@@ -7,8 +7,11 @@
 > `docs/device/`**（实现必须对齐它，它说冲突时回头修代码）、**用户可见的说明在 `README.md`**、**实现原理在
 > `docs/runtime/`**、**分包与依赖契约在 `docs/architecture/structure.md`**、**交付流程在 `docs/process/`**。
 >
-> 本项目是**两个 Gradle 模块、无测试工程**：`:app`（界面 / 宿主侧 / 注入侧）与 `:core`（两进程共用的那一层）。
+> 本项目是**三个 Gradle 模块、无测试工程**：`:app`（界面 / 宿主侧 / 注入侧）、`:core`（两进程共用的那一层）与
+> `:command`（命令能力层：命令文本 → 落地，只依赖 `:core`）。
 > `:core` 的 classpath 里没有 `:app` —— 于是「共用层不许引界面层」是**编译期**约束，不再只靠 CI 事后扫。
+> `:command` 同理：它的 classpath 里没有 `:app` 与 `bridge/`，所以「命令能力不许认识本模块的自有通道」也是编译期约束，
+> 那几样只经 `CommandPlatform` 端口进来（实现在 `app/…/bridge/host/CommandPlatformImpl.kt`）。
 > 由另一套「无 `rules/` 派生链」的结构移植而来 —— **不引入 `rules/` 目录与派生链，改准则直接改本文件**。
 > 全文一次注入；若上下文中未见本文件全文，动手前先 Read 本文件。
 >

@@ -110,7 +110,7 @@
           `uid 1000 + 包名 android` 走 `startService` 被 AOSP 拒、走前台那一档才放行。
         -->
         <service
-            android:name=".shizuku.ShizukuShellService"
+            android:name="com.lookie.opluskey.command.shizuku.ShizukuShellService"
             android:exported="true"
             android:foregroundServiceType="specialUse">
             <property

@@ -233,9 +233,20 @@ internal class SideKeyInterceptor(
             //  `KeyConfig.longFireOnRelease`），所以「已经执行过自己的动作」不成立 —— 而按住手势
             //  要的正是「按住久一点再补一颗」。组合一旦凑成，这颗键的状态机会被摘掉（`resetKey`），
             //  押着的那一次长按跟着没，抬手只出组合那一套。
+            //
+            //  **长按那一档「没有动作」时同样不算判过**：到点只会派发一条无操作（宿主那句
+            //  「这一档是无操作，不执行」），什么都没执行过，自然谈不上「一次按压两个动作」。
+            //  不豁免的话，这一位就凭空给按住组合加了个「首键的长按阈值」当截止：真机上 `plus`
+            //  的长按配的是无操作，按住它超过 350ms 再补成员键，组合**永远凑不成**，而那 350ms
+            //  里也什么都没发生 —— 整次按压零响应（用户口径：「按住组合不该和单键长按抢着起判」）。
+            //  判据用 `longActionExists`（直接绑定或场景块里给长按配了动作），与「松手执行额外动作」
+            //  那一档用的是同一个词，含义也是同一个：这一档到底有没有主语。
             longPressPassed = { id, at, now ->
                 val key = ConfigChannel.config.key(keyIdOf(id, ConfigChannel.config))
-                !key.comboOnly && !key.longFireOnRelease && now - at >= key.longPressMs
+                !key.comboOnly &&
+                    !key.longFireOnRelease &&
+                    key.longActionExists &&
+                    now - at >= key.longPressMs
             },
             binds =
                 DetectorBinds(

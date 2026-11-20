@@ -60,9 +60,38 @@
         └──────────────────────────────────────────────────────┘
 ```
 
-四条硬规矩：
+### 第三个模块：`:command`（命令能力层，2026-11-19）
 
-- **`core/` 不依赖任何上层**（它不认识进程、不认识界面）；
+`host/action/` 那一整套（动作派发、各类执行器、shell 与 Shizuku 两条执行通道）原先住在 `:app` 里，
+只对 `:app` 可见。要另起一个模块复用「跑一条命令」这件事，唯一的做法是**把它切成一个库模块**：
+
+```
+   :app（ui/ + host/ + inject/ + bridge/）
+        │  依赖
+        ▼
+   :command（命令能力层）  ── 只依赖 ──▶  :core
+        ▲
+        │  通道（CommandPlatform 端口）
+        └──────────── 由 :app 的 bridge/host/CommandPlatformImpl 实现
+```
+
+- **能搬的搬走**：动作派发、执行器、命令文本解析、shell / Shizuku、以及只为执行服务的那几个平台封装
+  （`AppEntry` / `AppCloneCatalog` / `MiniWindowSupport` / `RingerController` / `FlashlightController` /
+  `BuiltInMessenger` / `RecorderStateBridge` / `SeedlingClient` / `shizuku/`）。
+- **搬不走的留在这儿**：凡是另一半要在 `system_server` 里跑、或依赖挂点候选表的通道 ——
+  状态栏指令、小窗广播、系统开关、按键注入、结束应用。它们的 action 名、附加字段、候选表是
+  `:app` 与注入侧共用的私有协议（`bridge/` 那一档），下移就等于把私有协议变成通用词汇。
+- **交界处是端口**：`:command` 只说要做什么（`sendSystemCommand` / `sendTimer` / `sendBrightness` /
+  `sendSetting` / `injectKey` / `collapseToMini` / `animateToMini` / `stopPackage` / `isStopForbidden`），
+  怎么发由接入方决定。第二个模块接进来时，这一层**一行都不用改**，只需给一份自己的端口实现。
+- **代价**：跨模块可见性只能靠 `public`，所以这一层里被 `:app` 用到的那几个声明（`ActionRunner`、
+  `CommandFailure`、`FailureNotice`、`ConditionProbe`、`FluidAction` / `NotifyAction`、`AppEntry` 等）
+  从 `internal` 放开成了 `public` —— 与 `:core` 当初一模一样的那笔账。
+- **工具链**：`tools/audit-coupling.py` 把这一层也扫进来，并新增一条禁止边
+  （`command` 不许 import `inject/` `bridge/` `host/` `ui/` 与界面库），`tools/relock.py` 的模块清单
+  里也加了 `:command`。
+
+四条硬规矩：- **`core/` 不依赖任何上层**（它不认识进程、不认识界面）；
 - **`inject/` 只准依赖 `core/model`、`core/rom`、`core/present`、`core/log`、`core/reflect`、`core/wire`、
   `core/judge`、`core/intercept`**，
   \*\*不准碰 `core/config`**（落盘那包）—— 这样「注入侧读不到配置文件」在**编译期\*\*就成立。
@@ -245,7 +274,7 @@ com.lookie.opluskey
 | 做法                              | 为什么不适用                                                                                                                                                                                                                                                                  |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **MVVM（ViewModel + StateFlow）** | 本模块没有自己的 Activity / Fragment，页面是塞进宿主 `Activity` 里的一层 Compose 覆盖；ViewModel 的宿主（`ViewModelStoreOwner`）本来就得自己兜底伪造（`SettingsPage` 里已有 `LifecycleRegistry` 那套兜底）。再加一层 ViewModel 只增加一层生命周期要照顾的壳，换不来任何东西。 |
-| **拆成多个 Gradle 模块**          | 曾经不采纳（包结构分层 + CI 扫依赖边已经够用）。**2026-10-17 起部分采纳**：`core/` 独立成 `:core`，因为它是**两个进程共用**的那一层，「不许引界面层」值得一条编译期约束。代价写在那儿：`internal` 全部放开成 public（跨模块不可见），跨模块属性不能智能转换。其余各包仍留在 `:app`。 |
+| **拆成多个 Gradle 模块**          | 曾经不采纳（包结构分层 + CI 扫依赖边已经够用）。**2026-10-17 起部分采纳**：`core/` 独立成 `:core`，因为它是**两个进程共用**的那一层，「不许引界面层」值得一条编译期约束。代价写在那儿：`internal` 全部放开成 public（跨模块不可见），跨模块属性不能智能转换。**2026-11-19 再切一层**：命令能力搬进 `:command`（见「第三个模块」），理由是它要被不止一个界面用；其余各包仍留在 `:app`。 |
 | **Repository + 数据源抽象**       | 数据源只有一个：宿主私有目录里的两个文本文件。抽象出 `Repository` 接口 + `LocalDataSource` 只是给两个函数各套一层壳。                                                                                                                                                         |
 | **引入 DI 框架（Hilt / Koin）**   | 注入侧是 system_server，任何注解处理器生成的代码与第三方容器都要求类加载期可达 —— 这与「注入侧零依赖」直接冲突。                                                                                                                                                              |
 

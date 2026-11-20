@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.chrome.HEADER_BORDER_ALPHA
 import com.lookie.opluskey.ui.feedback.HintText
 import com.lookie.opluskey.ui.feedback.TickHapticScope
 import com.lookie.opluskey.ui.feedback.hintReason
@@ -50,6 +49,7 @@ import com.lookie.opluskey.ui.model.theme.POPUP_FROSTED_ALPHA
 import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.row.LocalReduceRowIcons
 import com.lookie.opluskey.ui.style.AppHeavyDivider
+import com.lookie.opluskey.ui.style.PANEL_BORDER_ALPHA
 import com.lookie.opluskey.ui.style.frosted
 import com.lookie.opluskey.ui.style.tinted
 import com.lookie.opluskey.ui.wire.GestureProbe
@@ -361,10 +361,10 @@ internal fun SettingsPage.MenuPopup(
         //  [frosted] 里带 `clip(panelShape)`：同一个 modifier 链上，clip 会裁掉它右边（更内层）
         //  的一切绘制。所以描边拆成**兄弟层**（`matchParentSize`，画在内层之上）—— 内层 Box 继续
         //  管磨砂 + 收边，描边在外层 Box 里、不受那个 clip 约束。
-        //  颜色与**顶栏圆键**完全同一条：`dividerLine` × [HEADER_BORDER_ALPHA]（Monet 下就是
+        //  颜色与**细线分隔**完全同一条：`dividerLine` × [PANEL_BORDER_ALPHA]（Monet 下就是
         //  系统的 `outlineVariant` 那一档，跟着壁纸走，不必按主题分支）。
         val dividerLine = COUITheme.colorScheme.dividerLine
-        val borderColor = dividerLine.copy(alpha = dividerLine.alpha * HEADER_BORDER_ALPHA)
+        val borderColor = dividerLine.copy(alpha = dividerLine.alpha * PANEL_BORDER_ALPHA)
         val panelOutline: Modifier =
             Modifier.drawWithContent {
                 drawContent()

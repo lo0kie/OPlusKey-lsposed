@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.lookie.opluskey.ui.chrome.HEADER_BORDER_ALPHA
 import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_DARK_ALPHA
 import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.theme.isDarkScheme
@@ -20,18 +19,30 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 //  所以收成一支：要调色、调粗细只改这里。
 
 /**
+ * 「压在磨砂上、只要一个边界」的那一档描边不透明度系数 —— 乘在 `dividerLine` 自己那档 alpha 上。
+ *
+ *  0.3：浮层菜单面板那一圈描边与 [appDividerColor] 共用这一档（两处都是同一种淡边界，各写一个
+ *  系数迟早一深一浅）。要再淡 / 再亮都只动这一个数，别去换颜色角色 —— 换角色会把 Monet 那一档的
+ *  `outlineVariant` 也一起换掉。
+ *
+ *  **顶栏圆键不用它**：那一圈描边已经换成淡阴影（见 `HeaderIconButton`），阴影的浓淡在
+ *  `HEADER_BUTTON_SHADOW` 自己那一处。
+ */
+internal const val PANEL_BORDER_ALPHA = 0.3f
+
+/**
  * 细线分隔 —— 卡片行之间、列表行之间、对话框里那一条。
  *
- *  **颜色与顶栏圆键的描边是同一个表达式**（`dividerLine` × [HEADER_BORDER_ALPHA]）—— 两处读起来
+ *  **颜色与浮层菜单面板的描边是同一个表达式**（`dividerLine` × [PANEL_BORDER_ALPHA]）—— 两处读起来
  *  必须是一条线，所以连那个系数也一起取，只留这一个出处可调。
  *
  *  色角色本身是跟主题走的：Monet 档下 `dividerLine` 就是 MD3 的 `outlineVariant`（跟壁纸走），
  *  COUI 两档是标定过的那一条。以前这里取的是圆键的**底色** `surfaceContainer`：Monet 浅色下它和
  *  卡片底（`surfaceContainerLow`）只差两档 tone，压成细线几乎读不出来。
  *
- *  **看着还是不一样是正常的**：圆键的描边压在磨砂顶栏上（半透的页面底色 + 模糊），这条压在卡片
+ *  **看着还是不一样是正常的**：菜单面板的描边压在磨砂上（半透的页面底色 + 模糊），这条压在卡片
  *  的实色底上 —— 同一个色号合在不同的底上，观感会差一档。要两边都更实，就一起抬
- *  [HEADER_BORDER_ALPHA]（那一个数管着两处）。
+ *  [PANEL_BORDER_ALPHA]（那一个数管着两处）。
  *
  *  **粗细定 1dp**（库默认那档是 0.33dp）：0.33 在 3x 屏上只有一个物理像素，配上这条本就压得很淡
  *  的线，深色下几乎读不出「这里断开了一行」。
@@ -53,7 +64,7 @@ internal fun AppDivider(modifier: Modifier = Modifier) {
  * 别各自再去读 `dividerLine`，否则又会长出第二份系数）。
  */
 @Composable
-internal fun appDividerColor(): Color = COUITheme.colorScheme.dividerLine.let { it.copy(alpha = it.alpha * HEADER_BORDER_ALPHA) }
+internal fun appDividerColor(): Color = COUITheme.colorScheme.dividerLine.let { it.copy(alpha = it.alpha * PANEL_BORDER_ALPHA) }
 
 /**
  * 「加深带」—— 一张卡里**两组不同类的东西**之间那条槽（例如「添加条件」与「上移 / 下移 / 删除」、

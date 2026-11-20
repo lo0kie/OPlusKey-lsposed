@@ -91,7 +91,10 @@ object Strings {
     /** 「删除按键」被挡住时那个窗的标题（这颗键还在组合里）。 */
     const val BINDING_DELETE_KEY_BLOCKED_TITLE = "binding.delete_key_blocked_title"
 
-    /** 上面那个窗的正文：`%d` 是它还在几档组合里。 */
+    /**
+     * 上面那个窗的正文 —— 只说「为什么删不掉」，**不写条数**：那几档组合由界面在下面逐个列出
+     * （见 `ComboNameLines`），正文再数一遍是重复，而「N 档」这种说法也把界面词写进了正文。
+     */
     const val BINDING_DELETE_KEY_BLOCKED_BODY = "binding.delete_key_blocked_body"
 
     /** 按键菜单里那一行：把这颗自定义键**停用**（键还在，只是不接管）。 */
@@ -289,11 +292,13 @@ object Strings {
     /** 行菜单 / 改名窗共用的「重命名」。 */
     const val COMMON_COMMANDS_RENAME = "common_commands.rename"
 
-    /** 改名窗里那个输入框的标题。 */
-    const val COMMON_COMMANDS_RENAME_LABEL = "common_commands.rename_label"
-
-    /** 改名窗下面那行常驻小字：留空会怎样。 */
-    const val COMMON_COMMANDS_RENAME_HINT = "common_commands.rename_hint"
+    /**
+     * 改名窗里那个输入框的**占位文案** —— 它同时是「填什么」与「留空会怎样」的说法。
+     *
+     *  只在框空着时看得见，所以只在**留空是合法输入**的窗口上成立（这一档与「提示文案」那一档都
+     *  允许空）；留空不成立的改名窗（按键名、配置名）另给字段名当占位。
+     */
+    const val COMMON_COMMANDS_RENAME_PLACEHOLDER = "common_commands.rename_placeholder"
 
     /** 改完名之后那条回执 —— 只说「改了什么」，不重复「已保存」。 */
     const val COMMON_COMMANDS_RENAMED = "common_commands.renamed"
@@ -600,6 +605,13 @@ object Strings {
 
     /** 列表行的菜单 / 删除确认窗标题。 */
     const val COMBO_DELETE = "combo.delete"
+
+    /**
+     * 删掉这一档之前的确认窗标题 —— **只问这一件事，不写组合名**。
+     *
+     *  这个窗只在**那一档自己的编辑页**上弹（⋮ 菜单 → 删除），用户刚点开的正是它；再把名字抄进
+     *  标题只是把同一串名字读两遍，而组合名本身可能很长（两颗键就是「A 后 B 再 C」那种句子）。
+     */
     const val COMBO_DELETE_CONFIRM = "combo.delete_confirm"
 
     /** 加一组 / 删一组的回执。 */
@@ -1518,9 +1530,6 @@ object Strings {
 
     /** 通用那颗「确认」—— 目前只有「温馨提醒」用（两颗按钮都只是关窗，见 `ui/screen/HomeScreen`）。 */
     const val DIALOG_CONFIRM = "dialog.confirm"
-
-    /** 按钮区最左那颗「重置」—— 只在「这一格可以恢复默认」的地方出现（提示文案模板）。 */
-    const val DIALOG_RESET = "dialog.reset"
     const val DIALOG_DISCLAIMER_ACKNOWLEDGE = "dialog.disclaimer_acknowledge"
     const val DIALOG_DISCLAIMER_CONTENT = "dialog.disclaimer_content"
     const val DIALOG_DISCLAIMER_TITLE = "dialog.disclaimer_title"

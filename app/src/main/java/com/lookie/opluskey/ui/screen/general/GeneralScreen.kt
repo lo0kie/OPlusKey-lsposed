@@ -293,9 +293,11 @@ private fun SettingsPage.manageCommonCommandsRow(enabled: Boolean): CardRow =
 /**
  * 「提示文案」的编辑窗 —— 填一个值那一套（与按键重命名 / 每条滑杆同一个形状）。
  *
- *  空格子 = 用默认那句，所以这一档**允许空**（「确定」不会灰着）；框下面那行常驻小字写三个
+ *  空格子 = 用默认那句，所以这一档**允许空**（「确定」不会灰着）；框下面那行常驻小字写六个
  *  占位符各是什么，占位文案只写「留空将使用默认提示」（**不写默认那句本身**：那句随时会变，
- *  摆进占位就是一处会过期的说明）。按钮区多一颗「重置」：按下即把默认值写进配置并关窗。
+ *  摆进占位就是一处会过期的说明）。**没有「重置」那颗按钮**：清空再按「确定」就是回到默认
+ *  —— 落盘时把默认模板**直接赋过去**（与从前那颗按钮同一个落点），多一颗按钮只是把同一件事
+ *  说两遍，还让按钮区从两颗变三颗。
  *
  *  @param onShowChange 弹窗自己开关时回报（`false` = 关）：状态留在 [ActionsCard] 里，
  *   因为它同时被那一行的点击用
@@ -310,27 +312,26 @@ private fun SettingsPage.toastTemplateDialog(
         show = show,
         title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE),
         //  占位只写「留空则用默认」，**不再把默认那句摆进去**：那句话随时会变，摆进占位就成了
-        //  一处会过期的说明；要看默认长什么样，清空（或按「重置」）之后行尾副标题就是它。
+        //  一处会过期的说明；要看默认长什么样，清空并确定之后行尾副标题就是它。
         label = I18n.get(Strings.HOME_TOAST_TEMPLATE_PLACEHOLDER),
         //  六个占位符各是什么写在下面那行小字里 —— 填着内容时也一直在（这才是「变量提示」）。
         //  变量名单独排一档（与键名同一个写法）：这一行要读成「几个能填的变量」，
         //  纯文字读起来是一句话。顺序由 `ToastNotice.PLACEHOLDERS` 定。
+        //  字典那一条只写「名字 说明」六组、**不写分隔符**：几项怎么分开归 `ChipLegend` 那两档
+        //  间隙管，写进字里（以前的 `键名 / 手势 / …`）就会在换行处留一条挂着的斜杠。
         hint = I18n.get(Strings.HOME_TOAST_TEMPLATE_HINT),
         hintChips = ToastNotice.PLACEHOLDERS,
         icon = PageIcons.ToastTemplate,
         initial = initial,
         maxLength = MAX_TOAST_TEMPLATE_LENGTH,
         allowEmpty = true,
-        //  「重置」= **把默认那句存进去、关窗**：与按「确定」落下别处一样是一次落盘，只是值取默认。
-        //  默认文案只在 `ToastNotice.DEFAULT_TEMPLATE` 存一份，这里不抄字面量。
-        onReset = {
-            onShowChange(false)
-            setToastTemplate(ToastNotice.DEFAULT_TEMPLATE)
-        },
         onDismiss = { onShowChange(false) },
         onConfirm = { text ->
             onShowChange(false)
-            setToastTemplate(text)
+            //  空白 = 回到默认：**把默认模板直接写进配置**，不存空白。
+            //  判据在 `ToastNotice.templateOrDefault` 一处（执行侧读的时候问的是同一句），
+            //  这里只负责把那个值落盘 —— 默认模板也不在这里抄字面量。
+            setToastTemplate(ToastNotice.templateOrDefault(text))
         },
     )
 }

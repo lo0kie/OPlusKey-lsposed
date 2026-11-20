@@ -614,13 +614,14 @@ private fun SettingsPage.renameDialog(
     NameDialog(
         show = cmd != null,
         title = I18n.get(Strings.COMMON_COMMANDS_RENAME),
-        label = I18n.get(Strings.COMMON_COMMANDS_RENAME_LABEL),
+        //  占位只写「留空则用什么」，不再单摆一行小字：框空着时它就摆在那儿，框里一有字，
+        //  「留空」这个前提也已经不成立了（与「提示文案」那一窗同一个写法）。
+        label = I18n.get(Strings.COMMON_COMMANDS_RENAME_PLACEHOLDER),
         //  与「重命名按键」「重命名配置」同一颗（全项目所有改名共用一个记号）
         icon = PageIcons.MenuRename,
         initial = cmd?.name.orEmpty(),
         //  空 = 回到动作自带的名字（`commonCommandName` 那一套），所以允许空
         allowEmpty = true,
-        hint = I18n.get(Strings.COMMON_COMMANDS_RENAME_HINT),
         onDismiss = onDismiss,
         onConfirm = { text ->
             onDismiss()
@@ -775,7 +776,7 @@ private fun SettingsPage.addSheet(
 private const val ROW_EXIT_SETTLE_MS = 40L
 
 /**
- * 清单里的一行：平时点它开菜单（修改 / 改名 / 显不显示 / 删除），行尾给箭头表示「还有一层」；
+ * 清单里的一行：平时点它开菜单（修改 / 改名 / 显不显示 / 删除），行尾给**选择器**表示「还有一层」；
  * **编辑态里点它是勾选**，行尾换成勾选框（与「按键功能」页那几行同一套，见 [CommonCommandsEditState]）。
  */
 @Composable
@@ -796,16 +797,19 @@ private fun SettingsPage.commonCommandRow(
         //  换过图标就画换的那颗，没换过按来源取：`cmd:` 引用看命令自己的类型
         //  （单条按写法 / 身份、多条按步骤数），内置动作仍走动作表
         icon = commonCommandIcon(cmd, configState.commands.value),
+        //  这一页**不跟着「减少界面图标」收**：行首那颗就是「这一条是什么动作」的唯一线索
+        //  （内置动作 / 单条 / 多条 / 哪个应用），收掉之后整列只剩一串名字，扫不起来。
+        keepIcon = true,
         //  在按键绑定页不显示的那几条压一档色：一眼能看出哪些不会出现在那一段
         //  （每条自己一个开关，见上面菜单里的「显示在按键绑定页」）。
         enabled = enabled,
         titleTint = if (cmd.showInBinding) null else COUITheme.colorScheme.onSurfaceVariantSummary,
-        //  行尾：固定的那几条挂一枚「固定」小标签，**后面仍给箭头** —— 那一行本身还是「点开一层菜单」。
-        //  两者只能挤在同一个槽里（`CardRow` 的行尾要么箭头、要么自有内容），所以这里自己拼一格。
+        //  行尾：固定的那几条挂一枚「固定」小标签，**后面仍给选择器** —— 那一行本身还是「点开一层菜单」。
+        //  两者只能挤在同一个槽里（`CardRow` 的行尾要么一颗图标、要么自有内容），所以这里自己拼一格。
         //  **只标固定、不标未固定**：未固定的那些标题已经压了一档色，再挂一枚「未固定」是把
         //  同一件事说两遍，而且那才是少数（默认是固定的）。
         //
-        //  编辑态里箭头换成勾选框，但**标签留在原处**：右下角那颗 FAB 干的就是「固定 / 取消固定」，
+        //  编辑态里选择器换成勾选框，但**标签留在原处**：右下角那颗 FAB 干的就是「固定 / 取消固定」，
         //  看不出哪几条现在固定着，那两颗就无从下手（标题压色那一档太轻，撑不起这个判断）。
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -822,7 +826,8 @@ private fun SettingsPage.commonCommandRow(
                     //  勾选框自己不挂点击：整行都是它的点击区（与「按键功能」页同一个读法）
                     PickBox(picked = picked, enabled = enabled)
                 } else {
-                    RowEndIcon()
+                    //  点开的是浮层菜单、不是换页：行尾按「还有一层菜单」那颗画（见 `RowEndSummary` 的口径）
+                    RowEndIcon(PageIcons.Selector)
                 }
             }
         },

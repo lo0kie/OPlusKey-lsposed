@@ -10,12 +10,12 @@ import android.view.KeyEvent
 import com.lookie.opluskey.bridge.FlexibleWindowBridge
 import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.bridge.StatusBarBridge
-import com.lookie.opluskey.bridge.TimedCache
 import com.lookie.opluskey.bridge.hookGuarded
 import com.lookie.opluskey.bridge.inject.SystemContext
 import com.lookie.opluskey.core.DEBUG_PROBE
 import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.ProcClock
+import com.lookie.opluskey.core.TimedCache
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.GestureTrigger

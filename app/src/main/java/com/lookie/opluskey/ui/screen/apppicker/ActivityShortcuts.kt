@@ -3,7 +3,7 @@ package com.lookie.opluskey.ui.screen.apppicker
 import android.content.pm.LauncherApps
 import android.content.pm.ShortcutInfo
 import android.icu.text.Transliterator
-import com.lookie.opluskey.bridge.AppCloneCatalog
+import com.lookie.opluskey.command.platform.AppCloneCatalog
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.shortcutIdEscape
 import com.lookie.opluskey.core.model.shortcutTarget

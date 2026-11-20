@@ -9,7 +9,7 @@ import android.os.Message
 import android.os.SystemClock
 import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.bridge.hookGuarded
-import com.lookie.opluskey.bridge.host.SystemActionButtonConfig
+import com.lookie.opluskey.command.platform.SystemActionButtonConfig
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.KeyId

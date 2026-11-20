@@ -430,7 +430,8 @@ private fun SettingsPage.KeyMenuDialogHost(
         onConfirm = onDismiss,
         body = {
             EmphasisText(
-                text = I18n.format(Strings.BINDING_DELETE_KEY_BLOCKED_BODY, inCombos.size),
+                //  正文只说不许删的理由，条数不写：挡路的那几档组合就在下面逐行列着（见 `ComboNameLines`）
+                text = I18n.get(Strings.BINDING_DELETE_KEY_BLOCKED_BODY),
                 textAlign = TextAlign.Start,
                 modifier = Modifier.fillMaxWidth(),
             )

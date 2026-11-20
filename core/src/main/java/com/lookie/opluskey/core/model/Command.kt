@@ -520,6 +520,17 @@ object ToastNotice {
     const val DEFAULT_TEMPLATE = "$KEY - $GESTURE → $ACTION"
 
     /**
+     * 「用户没填」时落到哪一句 —— 空白输入与默认那句之间的**唯一**判据。
+     *
+     *  两处要问同一件事：界面在**落盘**那一步（清空输入框再按「确定」= 把这一句直接写进配置，
+     *  见提示文案编辑窗）、执行侧在**读**的时候（[render]）。两处各写一遍 `ifBlank` 的话，
+     *  「配置里存的是默认文案还是空白」这类差异就会让同一个人在两处看到不同的字。
+     *
+     *  @param template 用户写的模板（空白 = 用 [DEFAULT_TEMPLATE]）
+     */
+    fun templateOrDefault(template: String): String = template.ifBlank { DEFAULT_TEMPLATE }
+
+    /**
      * 按模板拼这一句提示。
      *
      *  @param template 用户写的模板（空 = 用 [DEFAULT_TEMPLATE]）
@@ -534,7 +545,7 @@ object ToastNotice {
         gesture: String,
         action: ActionReading,
     ): String {
-        val text = expand(template.ifBlank { DEFAULT_TEMPLATE }, key, gesture, action).trim()
+        val text = expand(templateOrDefault(template), key, gesture, action).trim()
         //  模板可以写得很短（例如只剩一个 `$action`），但也可能被删成空白 —— 那一下弹个空 Toast
         //  等于「按了没反应」，所以退回默认那句。
         return text.ifEmpty { expand(DEFAULT_TEMPLATE, key, gesture, action) }

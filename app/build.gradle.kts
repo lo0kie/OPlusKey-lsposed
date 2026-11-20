@@ -357,6 +357,10 @@ dependencies {
     // 两个进程共用的那一层（配置 / 字典 / 日志 / 模型 / 线协议 / 反射工具）—— 独立模块，
     //  于是「它不许引用界面层」从 CI 的事后扫描变成了编译期约束。
     implementation(project(":core"))
+    // 命令能力层（动作派发 / 各执行器 / shell 与 Shizuku 两条执行通道 / 小窗与系统开关那几条通道）。
+    //  它只依赖 `:core`，再往上的东西一律经 `CommandPlatform` 端口要 —— 我们这一份实现就是
+    //  `bridge/CommandPlatformImpl`。将来另起一个模块时，那一层原样复用，换一份端口实现即可。
+    implementation(project(":command"))
     // 只读 asset（捐赠名单）改用 kotlinx 的树 API 解析；不挂编译器插件，就不需要 @Serializable
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     // 更新说明的 Markdown：**只引解析器**，渲染自己按弹窗的色板与字号画

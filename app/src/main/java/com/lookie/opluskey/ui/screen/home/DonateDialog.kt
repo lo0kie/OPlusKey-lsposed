@@ -47,9 +47,10 @@ import kotlinx.coroutines.withContext
  *  自己搭的那一版面板不磨砂、区距自定，同一页里它和确认窗一眼看上去像两个应用的控件。
  *  居中由 [FrostedDialog] 的 `centered` 传下去（库在窗口宽度不到 840dp 时默认是**底部滑入**）。
  *
- *  **窗口只有标题，正文全在内容槽里**：那两句话（[Strings.DONATE_HINT] 与
- *  [Strings.DONATE_NAME_NOTE]）要在**图下面**，而 `summary` 槽在库里固定排在内容**之上**
- *  （见 `DialogContentLayout` 的 Column），所以不喂 `summary`，两句话归 [DonateBody] 摆。
+ *  **窗口是「标题 + 副标题 + 图 + 一行备注」**：那句「您的慷慨…」（[Strings.DONATE_HINT]）是
+ *  这一窗的说明，归外壳头区的副标题；备注（[Strings.DONATE_NAME_NOTE]）要在**图下面** ——
+ *  它说的是「转完怎么留名」，得紧跟着那张码，所以留在正文槽里，而 `summary` 槽在库里固定排在
+ *  内容**之上**。
  *
  * @param target 选中的去处；`null` = 收起来
  * @param onDismiss 收窗口（点遮罩 / 返回手势 / 页面离开都会走到这里）
@@ -72,6 +73,9 @@ internal fun SettingsPage.DonateDialog(
         //  标题是必填的（[FrostedDialog] 那一栏不是可空槽）：没选中时窗口本来就不露出，
         //  空串只是占位，退场那一帧仍有 `last` 里的上一个去处。
         title = last.value?.label.orEmpty(),
+        //  那句「您的慷慨…」是这一窗的说明，不是正文 —— 与标题同属头区，正文只有图与备注。
+        //  文案是常量，退场那一帧照旧画得出来（不像标题那样要留上一份）。
+        subTitle = I18n.get(Strings.DONATE_HINT),
         onDismiss = onDismiss,
         // 强制居中：库默认按窗口尺寸自动判，手机上一律是底部滑入
         centered = true,
@@ -85,17 +89,14 @@ private class LastDonate {
     var value: DonateTarget? = null
 }
 
-/** 图与它下面那几行字之间的空 —— 18dp（库里摘要在图上方时，自己带的就是上下 18dp）。 */
+/** 图与它下面那行备注之间的空 —— 18dp（库里摘要在图上方时，自己带的就是上下 18dp）。 */
 private val DONATE_CODE_TEXT_GAP = 18.dp
 
-/** 图下面那两行字之间的空 —— 比行距略大一点，读得出「这是两句」，又不至于散成两块。 */
-private val DONATE_NOTE_GAP = 6.dp
-
 /**
- * 内容槽里那一叠：**图在上、话在下**。
+ * 内容槽里那一块：**图在上、备注在下**。
  *
- *  正文那两句话（[Strings.DONATE_HINT] 与 [Strings.DONATE_NAME_NOTE]）要在**图下面**，
- *  而库的 `summary` 槽固定排在内容之上，所以不喂 `summary`，两句话归这里摆。
+ *  只有备注（[Strings.DONATE_NAME_NOTE]）要在**图下面** —— 它说的是「转完怎么留名」，得紧跟着那张码；
+ *  而那句「您的慷慨…」是这一窗的说明，归外壳的 `subTitle`（标题下面），不进正文。
  *
  *  **上下留白不在这里补**：那归 `FrostedDialog` 的三区排版（头 / 正文 / 底之间统一一档），
  *  各补一份正是「gap 一叠加、上下对不齐」的来源。
@@ -109,11 +110,7 @@ private fun DonateBody(target: DonateTarget?) {
     ) {
         DonateCode(target)
         Spacer(Modifier.height(DONATE_CODE_TEXT_GAP))
-        DonateNote(I18n.get(Strings.DONATE_HINT))
-        Spacer(Modifier.height(DONATE_NOTE_GAP))
-        DonateNote(
-            I18n.get(Strings.DONATE_NAME_NOTE),
-        )
+        DonateNote(I18n.get(Strings.DONATE_NAME_NOTE))
     }
 }
 
@@ -155,9 +152,9 @@ private fun DonateCode(target: DonateTarget) {
 }
 
 /**
- * 图下面那一行说明 —— 待遇与库里那个 `summary` 槽一致：左右按 [dialogSideMargin]、整行居中。
+ * 图下面那行备注 —— 待遇与库里那个 `summary` 槽一致：左右按 [dialogSideMargin]、整行居中。
  *
- *  颜色也照 `summary` 走（`DialogDefaults.summaryColor` = `onBackground`）：这两句是窗口的正文，
+ *  颜色也照 `summary` 走（`DialogDefaults.summaryColor` = `onBackground`）：这一句是窗口的正文，
  *  不是次级备注，压成灰的会读成「可以不看」。
  */
 @Composable

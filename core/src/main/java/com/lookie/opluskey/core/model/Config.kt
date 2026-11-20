@@ -1,5 +1,6 @@
 package com.lookie.opluskey.core.model
 
+import com.lookie.opluskey.core.judge.ThenLongParams
 import com.lookie.opluskey.core.rom.RomProfile
 
 // 配置的数据结构：三种手势、单键配置、全局配置、整份配置。

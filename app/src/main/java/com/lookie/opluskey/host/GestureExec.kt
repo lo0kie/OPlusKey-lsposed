@@ -2,6 +2,12 @@ package com.lookie.opluskey.host
 
 import android.annotation.SuppressLint
 import android.content.Context
+import com.lookie.opluskey.command.ActionRunner
+import com.lookie.opluskey.command.FailureNotice
+import com.lookie.opluskey.command.action.condition.ConditionProbe
+import com.lookie.opluskey.command.action.notice.FluidAction
+import com.lookie.opluskey.command.action.notice.NotifyAction
+import com.lookie.opluskey.command.action.notice.actionNoticeReading
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.i18n.I18n
@@ -27,12 +33,6 @@ import com.lookie.opluskey.core.model.isReleasePhase
 import com.lookie.opluskey.core.model.sceneIndexOf
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.core.present.keyName
-import com.lookie.opluskey.host.action.ActionRunner
-import com.lookie.opluskey.host.action.FailureNotice
-import com.lookie.opluskey.host.action.condition.ConditionProbe
-import com.lookie.opluskey.host.action.notice.FluidAction
-import com.lookie.opluskey.host.action.notice.NotifyAction
-import com.lookie.opluskey.host.action.notice.actionNoticeReading
 
 /**
  * **一次手势的执行**：过期丢弃 → 去重 → 读配置 → 判两级开关 → 振动 → 提示 → 交给执行器。

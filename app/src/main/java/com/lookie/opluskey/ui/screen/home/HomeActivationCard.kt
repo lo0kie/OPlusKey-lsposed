@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -50,6 +51,7 @@ import com.lookie.opluskey.ui.screen.linkSettled
 import com.lookie.opluskey.ui.state.host.UpdateState
 import com.lookie.opluskey.ui.style.AppDivider
 import com.lookie.opluskey.ui.style.LocalMonetColors
+import com.lookie.opluskey.ui.style.SOFT_SHADOW
 import com.lookie.opluskey.ui.wire.blockedReason
 import com.lookie.opluskey.ui.wire.linkFacts
 import com.lookie.opluskey.ui.wire.linkReady
@@ -327,20 +329,18 @@ private const val ACTIVATION_NEUTRAL_MARK_ALPHA = 0.10f
  * 卡片底色里掺多少强调色 —— **Monet 与非 Monet 两套数**，因为两套色板的「底」不是一个起点。
  *
  *  · **Monet**：`surfaceContainer` 本身就带一层壁纸的色相，掺 8% 已经看得出是「有颜色的卡」；
- *    再高整块就偏深（真机口径「底色颜色太深了」）。这一档不动 —— 浅色下觉得暗，是判定曾经
- *    按「主题档」猜配色、把「浅色 + Monet」错当成非 Monet 掺了 26%（见调用点）。
+ *    再高整块就偏深（真机口径「底色颜色太深了」）。
  *  · **非 Monet**：底是 COUI 那套中性灰白，一点色相都没有 —— 掺进去的色相要先把它「染出来」，
- *    才谈得上浓淡。这一档早先按 Monet 的 8% 试过（那是「灰里透一点蓝」），16% 也只到
- *    「看得出是强调色的卡片」，在真机上仍是**浅灰卡**（用户口径「非 monet 下首页卡片底色太淡」）：
- *    底色一淡，右上角那颗水印与卡里那两行字就成了这一块唯一的重量，整张卡读起来是「浮」的。
- *    现在提到 26% —— 那是「一眼认得出这是开启 / 关闭状态的卡」的那一格；再往上（三成以上）
- *    浅色档开始往强调色的中间调走，白底上的正文对比掉下来，所以停在这里。
+ *    才谈得上浓淡。一成半左右只像「灰里透一点蓝」，整张卡读起来是浮的（字与水印成了这一块
+ *    唯一的重量）；两成半往上则整块成了一大块色斑，压在页面上比下面那些卡片重得多
+ *    （真机口径「颜色太浓了」）。两成落在中间：一眼认得出这是开启 / 关闭状态的卡，
+ *    又还没到「一整块色块」。
  *  · 深色档各再提一档：同一个比例在深色底上明显更淡，不提那块「卡」就散了。
  */
 private const val MIX_MONET_LIGHT = 0.08f
 private const val MIX_MONET_DARK = 0.14f
-private const val MIX_PLAIN_LIGHT = 0.26f
-private const val MIX_PLAIN_DARK = 0.34f
+private const val MIX_PLAIN_LIGHT = 0.20f
+private const val MIX_PLAIN_DARK = 0.28f
 
 /**
  * 标题（状态大字）的字色混合比例 —— 强调色往 `onSurfaceContainer` 只拉一成半。
@@ -448,7 +448,7 @@ internal fun SettingsPage.HomeActivationCard(ui: HomeUiState) {
     //  提示行首那颗 18dp 的小图标不带（它只在有提示时才出现，本来就没有「上一档」可比）。
     //  **按「用不用 Monet 配色」这一位判**（`LocalMonetColors`），与深浅那三档无关：
     //  深色 + Monet、浅色 + Monet 同样吃 Monet 那套配色；拿深浅去猜会把它们错当成非 Monet
-    //  （浅色下于是掺了 26%，整块发暗）。
+    //  （那一套的掺色比例高一倍多，整块会明显发暗）。
     val palette = state.paletteOf(COUITheme.colorScheme, monet = LocalMonetColors.current)
     val container by animateColorAsState(palette.container, COLOR_TRANSITION_SPEC, label = "ActivationContainer")
     val titleColor by animateColorAsState(palette.title, COLOR_TRANSITION_SPEC, label = "ActivationTitle")
@@ -458,11 +458,18 @@ internal fun SettingsPage.HomeActivationCard(ui: HomeUiState) {
     //  点不动的档：库那个交互式重载**没有 enabled**，不给 `onClick` 就是非交互卡（不吃点击）
     val canToggle = activationToggleable
     val tick = LocalTick.current
+    //  阴影按卡片轮廓画：用 `RoundedCornerShape(CARD_CORNER)` 近似卡片那颗 squircle ——
+    //  当前这版库没有公开的 `SquircleShape`（`Card` 内部那份是私有的），而 16dp 圆角配上 4dp
+    //  模糊、0.04 的投影，四角那点曲率差在影子里看不出来。
+    val shadowShape = remember { RoundedCornerShape(CARD_CORNER) }
     Card(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(start = PAGE_MARGIN, top = ACTIVATION_TOP_GAP, end = PAGE_MARGIN),
+                .padding(start = PAGE_MARGIN, top = ACTIVATION_TOP_GAP, end = PAGE_MARGIN)
+                //  与顶栏圆键同一档淡阴影（[SOFT_SHADOW]）：这一块压在页面底色上，比圆键更该有一点
+                //  浮起感 —— 但只有「一层」，不抢卡里那几行字。
+                .dropShadow(shape = shadowShape, shadow = SOFT_SHADOW),
         // 卡自己的内边距**清零**：这一块的留白按「一整块」给（见 [ACTIVATION_CONTENT_PADDING]），
         //  叠上库那份行内边距会变成两层，文字离卡边比下面的卡片远一截。
         insideMargin = PaddingValues(0.dp),

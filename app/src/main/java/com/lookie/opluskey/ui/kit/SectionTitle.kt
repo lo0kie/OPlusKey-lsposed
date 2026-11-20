@@ -171,7 +171,7 @@ internal val SECTION_TITLE_COUNTER_GAP = MORE_BUTTON_END_SHIFT
 
 /**
  * 小标题**行尾那一格**的右内缩 —— 与 [MORE_BUTTON_WIDTH] 那套几何同源：
- * 页面缩进 [PAGE_MARGIN]（12）再加字形在格内的那一档（10）= **22**。
+ * 页面缩进 [PAGE_MARGIN]（16）再加字形在格内的那一档（10）= **26**。
  *
  *  取 22 而不是 12，是因为「一颗 40 宽点击格、20 宽字形居中」的字形右边线本来就比格子右边线
  *  往里 10dp：**文字行尾要与那颗字形的右边缘落在一条线上**，就得补这 10dp。
@@ -449,12 +449,13 @@ private fun TitleArrow(click: SectionTitleClick) {
 private val COUNTER_FONT_SIZE = 12.sp
 
 /**
- * **行尾那一格的小字** —— 字数统计（`12/24`）或条数（`3`），给「小标题 / 弹窗标题」的行尾槽用。
+ * **行尾那一格的小字** —— 字数统计（`12/24`）或条数（`3`），给**小标题**的行尾槽用。
  *
- *  三个地方共用：命令名称（`n/24`）、命令详情的全屏编辑（`n/1024`）、
- *  已保存的命令列表里那两段的**条数**（没有上限，所以只有 `n`）。
- *  字号、颜色必须一致，各写一份迟早走形；位置不在这里 —— 由各自那一层摆
- *  （小标题推到行尾、弹窗里紧随标题且不参与居中）。
+ *  命令名称（`n/24`）与已保存的命令列表里那两段的**条数**（没有上限，所以只有 `n`）走它。
+ *  字号、颜色必须一致，各写一份迟早走形；位置不在这里 —— 由小标题推到行尾。
+ *
+ *  **弹窗里的字数不走这一格**：主标题那一行容不下它（标题长一点就被挤成两段），改由外壳的
+ *  副标题画在标题下面，格式仍取自 [counterText]（与这一格同一个口径）。
  *
  *  为什么不放在输入框里（库的 `maxCount`）：库把计数器画在输入框右下角，离正在读的那一行很远，
  *  读起来像另一条信息。
@@ -466,8 +467,22 @@ internal fun TitleCounter(
     length: Int,
     max: Int? = null,
 ) {
-    TitleSmallText(if (max == null) "$length" else "$length/$max")
+    TitleSmallText(counterText(length, max))
 }
+
+/**
+ * 计数那一格的字本身 —— [TitleCounter] 与弹窗副标题（`FrostedDialog` 的 `subTitle`）共用。
+ *
+ *  同一个数字换个位置就换个写法是最容易发生的那类走形（`3/200` 与 `3 / 200` 只差一个空格，
+ *  并排看才知道不一样）—— 所以格式只有这一支：与标题同行那一格把它交给 [TitleSmallText] 画，
+ *  标题下面那行把它交给外壳画。
+ *
+ * @param max 上限；`null` = 没有上限，只写数
+ */
+internal fun counterText(
+    length: Int,
+    max: Int? = null,
+): String = if (max == null) "$length" else "$length/$max"
 
 /**
  * 字数按**码点**数 —— 与输入框的截断同一个口径。

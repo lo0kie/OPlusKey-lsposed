@@ -20,6 +20,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.command.CommandFailure
+import com.lookie.opluskey.command.action.shell.RootGrant
+import com.lookie.opluskey.command.action.shell.ShizukuHost
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -27,9 +30,6 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.present.comboLabel
-import com.lookie.opluskey.host.action.CommandFailure
-import com.lookie.opluskey.host.action.shell.RootGrant
-import com.lookie.opluskey.host.action.shell.ShizukuHost
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.feedback.hint
@@ -38,8 +38,8 @@ import com.lookie.opluskey.ui.input.ImeFocusRelease
 import com.lookie.opluskey.ui.kit.DialogButtonRow
 import com.lookie.opluskey.ui.kit.FocusOnShow
 import com.lookie.opluskey.ui.kit.FrostedDialog
-import com.lookie.opluskey.ui.kit.TitleCounter
 import com.lookie.opluskey.ui.kit.codePointLength
+import com.lookie.opluskey.ui.kit.counterText
 import com.lookie.opluskey.ui.kit.dialogSideMargin
 import com.lookie.opluskey.ui.model.theme.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER_MS
@@ -129,7 +129,7 @@ internal fun SettingsPage.CommandFullscreenDialog(
         onDismiss = onDismiss,
         //  带输入框：键盘由输入框那一侧叫，这里不能收（收晚一步就是「聚焦后又失焦」）
         hideImeOnShow = false,
-        //  字数统计放**标题行行尾**：库的 `maxCount` 是画在输入框右下角的，而这一格是编辑区
+        //  字数统计放**标题下面那行**：库的 `maxCount` 是画在输入框右下角的，而这一格是编辑区
         //  （框高随行数变），计数器贴着框底、离正在敲的字很远，读起来像另一条信息。
         //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）
         footer = {
@@ -143,7 +143,7 @@ internal fun SettingsPage.CommandFullscreenDialog(
                 },
             )
         },
-        titleTrailing = { TitleCounter(codePointLength(text.text), MAX_SINGLE_LENGTH) },
+        subTitle = counterText(codePointLength(text.text), MAX_SINGLE_LENGTH),
     ) {
         //  **侧边距只给输入框**：库的按钮条是「两半平分整个宽度」（自己带内部边距），
         //  套在侧边距里就缩进一圈、与弹窗边缘对不上（`NameInputBody` 也是这么摆的）。

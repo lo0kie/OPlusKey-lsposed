@@ -432,7 +432,8 @@ private fun SettingsPage.ruleActionLines(rule: SceneRule): List<ActionLine> =
  *
  *  与各页的小标题**同一个组件**
  *  （同一档字号、颜色、行高）：「条件 N」是这一块的小标题，不是正文。横向只把库里那 32dp
- *  改成 20dp —— 默认值里含 12dp 页面边距，而这一页的外层已经有 `PAGE_MARGIN`，照抄会多缩进一格
+ *  改成 16dp —— 库默认那 32 是「整幅宽的一行」上的数，而这一页的外层已经让过一档 `PAGE_MARGIN`
+ *  （16），再照抄就落到 48；16 + 16 仍压在页内小标题那条线（32）上
  *  （真机口径：两者字头都落在 112px @3.5x）。
  */
 @Composable
@@ -448,16 +449,16 @@ private fun RuleTitleRow(
         text = I18n.format(Strings.COMMAND_BRANCH_ITEM, index + 1),
         modifier = Modifier.heightIn(min = RULE_TITLE_HEIGHT),
         //  左右缩进比页面小一档（外层已有 `PAGE_MARGIN`）
-        insideMargin = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         //  行尾两格：那颗「更多」与一格计数 —— 顺序是**菜单在前、计数在最后**（用户口径
         //  「counter 和菜单换个位置」）；样式在 `MoreButton` / `TitleCounter` 里（场景与命令列表共用一份）。
         //
-        //  内缩给的是 [SECTION_TITLE_TRAILING_GLYPH_INSET]（10dp），不是默认那 22dp：这一行本身
-        //  已经在外层 `PAGE_MARGIN` 里面（行右边缘 = 页边 − 12），默认那 22dp 是按「整幅宽的一行」
-        //  算的，再补一次就成了页边 − 34。
+        //  内缩给的是 [SECTION_TITLE_TRAILING_GLYPH_INSET]（10dp），不是默认那 [SECTION_TITLE_TRAILING_END]：
+        //  这一行已经在外层 `PAGE_MARGIN` 加本节 `insideMargin` 里面，默认那个数是按「整幅宽的一行」
+        //  算的，再补一次就多缩一格。
         //
         //  这 10dp 现在补的是**计数那格**：行尾最后一个元素是文字，文字没有菜单格那 10dp 的内缩，
-        //  补上之后它的右边缘 = 页边 − 22，与「命令名称」「命令详情」那几行的计数落在同一条线上。
+        //  补上之后它的右边缘与那颗字形的右边缘落在同一条线上。
         trailingEndPadding = SECTION_TITLE_TRAILING_GLYPH_INSET,
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {

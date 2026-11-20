@@ -8,10 +8,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.lookie.opluskey.bridge.host.CommandPlatformImpl
+import com.lookie.opluskey.command.ActionRunner
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.ui.state.page.CommandDraft
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
@@ -357,6 +358,8 @@ internal object TestRunnerCache {
             cached ?: ActionRunner(
                 context.applicationContext,
                 Handler(Looper.getMainLooper()),
+                //  设置页这一份「试一下」也走同一条命令能力层：端口实现与宿主主进程那一份同一处
+                CommandPlatformImpl { context.applicationContext },
             ).also { cached = it }
         }
     }

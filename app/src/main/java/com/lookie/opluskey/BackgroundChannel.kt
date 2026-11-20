@@ -2,8 +2,8 @@ package com.lookie.opluskey
 
 import android.content.Context
 import android.content.Intent
+import com.lookie.opluskey.command.shizuku.ShizukuShellService
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.shizuku.ShizukuShellService
 
 /**
  * 把「后台通道」立起来 —— [ShizukuShellService] 常驻那一档的**唯一入口**。

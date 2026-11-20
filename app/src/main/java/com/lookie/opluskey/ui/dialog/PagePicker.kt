@@ -518,7 +518,8 @@ internal fun SettingsPage.SinglePickerDialog(
  *  行本身与单选那份一模一样（[PickerRows]），区别只在点一行不关窗、以及底部多一条按钮栏。
  *  勾几项才作数的那种决定（「这一组组合键由哪几颗键组成」）走它。
  *
- * @param hint 标题下面那句说明（`null` = 不写）
+ * @param subTitle 标题下面那句说明（`null` = 不写）—— 交给外壳的头那一区，
+ *   与标题一起量、正文再长也不滚走
  * @param selected 已勾上的下标
  * @param confirmEnabled 「确定」能不能点（例如不足两颗时不能）
  */
@@ -526,7 +527,7 @@ internal fun SettingsPage.SinglePickerDialog(
 internal fun SettingsPage.MultiPickerDialog(
     show: Boolean,
     title: String,
-    hint: String?,
+    subTitle: String?,
     labels: List<String>,
     selected: Set<Int>,
     onToggle: (Int) -> Unit,
@@ -545,6 +546,7 @@ internal fun SettingsPage.MultiPickerDialog(
     FrostedDialog(
         show = show,
         title = title,
+        subTitle = subTitle,
         onDismiss = onDismiss,
         //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）
         footer = {
@@ -562,21 +564,6 @@ internal fun SettingsPage.MultiPickerDialog(
             )
         },
     ) {
-        if (hint != null) {
-            Text(
-                text = hint,
-                style = COUITheme.textStyles.body2,
-                color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            start = DialogDefaults.insideMargin.width,
-                            end = DialogDefaults.insideMargin.width,
-                            bottom = PICKER_ROW_VERTICAL_PADDING,
-                        ),
-            )
-        }
         PickerRows(
             labels = labels,
             isSelected = { it in selected },

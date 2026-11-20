@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """依赖一动，这两件事必须一起做完 —— 见 AGENTS.md 二、1.2。
 
- 1) 锁文件：`app/gradle.lockfile` / `core/gradle.lockfile`（dependabot 只改版本号，锁文件不动）；
+ 1) 锁文件：`app/gradle.lockfile` / `core/gradle.lockfile` / `command/gradle.lockfile`
+    （dependabot 只改版本号，锁文件不动）；
  2) 校验元数据：`gradle/verification-metadata.xml` 逐文件记 sha256，新版本一进来就缺条目，
     CI 会在**第一条**「Dependency verification failed」上红。
 
@@ -59,8 +60,12 @@ def main():
     print('== 1/2 重锁依赖')
     #  `-q` 让 gradle 在成功时不刷屏；输出**不捕获**（stderr 直接进终端）—— 失败时要能看见
     #  它自己那句错误，这正是原来那句「先看上面 gradle 的输出」所指的东西。
-    step = c.run([gradlew, ':app:dependencies', ':core:dependencies', '--write-locks', '-q'],
-                 capture=False)
+    #  模块清单**写死**在这里：`--write-locks` 只给「真被解析到的项目」写文件，漏一个的表现是
+    #  那个模块永远没有锁文件、而 CI 的比对只看已有的那几份 —— 静默少一道锁。
+    step = c.run(
+        [gradlew, ':app:dependencies', ':core:dependencies', ':command:dependencies', '--write-locks', '-q'],
+        capture=False,
+    )
     if step.returncode != 0:
         c.err('重锁失败（先看上面 gradle 的输出）')
         return 1

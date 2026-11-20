@@ -93,11 +93,10 @@ private const val SHEET_POSITION_ATTEMPTS = 8
 private const val SHEET_POSITION_STEP_MS = 40L
 
 /**
- * 抽屉里小标题（`SectionTitle`）的左右缩进 —— **比页面里收一档**（页面里吃库默认那 32dp）。
+ * 抽屉里小标题（`SectionTitle`）的左右缩进 —— **只补一档**（不比页面里更靠里）。
  *
- *  抽屉的 `insideMargin` 已经给过一档 [PAGE_MARGIN]，小标题再叠上库那份 32dp 就落到 48dp ——
- *  比它管着的卡片行文字（卡片 16 + 行内 16 = 32）右移一档，真机上就是「标题比内容还靠里」。
- *  这里收成 [PAGE_MARGIN]：两层正好 32，与行文字同一条线。
+ *  抽屉的 `insideMargin` 已经给过一档 [PAGE_MARGIN]；小标题再叠上库那份 32dp 就成了两档 + 32 ——
+ *  比它管着的行文字靠里一大截，真机上就是「标题比内容还收」。这里只补一档 [PAGE_MARGIN]。
  *
  *  上下留白原样取库那份（[PaddingValues.calculateTopPadding] / `calculateBottomPadding`），
  *  行高与页面里那几处小标题一致。

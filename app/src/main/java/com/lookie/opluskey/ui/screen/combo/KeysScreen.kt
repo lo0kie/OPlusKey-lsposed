@@ -645,9 +645,10 @@ private fun SettingsPage.ComboKeysDialog(
     MultiPickerDialog(
         show = show,
         title = I18n.get(Strings.COMBO_PICK_KEYS),
-        //  标题下面那句「选 2 颗」去掉（用户口径）：标题「选择按键」已经够，颗数靠勾选时的提示说；
-        //  真要选错颗数，勾满上限之后下一颗勾不上时会有话说（见 `onToggle`）。
-        hint = null,
+        //  标题下面那行写**这一类**的上限（等待 / 按住两类各一句，见 `comboMaxKeysHint`）：
+        //  能勾几颗是「添加」为什么灰着的前提，动手勾之前就该看得见，不该等勾满了再被消息条告知。
+        //  措辞与勾满时那条消息**同一句**（同一个事实只有一个出处）；不再用「选 2 颗」那种口语说法。
+        subTitle = comboMaxKeysHint(hold),
         labels = keys.map { keyName(it) },
         selected = keys.indices.filter { keys[it].id in picked }.toSet(),
         onToggle = { index ->

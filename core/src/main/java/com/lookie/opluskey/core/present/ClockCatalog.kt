@@ -31,8 +31,8 @@ import com.lookie.opluskey.core.model.Action
  * ## 为什么这一族不列进「支持的命令格式」卡
  *
  *  那张卡的收录规则是「只列没有图形入口的格式」（见 `ui/model/text/PageCopy`）：这一格就是它的
- *  入口。但 token 仍在 `Action.PREFIXES` 里 —— 从格子里挑出来的动作还要能当**单条命令的正文**
- *  存下来，那一步只过 `hasSupportedFormat` 这一道闸。
+ *  入口。而那张卡**就是判据本身**（`Action.HANDWRITTEN`）—— 所以 `timer:` 也不接受手写：
+ *  它照样能从这一格绑到按键 / 场景上（`parse` 认得），只是存不成「单条自定义命令」的正文。
  */
 object ClockCatalog {
     /**

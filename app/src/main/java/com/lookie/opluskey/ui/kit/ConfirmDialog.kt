@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -118,9 +117,6 @@ internal fun ColumnScope.DialogBody(content: @Composable ColumnScope.() -> Unit)
  *   这几件都是「动作项自己的状态」。
  * @param negative 左半边那颗的字。默认就是「取消」—— 全项目只有更新窗不这么叫（「稍后」），
  *   其余七八处逐字一样，没必要每处各抄一遍 `I18n.get(Strings.DIALOG_CANCEL)`。
- * @param onReset 最左那颗「重置」—— 不给就没有（那两颗仍是平分）。给「这一格有默认值、
- *   用户可以一键回到默认」的格子用（此刻只有提示文案模板）。它不关窗：调用方自己决定
- *   是写回去再关上，还是把输入框清空留在原地。
  */
 @Composable
 internal fun DialogButtonRow(
@@ -128,7 +124,6 @@ internal fun DialogButtonRow(
     onPositive: () -> Unit,
     positiveStyle: DialogPositiveStyle = DialogPositiveStyle(),
     negative: String = I18n.get(Strings.DIALOG_CANCEL),
-    onReset: (() -> Unit)? = null,
 ) {
     //  动作项那颗的字：默认「确定」，调用方要换时走 `positiveStyle.label`
     val positive = positiveStyle.label ?: I18n.get(Strings.DIALOG_CONFIRM)
@@ -146,9 +141,6 @@ internal fun DialogButtonRow(
         horizontalArrangement = Arrangement.spacedBy(DIALOG_BUTTON_GAP),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        //  「重置」那颗只在调用方给了 `onReset` 时出现（此刻只有「提示文案」）：三颗平分比
-        //  挤到标题栏去更好按 —— 标题栏那一格已经被字数统计占着。
-        onReset?.let { act -> ResetButton(act, negFill, negText) }
         TextButton(
             text = negative,
             onClick = {
@@ -203,31 +195,6 @@ internal fun DialogButtonRow(
             )
         }
     }
-}
-
-/**
- * 按钮区最左那颗「重置」—— 只在调用方给了 `onReset` 时画（[DialogButtonRow] 的第三颗）。
- *
- *  与「取消」同一档配色：两颗都是中性动作，只有右边那颗是主操作。
- */
-@Composable
-private fun RowScope.ResetButton(
-    onReset: () -> Unit,
-    fill: Color,
-    textColor: Color,
-) {
-    val tick = LocalTick.current
-    TextButton(
-        text = I18n.get(Strings.DIALOG_RESET),
-        onClick = {
-            tick()
-            onReset()
-        },
-        modifier = Modifier.weight(1f),
-        cornerRadius = DIALOG_BUTTON_RADIUS,
-        minHeight = DIALOG_BUTTON_HEIGHT,
-        colors = ButtonDefaults.textButtonColors(color = fill, textColor = textColor),
-    )
 }
 
 /**
@@ -392,6 +359,14 @@ internal val DIALOG_REGION_GAP = 16.dp
  *  再宽就会读成「另一条信息」—— 它本来只是这条标题的附注。
  */
 internal val DIALOG_TITLE_TRAILING_GAP = 6.dp
+
+/**
+ * 主标题与它下面那行副标题之间的间隙（`FrostedDialog` 的 `subTitle`）。
+ *
+ *  取 4dp：两行要读成**一组**（标题 + 它的附注），所以比三区之间那 16 小得多；再大一档就成了
+ *  两段正文，再小一档副标题会黏在标题的降部上。
+ */
+internal val DIALOG_SUBTITLE_GAP = 4.dp
 
 /**
  * 弹窗正文的左右内缩 —— 用库自己那一档，正文才与标题左缘对齐。

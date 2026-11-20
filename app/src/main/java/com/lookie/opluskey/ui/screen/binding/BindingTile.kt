@@ -190,6 +190,28 @@ internal fun SettingsPage.ActionTile(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "TileEntryIndicator",
     )
+    //  行尾那一格**这一帧到底画不画东西** —— 只有两种是「真的画」：
+    //   · 入口格（跳页 / 原地弹菜单）：那颗右箭头 / 选择器**恒在**；
+    //   · 其余格：选中了才画那枚勾（「常用命令」那段是圆点），没选中时那一格是空的。
+    //
+    //  **空着就不占位**：20dp + 4dp 那一格白留着，等于替标题手动设了一道宽度上限 ——
+    //  文字明明还有地方，却先在那一线前面被省略号截掉（用户口径「没有行尾图标的格子不用
+    //  手动设文字上限，让它自动裁」）。空着时标题用满整格，长了由它自己在格边省略。
+    //  代价：同一格切换选中态时，长标题会左右动一点点 —— 那一格本来就只有这一下会变。
+    val clickKind = if (trailingDot) null else ActionCatalog.clickKind(requireNotNull(spec))
+    val trailingDrawn =
+        when (clickKind) {
+            null -> selected
+
+            ActionCatalog.ClickKind.PAGE_APP,
+            ActionCatalog.ClickKind.PAGE_VARS,
+            ActionCatalog.ClickKind.MENU,
+            -> true
+
+            else -> selected
+        }
+    //  行尾那一格的边长：不画东西时收到 0（`Box` 仍在，选中那一刻的淡入才不会被打断）。
+    val trailingSize = if (trailingDrawn) ENTRY_INDICATOR_SIZE else 0.dp
     //  行首那颗图标：整格的内容色（启用 / 选中 / 禁用三档）与「随机图标配色」那一档合成一个目标。
     //
     //  **随机配色必须也走这里**：它换的是整屏格子的图标色（用户一拨开关，几十颗一起变），
@@ -320,7 +342,7 @@ internal fun SettingsPage.ActionTile(
                             )
                         }
                     }
-                    Spacer(Modifier.width(TRAILING_INDICATOR_GAP))
+                    Spacer(Modifier.width(if (trailingDrawn) TRAILING_INDICATOR_GAP else 0.dp))
                     //  入口格不再画单选圈（那读作「这一格是一个可选项」），按**点开去哪**分两种字形：
                     //  · 弹一层菜单（系统导航 / 系统按键 / 媒体控制 / 响铃状态 / 应用控制）→ 选择器字形
                     //    （[PageIcons.Selector]：一个框 + 右下角小三角，读作「点了要选点什么」）；
@@ -334,13 +356,13 @@ internal fun SettingsPage.ActionTile(
                     // 换掉之后占位与观感不变。
                     if (trailingDot) {
                         //  「这一格就是当前绑的」那一枚圆点（「常用命令」那一段用它：那一段的条目
-                        //  不在清单里，查不出 `clickKind`）。**恒占位**：不占位时选中 / 未选中会让
-                        //  标题那列的可用宽度变、长名字跟着跳一下；圆点只在选中时淡入。
+                        //  不在清单里，查不出 `clickKind`）。**只在选中时占位**（见 [trailingDrawn]）：
+                        //  未选中的格子行尾是空的，标题因此能用满整格。
                         //
                         //  颜色取整格那个动画值 [contentColor]：选中 `primary`、禁用一档灰 ——
                         //  与标题同源、跟着同一段过渡走，禁用时不会剩下一个还亮着的主题色圆点。
                         Box(
-                            modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                            modifier = Modifier.size(trailingSize),
                             contentAlignment = Alignment.Center,
                         ) {
                             AnimatedFade(visible = selected) {
@@ -357,7 +379,7 @@ internal fun SettingsPage.ActionTile(
                     } else {
                         //  不走圆点就必须给得出 `Spec`：两个参数是同一个契约的两半
                         //  （给不出 `Spec` 的调用方，正是那个传 `trailingDot = true` 的）。
-                        when (ActionCatalog.clickKind(requireNotNull(spec))) {
+                        when (requireNotNull(clickKind)) {
                             //  换页的入口（「自定义变量」→ 变量操作、「应用控制」→ 挑应用）
                             //  ⇒ 行尾那颗是右箭头（与菜单、列表那几处同一颗）。
                             ActionCatalog.ClickKind.PAGE_APP,
@@ -366,7 +388,7 @@ internal fun SettingsPage.ActionTile(
                                 Icon(
                                     PageIcons.EnterArrow,
                                     contentDescription = null,
-                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                    modifier = Modifier.size(trailingSize),
                                     tint = entryIndicatorColor,
                                 )
                             }
@@ -376,7 +398,7 @@ internal fun SettingsPage.ActionTile(
                                 Icon(
                                     PageIcons.Selector,
                                     contentDescription = null,
-                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                    modifier = Modifier.size(trailingSize),
                                     tint = entryIndicatorColor,
                                 )
                             }
@@ -385,15 +407,15 @@ internal fun SettingsPage.ActionTile(
                             //  未选中时那一格空着（原先画一个空心框，整片网格里每个没选的格子都挂着
                             //  一个空圈，看着像「待办清单」）。
                             //
-                            //  **仍恒占位**：外面这层 `Box` 与字形同尺寸，不占位时选中 / 未选中会让
-                            //  标题那列的可用宽度变、长名字跟着跳一下。
+                            //  **空着就不留那 20dp**（见 [trailingDrawn]）：没选中的格子把这一格
+                            //  还给标题，长了由它自己在格边省略。
                             //
                             //  「录屏」那一格也走这里：它点开虽然弹弹窗，但**格子本身就是那个动作**
                             //  （三档只是它的状态），挂选择器字形等于告诉用户「下面还有一层清单」——
                             //  而那一层已经没有了（见 `ActionCatalog.clickKind` 的 `STATE` 档）。
                             else -> {
                                 Box(
-                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                    modifier = Modifier.size(trailingSize),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     //  淡入淡出与旁边那片底色同源（[COLOR_FADE_SPEC]）

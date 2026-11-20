@@ -37,7 +37,10 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.squircle.squircleBorder
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-// 「几个名字」怎么排进一行 —— 提示条、选择器、变量清单、场景条件共用这一份排布。
+// 「几个名字」怎么排进一行 —— 选择器、变量清单、场景条件共用这一份排布。
+//
+// **提示条那一档不在这里**：名字在进队列之前就填进了句子（见 [HintText.plain]），
+// 提示条只有「一整句话」这一个形态 —— 按颗排的话，装不下时是整段被挤到下一行。
 //
 // 名字就是**文字**：与旁边的句子同一档字号、同一条基线，读起来是一句话，
 // 不是「几枚框拼起来的一行」—— 名字本身不带底色、圆角、描边、内边距。
@@ -78,7 +81,7 @@ internal fun HintText.plain(): String {
 /**
  * **一句话里夹着几个名字** —— 模板里的 `%s` 按顺序换成 [chips]，装不下就换行。
  *
- *  用在「文案是模板、名字要单独归位」的地方（选择器那一列、操作提示那条胶囊）：
+ *  用在「文案是模板、名字要单独归位」的地方（选择器那一列：一排候选名字按行流式排）：
  *  两边各写一遍切分逻辑的话，「按 `%s` 切、去掉段首尾空格、模板与名字个数对不上怎么办」
  *  这三件事会各自漂移。文字段与名字用同一份 [textStyle] / [textColor]。
  *
@@ -118,13 +121,39 @@ internal fun ChipText(
     }
 }
 
+/** 名字与它那句说明之间的空隙 —— 这两半读成**一件东西**。 */
+private val LEGEND_NAME_GAP = 4.dp
+
 /**
- * 「几个名字 + 各自的说明」排成一行（装不下换行）—— **变量清单**那一行用它。
+ * 两件东西之间的横向空隙 —— 取组内那档的**两倍**。
+ *
+ *  再大一档（12dp 以上）在窄屏上会把第三项挤到下一行去，「三项 + 三项」变成「三项 + 两项 + 一项」：
+ *  最后一行只剩一个变量，反而比挤一点更难看。两倍这一档在中文 / 英文两种宽度下都还能三项一行。
+ */
+private val LEGEND_ITEM_GAP = 8.dp
+
+/** 换行之后行与行之间的空隙 —— 与横向分组同一个意思（换行不改变「这是几件事」）。 */
+private val LEGEND_ROW_GAP = 6.dp
+
+/**
+ * 「几个名字 + 各自的说明」排成**一条清单**（装不下换行）—— **变量清单**那一行用它。
  *
  *  用在「这一格能写什么」那种清单上（提示文案弹窗里输入框下面那一行）：前面是占位符本身
  *  （`$key`），后面跟着它换成什么（`键名`）。用这一档而不是整句，是因为这一行要读成
- *  「几个能填的变量」，而不是一句要连着读的话。给了 [onClick] 时每一个名字**可点**
+ *  「几个能填的变量」，而不是一句要连着读的话。给了 [onClick] 时**每一组整体**可点
  *  （点一下把那个变量接进输入框）：这一行于是既是说明、又是入口，省得用户照着抄一遍 `$gesture`。
+ *
+ * ## 两档间隙：组内窄、组间宽
+ *
+ *  名字与它那句说明之间只有 [LEGEND_NAME_GAP]，两组名字之间是 [LEGEND_ITEM_GAP]
+ *  （换行后行间 [LEGEND_ROW_GAP]）—— 前者读成「一件东西」，后者才分得开「几件事」。
+ *  两档取同一个值时整行是一条**均匀的字流**：六个变量糊成一句，是三项还是六项看不出来。
+ *
+ *  ## 说明里不写分隔符
+ *
+ *  以前字典那条写的是 `键名 / 手势 / …`。斜杠是字流的一部分，换行时它落在**行尾** ——
+ *  一行装不下三项，于是就变成「三项 + 两项 + 一项」三条，最后一行的那个还挂着一条没头没尾的 `/`。
+ *  分开几项是排版的事，交给上面那两档间隙；字典里只写「名字 说明」，一行能放几项由宽度决定。
  *
  *  与 [ChipText] 的差别只有一处：那里名字**插在一句话中间**（说明在名字前后都可能有），
  *  这里每个名字都跟着自己那句说明。所以两者不合并 —— 合并就得让每个调用点自己说「这段字是给
@@ -133,9 +162,9 @@ internal fun ChipText(
  *  模板与名字个数对不上（改文案时漏了一个 `%s`）时退回整句原文：宁可看见一个裸 `%s`，
  *  也不要把说明按错位置挂到别的名字后面。
  *
- *  @param template 说明那一句，`%s` 是名字的位置
+ *  @param template 说明那一句，`%s` 是名字的位置（**不含分隔符**：间隙由这一层给）
  *  @param chips 名字，按模板里 `%s` 的先后一一对应
- *  @param onClick 点某一个名字做什么（拿到的是那个名字）—— 给了才可点
+ *  @param onClick 点某一组做什么（拿到的是那一组的名字）—— 给了才可点
  */
 @Composable
 internal fun ChipLegend(
@@ -153,8 +182,8 @@ internal fun ChipLegend(
     }
     FlowRow(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(NAME_GAP),
-        verticalArrangement = Arrangement.spacedBy(NAME_GAP),
+        horizontalArrangement = Arrangement.spacedBy(LEGEND_ITEM_GAP),
+        verticalArrangement = Arrangement.spacedBy(LEGEND_ROW_GAP),
         itemVerticalAlignment = Alignment.CenterVertically,
     ) {
         //  模板开头那段（第一个 `%s` 之前）照原样画；`%s` 之间的每一段都归**前一个名字**，
@@ -165,14 +194,12 @@ internal fun ChipLegend(
         chips.forEachIndexed { at, name ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(NAME_GAP),
+                horizontalArrangement = Arrangement.spacedBy(LEGEND_NAME_GAP),
+                //  可点的是**整组**（名字 + 说明）：说明就挂在名字后面四个 dp 处，只让前面那几个字
+                //  能点的话，用户会「看着是一件事、点在说明上却没反应」。
+                modifier = if (onClick == null) Modifier else Modifier.clickable { onClick(name) },
             ) {
-                Text(
-                    text = name,
-                    style = textStyle,
-                    color = textColor,
-                    modifier = if (onClick == null) Modifier else Modifier.clickable { onClick(name) },
-                )
+                Text(text = name, style = textStyle, color = textColor)
                 val label = parts.getOrNull(at + 1)?.trim().orEmpty()
                 if (label.isNotEmpty()) {
                     Text(text = label, style = textStyle, color = textColor)

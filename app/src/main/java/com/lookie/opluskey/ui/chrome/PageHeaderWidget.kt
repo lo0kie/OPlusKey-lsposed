@@ -2,7 +2,6 @@ package com.lookie.opluskey.ui.chrome
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +26,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.pointerInput
@@ -47,6 +47,7 @@ import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.FROSTED_SURFACE_ALPHA
 import com.lookie.opluskey.ui.state.signal.BandHeight
+import com.lookie.opluskey.ui.style.SOFT_SHADOW
 import com.lookie.opluskey.ui.style.ellipsizeToColumns
 import com.lookie.opluskey.ui.style.frosted
 import dev.chrisbanes.haze.HazeState
@@ -550,18 +551,6 @@ internal fun Modifier.headerPressTick(tick: () -> Unit): Modifier =
     }
 
 /**
- * 顶栏圆键**描边**的不透明度系数 —— 乘在 `dividerLine` 自己那一档 alpha 上。
- *
- *  0.3：压在磨砂顶栏上只勾出「这儿有个圆」，不至于读成一枚端着的按钮（用户口径「边框再降
- *  亮度」）。要再淡 / 再亮都只动这一个数，别去换颜色角色 —— 换角色会把 Monet 那一档的
- *  `outlineVariant` 也一起换掉。
- *
- *  **浮层菜单面板那一圈描边也用这一档**（见 `PageMenuPopup`）：两处都是「压在磨砂上、只要
- *  一个边界」的同一种描边，各写一个系数迟早一深一浅。
- */
-internal const val HEADER_BORDER_ALPHA = 0.3f
-
-/**
  * 顶栏两颗圆键之间的间距 —— 两个圆不贴在一起（首页那排、选择应用页那两颗、按键页编辑态那两颗
  * 共用这一档；各页各写一个数迟早会差出来）。挂在**左边那颗**后面。
  */
@@ -571,23 +560,21 @@ internal val HEADER_ACTION_GAP = 8.dp
  * 顶栏上的一颗圆键 —— 返回 / ⋮ / 添加 / 新建 / 重置 / 设置全走这一份。
  *
  *  顶栏底下是**磨砂**（半透的页面底色 + 模糊），纯透明的圆键压在上面只剩一个字形，看不出
- *  「这里按得动」；所以垫一层**纯色圆底 + 一圈细描边**。
+ *  「这里按得动」；所以垫一层**纯色圆底 + 一层淡阴影**（[SOFT_SHADOW]，与首页大卡片同一档）。
  *
  *  ## 配色只认角色，不判主题
  *
  *  底色 `surfaceContainer`（不是 `surfaceContainerHigh`：高一档压在磨砂顶栏上偏亮，深色下尤其
- *  刺眼），描边 `dividerLine`（分隔线那一档，比 `outline` 弱一级 —— 顶栏上要的只是「这里有一块
- *  可按的地方」，不是一枚端着的按钮）。这两个角色在 Monet 那一档就是 MD3 的
- *  `surfaceContainer` / `outlineVariant`（跟着壁纸走），其余主题档是 COUI 标定过的那两档 ——
- *  所以这里**不需要**按 `LocalAppTheme` 分支，换主题时颜色自己跟着换。
+ *  刺眼）。这个角色在 Monet 那一档就是 MD3 的 `surfaceContainer`（跟着壁纸走），其余主题档是
+ *  COUI 标定过的那一档 —— 所以这里**不需要**按 `LocalAppTheme` 分支，换主题时颜色自己跟着换。
  *
  *  禁用时退到 `disabledSecondaryVariant`（被冲淡的那一档容器色）：灰着的键不该还亮着
  *  （顶栏的「重置」有这一档，见 `CommandHeaderReset`）。
  *
- *  ## 禁用样式是**这一层的能力**（圆底 + 描边 + 字形三件）
+ *  ## 禁用样式是**这一层的能力**（圆底 + 字形两件）
  *
  *  这个圆是本项目自己画的（库的 `IconButton` 那层底色置透明），所以「灰」也得自己画全：
- *  只灰底与描边、字形还亮着，看着像「这颗还能按，只是底色淡了」。
+ *  只灰底、字形还亮着，看着像「这颗还能按，只是底色淡了」。
  *  而字形是调用点传进来的（`content` 里那颗 `Icon`），默认 tint 取库的 `LocalContentColor`
  *  —— 于是这里把内容色按 `enabled` 两档递下去，**调用点仍然只写 `Icon(图标)`**，
  *  不必逐个记着判启用状态、也不必各自挑一个灰。
@@ -596,7 +583,9 @@ internal val HEADER_ACTION_GAP = 8.dp
  *  这一层只负责在停用时把它换成 [COUITheme.colorScheme] 的 `disabledOnSecondaryVariant`
  *  —— 与行首图标禁用时同一档（见 `rememberRowIconColor`），全项目一处口径。
  *
- * @param enabled 与按钮自己的可用性同一判据 —— 圆底 / 描边 / 字形三样都跟着它走；
+ *  阴影不跟着 `enabled` 变：它是「这一块浮在栏上」的几何，不是这一颗此刻能不能按。
+ *
+ * @param enabled 与按钮自己的可用性同一判据 —— 圆底 / 字形两样都跟着它走；
  *   点不点得动由 `onClick` 那边定
  * @param content 图标本体（`Icon` 自带 `contentDescription`，不在这一层传）
  */
@@ -608,25 +597,12 @@ internal fun HeaderIconButton(
     content: @Composable () -> Unit,
 ) {
     val scheme = COUITheme.colorScheme
-    //  圆底与描边随 `enabled` 两档（顶栏的「重置」那颗会在编辑途中变灰 / 变亮），带过渡 ——
+    //  圆底随 `enabled` 两档（顶栏的「重置」那颗会在编辑途中变灰 / 变亮），带过渡 ——
     //  页里其它禁用来回都走同一条曲线（[COLOR_TRANSITION_SPEC]），顶栏这一颗不能「啪」一下。
     val fill by animateColorAsState(
         targetValue = if (enabled) scheme.surfaceContainer else scheme.disabledSecondaryVariant,
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "HeaderButtonFill",
-    )
-    //  描边：整档 `dividerLine` 压在磨砂顶栏上仍会勾出一圈清楚的轮廓，再压到三成一档就只剩
-    //  「圆有个边界」（用户口径「边框再淡」）。按当前档的 alpha 折算，Monet 与 COUI 那两套
-    //  都跟着淡下去；嫌淡 / 嫌亮都只改 [HEADER_BORDER_ALPHA] 这一个数。
-    val border by animateColorAsState(
-        targetValue =
-            if (enabled) {
-                scheme.dividerLine.copy(alpha = scheme.dividerLine.alpha * HEADER_BORDER_ALPHA)
-            } else {
-                scheme.disabledSecondaryVariant
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "HeaderButtonBorder",
     )
     //  按下去跟着触点轻微倾斜 —— 与首页那张「模块状态」卡同一档手感（库的 `TiltFeedback`）：
     //  卡片那边是 `pressFeedbackType = Tilt` 挂的，圆键这颗库没给这个参数，所以自己挂一层。
@@ -634,7 +610,7 @@ internal fun HeaderIconButton(
     //  点击仍旧交给里面那颗库按钮（含它那条「禁用时给提示」的路）。
     //  `delay = null` 与卡片一致：按下即倾，不等那一档长按判定。
     val tiltSource = remember { MutableInteractionSource() }
-    //  字形颜色（第三件禁用样式）—— 见上面那段「禁用样式是这一层的能力」。
+    //  字形颜色（第二件禁用样式）—— 见上面那段「禁用样式是这一层的能力」。
     //  能用的那一档读**环境值**：这几颗圆键原本吃的是页面给的内容色，写死会改变现有观感。
     val ambientIcon = LocalContentColor.current
     val iconColor by animateColorAsState(
@@ -642,19 +618,20 @@ internal fun HeaderIconButton(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "HeaderButtonIcon",
     )
-    //  **圆底与描边必须用 `CircleShape` 自己画**：库的 `IconButton` 走的是 squircle（超椭圆），
+    //  **圆底与阴影必须用 `CircleShape` 自己画**：库的 `IconButton` 走的是 squircle（超椭圆），
     //  圆角取边长一半时也只是「很圆的方」，四角仍比正圆鼓一点（用户口径「感觉这个按钮不是圆的」）。
-    //  所以库那层底色置透明，圆底 / 描边 / 裁剪全在这里做。
+    //  所以库那层底色置透明，圆底 / 阴影 / 裁剪全在这里做。
     val tick = LocalHeaderTick.current
     Box(
         modifier
             //  按一下振一下，**按这颗圆自己的边界**（见 [LocalHeaderTick]）：槽位容器比它大，
             //  挂在容器上会让「没有按钮的地方」也振
             .headerPressTick(tick)
-            //  挂在底色**外面**：倾斜的是整颗圆（圆底 + 描边 + 字形），不是只有里面那支字
+            //  挂在底色**外面**：倾斜的是整颗圆（阴影 + 圆底 + 字形），不是只有里面那支字
             .pressable(interactionSource = tiltSource, indication = TiltFeedback(), delay = null)
+            //  阴影画在圆底之前：先落投影、再盖上圆底，边缘才不会被自己的底色盖掉一半
+            .dropShadow(shape = CircleShape, shadow = SOFT_SHADOW)
             .background(color = fill, shape = CircleShape)
-            .border(width = 1.dp, color = border, shape = CircleShape)
             //  最后这一档裁子级：按压涟漪是画在按钮节点上的，不裁就会从圆的四角溢出去
             .clip(CircleShape),
     ) {

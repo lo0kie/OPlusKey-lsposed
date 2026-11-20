@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
+import com.lookie.opluskey.command.ActionRunner
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -15,7 +16,6 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.bindsToken
 import com.lookie.opluskey.core.model.mapActions
-import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.feedback.hint

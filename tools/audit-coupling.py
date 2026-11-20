@@ -32,7 +32,7 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 REPO = Path(__file__).resolve().parent.parent
-# 两个 Gradle 模块、每个模块**现有的每个源集**都要扫（构建类型是 debug / release / releaseLog）：
+# 三个 Gradle 模块、每个模块**现有的每个源集**都要扫（构建类型是 debug / release / releaseLog）：
 #   · `:app`  —— 界面 / 宿主侧 / 注入侧（`debug` / `release` 各有一份 ui 的变体副本；
 #     `releaseLog` 这一档不再放自己的源码，它借 `release` 那份，见 `app/build.gradle.kts`）；
 #   · `:core` —— 两个进程共用的那一层（三档变体里各有一份 BuildFlags 与 HostFilePerms 的副本，
@@ -49,6 +49,11 @@ SOURCE_ROOTS = [
     REPO / "core/src/debug/java/com/lookie/opluskey",
     REPO / "core/src/releaseLog/java/com/lookie/opluskey",
     REPO / "core/src/release/java/com/lookie/opluskey",
+    # `:command` —— 命令能力层（只依赖 `:core`）。它有一个源集，但那一个源集**必须**被扫到：
+    #  这一层的价值就是「不引上层」，而那条约束在编译期只挡得住 `:app` 那一侧 ——
+    #  反过来（它 import 了 `bridge/` 或 `ui/`）编译期同样会红，但红在 `:app` 编不过，
+    #  报错长在别处；这里扫一遍，报错长在这一层的文件名上。
+    REPO / "command/src/main/java/com/lookie/opluskey",
 ]
 PACKAGE_ROOT = "com.lookie.opluskey"
 IMPORT_RE = re.compile(r"^import\s+", re.M)
@@ -97,7 +102,19 @@ RULES: list[tuple[str, tuple[str, ...], str]] = [
     #   Composable 作用域 + 一份 overlays / chrome 状态」，它自己不搬业务值。
     # 对应地，业务页面与业务行留在 `ui/row` / `ui/dialog` / `ui/chrome` / `ui/screen` 里。
     ("ui.kit", (r"^com\.lookie\.opluskey\.core\.model\.",), "ui/kit 是业务无关的通用件：不吃 core.model（业务行留在 ui/row 等）"),
-    ("core", (r"^com\.lookie\.opluskey\.(inject|bridge|host|ui)\.",), "core 是最底层，不引任何上层包"),
+    ("core", (r"^com\.lookie\.opluskey\.(inject|bridge|host|ui)\." ,), "core 是最底层，不引任何上层包"),
+    # `:command` 是命令能力层：只认 `:core`。它不许认识界面层 / 注入侧 / 宿主侧 ——
+    #  那三样正是「本模块怎么发」的私有协议，认识它们就等于这一层搬不出去（接不进来第二个模块）。
+    #  需要那些通道时走 `CommandPlatform` 端口，实现在 `:app` 的 `bridge/CommandPlatformImpl`。
+    (
+        "command",
+        (
+            r"^com\.lookie\.opluskey\.(inject|bridge|host|ui)\.",
+            r"^com\.lookie\.opluskey\.KeyModule",
+            r"^(androidx\.|io\.github\.suqi8|io\.github\.lyxnx|com\.composables)",
+        ),
+        "命令能力层只依赖 :core：不认识界面 / 注入侧 / 宿主侧，也不引界面库（通道走 CommandPlatform 端口）",
+    ),
     # `inject/input/` 是**业务无关的判定层**：手势状态机、组合判定、连击链、滑动判定与它们
     # 吃的那几个值对象（`Gesture` / `KeyRef` / `ChainSpec` / `ComboBinding` / `DetectorWindows`）。
     # 这一层只认「毫秒 / 布尔 / 次数」与「带名字的键引用」，**一个业务模型都不该出现** ——
@@ -203,7 +220,11 @@ def source_files() -> list[Path]:
 def rel_of(path: Path) -> str:
     for root in SOURCE_ROOTS:
         if path.is_relative_to(root):
-            return path.relative_to(root).as_posix()
+            rel = path.relative_to(root).as_posix()
+            #  `:command` 的源根直接落在包名那一层（`.../com/lookie/opluskey`），
+            #  于是它的根包文件（`ActionRunner.kt`）算出来的第一段会是文件名本身 ——
+            #  给它补一段模块名，档位才是「这一层」而不是「某个类」。
+            return f"command/{rel}" if root.name == "opluskey" and "command/src" in root.as_posix() else rel
     raise AssertionError(path)
 
 

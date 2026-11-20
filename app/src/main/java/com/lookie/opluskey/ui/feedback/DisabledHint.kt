@@ -36,6 +36,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.kit.plain
 import com.lookie.opluskey.ui.model.page.APP_STATE_ICON_SIZE
 import com.lookie.opluskey.ui.model.page.APP_STATE_TEXT_GAP
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
@@ -594,11 +595,11 @@ internal fun SettingsPage.hintReason(reason: HintText) {
             reason.template,
             slot = HINT_SLOT_CHECKING,
             holdMs = CHECKING_HINT_FALLBACK_MS,
-            chips = reason.chips,
             //  与 `PageCheckingHint` 同一档：转圈就是「还在等」，重推一次不能把图标换掉
             loading = true,
         )
     } else {
+        //  名字（键名 / 应用名）仍按 `%s` 传下去，由 [hint] 在进队列之前填成整句
         hint(reason.template, slot = HINT_SLOT_DISABLED, chips = reason.chips)
     }
 }
@@ -637,8 +638,11 @@ internal fun SettingsPage.hint(
     /** 前置图标（`null` = 界面画默认的 alert-circle）。见 `HintItem.icon`。 */
     icon: ImageVector? = null,
     /**
-     * 文案里那几个 `%s` 位置换成**名字**（键名 / 应用名按颗归位，见 `ChipText`）。
-     * 空表 = 整句纯文字；[text] 里带着 `%s` 却给了空表时原样显示（那是调用点写漏了）。
+     * 文案里那几个 `%s` 位置要填的**名字**（键名 / 应用名）。
+     *
+     *  **在进队列之前就填进句子**：名字与句子同一档字、不带底色，提示条那一档只有「一整句话」
+     *  这一个形态 —— 按颗排进 `FlowRow` 的话，装不下时是整段被挤到下一行，同一个名字在不同
+     *  宽度下会换到不同位置。
      */
     chips: List<String> = emptyList(),
     /**
@@ -647,11 +651,13 @@ internal fun SettingsPage.hint(
      */
     loading: Boolean = false,
 ) {
+    //  **名字在这里就填进句子**：提示条只有「一整句话」这一个形态（见 [HintText.plain]）。
+    val full = if (chips.isEmpty()) text else HintText(text, chips).plain()
     //  **`d` 而不是 `w`**：提示条本身就是用户看得见的回执，它不在「判据级」那张清单里
     //  （装没装上 / 这次按键是不是侧键 / 判成什么手势 / 配置到没到），而它是全页最高频的一条 ——
     //  挂在 `w` 上会把真正的告警挤掉。调试包照样留着一行。
-    XLog.d("提示：$text${if (chips.isEmpty()) "" else "（名字：${chips.joinToString()}）"}${if (slot != null) "（位：$slot）" else ""}")
-    hints.hint(text, slot, holdMs, icon, chips, loading)
+    XLog.d("提示：$full${if (slot != null) "（位：$slot）" else ""}")
+    hints.hint(full, slot, holdMs, icon, loading)
 }
 
 /** 把某个语义位上的提示**提前收掉**（播完退场再摘，不硬切）—— 见 [HintQueue.retire]。 */

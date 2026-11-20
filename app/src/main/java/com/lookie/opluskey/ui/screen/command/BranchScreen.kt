@@ -380,26 +380,12 @@ internal fun SettingsPage.branchRulesBlockedReason(): String? {
 }
 
 /**
- * 空态那句「现在会发生什么」—— 模板里的 `%s`（原来填「键名 - 手势」）**不填**，去掉它之后
- * 压掉多余空格，其余照模板拼成一整句。
+ * 空态那句「现在会发生什么」—— 一句话说完：没有场景时，这颗键回落到按键绑定。
  *
- *  三档都在同一页里，一句话点名其中一档反而误导；这句只说明「没有场景时会回落到按键绑定」。
+ *  文案本身就是完整的一句（不带占位符）：三档都在同一页里，点名其中一档反而误导，
+ *  所以这句话里不出现「键名 - 手势」。
  */
-internal fun SettingsPage.branchEmptyText(): String {
-    val template = I18n.get(Strings.COMMAND_BRANCH_EMPTY)
-    //  这句不拼「键名 - 手势」：三档都在同一页里，一句话点名其中一档反而误导。
-    //  模板里的 `%s` 没有可填的键名：去掉它时连同旁边那一个空格一起收掉，再压掉连续空格，
-    //  否则中文会拖着行尾空格、英文会留下「Will run  from …」这种双空格。
-    return template.replace("%s", "").replace(SPACE_RUN, " ").trim()
-}
-
-/**
- * [branchEmptyText] 里那段「一串空格」—— **顶层常量**，不是内联 `Regex("…")`。
- *
- *  这一句在空态那一屏的**每次重组**上都要算一遍（空态本身就是「没有场景」，那一页常常一直空着），
- *  内联写法等于每帧重新编译一次正则。
- */
-private val SPACE_RUN = Regex(" +")
+internal fun SettingsPage.branchEmptyText(): String = I18n.get(Strings.COMMAND_BRANCH_EMPTY)
 
 // 「条件执行」页与「选择应用」页之间的往返 —— 进去挑应用、挑完写回哪一处。
 //

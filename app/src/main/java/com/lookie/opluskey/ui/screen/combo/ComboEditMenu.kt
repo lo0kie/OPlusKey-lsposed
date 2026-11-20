@@ -26,7 +26,6 @@ import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.present.comboKeyNames
-import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.core.present.comboMemberSeparator
 import com.lookie.opluskey.core.present.comboOrderedAgain
 import com.lookie.opluskey.ui.Screen
@@ -75,9 +74,6 @@ internal fun SettingsPage.ComboEditMenu() {
     val cfg = configState.config.value
     val id = ComboEditState.editingId
     val combo = id?.let { cid -> cfg.combos.firstOrNull { it.id == cid } }
-    //  确认窗里每个键名各套一对括号（`「侧键」+「电量 +」`）：整串再包一层会读成
-    //  「删除『侧键 + 电量 +』」—— 那是把两件东西写成了一个名字。
-    val label = combo?.let { comboLabel(cfg, it) }.orEmpty()
 
     //  三个浮层的开合位（删除 / 停用 / 触发方式）—— 同一时刻至多一个，见 [ComboMenuDialogs]
     val dialogs = remember { ComboMenuDialogs() }
@@ -127,7 +123,7 @@ internal fun SettingsPage.ComboEditMenu() {
         )
     }
 
-    ComboMenuDialogHost(id = id, label = label, dialogs = dialogs)
+    ComboMenuDialogHost(id = id, dialogs = dialogs)
 }
 
 /**
@@ -148,7 +144,6 @@ private class ComboMenuDialogs {
 @Composable
 private fun SettingsPage.ComboMenuDialogHost(
     id: String?,
-    label: String,
     dialogs: ComboMenuDialogs,
 ) {
     //  启用这一档时若成员键还有停用的，`setComboEnabled` 会先问一句 —— 窗挂在这里
@@ -164,7 +159,6 @@ private fun SettingsPage.ComboMenuDialogHost(
     )
     ComboDeleteDialog(
         show = dialogs.delete,
-        label = label,
         onDismiss = { dialogs.delete = false },
         onConfirm = {
             dialogs.delete = false
@@ -185,17 +179,19 @@ private fun SettingsPage.ComboMenuDialogHost(
 
 /**
  * 删掉这一档之前的确认窗 —— 抽成一支（它与停用那道窗并排挂）。
+ *
+ *  **标题不带组合名**：这个窗只在这一档自己的编辑页上弹，点开菜单那一刻已经知道删的是哪一档；
+ *  而组合名是一整句（`A 后 B 再 C` 那种），抄进标题只是把它再读一遍。
  */
 @Composable
 private fun SettingsPage.ComboDeleteDialog(
     show: Boolean,
-    label: String,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     ConfirmDialog(
         show = show,
-        title = I18n.format(Strings.COMBO_DELETE_CONFIRM, label),
+        title = I18n.get(Strings.COMBO_DELETE_CONFIRM),
         action = I18n.get(Strings.COMBO_DELETE),
         onDismiss = onDismiss,
         onConfirm = onConfirm,

@@ -1,6 +1,7 @@
 package com.lookie.opluskey.core.model
 
 import com.lookie.opluskey.core.TokenSyntax
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.rom.RomKeyFamilies
 
@@ -51,12 +52,13 @@ sealed interface Action {
      *  只写公开的 `Settings` 键、`setting:` 转给注入侧 —— 没有任何一档读这个开关，给它们显示它
      *  就是一块假开关（拨到「只用 sh」什么也不会变）。
      *
-     *  这些档也进不了自定义命令：[PREFIXES] 是「命令详情」那一栏的闸，只有那 7 种前缀写得进去
-     *  （`proc:` / `bright:` / `setting:` / `vol:` 那几族是给绑定格与已存配置用的，见 [PREFIXES]
-     *  那里的说明）。`Command.root` 挂在**自定义命令**上，正文里根本写不出这几条。
+     *  这些档也进不了自定义命令：[HANDWRITTEN] 是「命令详情」那一栏的闸，只有「支持的命令格式」
+     *  卡上列的那几种写得进去（`proc:` / `bright:` / `setting:` / `vol:` / `timer:` 那几族是给
+     *  绑定格与已存配置用的，见 [HANDWRITTEN] 那里的说明）。`Command.root` 挂在**自定义命令**上，
+     *  正文里根本写不出这几条。
      *
-     *  所以判据的完备性**依赖 [PREFIXES] 那一份名单**：哪天有新的前缀被放进「命令详情」那一栏、
-     *  并且它内部会起 shell，就得回来把这一支扩上。[PREFIXES] 的注释里有反向指路。
+     *  所以判据的完备性**依赖 [HANDWRITTEN] 那一份名单**：哪天有新的前缀被放进「命令详情」那一栏、
+     *  并且它内部会起 shell，就得回来把这一支扩上。[HANDWRITTEN] 的注释里有反向指路。
      *
      *  ## shell 也只说「用得上」，不说「必须开」
      *
@@ -127,7 +129,7 @@ sealed interface Action {
                 is VarSet -> name.isBlank()
 
                 //  倒计时**本来就没有载荷**或载荷是可选的 —— 「只有前缀」正是它的完整写法，
-                //  不算没写完（见 `PREFIXES_WITHOUT_BODY`）
+                //  不算没写完。它不在手写格式里（见 [HANDWRITTEN]），但绑定格照样绑得出它。
                 is Timer -> false
             }
 
@@ -884,8 +886,9 @@ sealed interface Action {
          *  否则既不保存、也不执行（用户口径「去掉默认为 shell 和 `cmd:`，对命令详情限制，
          *  必须以支持的格式开头」）。
          *
-         *  判据就是 [parse] 里认的那几样：几个**精确比较**的字面量，加上各条 `xxx:` 前缀。
-         *  往 [parse] 里加新前缀时，记得同步 [PREFIXES] —— 两处漂移会让新格式「能执行但存不进去」。
+         *  判据就是 [HANDWRITTEN] 那一份名单 —— **「支持的命令格式」卡上列的那几种**，不是 [parse]
+         *  认的全部（`app:` / `timer:` 那些格子选得出来、但不许手写）。加一种格式只改那一处：
+         *  闸与卡同时变，不会再出现「能执行但存不进去」或「列表填得进去、闸不认」。
          */
         fun hasSupportedFormat(raw: String?): Boolean {
             val text = raw?.trim().orEmpty()
@@ -912,17 +915,17 @@ sealed interface Action {
         fun hasBody(raw: String?): Boolean {
             val text = raw?.trim().orEmpty()
             if (text.isEmpty()) return false
+            //  认不出前缀的文本按「有正文」处理：它过不了 [hasSupportedFormat] 那道闸，
+            //  轮不到这一条来判；这里只负责「前缀认得之后后面还有没有东西」。
             val prefix = prefixOf(text) ?: return true
-            //  无参数的那两个前缀：后面空着也是完整的一条命令（见 [PREFIXES_WITHOUT_BODY]）
-            if (prefix in PREFIXES_WITHOUT_BODY) return true
             return text.removePrefix(prefix).trim().isNotEmpty()
         }
 
         /**
          * 这段文本开头那个**支持的前缀**（`shell:` / `keyevent:` …）；没有前缀、认不出时返回 `null`。
          *
-         *  与 [hasSupportedFormat] 同一份 [PREFIXES]：格式列表点一下要「只换前缀、正文留着」时，
-         *  靠它找到该被换掉的那一段 —— 自己再列一遍前缀就会与 [parse] 漂移。
+         *  与 [hasSupportedFormat] 同一份 [HANDWRITTEN]：格式列表点一下要「只换前缀、正文留着」时，
+         *  靠它找到该被换掉的那一段 —— 自己再列一遍前缀就会与闸漂移。
          */
         fun prefixOf(raw: String?): String? {
             val text = raw?.trim().orEmpty()
@@ -930,57 +933,45 @@ sealed interface Action {
         }
 
         /**
-         * 「命令详情」那一栏**认这几种前缀** —— 界面上「支持的命令格式」卡列的那七行是它删掉
-         * 两个「有图形入口」的档之后的结果，两个集合的关系如下。
+         * 「支持的命令格式」那一份清单 —— **闸与界面那张卡共用这一份**。
          *
-         *  判据与那张卡基本是同一个集合（用户口径：只允许填列表里的）：能写的手写命令只有这几种。
-         *  两边要改就一起改 —— 多一个这里不认的前缀，用户在输入框里敲得进去、却存不下来；
-         *  少一个，列表点一下填进来的东西自己过不了闸。
-         *
-         *  ## 例外：有图形入口、但仍然要能存下来
-         *
-         *  倒计时（`timer:<秒>`）**不在那张卡上**（它的入口是「快捷功能」里那一格，见
-         *  `ClockCatalog`），可它在名单里：从格子里挑出来的动作还要能
-         *  当**单条自定义命令的正文**落盘（那一步只过 [hasSupportedFormat] 这一道闸，
-         *  它不认的写法当场就存不了）。所以「卡上列不列」与「这里认不认」不是同一个问题 ——
-         *  卡管**教不教手写**，这里管**存不存得下**。
+         *  判据只有一条（用户口径）：**只有列在「支持的命令格式」卡上的写法才算手写命令**。
+         *  所以这份清单不再与界面各写一遍：`hasSupportedFormat` / `prefixOf` 直接读它，
+         *  界面那张卡也从它生成（文案两列取 [HandwrittenFormat.label] / [HandwrittenFormat.desc]）。
+         *  加一种格式 = 在这里加一行，闸与卡同时变；两处各写一遍那种漂移不会再发生。
          *
          *  ## 为什么不是 [parse] 认的全部
          *
          *  [parse] 还认 `app:` / `window:` / `appshortcut:` / `ringer:` / `oplus:` / `panel:` /
-         *  `setting:` / `bright:` / `volume:` / `ringervolume:` / `setvar:` / `proc:`，以及
-         *  `cmd:` —— 那些是**格子 / 菜单选出来的**动作，载荷是内部 id（`oplus:flash_memory`、
-         *  `setting:wifi`、`proc:stop:<包名>`），手写既记不住也不该记；写错了不会报错，只会
-         *  静默不执行。[parse] 必须继续认它们（绑定那几格与已存配置都要能解析出来），
+         *  `setting:` / `bright:` / `volume:` / `ringervolume:` / `setvar:` / `proc:` / `timer:`，
+         *  以及 `cmd:` —— 那些是**格子 / 菜单选出来的**动作，载荷是内部 id（`oplus:flash_memory`、
+         *  `setting:wifi`、`proc:stop:<包名>`、`timer:300`），手写既记不住也不该记；写错了不会报错，
+         *  只会静默不执行。[parse] 必须继续认它们（绑定那几格与已存配置都要能解析出来），
          *  只是「命令详情」这一栏不再接受手写。
          *
-         *  ## 加新前缀时要一并检查 [Action.usesRoot]
+         *  **有图形入口的一律不在这一列**（`timer:` 就是这一档）：格子里挑得出来，不代表能手写；
+         *  想让它也能当单条命令的正文，就得先给它一行卡片（= 改这一份清单），没有第二条路。
+         *
+         *  ## 加新格式时要一并检查 [Action.usesRoot]
          *
          *  那份判据（「以 root 执行」那个开关该不该出现）就建在这张名单上：它的结论是
          *  「自定义命令只可能是这几种，其中只有 `shell:` 经过 shell」。**往这里加一个内部会起
          *  shell 的前缀**（`proc:` 那种）时，那一支必须跟着扩 —— 否则新前缀的命令既不会显示那个
          *  开关、也不会把 `root` 落盘，用户没法控制它到底以谁的身份跑。
          */
-        private val PREFIXES: List<String> =
+        val HANDWRITTEN: List<HandwrittenFormat> =
             listOf(
-                KEYEVENT_PREFIX,
-                SHELL_PREFIX,
-                INTENT_PREFIX,
-                NOTIFY_PREFIX,
-                FLUID_PREFIX,
-                TOAST_PREFIX,
-                SHORTCUT_PREFIX,
-                TIMER_PREFIX,
+                HandwrittenFormat(SHELL_PREFIX, Strings.COMMAND_FORMAT_SHELL, Strings.COMMAND_FORMAT_SHELL_DESC),
+                HandwrittenFormat(KEYEVENT_PREFIX, Strings.COMMAND_FORMAT_KEYEVENT, Strings.COMMAND_FORMAT_KEYEVENT_DESC),
+                HandwrittenFormat(INTENT_PREFIX, Strings.COMMAND_FORMAT_INTENT, Strings.COMMAND_FORMAT_INTENT_DESC),
+                HandwrittenFormat(NOTIFY_PREFIX, Strings.COMMAND_FORMAT_NOTIFY, Strings.COMMAND_FORMAT_NOTIFY_DESC),
+                HandwrittenFormat(FLUID_PREFIX, Strings.COMMAND_FORMAT_FLUID, Strings.COMMAND_FORMAT_FLUID_DESC),
+                HandwrittenFormat(TOAST_PREFIX, Strings.COMMAND_FORMAT_TOAST, Strings.COMMAND_FORMAT_TOAST_DESC),
+                HandwrittenFormat(SHORTCUT_PREFIX, Strings.COMMAND_FORMAT_SHORTCUT, Strings.COMMAND_FORMAT_SHORTCUT_DESC),
             )
 
-        /**
-         * 这几个前缀**后面可以什么都不写** —— 动作本身没有参数（`timer:` 只把倒计时页调出来）。
-         * 其余前缀后面空着就是「还没写完」，不许存。
-         *
-         *  单独列一张表而不是在 [hasBody] 里写一个 `==` 比较：这张表与 [PREFIXES]
-         *  是同一族，将来再有「无参数的动作」照着加一行就够。
-         */
-        private val PREFIXES_WITHOUT_BODY: List<String> = listOf(TIMER_PREFIX)
+        /** 手写格式的前缀 —— [hasSupportedFormat] / [prefixOf] 的唯一依据（名单见 [HANDWRITTEN]）。 */
+        private val PREFIXES: List<String> = HANDWRITTEN.map { it.prefix }
 
         /**
          * 这段字能不能当**包名**用 —— 至少两段、每段字母开头、只含标识符字符。
@@ -1137,6 +1128,23 @@ sealed interface Action {
         }
     }
 }
+
+/**
+ * 「支持的命令格式」里的一行 —— 前缀 + 两列文案的字典键。
+ *
+ *  它只带**文案的键**、不带译好的字：模型层不认语言，界面那一层拿到键再 `I18n.get`。
+ *  清单本体在 [Action.HANDWRITTEN]，那一份同时是 `hasSupportedFormat` 的判据 ——
+ *  闸与卡读同一份，这是这张类型存在的全部理由（见那边的注释）。
+ *
+ *  @param prefix 写法开头那一段（`shell:` 这种，带冒号）
+ *  @param label 左列「写法」那一行的字典键
+ *  @param desc 右列「它干什么」那一行的字典键
+ */
+data class HandwrittenFormat(
+    val prefix: String,
+    val label: String,
+    val desc: String,
+)
 
 /**
  * `<前缀>[+|-]<百分比>` 拆成「符号 + 数值」；认不出（空 / 不是数字 / 不在 `0..100`）返回 `null`。

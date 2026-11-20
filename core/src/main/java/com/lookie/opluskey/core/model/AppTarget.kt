@@ -1,6 +1,7 @@
 package com.lookie.opluskey.core.model
 
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.judge.ThenLongParams
 import com.lookie.opluskey.core.rom.RomProfile
 
 /**
@@ -344,27 +345,6 @@ interface ClickChainParams : LongPressParams {
     /** 场景块给「单击后长按」配了松手动作 —— 注入侧看不到场景表，这一位由装配方算好带进来。 */
     val sceneChainRelease: Boolean
 }
-
-/**
- * 一档「后长按」的全部判定参数 —— 判定侧要的那几样，不带动作本身。
- *
- *  与 `LongPressParams` 同族：长按那一档一份，三档「后长按」各一份（见
- *  `ClickChainParams.thenLongAt`）。动作是什么由 `KeyConfig.actionOf` 回答，这里只回答
- *  「按多久算数、要不要排连发、松手还有没有事」。
- *
- * @param pressMs 这一档的按住时长（第二段按多久算数）
- * @param fireOnRelease 松手才触发（到点不执行）
- * @param repeatIntervalMs 连续触发的间隔
- * @param repeats 排不排连发（已并入「松手才触发」与串行命令那两条互斥）
- * @param releaseActionExists 松手那一刻还有事可做（决定要不要发 `ClickThenLongRelease`）
- */
-data class ThenLongParams(
-    val pressMs: Int,
-    val fireOnRelease: Boolean,
-    val repeatIntervalMs: Int,
-    val repeats: Boolean,
-    val releaseActionExists: Boolean,
-)
 
 /**
  * [GlobalConfig] 那一份的同名正向说法 —— 与 [ClickChainParams.fixedWindowStart] 同一条规矩。

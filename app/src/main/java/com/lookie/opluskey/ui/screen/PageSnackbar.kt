@@ -56,7 +56,6 @@ import com.lookie.opluskey.ui.feedback.CHECKING_HINT_FALLBACK_MS
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_CHECKING
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.retireHint
-import com.lookie.opluskey.ui.kit.ChipText
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.text.CHECKING_HINT
 import com.lookie.opluskey.ui.model.theme.FROSTED_SURFACE_ALPHA
@@ -294,7 +293,7 @@ private fun HintSlot(
                 bottom = HINT_SHADOW_CAP,
             ),
         ) {
-            HintCapsule(item.text, item.chips, item.icon, item.loading, backdrop, onScrollMs)
+            HintCapsule(item.text, item.icon, item.loading, backdrop, onScrollMs)
         }
     }
 }
@@ -334,7 +333,6 @@ private fun HintSlot(
 @Composable
 private fun HintCapsule(
     message: String,
-    chips: List<String>,
     icon: ImageVector?,
     /** 前置图标画成转圈的 loading（见 `HintItem.loading`）。 */
     loading: Boolean,
@@ -351,16 +349,14 @@ private fun HintCapsule(
     val container = if (backdrop == null) colors.containerColor else frostedContainer(colors.containerColor)
     // 换句三段：淡出 → 换内容（宽度在这一段过渡）→ 淡入（见上面那段注释）
     var shownText by remember { mutableStateOf(message) }
-    var shownChips by remember { mutableStateOf(chips) }
     var shownIcon by remember { mutableStateOf(icon) }
     var shownLoading by remember { mutableStateOf(loading) }
     val contentAlpha = remember { Animatable(1f) }
-    LaunchedEffect(message, chips, icon, loading) {
-        val changed = message != shownText || chips != shownChips || icon != shownIcon || loading != shownLoading
+    LaunchedEffect(message, icon, loading) {
+        val changed = message != shownText || icon != shownIcon || loading != shownLoading
         if (changed) {
             contentAlpha.animateTo(0f, tween(HINT_TEXT_FADE_MS, easing = AccelerateEasing()))
             shownText = message
-            shownChips = chips
             shownIcon = icon
             shownLoading = loading
             //  只等到宽度过渡的**尾巴**：淡入与最后那几十毫秒重叠，否则「等都等完了文字才出来」
@@ -439,25 +435,16 @@ private fun HintCapsule(
                 tint = colors.contentColor,
             )
             //  **只占一行**：溢出不再换行 / 不再省略，改成横向跑马灯（见 [MarqueeLine]）。
-            if (shownChips.isEmpty()) {
-                MarqueeLine(
-                    text = shownText,
-                    color = colors.contentColor,
-                    style = SnackbarDefaults.textStyle(),
-                    onScrollMs = onScrollMs,
-                )
-            } else {
-                //  带名字的那一档：名字与句子同一档字，按 `%s` 各归各位（与选择器同一份 `ChipText`）。
-                //  **不走跑马灯** —— 那一档是把一段文字挪来挪去，名字跟着挪读起来像「名字也在滚」；
-                //  这类回执本来就短（一句结论 + 一两颗键名），换行比滚动好读。
-                ChipText(
-                    template = shownText,
-                    chips = shownChips,
-                    textStyle = SnackbarDefaults.textStyle(),
-                    textColor = colors.contentColor,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-            }
+            //
+            //  名字（键名 / 应用名）在进队列之前就填进了句子（见 `HintText.plain`）——
+            //  这一档只有整句话这一个形态：按颗排的话，装不下时是整段被挤到下一行，
+            //  同一个名字在不同宽度下会换到不同位置。
+            MarqueeLine(
+                text = shownText,
+                color = colors.contentColor,
+                style = SnackbarDefaults.textStyle(),
+                onScrollMs = onScrollMs,
+            )
         }
     }
 }

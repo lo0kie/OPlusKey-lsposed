@@ -57,9 +57,9 @@ private val DIALOG_CORNER = 24.dp
  *  同一页里确认窗是糊的、起名窗是不透明的，看着像两个应用的控件（用户口径「添加按键/重命名的
  *  dialog 用项目通用那个，不然没有模糊」）。
  *
- * ## 为什么参数多到 9 个（`@Suppress("LongParameterList")`）
+ * ## 为什么参数多到 10 个（`@Suppress("LongParameterList")`）
  *
- *  `show` / `title` / `onDismiss` 之外，`hideImeOnShow`、`onDismissFinished`、`centered`、
+ *  `show` / `title` / `subTitle` / `onDismiss` 之外，`hideImeOnShow`、`onDismissFinished`、`centered`、
  *  `titleTrailing` 都是**这一个外壳自己的开关**（键盘怎么处理、退场播完要不要回报、摆在哪、
  *  标题行尾画什么），`footer` 与 `content` 是底部 / 正文两个槽 —— 全是行参。
  *  这些拆成 options 对象只会让二十多个调用点各多一层壳；Compose 的惯例就是平铺行参。
@@ -83,6 +83,18 @@ private val DIALOG_CORNER = 24.dp
 internal fun SettingsPage.FrostedDialog(
     show: Boolean,
     title: String,
+    /**
+     * 主标题**下面**那一行（`null` = 不写）。
+     *
+     *  它属于**头**这一区：与标题同在一个度量块里（见 `DialogPanel` 的标题区），所以正文再长、
+     *  再滚，它也不会被滚走 —— 这正是它与「正文第一段说明」的区别。字号 `footnote1`（比正文小一档）、
+     *  次要色、与标题同一条中线。
+     *
+     *  与 [titleTrailing] 的分工：那一格是**标题同一行**上的附注（`3/200`、`(48)` 这种短数字），
+     *  这一行是标题**下面**的一句话。字数 / 条数那几处都走这一行 —— 同行那格在标题长一点时会被
+     *  挤成两段，也读不出「这是附注」。
+     */
+    subTitle: String? = null,
     onDismiss: () -> Unit,
     /**
      * 弹窗露出时先把软键盘收掉。
@@ -114,11 +126,14 @@ internal fun SettingsPage.FrostedDialog(
      */
     centered: Boolean = false,
     /**
-     * 标题行**行尾**那一格（如输入框的字数统计）；`null` = 不占位。
+     * 标题**同一行**行尾那一格（如输入框的字数统计）；`null` = 不占位。
      *
-     *  它**叠**在标题那一行的右边线上（`align(CenterEnd)`），**不参与居中计算** ——
-     *  标题永远是整行的水平中心，不会因为它多宽就往左让多少。
-     *  代价是它不占位：只适合放很短的东西（字数统计那种），标题很长时两者会撞上。
+     *  它跟在标题屁股后面（`CenteredTitle` 把两者当成同一行摆，标题仍在整行的水平中心），
+     *  不参与居中的计算 —— 标题不会因为它多宽就往左让多少。
+     *  代价是它不占位：只适合放很短的东西，标题很长时两者会撞上。
+     *
+     *  **现在的调用点都走 [subTitle]**：字数 / 条数那几处放到标题下面去了。这一格留着给
+     *  「必须与标题同行」的东西（那一档还没出现）。
      */
     titleTrailing: (@Composable () -> Unit)? = null,
     /**
@@ -177,21 +192,39 @@ internal fun SettingsPage.FrostedDialog(
         //  点击也就不振）。
         DialogPanel(
             title = {
-                CenteredTitle(trailing = titleTrailing) {
-                    Text(
-                        text = title,
-                        //  一个 style 决定全部：参数里再给一遍 `lineHeight` 会与 style 里的
-                        //  `lineHeightStyle` / `platformStyle` 打架（后者的裁剪就白做了）。
-                        style =
-                            COUITheme.textStyles.title4.copy(
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center,
-                                lineHeight = DIALOG_LINE_HEIGHT,
-                                lineHeightStyle = DIALOG_LINE_HEIGHT_STYLE,
-                                platformStyle = DIALOG_PLATFORM_STYLE,
-                                color = COUITheme.colorScheme.onBackground,
-                            ),
-                    )
+                //  标题 + 副标题是**一个**度量块（`DialogPanel` 只认这一格的高度）：
+                //  两行之间那一档比三区之间的小得多，读起来是一组；正文再长也不会把它拆开。
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CenteredTitle(trailing = titleTrailing) {
+                        Text(
+                            text = title,
+                            //  一个 style 决定全部：参数里再给一遍 `lineHeight` 会与 style 里的
+                            //  `lineHeightStyle` / `platformStyle` 打架（后者的裁剪就白做了）。
+                            style =
+                                COUITheme.textStyles.title4.copy(
+                                    fontWeight = FontWeight.Medium,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = DIALOG_LINE_HEIGHT,
+                                    lineHeightStyle = DIALOG_LINE_HEIGHT_STYLE,
+                                    platformStyle = DIALOG_PLATFORM_STYLE,
+                                    color = COUITheme.colorScheme.onBackground,
+                                ),
+                        )
+                    }
+                    if (subTitle != null) {
+                        Text(
+                            text = subTitle,
+                            style =
+                                COUITheme.textStyles.footnote1.copy(
+                                    textAlign = TextAlign.Center,
+                                    color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                                ),
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = DIALOG_SUBTITLE_GAP),
+                        )
+                    }
                 }
             },
             content = content,
@@ -217,6 +250,9 @@ internal fun SettingsPage.FrostedDialog(
  *
  *  面板上沿→标题、标题→相邻的那一区、相邻的那一区→面板下沿，全部是 [DIALOG_REGION_GAP]。
  *  只写「标题 + 按钮」的窗、带正文的窗、连按钮都没有的窗，量出来都是同一档 —— 视觉上等高。
+ *
+ *  **标题区可以有两行**（标题 + 副标题，见 [FrostedDialog] 的 `subTitle`）：两行同属这一区、
+ *  同一次测量，区与区之间仍只有一档 —— 副标题不另算一区，否则它就成了「一段正文」。
  *
  * ## 为什么不能各区内缩补一档
  *

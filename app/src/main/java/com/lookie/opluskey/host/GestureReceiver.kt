@@ -9,6 +9,8 @@ import android.content.IntentFilter
 import android.os.Handler
 import android.os.Looper
 import com.lookie.opluskey.bridge.Framework
+import com.lookie.opluskey.bridge.host.CommandPlatformImpl
+import com.lookie.opluskey.command.ActionRunner
 import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.config.ConfigStore
@@ -22,7 +24,6 @@ import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.core.wire.LogWire
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
-import com.lookie.opluskey.host.action.ActionRunner
 
 /**
  * **宿主进程的入口编排**：取 Application Context → 签名闸 → 建执行器 → 保活 → 收配置 / 报活 →
@@ -170,7 +171,7 @@ internal object GestureReceiver {
         if (!sealPasses(ctx, loader, attempt, sealAttempt)) return
 
         // 执行那一段交给 [GestureExec]：它拿到执行器与 Context，执行完再回来叫我们补发一条报活。
-        GestureExec.attach(ActionRunner(context = ctx, handler = handler), ctx) { config ->
+        GestureExec.attach(ActionRunner(context = ctx, handler = handler, platform = CommandPlatformImpl { ctx }), ctx) { config ->
             sendAlive(ctx, config.global.enabled)
         }
 

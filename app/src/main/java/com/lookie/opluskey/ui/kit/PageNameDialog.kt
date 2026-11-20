@@ -40,21 +40,21 @@ internal const val MAX_NAME_LENGTH = 24
  * @param label 输入框左边的标签（填的是什么名字 / 这一段的值域）
  * @param initial 打开时输入框里的初值
  * @param range 数值那一档的取值区间；`null` = 填名字。非 `null` 时：只收数字、位数按上限算、
- *   标题行尾**不画**那格小字（值域由 [hint] 常驻说明）、越界时「确定」按禁用色画且按不动
+ *   标题下面**不画**字数那一行（值域由 [subTitle] / [hint] 说明）、越界时「确定」按禁用色画且按不动
  * @param maxLength 名字那档能输多少字（默认 [MAX_NAME_LENGTH]）。比名字长的那种**一句话**
  *   （提示文案模板）单独传一个更大的数
  * @param allowEmpty 允不允许**填空**（默认不许）。给「空 = 用默认那句」的模板用：清空本身就是一种
  *   合法输入，此时「确定」不该是灰的
+ * @param subTitle 标题**下面**那一行（`null` = 不写）。填名字时这一格画的是字数统计，
+ *   给了它就顶掉那格计数 —— 同一格只能有一句。给「这一格填什么」一句话说不完、
+ *   又比 [hint] 更该常驻可读的那几档用（滑杆的范围 / 步进 / 默认值）
  * @param hint 输入框**下面**那行小字说明（`null` = 不写）。给「这一格能写什么」说不完的那几档用 ——
  *   占位文案（[label]）只在框空着时看得见，填着东西时那条规矩就消失了
  * @param hintChips 给了就把 [hint] 里的 `%s` 按顺序换成**名字**（与键名同一套写法），见
  *   `ui/row/ChipLabel.ChipLegend`。给「这一格能填哪几个变量」那种清单用：变量名单独排一档才读得出
- *   「几个可填的东西」，纯文字读起来是一句话。**名字可点** —— 点一下把这个变量接到输入框末尾。
+ *   「几个可填的东西」，纯文字读起来是一句话。**每一组可点**（名字带着它那句说明一起）——
+ *   点一下把这个变量接到输入框末尾。模板里**不写分隔符**：几项怎么排开由那一层那两档间隙决定。
  *   空 = [hint] 整句当纯文字画
- * @param onReset 给了就在按钮区多一颗「重置」（最左那颗，见 [DialogButtonRow]）。这一格有默认值
- *   时才传 —— 没有默认值的「改名」那档多一颗只会让人以为自己改过什么。
- *   **关窗与落盘都由调用方在这个回调里做**：有的档是「填回输入框」、有的是「直接存默认值并关掉」，
- *   那是每一格的语义，弹窗层猜不出来
  * @param onConfirm 只在 [range] 内（或名字非空、或 [allowEmpty]）时回调，名字那档已去掉首尾空白
  *
  * ## 为什么参数一多就 `@Suppress("LongParameterList")`
@@ -63,6 +63,10 @@ internal const val MAX_NAME_LENGTH = 24
  *  `maxLength` / `allowEmpty` / `hint` 都是「这一格怎么画」，`onConfirm` 是结果 —— 全是行参。
  *  拆成一个 options 对象只会让调用点各多一层壳，与 `FrostedDialog` / `SinglePickerDialog`
  *  那边同一个理由。
+ *
+ *  **按钮区只有两颗**（取消 / 确定）：曾经有第三颗「重置」，只有提示文案那一档用 ——
+ *  而那一档的「重置」本来就能用「清空 + 确定」表达（空 = 用默认那句），多一颗按钮只是把
+ *  同一件事说两遍，还让这一套弹窗里出现两种按钮区。
  */
 @Composable
 internal fun SettingsPage.NameDialog(
@@ -74,9 +78,9 @@ internal fun SettingsPage.NameDialog(
     range: IntRange? = null,
     maxLength: Int = MAX_NAME_LENGTH,
     allowEmpty: Boolean = false,
+    subTitle: String? = null,
     hint: String? = null,
     hintChips: List<String> = emptyList(),
-    onReset: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
@@ -106,14 +110,10 @@ internal fun SettingsPage.NameDialog(
         onDismiss = onDismiss,
         // 带输入框：键盘由输入框那侧的 `ImeGuard` 叫，这里不能收（收晚一步就是「聚焦后又失焦」）
         hideImeOnShow = false,
-        //  行尾那格只在**填名字**时画（字数统计，与「命令详情」编辑窗同一个位置、同一套）。
-        //  填数值时**不画**：值域与步进已经常驻在输入框下面那行（[hint]），再把同一句区间
-        //  挂到标题行尾就是两处一样的字（用户口径「现在有两个一样的文案」）。
-        titleTrailing = {
-            if (range == null) {
-                TitleCounter(codePointLength(text), maxLength)
-            }
-        },
+        //  字数那一行只在**填名字**时画（与「命令详情」编辑窗同一个位置、同一套）。
+        //  填数值时**不画**：值域与步进由调用方给的那句说明占这一格（见 [subTitle]），
+        //  再加上字数就是两处一样的字。调用方给了 [subTitle] 时也以它为准 —— 同一格只放一句。
+        subTitle = subTitle ?: if (range == null) counterText(codePointLength(text), maxLength) else null,
         //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）
         footer = {
             DialogButtonRow(
@@ -121,7 +121,6 @@ internal fun SettingsPage.NameDialog(
                 onPositive = { onConfirm(if (range == null) text.trim() else text) },
                 //  空名字 / 越界都没有意义，此时「确定」是灰的
                 positiveStyle = DialogPositiveStyle(enabled = ready),
-                onReset = onReset,
             )
         },
     ) {
@@ -211,9 +210,10 @@ internal fun SettingsPage.NameInputBody(
                     modifier = body,
                 )
             } else {
-                //  变量清单那一档：名字 + 各自的说明排成一行，**左对齐**（它是清单不是一句话，
+                //  变量清单那一档：名字 + 各自的说明排成一条，**左对齐**（它是清单不是一句话，
                 //  居中时换行后每行起点都不一样，读起来更散）。
-                //  每一个名字**可点**：点一下把这个变量接到输入框末尾 —— 这一行既是说明也是入口。
+                //  每一组**可点**（名字与它那句说明一起）：点一下把这个变量接到输入框末尾 ——
+                //  这一行既是说明也是入口。
                 ChipLegend(
                     template = it,
                     chips = hintChips,

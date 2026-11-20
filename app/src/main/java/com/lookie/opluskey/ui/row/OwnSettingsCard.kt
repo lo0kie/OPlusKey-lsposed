@@ -345,7 +345,7 @@ private fun strengthLabel(level: Int): String =
     }
 
 /**
- * 提示文案的编辑窗 —— 与公共页那个同名弹窗同一套行为（空格子 = 用默认那句，可重置）。
+ * 提示文案的编辑窗 —— 与公共页那个同名弹窗同一套行为（清空再按「确定」= 直接写回默认模板）。
  *
  *  不复用公共页那一支：那个直接写全局配置（`setToastTemplate`），这里要把值交回调用方。
  *  形状一样、落点不同，拆成两支比塞一个「写到哪」的参数更直白。
@@ -368,14 +368,12 @@ private fun SettingsPage.OwnTemplateDialog(
         initial = initial,
         maxLength = OWN_TEMPLATE_MAX,
         allowEmpty = true,
-        onReset = {
-            onShowChange(false)
-            onConfirm(ToastNotice.DEFAULT_TEMPLATE)
-        },
         onDismiss = { onShowChange(false) },
         onConfirm = { text ->
             onShowChange(false)
-            onConfirm(text)
+            //  空白 = 回到默认：把默认模板直接交给调用方落盘（判据在 `ToastNotice.templateOrDefault`
+            //  一处，与公共页那一支同一个写法）。
+            onConfirm(ToastNotice.templateOrDefault(text))
         },
     )
 }

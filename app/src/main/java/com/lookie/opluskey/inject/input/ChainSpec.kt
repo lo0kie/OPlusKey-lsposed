@@ -1,6 +1,6 @@
 package com.lookie.opluskey.inject.input
 
-import com.lookie.opluskey.core.model.ThenLongParams
+import com.lookie.opluskey.core.judge.ThenLongParams
 
 /**
  * 判定器判一次按键**需要知道的全部** —— 十来个时间与开关，没有一样认识配置、不认识动作。
@@ -50,7 +50,7 @@ internal data class ChainSpec(
     /**
      * 击数（2 / 3 / 4）→ 那一档「后长按」的判定参数；没开的那几档不在表里。
      *
-     *  三档各有一套按住时长 / 连发 / 松手判据（`core.model.ThenLongParams`），判定器只按击数取，
+     *  三档各有一套按住时长 / 连发 / 松手判据（`core.judge.ThenLongParams`），判定器只按击数取，
      *  不再读单份的 `clickThenLong*`（那几个字段只留给「这一档本身开没开」与成员连击的松手档）。
      */
     val thenLong: Map<Int, ThenLongParams>,

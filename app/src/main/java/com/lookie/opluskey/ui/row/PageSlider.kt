@@ -269,13 +269,15 @@ private fun SettingsPage.SliderValueInput(
         icon = spec.icon,
         initial = spec.value.toString(),
         range = spec.min..spec.max,
-        //  值域、**真实档距**与出厂默认值放在框下面常驻：占位在填着字时就看不见了，而这三件事
-        //  正是打字时要看的。档距取 `spec.tickStep`（区间不整除时是均分出来的那一档），
+        //  值域、**真实档距**与出厂默认值放在**标题下面**那行：占位在填着字时就看不见了，而这三件事
+        //  正是打字时要看的。放标题下面而不是框下：这三样是「这一格能填什么」的前提，框还没读就先
+        //  该看见，而框下那一行留给「这一句怎么写」的规矩（本窗没有，故不占位）。
+        //  档距取 `spec.tickStep`（区间不整除时是均分出来的那一档），
         //  与轨道 / 吸附同一套；默认值就是轨道上那个圆点标的数（`SliderSpec.default`）——
         //  「想不起来原来是多少」时不用退出小窗去看那一点。
         //  四个数都按**输入框的单位**写（原始值，不走 `spec.valueText`）：那一档可能把它写成
         //  「弱 / 中 / 强」，与框里的数字并排会读成两个参数。
-        hint = I18n.format(Strings.SLIDER_INPUT_RANGE, spec.min, spec.max, spec.tickStep, spec.default),
+        subTitle = I18n.format(Strings.SLIDER_INPUT_RANGE, spec.min, spec.max, spec.tickStep, spec.default),
         onDismiss = onDismiss,
         onConfirm = { raw ->
             onDismiss()

@@ -134,12 +134,16 @@ private fun SettingsPage.applyReset(scope: ResetScope) {
                             //  「等待窗口」出厂是 250（逐次等那一档，`multiWaitMs`）；0 只留给
                             //  老配置读，复位出来的应当与全新装的那一份逐字一致
                             multiWaitMs = KeyConfig.DEFAULT_MULTI_WAIT_MS,
+                            //  「单击和多击和长按延迟」—— 三档「后长按」共用那根按住时长
+                            clickThenLongPressMs = KeyConfig.DEFAULT_LONG_PRESS_MS,
                             // 组合：等待 / 按住两组参数
                             comboWaitWindowMs = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
                             comboWaitPairMs = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
                             comboHoldWindowMs = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
                             comboHoldFollowerMs = GlobalConfig.DEFAULT_COMBO_PAIR_MS,
                             comboHoldMinMs = GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS,
+                            //  成员那三档「后长按」共用那根按住时长（组合那张卡的末行）
+                            comboMemberClickThenLongPressMs = KeyConfig.DEFAULT_LONG_PRESS_MS,
                             comboSceneOnStarter = GlobalConfig.DEFAULT_COMBO_SCENE_ON_STARTER,
                             comboStarterKeepLong = GlobalConfig.DEFAULT_COMBO_STARTER_KEEP_LONG,
                             comboFixedWindowStart = GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START,
@@ -160,10 +164,11 @@ private fun SettingsPage.applyReset(scope: ResetScope) {
  *
  *  「写回默认值」= 把这一档自己的那几格写成**没写过**的形态：
  *  · 那七项公共项（接口 / 振动 / 强度 / 无操作振动 / 提示 / 流体云 / 文案）各自回到 `DEFAULT_*`；
- *  · 单键还有「单击」那张卡的三位（判定时机 / 等待窗口 / 单击延迟）；
- *  · 组合那几格（四格窗口、顺序组合四格、`holdMinMs`、场景时机、首键长按、四颗固定窗口起点）
- *    回到 `0` / `null` —— 那就是「没写过」，取值时按出厂默认算（`Config.combo*For`）。
- *    比写死一堆具体数字更贴近「刚建出来这一档」的样子，也让文件与新建那一档逐字一致。
+ *  · 单键还有「单击」那张卡的三项（判定时机 / 等待窗口）与末行那根后长按的按住时长；
+ *  · 组合那几格（四格窗口、顺序组合四格、`holdMinMs`、场景时机、首键长按、四颗固定窗口起点、
+ *    成员那根后长按的按住时长）回到 `0` / `null` —— 那就是「没写过」，取值时按出厂默认算
+ *    （`Config.combo*For`）。比写死一堆具体数字更贴近「刚建出来这一档」的样子，
+ *    也让文件与新建那一档逐字一致。
  *
  *  关主开关与清值是**两件事**：开关只说「此刻用不用这一份」，值仍留在盘上。用户要的重置是
  *  两者一起 —— 关掉之后这一档跟着公共走，重新打开时看到的是默认值，而不是上次留下的那一套。
@@ -190,7 +195,10 @@ private fun SettingsPage.resetKeySettings(cfg: Config): Config =
  *
  *  除了接口 / 振动 / 提示那七项，单键这一页还有一张「单击」（判定时机 + 等待窗口，`ClickDelayCard`）：
  *  它同样吃「使用独立设置」（关着就跟公共走、这一页只把生效值摆出来并灰着），所以重置也得带上
- *  它那三位 —— 漏了的表现正是「按了重置，固定窗口还是原来那档」。
+ *  它那几项 —— 漏了的表现正是「按了重置，固定窗口还是原来那档」。
+ *
+ *  末行那根「单击和多击和长按延迟」同理：它也是这一页的项，漏了的表现是「重置之后按住时长
+ *  还是原来那个数」。
  *
  *  另外三位写成模型上的出厂值：`waitMultiWindow = true`（= 界面那颗「固定窗口起点」**关**，
  *  每次松手重新起算）、`multiWaitMs = 250`（逐次等那一档）、`doubleClickMs = 350`（固定等那一档）。
@@ -207,11 +215,12 @@ private fun KeyConfig.ownReset(): KeyConfig =
         toastFluid = GlobalConfig.DEFAULT_TOAST_FLUID,
         toastNotify = GlobalConfig.DEFAULT_TOAST_NOTIFY,
         toastTemplate = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
-        //  「单击」那张卡：判定时机 + 等待窗口
+        //  「单击」那张卡：判定时机 + 等待窗口 + 后长按那一根按住时长
         //  `waitMultiWindow` 同样没有 `DEFAULT_*` 常量，出厂值就是它在 `KeyConfig` 上的声明（`true`）
         doubleClickMs = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
         waitMultiWindow = true,
         multiWaitMs = KeyConfig.DEFAULT_MULTI_WAIT_MS,
+        clickThenLongPressMs = KeyConfig.DEFAULT_LONG_PRESS_MS,
     )
 
 /**
@@ -243,4 +252,6 @@ private fun ComboKey.ownReset(): ComboKey =
         starterKeepLong = null,
         fixedWindowStart = null,
         holdFixedWindowStart = null,
+        //  成员那三档「后长按」共用那根按住时长 —— 0 就是「跟随公共」（`MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL`）
+        memberClickThenLongPressMs = ComboKey.MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL,
     )

@@ -7,8 +7,8 @@ import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
-import com.lookie.opluskey.bridge.TimedCache
 import com.lookie.opluskey.bridge.inject.SystemContext
+import com.lookie.opluskey.core.TimedCache
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat

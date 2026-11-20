@@ -4,8 +4,8 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.icu.text.Transliterator
-import com.lookie.opluskey.bridge.AppCloneCatalog
-import com.lookie.opluskey.bridge.AppEntry
+import com.lookie.opluskey.command.platform.AppCloneCatalog
+import com.lookie.opluskey.command.platform.AppEntry
 import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.target.LaunchableApp
