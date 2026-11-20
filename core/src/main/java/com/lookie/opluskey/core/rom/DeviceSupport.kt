@@ -97,6 +97,10 @@ object DeviceSupport {
                         // 本机实测：PLK110 / ColorOS 17.0.0（`Build.DISPLAY` 里取出的系列串）。
                         // 这台机器再验一版 ROM，就在这一行的 `systems` 里加一项，不要多写一行 [Adapted]。
                         SystemVersion(android = "17", rom = "17.0.0"),
+                        // 17.0.1：用户日志（PLK110 / 2026-11-16，见 `docs/device/lsposed.md` 四十三）
+                        // 里侧键策略类、组合键控制器、观察者、AMS 广播、宿主两个 Handler 全部命中 ——
+                        // 接管点这一层与 17.0.0 同形；内置命令的落点没逐条实测过。
+                        SystemVersion(android = "17", rom = "17.0.1"),
                     ),
             ),
         )

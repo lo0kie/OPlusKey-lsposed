@@ -100,6 +100,7 @@ internal fun chainSpecOf(params: ClickChainParams): ChainSpec =
         clickWindowMs = params.clickWindowMs.toLong(),
         fixedWindowStart = params.fixedWindowStart,
         judgeCap = params.judgeCap,
+        clickTiers = params.clickTiers,
         doubleClickOn = params.doubleClickOn,
         clickThenLongOn = params.clickThenLongOn,
         thenLongClicks =

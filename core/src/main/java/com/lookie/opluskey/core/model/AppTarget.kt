@@ -312,6 +312,15 @@ interface ClickChainParams : LongPressParams {
             }
 
     /**
+     * 这一档**开着的点击档位** —— 收线时按它把击数往下取（见 `core.judge.settleClicks`）。
+     *
+     *  1 恒在（单击没有开关）；2 看 [doubleClickOn]；3/4 起是「多击」里开着的那几档。
+     *  中间档可以空着（例如只开双击 + 四击），那正是这条判据要处理的形态。
+     *  **后长按那三档不在里面**：它们对应「按住」那一支，不是点击档。
+     */
+    val clickTiers: Set<Int>
+
+    /**
      * 第 [clicks] 击那一档「后长按」的参数（`clicks` = 2 / 3 / 4 = 单击 / 双击 / 三击后长按）；
      * `null` = 这一档没开。
      *
@@ -471,6 +480,15 @@ internal class MemberChainView(
                 if (combo.memberDoubleThenLongOn) 3 else 1,
                 if (combo.memberTripleThenLongOn) 4 else 1,
             ).coerceAtMost(ConfigFields.MAX_JUDGE_CLICKS)
+
+    /** 与单键同一个口径：单击恒在，双击看成员那颗开关，多击就是成员开着的那几档。 */
+    override val clickTiers: Set<Int>
+        get() =
+            buildSet {
+                add(1)
+                if (combo.memberDoubleOn) add(2)
+                addAll(combo.memberClicksOn)
+            }
 }
 
 /**

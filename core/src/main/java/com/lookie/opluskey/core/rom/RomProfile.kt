@@ -816,57 +816,71 @@ object RomProfile {
      */
     private val PROFILES: List<Profile> =
         listOf(
-            Profile(
-                romSeries = "17.0.0",
-                label = "ColorOS 17.0.0",
-                verified = "OnePlus 15（PLK110）/ 2026-10-13",
-                builtIns =
-                    mapOf(
-                        NAME_FLASH_MEMORY to FLASH_MEMORY,
-                        NAME_VOICE_MEMORY to VOICE_MEMORY,
-                        NAME_VOICE_MEMORY_STOP to VOICE_MEMORY_STOP,
-                        NAME_NO_DISTURB to NO_DISTURB,
-                        NAME_RECORDING to RECORDING,
-                        NAME_RECORDING_START to RECORDING_START,
-                        NAME_RECORDING_STOP to RECORDING_STOP,
-                        NAME_SCREEN_OCR to SCREEN_OCR,
-                        NAME_KEY_FLASHLIGHT to KEY_FLASHLIGHT,
-                        NAME_SCREEN_RECORD to SCREEN_RECORD,
-                        NAME_SCREEN_RECORD_START to SCREEN_RECORD_START,
-                        NAME_SCREEN_RECORD_STOP to SCREEN_RECORD_STOP,
-                        NAME_SCREEN_TRANSLATE to SCREEN_TRANSLATE,
-                        NAME_SCREEN_TRANSLATE_STOP to SCREEN_TRANSLATE_STOP,
-                        NAME_CAMERA to CAMERA,
-                        NAME_CALCULATOR to CALCULATOR,
-                    ),
-                reflection =
-                    Reflection(
-                        zoomManager = "android.app.OplusActivityManager",
-                        zoomTaskManager = "android.app.OplusActivityTaskManager",
-                        zoomSupportManager = "com.oplus.zoomwindow.OplusZoomWindowManager",
-                        zoomStateMethod = "getCurrentZoomWindowState",
-                        zoomStateRectField = "zoomRect",
-                        zoomSupportMethod = "isSupportZoomMode",
-                        zoomStartMethod = "startZoomWindow",
-                        zoomRecentsMethod = "startActivityFromRecentsForFlexible",
-                        zoomRecentsArgs = 2,
-                        zoomTopAppInfosMethod = "getAllTopAppInfos",
-                        resizeModeField = "resizeMode",
-                        flexibleWindowService = "com.android.server.wm.FlexibleWindowManagerService",
-                        flexibleControllerGetter = "getFlexibleTaskController",
-                        flexibleSwitchStateMethod = "switchState",
-                        flexibleTaskParamsMethod = "updateFlexibleTaskParams",
-                        miniAnimMethod = "startFlexibleTaskToMiniAnimations",
-                        springAnimMethod = "startFlexibleSpringAnimation",
-                        animCallbackClass = "com.android.server.wm.floatwindow.FlexibleAnimationCallback",
-                        animInfoBuilderClass = "com.android.server.wm.floatwindow.FlexibleAnimationInfo\$Builder",
-                        animTypeTransitIme = 205,
-                        reasonMiniAnim = "maySwitchStateToMini",
-                        taskExtScenarioField = "mScenario",
-                        taskExtCaptionField = "mHasCaption",
-                        taskExtZoomStateField = "mFlexibleZoomState",
-                    ),
+            colorOs17(rom = "17.0.0", verified = "OnePlus 15（PLK110）/ 2026-10-13"),
+            //  17.0.1 与 17.0.0 同一套落点与反射面：用户日志（PLK110 / 2026-11-16）里侧键策略类、
+            //  组合键控制器、两个观察者、AMS 广播、宿主两个 Handler 全部命中。内置命令那几条落点
+            //  **没逐条实测过** —— 猜错的代价由执行侧兜（起不来就 toast），所以先按同一档登记。
+            colorOs17(
+                rom = "17.0.1",
+                verified = "OnePlus 15（PLK110）/ 2026-11-16 用户日志：接管点与宿主钩子全中；内置命令落点未逐条实测",
             ),
+        )
+
+    /** 一版 ColorOS 17 的落点表与反射面 —— 两版 ROM 同一套，只差档位名与验证记录。 */
+    private fun colorOs17(
+        rom: String,
+        verified: String,
+    ): Profile =
+        Profile(
+            romSeries = rom,
+            label = "ColorOS $rom",
+            verified = verified,
+            builtIns =
+                mapOf(
+                    NAME_FLASH_MEMORY to FLASH_MEMORY,
+                    NAME_VOICE_MEMORY to VOICE_MEMORY,
+                    NAME_VOICE_MEMORY_STOP to VOICE_MEMORY_STOP,
+                    NAME_NO_DISTURB to NO_DISTURB,
+                    NAME_RECORDING to RECORDING,
+                    NAME_RECORDING_START to RECORDING_START,
+                    NAME_RECORDING_STOP to RECORDING_STOP,
+                    NAME_SCREEN_OCR to SCREEN_OCR,
+                    NAME_KEY_FLASHLIGHT to KEY_FLASHLIGHT,
+                    NAME_SCREEN_RECORD to SCREEN_RECORD,
+                    NAME_SCREEN_RECORD_START to SCREEN_RECORD_START,
+                    NAME_SCREEN_RECORD_STOP to SCREEN_RECORD_STOP,
+                    NAME_SCREEN_TRANSLATE to SCREEN_TRANSLATE,
+                    NAME_SCREEN_TRANSLATE_STOP to SCREEN_TRANSLATE_STOP,
+                    NAME_CAMERA to CAMERA,
+                    NAME_CALCULATOR to CALCULATOR,
+                ),
+            reflection =
+                Reflection(
+                    zoomManager = "android.app.OplusActivityManager",
+                    zoomTaskManager = "android.app.OplusActivityTaskManager",
+                    zoomSupportManager = "com.oplus.zoomwindow.OplusZoomWindowManager",
+                    zoomStateMethod = "getCurrentZoomWindowState",
+                    zoomStateRectField = "zoomRect",
+                    zoomSupportMethod = "isSupportZoomMode",
+                    zoomStartMethod = "startZoomWindow",
+                    zoomRecentsMethod = "startActivityFromRecentsForFlexible",
+                    zoomRecentsArgs = 2,
+                    zoomTopAppInfosMethod = "getAllTopAppInfos",
+                    resizeModeField = "resizeMode",
+                    flexibleWindowService = "com.android.server.wm.FlexibleWindowManagerService",
+                    flexibleControllerGetter = "getFlexibleTaskController",
+                    flexibleSwitchStateMethod = "switchState",
+                    flexibleTaskParamsMethod = "updateFlexibleTaskParams",
+                    miniAnimMethod = "startFlexibleTaskToMiniAnimations",
+                    springAnimMethod = "startFlexibleSpringAnimation",
+                    animCallbackClass = "com.android.server.wm.floatwindow.FlexibleAnimationCallback",
+                    animInfoBuilderClass = "com.android.server.wm.floatwindow.FlexibleAnimationInfo\$Builder",
+                    animTypeTransitIme = 205,
+                    reasonMiniAnim = "maySwitchStateToMini",
+                    taskExtScenarioField = "mScenario",
+                    taskExtCaptionField = "mHasCaption",
+                    taskExtZoomStateField = "mFlexibleZoomState",
+                ),
         )
 
     /**

@@ -84,6 +84,36 @@ fun chainStep(
     }
 
 /**
+ * 收线那一刻**实际按第几击派发** —— 击数往下取到最近一个**开着的点击档**。
+ *
+ * ## 为什么需要它
+ *
+ *  开关是按档独立的：开了双击和四击、没开三击时，连击链照样会数出 `clicks = 3`（四击要等第 4 下，
+ *  所以链一路开着）。可 3 这一档没有动作，照原样派发 `Click(3)` 的结果是**这一下什么都不发生**
+ *  —— 用户按了三下，既没执行双击、也没执行四击（真机口径「三击手势没有反应，中间档位被丢了」）。
+ *
+ *  取**最近的更低**那一档（3 → 2 = 双击）：双击是他确实按到过的；往上取（4）等于凭空多按一下。
+ *  都比 1 还低时落到**单击**（单击没有开关，恒在）。
+ *
+ * ## 为什么 1 / 2 不在这里纠正
+ *
+ *  两击而双击关着时，`GestureDetector.fireClicks` 有自己的收法（按**两次单击**派发 —— 那两下是
+ *  用户真按的，各执行一次才不会少一下）。挪到这里会把两击收成一击，等于吃掉一次按压。
+ *
+ * @param clicks 连击链数出来的击数（已按 `fireCount` 夹到 `[1, cap]`）
+ * @param tiers 这一档键**开着的点击档位**（见 `ClickChainParams.clickTiers`，至少含 1）
+ */
+fun settleClicks(
+    clicks: Int,
+    tiers: Set<Int>,
+): Int =
+    when {
+        clicks in tiers -> clicks
+        clicks <= 2 -> clicks
+        else -> tiers.filter { it <= clicks }.maxOrNull() ?: 1
+    }
+
+/**
  * 抬手那一刻，这一次抬手走哪一支。
  *
  *  判据顺序就是优先级，与 `GestureDetector.onKeyUpLocked` 里那几条 `return` 逐一对应：

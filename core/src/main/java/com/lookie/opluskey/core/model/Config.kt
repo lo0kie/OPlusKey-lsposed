@@ -281,8 +281,11 @@ data class KeyConfig(
      *  与 [extraClicksOn] 同一族（「要自己要才有」），但它是**另一位**而不是击数集合里的一员：
      *  它描述的不是「数到第几下」，而是**第 2 击按住不放**这另一种形态 —— 与双击互斥。
      *
-     *  默认 `false`。关着时判定侧根本不在第 2 击上排长按那一枪，所以**不多等一个窗口** ——
-     *  这正是它不能与多击共用一位的原因（多击延长的是连击链，这一档不延长）。
+     *  默认 `false`。关着时判定侧根本不在第 2 击上排长按那一枪。
+     *
+     *  **开着的档会把判定上限抬到它那一击**（见 [judgeCap] 的 `thenLongClicks` 那一项）：
+     *  要判出「第 N 击按住不放」，判定器就必须数到第 N 击 —— 这一条原先在这里写成「不多等一个
+     *  窗口」，与判定器的实际口径相反（真机上就是「开了三击后长按，单击也要多等两个窗」）。
      *
      *  同样**不跟随** [useOwnSettings]（理由同 [extraClicksOn]）。
      */
@@ -605,6 +608,15 @@ data class KeyConfig(
                 thenLongClicks.maxOrNull() ?: 1,
                 clicksForJudge,
             ).coerceAtMost(ConfigFields.MAX_JUDGE_CLICKS)
+
+    /** 单击恒在；双击看 [doubleClickOn]；三击 / 四击就是 [extraClicksOn] 里开着的那几档。 */
+    override val clickTiers: Set<Int>
+        get() =
+            buildSet {
+                add(1)
+                if (doubleClickOn) add(2)
+                addAll(extraClicksOn)
+            }
 
     /**
      * 判定侧**只按动作表**该数到第几击 —— 广播那一列（[judgeClicks]）优先，老版本没给时按

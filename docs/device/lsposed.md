@@ -546,3 +546,27 @@ ColorOS 的启动管理把 `startService` / `bindService` 那一档对所有调�
 **这一条整个是「待真机验证」的**：跳板那次 `startActivity` 会不会被 ColorOS 的后台启动策略拦、
 新进程起来到 binder 到达要多久，都还没有实测日志 —— 失败时的表现是界面报「Shizuku 暂时连不上，
 再点一次试试」，不是崩。
+
+## 四十三、ColorOS 17.0.1：接管点与 17.0.0 同形、`mAllApplicationThreads` 已删（用户日志，2026-11-16，PLK110 / Android 17）
+
+用户反馈（模块 1.5.0-release / LSPosed 2.2.1）那一份日志把 17.0.1 的形状量清楚了：
+
+- **接管点全部命中同一批类 / 方法**：`StrategyActionButtonKeyLaunchApp#actionInterceptKeyBeforeQueueing`
+  （5 参、返回 int）、`KeyGestureController#handleKeyGesture`（9 参与 2 参两个重载）、
+  `OplusKeyEventUtil` 与它的 `OnKeyEventObserver#onKeyEvent`、AMS 的 `broadcastIntentWithFeature`、
+  宿主两个 `Handler#handleMessage` —— 与 17.0.0 逐条对应。所以两张档位表（适配清单 / 接管点候选 /
+  落点表）各加一档、候选原样复用，不再分成两份维护。
+- **「侧键 Hook 安装完成：1/3 个接管点」不是故障**：`total` 是**所有档**加起来的候选数
+  （策略类 1 + PM 覆写 1 + AOSP PM 1），而档与档之间是逐层降级、第一档装上就停 —— `1/3`
+  正是设计结果。原来那行写成 `1/3`，读的人（含这次用户反馈）一律当成「三处只挂上一处、
+  坏了两处」。现在写成「装上 1 个（ColorOS 侧键策略类）；另有 2 个是后备档的候选，按设计不装」。
+- **`ActivityThread#mAllApplicationThreads` 在 Android 17 上已经没有了**：日志里先是
+  「找不到字段：…mAllApplicationThreads」，紧接着又「拿到可用 Context（来源：mAllApplicationThreads）」
+  —— 后半句是**写死的文案**，真正命中的是 `mAllApplications`。现在把命中的字段名带进日志；
+  候选字段缺一个不再打 `w`（它本来就允许不存在，`Reflect.fieldValue` 那一行是噪音）。
+- **两条刷屏日志各减到「一次」**：`组合键手势：keycodes=[…]` 一次按压会被两个重载各调一次
+  （一组手势 4 行），改成同一张键码表只报一次；「keyCode=… 不在认领白名单，放行给系统」
+  原来策略类那条每按一次一行，改成与 PM 兜底那条同一口径 —— 同一颗码只报一次，之后退到 `d`。
+- **没验到的**：内置命令那几条落点（闪记 / 灵感语音 / 录音 / 录屏 / 屏幕翻译 / 相机 / 计算器）
+  在 17.0.1 上没有逐条实测，按 17.0.0 那一档登记；猜错的代价由执行侧兜（起不来就 toast），
+  与其它未适配 ROM 同一条口径。

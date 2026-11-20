@@ -37,6 +37,7 @@ import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.chrome.headerStatusBarPadding
 import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.kit.SectionTitle
+import com.lookie.opluskey.ui.kit.titleWithCount
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.GRID_GAP
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
@@ -112,11 +113,9 @@ internal fun SettingsPage.ActivityPickerScreen(
         loaded = fresh ?: emptyList()
     }
     //  条数交给顶栏那条搜索带（它读不到这里的 `loaded`）：清单没到手时写 0，占位就不显示数字。
-    //  写的是**这一页列出来的界面数**，不含快捷方式那一节 —— 占位写的是「搜索应用组件」。
+    //  写的是**这一页总共几条**——快捷方式与界面两节合计；两个小标题上的计数各管自己那一节。
     LaunchedEffect(loaded) {
-        //  **不含快捷方式那一节**：清单是「界面 + 快捷方式」两节拼起来的，占位写的是
-        //  「搜索应用组件」，数字跟着那一节的条数走。
-        picker.activityCount.value = loaded.orEmpty().count { it.shortcutId == null }
+        picker.entryCount.value = loaded.orEmpty().size
     }
 
     val term = filter.trim()
@@ -452,7 +451,9 @@ private fun LazyListScope.activityRows(
     //  一个都没查到就整节不画（不是画一个空标题）：应用没注册快捷方式很常见。
     if (data.shortcuts.isNotEmpty()) {
         item(key = "section-shortcut") {
-            SectionTitle(I18n.get(Strings.APP_PICKER_SECTION_SHORTCUTS))
+            //  标题带这一节**现在列了几条**（搜索时跟着变）：两节混在一起时，光看行内容
+            //  分不出「这是快捷方式还是界面」，条数让「这一节还剩多少」也能一眼读到。
+            SectionTitle(titleWithCount(I18n.get(Strings.APP_PICKER_SECTION_SHORTCUTS), data.shortcuts.size))
         }
         //  **带节前缀取键**：快捷方式与界面可能写出同一个 target（快捷方式 id 恰好等于类名时），
         //  两节共用 `it.target` 会让 Compose 当场抛「Key was already used」。
@@ -479,7 +480,7 @@ private fun LazyListScope.activityRows(
     //  本来就不显示，这一条就是列表第一项 —— 默认档正好，不需要为它算一档。
     if (data.showsActivitySection) {
         item(key = "section-interface") {
-            SectionTitle(I18n.get(Strings.APP_PICKER_SECTION_ACTIVITIES))
+            SectionTitle(titleWithCount(I18n.get(Strings.APP_PICKER_SECTION_ACTIVITIES), data.interfaces.size))
         }
     }
 
@@ -602,7 +603,8 @@ private fun SettingsPage.LocateActivitySelected(
 
 /**
  * 一行界面 —— 与一级那一行（`AppRow`）同一个组件：**通用的一行卡**（[CardRow.Item] + [CardList]）。
- * 名字走标题、去包名的类名走副标题、行尾是选中指示（空心 / 实心圈，不用 COUI 的单选圈）。
+ * 名字走标题、去包名的类名走副标题、行尾**只在选中时**画那颗勾（与按键列表同款
+ * `PageIcons.TileChecked`，不用 COUI 的单选圈）；没选中时那一格空着、也不占位。
  *
  * ## 为什么这一页**不给** `Modifier.animateItem()`
  *
@@ -641,17 +643,20 @@ private fun ActivityRow(
                     selected = picked,
                     //  标题跟着上色（与一级页同一条口径）
                     titleTint = if (picked) COUITheme.colorScheme.primary else null,
-                    trailing = {
-                        RowEndIcon(
-                            icon = if (picked) PageIcons.TileChecked else PageIcons.TileUnchecked,
-                            tint =
-                                if (picked) {
-                                    COUITheme.colorScheme.primary
-                                } else {
-                                    COUITheme.colorScheme.onSurfaceVariantActions
-                                },
-                        )
-                    },
+                    //  行尾那一格：**选中画一枚勾选框，没选中就什么都不画、也不占位**
+                    //  （与「按键绑定」网格里的格子、以及一级「选择应用」那一行同一处理）。
+                    //  原先没选中时画一颗空心圆（`TileUnchecked`）：这一页点一行就是选中，
+                    //  每行挂一个空心圈等于把整页读成待办清单，还白占 24dp。
+                    //  字形与按键列表同一颗（`PageIcons.TileChecked`，实心圆带勾），选中那行的
+                    //  内框 + 标题上色仍是「我挑的是这一个」的主要凭据。
+                    trailing =
+                        if (picked) {
+                            {
+                                RowEndIcon(PageIcons.TileChecked, tint = COUITheme.colorScheme.primary)
+                            }
+                        } else {
+                            null
+                        },
                     onClick = onClick,
                 ),
             ),

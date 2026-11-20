@@ -109,44 +109,57 @@ internal object Framework {
      */
     private val HOOK_SETS: List<HookSet> =
         listOf(
-            HookSet(
-                romSeries = "17.0.0",
-                strategyCandidates =
-                    listOf(
-                        "com.android.server.policy.StrategyActionButtonKeyLaunchApp",
-                        "com.oplus.server.policy.StrategyActionButtonKeyLaunchApp",
-                    ),
-                strategyEntries = setOf("actionInterceptKeyBeforeQueueing"),
-                pmExtCandidates = listOf("com.android.server.policy.PhoneWindowManagerExtImpl"),
-                pmExtEntries =
-                    setOf(
-                        "overrideInterceptKeyBeforeQueueing",
-                        "interceptKeyBeforeQueueing",
-                    ),
-                pmCandidates = listOf("com.android.server.policy.PhoneWindowManager"),
-                pmEntries = setOf("interceptKeyBeforeQueueing"),
-                chordCandidates = listOf("com.android.server.input.KeyGestureController"),
-                chordEntries = setOf("handleKeyGesture"),
-                //  两处都挂：外层 `OplusKeyEventUtil#onKeyEvent` 与逐条观察者的
-                //  `OnKeyEventObserver#onKeyEvent`。哪一层真被 ROM 走到，静态看不出来
-                observerCandidates =
-                    listOf(
-                        "com.android.server.am.OplusKeyEventUtil\$OnKeyEventObserver",
-                        "com.android.server.am.OplusKeyEventUtil",
-                    ),
-                observerEntries = setOf("onKeyEvent"),
-                amsCandidate = "com.android.server.am.ActivityManagerService",
-                amsBroadcastEntries = setOf("broadcastIntentWithFeature", "broadcastIntent"),
-                hostKeyService = "com.oplus.gesture.server.ActionButtonKeyService",
-                hostStartAppService = "com.oplus.gesture.actionbuttonkey.quicklaunch.StartAppService",
-                hostOnStartCommand = "onStartCommand",
-                // 混淆名，本机实测是 `a`。换 ROM 时这里加一个候选即可（别的文件一个字不用改）
-                hostHandlerSuffixes = listOf("a"),
-                hostHandleMessage = "handleMessage",
-                hostSceneDispatchWhat = 1,
-                hostSettingsBaseActivity = "com.oplus.gesture.actionbuttonkey.BaseActionActivity",
-                hostSettingsActivity = "com.oplus.gesture.actionbuttonkey.ActionButtonSettingsActivity",
-            ),
+            hookSet("17.0.0"),
+            // 17.0.1 与 17.0.0 同一副形：用户日志（PLK110 / 2026-11-16）里策略类、方法名、
+            //  组合键控制器、两个观察者、AMS 广播、宿主两个 Handler 全部命中。真改了形再单独写一档。
+            hookSet("17.0.1"),
+        )
+
+    /**
+     * 一版 ColorOS 17 的接管点候选 —— 两版 ROM **同一套**，只差 `romSeries`。
+     *
+     *  写成工厂而不是复制一份 [HookSet]：两边一旦各改一处，就会出现「一个版本能接管、
+     *  另一个版本静默落空」，而落空只表现为几行 `w`，很难看出来是哪一版漏了。
+     *  将来某一版真的换了类 / 方法名，就在 [HOOK_SETS] 那一行改成独立的 `HookSet(...)`。
+     */
+    private fun hookSet(rom: String): HookSet =
+        HookSet(
+            romSeries = rom,
+            strategyCandidates =
+                listOf(
+                    "com.android.server.policy.StrategyActionButtonKeyLaunchApp",
+                    "com.oplus.server.policy.StrategyActionButtonKeyLaunchApp",
+                ),
+            strategyEntries = setOf("actionInterceptKeyBeforeQueueing"),
+            pmExtCandidates = listOf("com.android.server.policy.PhoneWindowManagerExtImpl"),
+            pmExtEntries =
+                setOf(
+                    "overrideInterceptKeyBeforeQueueing",
+                    "interceptKeyBeforeQueueing",
+                ),
+            pmCandidates = listOf("com.android.server.policy.PhoneWindowManager"),
+            pmEntries = setOf("interceptKeyBeforeQueueing"),
+            chordCandidates = listOf("com.android.server.input.KeyGestureController"),
+            chordEntries = setOf("handleKeyGesture"),
+            //  两处都挂：外层 `OplusKeyEventUtil#onKeyEvent` 与逐条观察者的
+            //  `OnKeyEventObserver#onKeyEvent`。哪一层真被 ROM 走到，静态看不出来
+            observerCandidates =
+                listOf(
+                    "com.android.server.am.OplusKeyEventUtil\$OnKeyEventObserver",
+                    "com.android.server.am.OplusKeyEventUtil",
+                ),
+            observerEntries = setOf("onKeyEvent"),
+            amsCandidate = "com.android.server.am.ActivityManagerService",
+            amsBroadcastEntries = setOf("broadcastIntentWithFeature", "broadcastIntent"),
+            hostKeyService = "com.oplus.gesture.server.ActionButtonKeyService",
+            hostStartAppService = "com.oplus.gesture.actionbuttonkey.quicklaunch.StartAppService",
+            hostOnStartCommand = "onStartCommand",
+            // 混淆名，本机实测是 `a`。换 ROM 时这里加一个候选即可（别的文件一个字不用改）
+            hostHandlerSuffixes = listOf("a"),
+            hostHandleMessage = "handleMessage",
+            hostSceneDispatchWhat = 1,
+            hostSettingsBaseActivity = "com.oplus.gesture.actionbuttonkey.BaseActionActivity",
+            hostSettingsActivity = "com.oplus.gesture.actionbuttonkey.ActionButtonSettingsActivity",
         )
 
     /**

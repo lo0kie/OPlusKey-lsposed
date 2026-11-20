@@ -11,6 +11,7 @@ import com.lookie.opluskey.core.judge.longShotIsChained
 import com.lookie.opluskey.core.judge.longShotStillWaiting
 import com.lookie.opluskey.core.judge.pressEntry
 import com.lookie.opluskey.core.judge.releaseStep
+import com.lookie.opluskey.core.judge.settleClicks
 import com.lookie.opluskey.core.log.XLog
 import java.util.concurrent.ConcurrentHashMap
 
@@ -321,7 +322,7 @@ internal class GestureDetector(
                     // 「判出手势」这几行是验收判据链的第二环（见 AGENTS.md 二、1.2）——
                     // 必须是 W：注入侧的 i/d 在 LSPosed 日志页里看不到。
                     XLog.w(if (p.clicks == 2) "${id.name}：双击" else "${id.name}：${p.clicks} 击")
-                    val firedClicks = p.clicks
+                    val firedClicks = settle(id, p.clicks, config)
                     reset(id)
                     // reset 会把这个标记与击数一起清掉，所以在 reset 之后再置位：
                     // 这一下的抬手属于连击链的最后一击，`onKeyUp` 要据此**派发**（而不是再开窗口）。
@@ -346,7 +347,7 @@ internal class GestureDetector(
         //  所以先把它**当场补派发**掉、把枪摘了，再按新的一下重置。
         //  判据见 `pressEntry` 的 CATCH_UP 那一支：首击已抬手、窗口已排、且已过期。
         if (entry == PressEntry.CATCH_UP) {
-            val pendingClicks = fireCount(p.clicks, config.judgeCap)
+            val pendingClicks = settle(id, fireCount(p.clicks, config.judgeCap), config)
             p.doubleWindowRunnable?.let { handler.removeCallbacks(it) }
             p.doubleWindowRunnable = null
             p.sawFirstRelease = false
@@ -485,7 +486,7 @@ internal class GestureDetector(
 
             //  那个窗口已经到点、那一枪却没跑到：当场按实际击数判
             ReleaseStep.FIRE_EXPIRED -> {
-                val fired = fireCount(p.clicks, config.judgeCap)
+                val fired = settle(id, fireCount(p.clicks, config.judgeCap), config)
                 reset(id)
                 XLog.w(if (fired == 1) "${id.name}：单击（窗口已结束）" else "${id.name}：$fired 击（窗口已结束）")
                 fireClicks(id, config, fired)
@@ -543,10 +544,31 @@ internal class GestureDetector(
         config: ChainSpec,
     ) {
         val p = pending(id)
-        val firedClicks = p.clicks
+        //  再取一次末档：`FIRE` 那一支已经在 `p.clicks` 上取过，但万一有别的路径把击数原样留过来，
+        //  这里取一次是幂等的（取完的结果本身就在档位表里）
+        val firedClicks = settle(id, p.clicks, config)
         p.doubleFired = false
         reset(id)
         fireClicks(id, config, firedClicks)
+    }
+
+    /**
+     * 收线时把**击数**落到一个开着的点击档上 —— 落在空档里就打一行 w 说明按几击执行。
+     *
+     *  纯判据在 `core/judge/settleClicks`（那里有单测），`w` 留在这里：判定层不引日志出口。
+     *  这一行是排查「按了三下什么都没发生」的第一个落点 —— 开了双击 + 四击时三击正好是空档，
+     *  不写这一行，日志里只有「3 击」然后没有任何「已执行」。
+     */
+    private fun settle(
+        id: KeyRef,
+        raw: Int,
+        config: ChainSpec,
+    ): Int {
+        val settled = settleClicks(raw, config.clickTiers)
+        if (settled != raw) {
+            XLog.w("${id.name}：$raw 击落在没开的档位上 ⇒ 按 $settled 击执行")
+        }
+        return settled
     }
 
     /**
@@ -940,7 +962,7 @@ internal class GestureDetector(
                             //  **夹回这颗键配到的最高档**：抬手那一刻 `clicks` 理论上不会超上限
                             //  （到档就判了），但补发的 DOWN/UP 可能乱序 —— 夹一下，
                             //  派发到一档没有动作的击数等于「按了三下什么都没发生」。
-                            fire = fireCount(p.clicks, config.judgeCap)
+                            fire = settle(id, fireCount(p.clicks, config.judgeCap), config)
                             p.sawFirstRelease = false
                             p.doubleWindowAt = 0L
                         }

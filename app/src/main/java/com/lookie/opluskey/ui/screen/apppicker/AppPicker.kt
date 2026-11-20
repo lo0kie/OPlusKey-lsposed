@@ -128,8 +128,8 @@ internal fun SettingsPage.ActivitySearchBand() {
         label = I18n.get(Strings.APP_PICKER_SEARCH_ACTIVITY),
         height = bands[Screen.ACTIVITY_PICKER],
         //  这一页的清单是页面里 `remember` 出来的（见 `ActivityPickerList`），顶栏这条带子读不到 ——
-        //  由那一页把条数交到页面对象上（`AppPickerState.activityCount`）
-        count = picker.activityCount.value,
+        //  由那一页把条数交到页面对象上（`AppPickerState.entryCount`，两节合计）
+        count = picker.entryCount.value,
     )
 }
 

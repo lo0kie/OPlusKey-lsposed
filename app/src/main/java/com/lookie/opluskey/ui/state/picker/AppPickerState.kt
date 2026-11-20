@@ -59,13 +59,16 @@ internal class AppPickerState {
     val activityFilter = mutableStateOf("")
 
     /**
-     * 「选择界面」页当前列出来的**条数** —— 搜索框占位里那个数字（`搜索应用组件 (12)`）。
+     * 「选择界面」页这一份清单的**总条数** —— 搜索框占位里那个数字（`搜索应用组件 (12)`）。
+     *
+     *  = **快捷方式 + 界面两节的合计**（与两个小标题上的计数各算各的：那两处是「这一节现在列了
+     *  几条」，这里是「这一页一共有多少条」）。
      *
      *  提到页面级的原因与 [activityFilter] 一模一样：清单本身是页面里 `remember` 的
      *  （`ActivityPickerList` 的 `loaded`），而占位文案挂在**顶栏**那条带子上，两棵树读不到彼此。
      *  页面在清单到手那一刻写一次；离开这一页时留着的旧数字无害 —— 那条带子已经不在了。
      */
-    val activityCount = mutableStateOf(0)
+    val entryCount = mutableStateOf(0)
 
     /**
      * 顶栏菜单里那一项「显示全部应用」。

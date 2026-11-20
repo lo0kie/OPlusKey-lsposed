@@ -225,6 +225,12 @@ internal object ChordGuard {
             intArrayOf(KeyEvent.KEYCODE_POWER, KeyEvent.KEYCODE_VOLUME_UP),
         )
 
+    /** 见过的键码表（只用来**少打日志**，见 [handle]）—— 上限防某版 ROM 每帧报一张新表时无限涨。 */
+    private val seenCodeSets = HashSet<String>()
+
+    /** 最多记几张不同的表 —— 正常 ROM 只有两三张（按下 / 抬手 / 只报一颗），够认形态了。 */
+    private const val MAX_SEEN_CODE_SETS = 8
+
     /**
      * 一次 `handleKeyGesture` 调用。
      *
@@ -243,7 +249,14 @@ internal object ChordGuard {
         //  下面那条 pair 判据要求「两颗键都在表里」；机型不同、ROM 改版时这一层给出的表也
         //  不一样（有的只报当前按下的那一颗），那时整组都拦不到 —— 这一行是认出那种形态的
         //  唯一证据，排查「某一组组合不生效、另一组正常」时先看它。
-        XLog.w("组合键手势：keycodes=[${codes.joinToString(",")}]")
+        //
+        //  **同一张表只报一次**：这个方法一次按压会被两个重载各调一次（本机实测一组手势
+        //  4 行一模一样的），用户日志里那 169 条 W 有一大半是它。要认的是「这张表长什么样」，
+        //  见过就不再报；表变了（换了 ROM 形态）才再记一行。
+        val shown = codes.joinToString(",")
+        if (seenCodeSets.size < MAX_SEEN_CODE_SETS && seenCodeSets.add(shown)) {
+            XLog.w("组合键手势：keycodes=[$shown]")
+        }
         val pair = PAIRS.firstOrNull { p -> p.all { it in codes } } ?: return chain.proceed()
         val keys =
             try {

@@ -246,4 +246,35 @@ class ClickChainMathTest {
         assertFalse(longShotIsChained(thenLongClicks = setOf(2), clicks = 1))
         assertFalse(longShotIsChained(thenLongClicks = emptySet(), clicks = 2))
     }
+
+    // ---- 收线时把击数落到开着的档上 ----
+
+    @Test
+    fun settleSkipsADisabledTierInTheMiddle() {
+        //  开了双击 + 四击、没开三击（真机口径「三击手势没有反应，中间档位被丢了」）：
+        //  按三下数出来的 3 落在空档里，收线时按双击执行 —— 不往上取四击，也不整个吞掉
+        assertEquals(2, settleClicks(clicks = 3, tiers = setOf(1, 2, 4)))
+    }
+
+    @Test
+    fun settleFallsBackToTheNearestLowerTier() {
+        //  只开双击：三击落到双击（他确实按到过两下）
+        assertEquals(2, settleClicks(clicks = 3, tiers = setOf(1, 2)))
+        //  一档多击都没开：落到单击（单击没有开关，恒在）
+        assertEquals(1, settleClicks(clicks = 4, tiers = setOf(1)))
+    }
+
+    @Test
+    fun settleKeepsAnEnabledTierAsIs() {
+        assertEquals(3, settleClicks(clicks = 3, tiers = setOf(1, 2, 3, 4)))
+        assertEquals(4, settleClicks(clicks = 4, tiers = setOf(1, 2, 4)))
+        assertEquals(1, settleClicks(clicks = 1, tiers = setOf(1)))
+    }
+
+    @Test
+    fun settleLeavesOneAndTwoAlone() {
+        //  1 / 2 不在这里纠正：两击而双击关着时由 `fireClicks` 拆成两次单击（那两下是用户真按的）
+        assertEquals(2, settleClicks(clicks = 2, tiers = setOf(1, 3, 4)))
+        assertEquals(1, settleClicks(clicks = 1, tiers = setOf(2)))
+    }
 }

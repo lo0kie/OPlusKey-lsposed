@@ -38,7 +38,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Check
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronRight
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
-import io.github.lyxnx.compose.ui.tablericons.outline.Circle
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.Clock
@@ -1036,15 +1035,13 @@ internal object PageIcons {
     val Selector: ImageVector get() = TablerIcons.Outline.Selector
 
     /**
-     * 网格里**非入口格**行尾那颗选中指示：没选中 —— `circle`（空心圆）。
+     * 行尾那颗**选中**指示 —— **实心**的 `circle-check`（实心圆里一个勾）。
      *
-     *  这一格原先画的是 COUI 的 `RadioButton`（一个圆点），与全页那套 Tabler 线性图标不是一支笔、
-     *  摆在同行里明显两种风格。选中态见 [TileChecked]；两态之间的颜色走 `BindingPagerScreen` 的
-     *  `entryIndicatorColor`（本来就是 `animateColorAsState`，是渐变过去的）。
+     *  两处共用：按键绑定网格里选中的那一格（`ActionTile`）、以及「选择界面」页里选中的那一行。
+     *  **没选中的那两处都不画**（连那一格也不占）：这一页 / 这一格点一下就是选中，
+     *  每行挂一颗空心圈等于把整页读成待办清单，还白占 20 / 24dp。原先配套的那颗空心 `circle`
+     *  因此整颗撤掉了 —— 选中与否由「有没有这颗勾」表达，不再由「实心 / 空心」这对字形表达。
      */
-    val TileUnchecked: ImageVector get() = TablerIcons.Outline.Circle
-
-    /** 同上，选中态 —— **实心**的 `circle-check`（实心圆里一个勾；与上面那枚空心的一实一虚成对）。 */
     val TileChecked: ImageVector get() = TablerIcons.Filled.CircleCheck
 
     /**

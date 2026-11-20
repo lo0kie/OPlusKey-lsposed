@@ -640,7 +640,15 @@ internal class SideKeyInterceptor(
         }
         if (keyEvent.keyCode in QUIET_KEY_CODES) return
         if (keyEvent.action == KeyEvent.ACTION_DOWN) {
-            XLog.w("按键（$point）：keyCode=${keyEvent.keyCode} 不在认领白名单，放行给系统")
+            //  与上面那条（PM 兜底）同一个口径：**同一颗码只报一次 W**，之后退到 `d`。
+            //  策略类那条收的也是「所有非音量 / 电源键」（用户日志里侧键那颗 134 每按一次报一行），
+            //  每次都报 W 会把日志刷满，而排查要的是「这颗码是什么」——报一次就够了。
+            val code = keyEvent.keyCode
+            if (unclaimedLogged.add(code)) {
+                XLog.w("按键（$point）：keyCode=$code 不在认领白名单，放行给系统（这颗码只报这一次）")
+            } else {
+                XLog.d { "按键（$point）：不认识的 keyCode=$code，放行给系统" }
+            }
         } else {
             // 抬手也记一条（`d`，只在 log 包里看得到）：**没认领的键只记按下**会漏掉一类关键证据
             //  ——「按下与抬手的码不同」正是这颗键长按换了个码上报的形状，而按下的那一行看不出来。

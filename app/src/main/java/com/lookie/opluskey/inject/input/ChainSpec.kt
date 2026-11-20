@@ -24,6 +24,9 @@ import com.lookie.opluskey.core.judge.ThenLongParams
  * @param clickWindowMs 连击链的窗口（两击之间最多隔多久，也是单击要等多久）
  * @param fixedWindowStart `true` = 窗口只在首击抬手排一次（固定起点）；`false` = 每次松手重新起算
  * @param judgeCap 数到第几击就**封顶**（按开着的档算，不看绑没绑动作，至少 1）
+ * @param clickTiers 这一档键**开着的点击档位**（1 恒在；2 = 双击；3 / 4 = 多击里开着的那几档）。
+ *  收线时按它把击数往下取 —— 开了双击 + 四击、没开三击时，三击落在一个没有动作的空档里，
+ *  见 `core.judge.settleClicks`
  * @param doubleClickOn 双击这一档开着吗
  * @param clickThenLongOn 「单击后长按」开着吗 —— 判据是**开关**，不是「有没有动作」
  * @param thenLongClicks 哪几击按住会变「后长按」—— 元素是按下那一刻的击数：
@@ -44,6 +47,7 @@ internal data class ChainSpec(
     val clickWindowMs: Long,
     val fixedWindowStart: Boolean,
     val judgeCap: Int,
+    val clickTiers: Set<Int>,
     val doubleClickOn: Boolean,
     val clickThenLongOn: Boolean,
     val thenLongClicks: Set<Int>,

@@ -136,7 +136,7 @@ internal object KeyHooks {
             //  （同一条广播处理两遍）。`KeyWatch` 那一条不装 —— 它收集自定义按键是为了喂判定，
             //  而这里连一个接管点都没有，收集了也没有东西去认那些键。
             installed = true
-            reportHookInstall(0, 0)
+            reportHookInstall(0, 0, null)
             return
         }
 
@@ -208,6 +208,8 @@ internal object KeyHooks {
             return ok
         }
         var ok = 0
+        //  真正起作用的是哪一档 —— 报告里要写它，否则「装上 1 个」看不出是哪一层接的。
+        var usedLabel: String? = null
         for ((index, layer) in layers.withIndex()) {
             val hit = installPoints(layer.points)
             if (hit > 0) {
@@ -215,6 +217,7 @@ internal object KeyHooks {
                     XLog.w("侧键接管点退到第 ${index + 1} 档（${layer.label}）：装上 $hit 个")
                 }
                 ok = hit
+                usedLabel = layer.label
                 break
             }
             XLog.w("${layer.label} 的 ${layer.points.size} 个接管点一个都没装上 ⇒ 试下一档")
@@ -226,7 +229,7 @@ internal object KeyHooks {
         //  **只要有接管点就算装过**，不能用 `ok > 0`：接管点 0 个时安装照样已经把广播入口、
         //  组合键 Hook、KeyWatch 挂上了，再进来一次会各挂第二份（同一条广播处理两遍）。
         installed = true
-        reportHookInstall(ok, total)
+        reportHookInstall(ok, total, usedLabel)
     }
 
     /**
@@ -547,18 +550,35 @@ internal object KeyHooks {
      *  **必须 W 而非 i**：注入侧 i 会被 LSPosed 进程级日志级别整档丢掉、release 里更被编译期消除，
      *  用 i 打就等于彻底静默。
      *
+     * ## 为什么不写「$ok/$total」
+     *
+     *  `total` 是**所有档**加起来找到的候选数，而档与档之间是**逐层降级**（第一档装上就停）——
+     *  两者不是「装了几个 / 共几个」的关系。以前写成 `1/3` 时，读的人（含用户反馈）一律理解成
+     *  「三处只挂上一处、坏了两处」，而实际上另外两处是**按设计要求不装**的后备：
+     *  两档同时装上，一次按压会被喂判定器两遍（双击被吃成两次单击）。
+     *
      * @param ok 装上的 Hook 数
-     * @param total 找到的接管点总数
+     * @param total 所有档加起来找到的候选数
+     * @param usedLabel 真正接上的那一档（`null` = 一个都没装上）
      */
     private fun reportHookInstall(
         ok: Int,
         total: Int,
+        usedLabel: String?,
     ) {
         if (ok == 0) {
-            XLog.w("侧键 Hook 一个都没装上：0/$total 个接管点 —— 侧键完全不被接管")
-        } else {
-            XLog.w("侧键 Hook 安装完成：$ok/$total 个接管点")
+            XLog.w("侧键 Hook 一个都没装上：0/$total 个候选（每一档都试过了）—— 侧键完全不被接管")
+            return
         }
+        val rest = total - ok
+        XLog.w(
+            "侧键 Hook 安装完成：装上 $ok 个（${usedLabel ?: "接管点"}）" +
+                if (rest > 0) {
+                    "；另有 $rest 个是后备档的候选，按设计不装（两档同装会把一次按压喂两遍）"
+                } else {
+                    ""
+                },
+        )
     }
 
     /**

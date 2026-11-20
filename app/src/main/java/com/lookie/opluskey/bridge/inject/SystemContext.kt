@@ -73,9 +73,10 @@ internal object SystemContext {
                 null
             }
         if (direct != null) {
-            cached = direct
-            XLog.w("拿到 system_server 下的可用 Context（来源：mAllApplicationThreads）")
-            return direct
+            val (source, ctx) = direct
+            cached = ctx
+            XLog.w("拿到 system_server 下的可用 Context（来源：$source）")
+            return ctx
         }
 
         // 次选：getSystemContext()（降级品，只能 getSystemService）—— 不缓存
@@ -123,7 +124,9 @@ internal object SystemContext {
             val atCls = ActivityThreadCompat.classOf(loader) ?: return true
             val thread = ActivityThreadCompat.currentActivityThread(loader) ?: return true
             var container: Any? = null
-            for (fieldName in listOf("mAllApplicationThreads", "mAllApplications")) {
+            for (fieldName in CONTAINER_FIELDS) {
+                //  与 [fromApplicationThreads] 同一条：候选字段缺一个是正常的，不要让它打 w
+                if (Reflect.field(atCls, fieldName) == null) continue
                 container = Reflect.fieldValue(thread, atCls, fieldName)
                 if (container != null) break
             }
@@ -154,21 +157,32 @@ internal object SystemContext {
         }
 
     /**
-     * 从 `ActivityThread.mAllApplicationThreads` 里挑一个进程取 Application Context。
+     * `ActivityThread` 里那口「已经 attach 的进程」容器的候选字段名。
+     *
+     *  Android 17 上 `mAllApplicationThreads` **已经没有了**（原来那口容器改叫 `mAllApplications`），
+     *  所以两个都要试；这也解释了用户日志里为什么先有一行「找不到字段」、紧接着又能拿到 Context。
+     */
+    private val CONTAINER_FIELDS = listOf("mAllApplicationThreads", "mAllApplications")
+
+    /**
+     * 从 `ActivityThread` 的进程容器里挑一个进程取 Application Context。
      *
      * `mAllApplicationThreads` 的值是 `ActivityThread$ActivityClientRecord`，我们只要它的 `mAppContext` 字段。
+     *
+     * @return 用到的字段名 + Context。**字段名要带出去**：日志里原先写死了
+     *   `mAllApplicationThreads`，而 Android 17 上真正命中的是另一个名字 ——
+     *   于是同一段日志里既说「找不到字段」又说「来源：mAllApplicationThreads」，自相矛盾。
      */
-    private fun fromApplicationThreads(loader: ClassLoader): Context? {
+    private fun fromApplicationThreads(loader: ClassLoader): Pair<String, Context>? {
         val atCls = ActivityThreadCompat.classOf(loader) ?: return null
         val thread = ActivityThreadCompat.currentActivityThread(loader) ?: return null
-
-        // ActivityThread 的字段在部分 ROM 上叫 mAllApplicationThreads，早期叫 mAllApplications
-        for (fieldName in listOf(
-            "mAllApplicationThreads",
-            "mAllApplications",
-        )) {
+        for (fieldName in CONTAINER_FIELDS) {
+            //  **先安静地问一句字段在不在**：`Reflect.fieldValue` 找不到时会打一行 w，
+            //  而候选字段本来就允许不存在（见 [CONTAINER_FIELDS]）—— 那一行是噪音，不是故障。
+            if (Reflect.field(atCls, fieldName) == null) continue
             val map = Reflect.fieldValue(thread, atCls, fieldName) ?: continue
-            return contextsFromContainer(map) ?: continue
+            val ctx = contextsFromContainer(map) ?: continue
+            return fieldName to ctx
         }
         return null
     }
