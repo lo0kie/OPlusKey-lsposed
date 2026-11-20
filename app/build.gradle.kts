@@ -362,7 +362,7 @@ dependencies {
     //  `bridge/CommandPlatformImpl`。将来另起一个模块时，那一层原样复用，换一份端口实现即可。
     implementation(project(":command"))
     // 只读 asset（捐赠名单）改用 kotlinx 的树 API 解析；不挂编译器插件，就不需要 @Serializable
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.13.0")
     // 更新说明的 Markdown：**只引解析器**，渲染自己按弹窗的色板与字号画
     //  （`ui/MarkdownText.kt`）。不引整套渲染器：那是 CommonMark 全套 + 图片加载，
     //  而这里要的只是「把 `## 标题`、`- 条目`、`**粗体**` 翻成 AnnotatedString」。
