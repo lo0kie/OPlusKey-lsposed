@@ -1,6 +1,9 @@
 package com.lookie.opluskey.core.model
 
 import com.lookie.opluskey.core.judge.matchesOrderedTail
+import com.lookie.opluskey.core.param.ComboParams
+import com.lookie.opluskey.core.param.Param
+import com.lookie.opluskey.core.param.Params
 import com.lookie.opluskey.core.rom.RomProfile
 import java.util.Locale
 
@@ -424,270 +427,362 @@ object VariableRefs {
  * 参与组合的键同时也是普通的键：它们各自的单击 / 双击 / 长按照常在 `KeyConfig` 里配。谁先响应、
  * 要不要把单键那一下吞掉，是**判定侧**的事（不在本类）—— 这里只回答「这几颗键凑齐了是哪一档」。
  */
-data class ComboKey(
+class ComboKey(
     /** 稳定身份（`cmb1` `cmb2`）—— 与 `KeyId.id` 同一套用法：改成员不换身份。 */
     val id: String,
     /** 参与的键（`KeyId.id`，去重后 [MIN_KEYS]..[MAX_JUDGE_KEYS] 颗）。 */
     val keys: List<String>,
     val enabled: Boolean = true,
     /**
-     * 这一档**怎么触发** —— [MODE_WAIT] / [MODE_HOLD]（外加只在读旧配置时出现的
-     * [MODE_HOLD_SECOND]）。
+     * 动作：档位 → 动作。
      *
-     *  · [MODE_WAIT]：成员在 [windowMs] 之内先后按下（默认，老配置全是这一档）；
-     *  · [MODE_HOLD]：**先按住 [keys] 的第一颗**，其余成员在窗口内陆续按下。
-     *
-     *  按住那一档的判据是「首键还按着」，不看隔了多久；上界是它自己的长按（判过长按就已经
-     *  执行过自己的动作，再认组合就是一次按压两个动作），下限是 [holdMinMs]（把「一起按」
-     *  与「真的按住一颗再补另一颗」分开）。**后续成员只要求按下、不要求按住**。
-     *
-     *  「谁先按住」由 [keys] 的顺序表达，不是另一套模式位（见类注释）。
+     *  与单键**同一套键**（`GestureTrigger`）—— 组合自身的单击 / 长按 / 长按松手占
+     *  `Click(1)` / `LongPress` / `Release`；成员连击占 `Click(2)` 与 `Click(3..)`、
+     *  `ClickThenLong(n)` 与其松手。于是「成员第几击」与「单键第几击」是同一个编号，
+     *  `count + 1` 那层换算在数据里不再存在。
      */
-    val mode: Int = MODE_WAIT,
-    /** 短按：按下之后在 [longPressMs] 之内松开。 */
-    val single: Action = Action.None,
-    /** 长按：一起按住超过 [longPressMs]。 */
-    val long: Action = Action.None,
-    override val longPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
-    /**
-     * 「长按连续触发」—— 两颗键一起按住不放时，按 [longRepeatIntervalMs] 反复执行 [long]。
-     *
-     *  与单键那一档同一套语义（`KeyConfig.longRepeat`）：松手就停，抬手事件丢了有上限兜底。
-     *  默认关：按住不放重复执行是个响得很大的行为，不该一开始就有。
-     */
-    override val longRepeat: Boolean = false,
-    /** 连续触发的间隔（毫秒）—— 只在 [longRepeat] 为真时有意义。 */
-    override val longRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-    /** 连续触发时每一次重复都振动（关 = 只在判出长按那一下振一次）。 */
-    override val longRepeatVibrate: Boolean = false,
-    /**
-     * 「长按**松手才触发**」—— 与单键 `KeyConfig.longFireOnRelease` 同一档语义。
-     *
-     *  开着时长按那一下不立即执行，抬手时补发一次；与 [longRelease] 互斥（同一刻只能有一个）。
-     *  按住那两档**要求起点键开着这一位**：否则按住它到长按阈值时动作已经出去，组合再也凑不成。
-     */
-    override val longFireOnRelease: Boolean = false,
-    /** 「松手执行额外动作」的开关 —— 与单键 `KeyConfig.longReleaseOn` 同一档语义。 */
-    override val longReleaseOn: Boolean = false,
-    /** 松手那一档执行的动作（`Action.None` = 没挑）—— 三种触发方式都可用，见 [releaseBound]。 */
-    override val longRelease: Action = Action.None,
-    /**
-     * **系统场景** —— 与单键 `KeyConfig.scenes` 同一套 [SceneRule]、同一个判定口径。
-     *
-     *  按顺序找「条件成立、且这一档有值」的第一块；一块都不中才走 [actionOf] 那一档绑定。
-     *  三种触发方式**同一套场景表**：块里分的是短按 / 长按，而「怎么按出来的」已经是这一档的
-     *  身份，不构成场景的第二个维度。
-     *
-     *  手势只有 [Gesture.SINGLE] / [Gesture.LONG] 两档（见类注释），所以块里的 [SceneRule.double]
-     *  在这条路上永远不会被读到；手改配置写进去也只是存着。
-     */
+    val actions: Map<GestureTrigger, Action> = emptyMap(),
+    /** 设置项（见 `ComboParams`）—— 加一项设置只动注册表。 */
+    val params: Params = Params.EMPTY,
     val scenes: List<SceneRule> = emptyList(),
-    /**
-     * 「这一档用自己那套公共项」—— 与单键 `KeyConfig.useOwnSettings` **同一个契约**
-     * （[OwnSettings]），执行侧不区分单键还是组合。
-     *
-     *  默认关 = 跟随公共设置；开着时下面几位说了算。
-     */
     override val useOwnSettings: Boolean = false,
-    /** 这一档自己的「使用 ColorOS 接口」—— 只在 [useOwnSettings] 开着时算数。 */
-    override val colorOsApi: Boolean = GlobalConfig.DEFAULT_COLOR_OS_API,
-    /** 这一档自己的「振动反馈」—— 只在 [useOwnSettings] 开着时算数。 */
-    override val vibrate: Boolean = false,
-    /** 这一档自己的「振动强度」—— 只在 [useOwnSettings] 开着时算数。 */
-    override val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
-    /** 这一组自己的「无操作时振动」—— 只在 [useOwnSettings] 开着时算数。 */
-    override val vibrateOnNone: Boolean = GlobalConfig.DEFAULT_VIBRATE_ON_NONE,
-    /** 这一档自己的「执行时提示」—— 只在 [useOwnSettings] 开着时算数。 */
-    override val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
-    /** 这一档自己的「提示走流体云」—— 只在 [useOwnSettings] 开着时算数。 */
-    override val toastFluid: Boolean = GlobalConfig.DEFAULT_TOAST_FLUID,
-    /** 这一档自己的「提示走通知」—— 只在 [useOwnSettings] 开着时算数（四档由 [noticeMode] 派生）。 */
-    override val toastNotify: Boolean = GlobalConfig.DEFAULT_TOAST_NOTIFY,
-    /** 这一档自己的提示文案模板（空串 = 默认那句）—— 只在 [useOwnSettings] 开着时算数。 */
-    override val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
-    /** 这一档自己的「多条命令逐条提示」—— 只在 [useOwnSettings] 开着时算数。 */
-    override val stepNotice: Boolean = GlobalConfig.DEFAULT_STEP_NOTICE,
-    /**
-     * 这一档的**四个窗口**（毫秒）—— 等待 / 按住 × 固定窗口起点 开 / 关，各存一份。
-     *
-     *  一个数同时管两种按法的两种时序，会把四件不同的事压成一件（完整理由见 `ComboWindows`）。
-     *  四格都**受 `useOwnSettings` 管**：关着整份看公共；开着就看这四格自己的值，
-     *  没写过的那几格取**出厂默认**（不抄公共值）。
-     *  [WINDOW_FOLLOW_GLOBAL]（0）因此只剩老配置读到的「没写过」这一种含义。
-     *  取值一律走 `Config.comboWindowsFor` —— 判定侧与界面都只走那一处，谁也不自己看全局。
-     */
-    val waitWindowMs: Int = WINDOW_FOLLOW_GLOBAL,
-    /** 等待组合、固定窗口起点**关**：相邻两颗之间（n 颗整串 = 它 × (n-1)）。 */
-    val waitPairMs: Int = WINDOW_FOLLOW_GLOBAL,
-    /** 按住组合、固定窗口起点**开**：后续成员要在首个成员按下后的这个窗口内落完。 */
-    val holdWindowMs: Int = WINDOW_FOLLOW_GLOBAL,
-    /** 按住组合、固定窗口起点**关**：后续成员每颗各自往前等多久。 */
-    val holdFollowerMs: Int = WINDOW_FOLLOW_GLOBAL,
-    /**
-     * 这一档的「**起点键要先按住多久**」（毫秒）—— 按住那两档的下限，[MODE_WAIT] 上不参与取值。
-     *
-     *  含义：起点必须**按满这么久、且还没抬手**，另一颗在这之后落下才算这一档组合。
-     *  它把「一起按」（两颗键相差 0~40ms，谁先上报看硬件）与「先按住一颗再按另一颗」分开：
-     *  没有这条下限时，一起按会按物理先后落进某一种顺序里 —— 而那个顺序未必是这一档要的，
-     *  于是同一物理动作有时命中、有时整条落空。
-     *
-     *  **受 `useOwnSettings` 管**，与上面那四格同一条：关着整份看公共
-     *  （`GlobalConfig.comboHoldMinMs`）；开着而没写过 ⇒ 出厂默认
-     *  （`GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS`），不抄公共值。
-     *  [HOLD_MIN_FOLLOW_GLOBAL]（0）因此只剩「没写过」这一种含义。
-     *
-     *  取值一律走 `Config.comboHoldMinFor`（判定侧与界面都只走这一处）。
-     */
-    val holdMinMs: Int = HOLD_MIN_FOLLOW_GLOBAL,
-    /**
-     * 这一档的**系统场景在什么时候定下来** —— `true` = 首键按下，`false` = 成员键按下（组合凑成）。
-     *
-     *  只在**按住**那两档上有意义；等窗口那一档没有「先按住哪一颗」，也不会收到首键那条通知。
-     *
-     *  `null` = 还没写过 ⇒ 出厂默认（`GlobalConfig.DEFAULT_COMBO_SCENE_ON_STARTER`）：
-     *  布尔没有第三个值，靠 `null` 表达「没写过」。
-     *  取值一律走 `Config.comboSceneOnStarterFor`（独立设置关着就看公共那份）。
-     */
-    val sceneOnStarter: Boolean? = null,
-    /**
-     * 这一档开了「**首键松手后仍执行它自己的长按**」吗 —— `true` = 不丢弃。
-     *
-     *  原本的设计：组合凑成时成员键的单键状态机被摘掉（`ComboDetector.resetKey`），
-     *  于是首键按多久都不会判出自己的长按 —— 一次按压只执行一个动作（组合的）。
-     *  打开这一位之后，**首键松手时**补派一次它自己的长按动作（组合那一下照旧执行）。
-     *
-     *  **只补首键**：按住组合的模型是「首键一直按着、成员按一下就松」，成员自己有单键状态机、
-     *  自己会判长按 —— 不需要谁替它补。首键则因为组合凑成时状态机被摘掉，那一次长按丢了。
-     *
-     *  只在**按住**那两档上有意义：等窗口那一档没有「首键按住」这回事，界面也不给这一行。
-     *
-     *  `null` = 还没写过 ⇒ 出厂默认（`GlobalConfig.DEFAULT_COMBO_STARTER_KEEP_LONG`）：
-     *  布尔没有第三个值，靠 `null` 表达「没写过」。
-     *  取值一律走 `Config.comboStarterKeepLongFor`。
-     */
-    val starterKeepLong: Boolean? = null,
-    /**
-     * 这一档是不是**按顺序触发**。
-     *
-     *  `false`（默认）= 只看集合：几颗键先后按下就凑齐，顺序不限。
-     *  `true` = 按 [keys] 的顺序逐位比对：必须按那个先后，反了不成立。
-     *
-     *  · 等待档（[MODE_WAIT]）：比的是**整组**的按下顺序（`[A, B]` 与 `[B, A]` 是两档）。
-     *  · 按住档（[MODE_HOLD]）：首键是 [keys] 第一位、天然最先按住，所以实际比的是**成员键**
-     *    （[followers]）之间的先后 —— 成员在两个以上时，`[首键, A, B]` 与 `[首键, B, A]` 是两档。
-     *
-     *  它是这一档的**身份**（与 [mode] 同一层）：`keys` 的顺序在这一档里就是「按下的先后」，
-     *  所以同一批成员键可以建多档（AB / BA / ABC / ACB …），「不分顺序」那一档（`ordered = false`）
-     *  与它们并存。
-     *
-     *  判据在判定侧（`ComboDetector` 的按序比对），这里只存这一位。
-     */
-    val ordered: Boolean = false,
-    /**
-     * 这一档**等待组合**的固定窗口起点 —— `true` = 从首个成员按下时起一个固定窗口；
-     * `false` = 每个成员按下都清掉计时、重新等一个窗口（逐次等满）。
-     *
-     *  窗口长度按四格里的哪一格由开关决定（[waitWindowMs] / [waitPairMs]）：开与关只是
-     *  「整串共用一个」还是「每两颗各一个」的区别，不再是两个数各管一边。
-     *
-     *  `null` = 还没写过 ⇒ 出厂默认（`GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START`）。
-     *  取值一律走 `Config.comboFixedWindowStartFor`。
-     *
-     *  **与 [holdFixedWindowStart] 是两个变量**：两张卡各管一种按法（口径与四格窗口同一条）。
-     */
-    val fixedWindowStart: Boolean? = null,
-    /**
-     * 这一档**按住组合**的固定窗口起点 —— `true` = 后续成员在首个成员按下后的一个窗口内落完；
-     * `false` = 后续成员每颗各自往前等一格。
-     *
-     *  窗口长度同样按开关挑格（[holdWindowMs] / [holdFollowerMs]）。
-     *
-     *  `null` = 还没写过 ⇒ 出厂默认（`GlobalConfig.DEFAULT_COMBO_FIXED_WINDOW_START`）。
-     *  取值一律走 `Config.comboHoldFixedWindowStartFor`。
-     */
-    val holdFixedWindowStart: Boolean? = null,
-    /**
-     * **成员连击**：按住首键不放，那颗**唯一成员键**在窗口内连击（双击 / 三击 / 四击 /
-     * 单击后长按）—— 动作落在**这一档组合自己**的这几格，与成员键单键的多击**完全解耦**。
-     *
-     *  只在 `mode == MODE_HOLD` 且 `followers.size == 1`（首键 + 一颗成员）时有意义：多成员时
-     *  「哪一颗连击」没有定义。窗口与判定时机**复用按住组合已有的配置**（[holdFixedWindowStart]
-     *  决定固定起点还是逐次等、[holdWindowMs] / [holdFollowerMs] 决定窗口长度），不再为它另开
-     *  一套窗口字段（用户口径：窗口用按住组合的固定窗口起点和等待窗口）。
-     *
-     *  开关与动作分两格（与单键 `doubleClickOn` / `extraClicksOn` 同一族）：关掉只是不判定、
-     *  不派发，配过的动作原样留着，再打开回来。
-     *
-     *  这一条就是**双击**那一档（`memberDouble`）；3 击起的几档是下面那张表。
-     */
-    val memberDouble: Action = Action.None,
-    val memberDoubleOn: Boolean = true,
-    /** 成员第 3 击起的几档（键 = 击数，值 = 动作）。 */
-    val memberClicks: Map<Int, Action> = emptyMap(),
-    /** 开着哪几档成员多击（第 3 击起）。 */
-    val memberClicksOn: Set<Int> = emptySet(),
-    /** 成员「单击后长按」那一档（成员第一击抬手后，窗口内再按下并按住）。 */
-    val memberClickThenLong: Action = Action.None,
-    val memberClickThenLongOn: Boolean = false,
-    /**
-     * 成员「后长按」三档（单击后 / 双击后 / 三击后）**共用**的长按阈值 —— 与这一档普通长按
-     * [longPressMs] 分开。
-     *
-     *  [MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL]（0）= 没写过 ⇒ 跟随公共设置
-     *  （`GlobalConfig.comboMemberClickThenLongPressMs`）。**取值一律走
-     *  `Config.comboMemberThenLongPressFor`**：直接读这一格的话，没开独立设置的那一档会按
-     *  一个用户看不见的值判。
-     */
-    val memberClickThenLongPressMs: Int = MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL,
-    /**
-     * 成员「单击后长按」的**松手时触发** —— 与 [longFireOnRelease] 同义、各自一份。
-     *
-     *  开着时到点不执行、抬手执行一次；同时把「松手执行额外动作」与「连续触发」两族让位
-     *  （判据收在 [memberClickThenLongReleaseAction] / [memberClickThenLongRepeats] 一处）。
-     */
-    val memberClickThenLongFireOnRelease: Boolean = false,
-    /** 成员「单击后长按」的**连续触发**（按住不放重复派发这一档）。 */
-    val memberClickThenLongRepeat: Boolean = false,
-    val memberClickThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-    /** 连发的每一次都振动（只在 [memberClickThenLongRepeat] 为真时有意义）。 */
-    val memberClickThenLongRepeatVibrate: Boolean = false,
-    /** 成员「单击后长按」松手那一刻再执行一个动作（与 [longReleaseOn] 各自一份）。 */
-    val memberClickThenLongReleaseOn: Boolean = false,
-    val memberClickThenLongRelease: Action = Action.None,
-    /**
-     * 成员「单击后长按」绑的是不是**多条命令** —— **只有广播这一列**（与单键那条同一条）：
-     * 注入侧要读命令库才知道，而那个文件它看不到，由宿主现算带过来。
-     */
-    val memberClickThenLongIsSerial: Boolean = false,
-    /**
-     * 成员「双击后长按」（成员第 3 击按住）/「三击后长按」（成员第 4 击按住）——
-     * 与 [memberClickThenLongOn] 同一对口径，只差前面那几击的击数。
-     *
-     *  复用成员「单击后长按」那一套长按阈值（[memberClickThenLongPressMs]）与松手 / 连发设置：
-     *  三档是同一件事的不同击数，不各开一份。
-     */
-    val memberDoubleThenLong: Action = Action.None,
-    val memberDoubleThenLongOn: Boolean = false,
-    val memberTripleThenLong: Action = Action.None,
-    val memberTripleThenLongOn: Boolean = false,
-    /** 成员「双击后长按」自己的时序与收尾 —— 与 [memberClickThenLongPressMs] 那一族同名不同槽。 */
-    val memberDoubleThenLongRepeat: Boolean = false,
-    val memberDoubleThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-    val memberDoubleThenLongRepeatVibrate: Boolean = false,
-    val memberDoubleThenLongReleaseOn: Boolean = false,
-    val memberDoubleThenLongRelease: Action = Action.None,
-    val memberDoubleThenLongFireOnRelease: Boolean = false,
-    val memberDoubleThenLongIsSerial: Boolean = false,
-    /** 成员「三击后长按」同上。 */
-    val memberTripleThenLongRepeat: Boolean = false,
-    val memberTripleThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-    val memberTripleThenLongRepeatVibrate: Boolean = false,
-    val memberTripleThenLongReleaseOn: Boolean = false,
-    val memberTripleThenLongRelease: Action = Action.None,
-    val memberTripleThenLongFireOnRelease: Boolean = false,
-    val memberTripleThenLongIsSerial: Boolean = false,
 ) : OwnSettings,
     LongPressParams {
+    /** 一档动作；没配的档位一律「无操作」。 */
+    fun act(trigger: GestureTrigger): Action = actions[trigger] ?: Action.None
+
+    // ── 动作 ──
+    val single: Action get() = act(GestureTrigger.Click(1))
+    val long: Action get() = act(GestureTrigger.LongPress)
+    override val longRelease: Action get() = act(GestureTrigger.Release)
+
+    /** 成员双击 —— 与单键的「双击」是同一个档位（`Click(2)`），只是主语是那颗成员键。 */
+    val memberDouble: Action get() = act(GestureTrigger.Click(2))
+
+    /** 成员第 3 击起 —— 从 [actions] 里筛出来，没有单独存储。 */
+    val memberClicks: Map<Int, Action>
+        get() =
+            buildMap {
+                actions.forEach { (trigger, action) ->
+                    val count = (trigger as? GestureTrigger.Click)?.count ?: return@forEach
+                    if (count >= 3) put(count, action)
+                }
+            }
+
+    val memberClickThenLong: Action get() = act(GestureTrigger.ClickThenLong(1))
+    val memberClickThenLongRelease: Action get() = act(GestureTrigger.ClickThenLongRelease(1))
+    val memberDoubleThenLong: Action get() = act(GestureTrigger.ClickThenLong(2))
+    val memberDoubleThenLongRelease: Action get() = act(GestureTrigger.ClickThenLongRelease(2))
+    val memberTripleThenLong: Action get() = act(GestureTrigger.ClickThenLong(3))
+    val memberTripleThenLongRelease: Action get() = act(GestureTrigger.ClickThenLongRelease(3))
+
+    // ── 设置项 ──
+    val mode: Int get() = params[ComboParams.MODE]
+
+    /**
+     * 这一档要不要**按顺序**（`A 后 B 再 C`）。
+     *
+     *  它是档位身份而不是能力：同一组键「一起按要有先后」与「按住首键再按第二颗要有先后」
+     *  是两件事，所以两种 mode 各存一份、互不牵连。
+     */
+    val ordered: Boolean get() = params[ComboParams.ORDERED]
+
+    override val longPressMs: Int get() = params[ComboParams.LONG_PRESS_MS]
+    override val longRepeat: Boolean get() = params[ComboParams.LONG_REPEAT]
+    override val longRepeatIntervalMs: Int get() = params[ComboParams.LONG_REPEAT_INTERVAL_MS]
+    override val longRepeatVibrate: Boolean get() = params[ComboParams.LONG_REPEAT_VIBRATE]
+    override val longFireOnRelease: Boolean get() = params[ComboParams.LONG_FIRE_ON_RELEASE]
+    override val longReleaseOn: Boolean get() = params[ComboParams.LONG_RELEASE_ON]
+
+    override val colorOsApi: Boolean get() = params[ComboParams.COLOR_OS_API]
+    override val vibrate: Boolean get() = params[ComboParams.VIBRATE]
+    override val vibrateStrength: Int get() = params[ComboParams.VIBRATE_STRENGTH]
+    override val vibrateOnNone: Boolean get() = params[ComboParams.VIBRATE_ON_NONE]
+    override val toastOnRun: Boolean get() = params[ComboParams.TOAST_ON_RUN]
+    override val toastFluid: Boolean get() = params[ComboParams.TOAST_FLUID]
+    override val toastNotify: Boolean get() = params[ComboParams.TOAST_NOTIFY]
+    override val toastTemplate: String get() = params[ComboParams.TOAST_TEMPLATE]
+    override val stepNotice: Boolean get() = params[ComboParams.STEP_NOTICE]
+
+    /** 窗口四格 + 按住下限：`0` = 跟随公共（[WINDOW_FOLLOW_GLOBAL]）。 */
+    val waitWindowMs: Int get() = params[ComboParams.WAIT_WINDOW_MS]
+    val waitPairMs: Int get() = params[ComboParams.WAIT_PAIR_MS]
+    val holdWindowMs: Int get() = params[ComboParams.HOLD_WINDOW_MS]
+    val holdFollowerMs: Int get() = params[ComboParams.HOLD_FOLLOWER_MS]
+    val holdMinMs: Int get() = params[ComboParams.HOLD_MIN_MS]
+
+    /** 三态（`null` = 跟随公共）：`sceneOnStarter` / `starterKeepLong` / 两种判定时机。 */
+    val sceneOnStarter: Boolean? get() = params[ComboParams.SCENE_ON_STARTER]
+    val starterKeepLong: Boolean? get() = params[ComboParams.STARTER_KEEP_LONG]
+    val fixedWindowStart: Boolean? get() = params[ComboParams.FIXED_WINDOW_START]
+    val holdFixedWindowStart: Boolean? get() = params[ComboParams.HOLD_FIXED_WINDOW_START]
+
+    val memberDoubleOn: Boolean get() = params[ComboParams.MEMBER_DOUBLE_ON]
+    val memberClicksOn: Set<Int> get() = params[ComboParams.MEMBER_CLICKS_ON]
+    val memberClickThenLongOn: Boolean get() = params[ComboParams.MEMBER_CLICK_THEN_LONG_ON]
+    val memberClickThenLongPressMs: Int get() = params[ComboParams.MEMBER_CLICK_THEN_LONG_PRESS_MS]
+    val memberClickThenLongFireOnRelease: Boolean get() = params[ComboParams.MEMBER_CLICK_THEN_LONG_FIRE_ON_RELEASE]
+    val memberClickThenLongRepeat: Boolean get() = params[ComboParams.MEMBER_CLICK_THEN_LONG_REPEAT]
+    val memberClickThenLongRepeatIntervalMs: Int get() = params[ComboParams.MEMBER_CLICK_THEN_LONG_REPEAT_INTERVAL_MS]
+    val memberClickThenLongRepeatVibrate: Boolean get() = params[ComboParams.MEMBER_CLICK_THEN_LONG_REPEAT_VIBRATE]
+    val memberClickThenLongReleaseOn: Boolean get() = params[ComboParams.MEMBER_CLICK_THEN_LONG_RELEASE_ON]
+    val memberClickThenLongIsSerial: Boolean get() = params[ComboParams.MEMBER_CLICK_THEN_LONG_IS_SERIAL]
+
+    val memberDoubleThenLongOn: Boolean get() = params[ComboParams.MEMBER_DOUBLE_THEN_LONG_ON]
+    val memberTripleThenLongOn: Boolean get() = params[ComboParams.MEMBER_TRIPLE_THEN_LONG_ON]
+    val memberDoubleThenLongRepeat: Boolean get() = params[ComboParams.MEMBER_DOUBLE_THEN_LONG_REPEAT]
+    val memberDoubleThenLongRepeatIntervalMs: Int get() = params[ComboParams.MEMBER_DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS]
+    val memberDoubleThenLongRepeatVibrate: Boolean get() = params[ComboParams.MEMBER_DOUBLE_THEN_LONG_REPEAT_VIBRATE]
+    val memberDoubleThenLongReleaseOn: Boolean get() = params[ComboParams.MEMBER_DOUBLE_THEN_LONG_RELEASE_ON]
+    val memberDoubleThenLongFireOnRelease: Boolean get() = params[ComboParams.MEMBER_DOUBLE_THEN_LONG_FIRE_ON_RELEASE]
+    val memberDoubleThenLongIsSerial: Boolean get() = params[ComboParams.MEMBER_DOUBLE_THEN_LONG_IS_SERIAL]
+    val memberTripleThenLongRepeat: Boolean get() = params[ComboParams.MEMBER_TRIPLE_THEN_LONG_REPEAT]
+    val memberTripleThenLongRepeatIntervalMs: Int get() = params[ComboParams.MEMBER_TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS]
+    val memberTripleThenLongRepeatVibrate: Boolean get() = params[ComboParams.MEMBER_TRIPLE_THEN_LONG_REPEAT_VIBRATE]
+    val memberTripleThenLongReleaseOn: Boolean get() = params[ComboParams.MEMBER_TRIPLE_THEN_LONG_RELEASE_ON]
+    val memberTripleThenLongFireOnRelease: Boolean get() = params[ComboParams.MEMBER_TRIPLE_THEN_LONG_FIRE_ON_RELEASE]
+    val memberTripleThenLongIsSerial: Boolean get() = params[ComboParams.MEMBER_TRIPLE_THEN_LONG_IS_SERIAL]
+
+    /** 写入口：改一项设置。 */
+    fun <T> with(
+        spec: Param<T>,
+        value: T,
+    ): ComboKey = ComboKey(id, keys, enabled, actions, params.with(spec, value), scenes, useOwnSettings)
+
+    /** 写入口：改一档动作。 */
+    fun withAction(
+        trigger: GestureTrigger,
+        action: Action,
+    ): ComboKey = ComboKey(id, keys, enabled, actions + (trigger to action), params, scenes, useOwnSettings)
+
+    override fun equals(other: Any?): Boolean =
+        this === other ||
+            (
+                other is ComboKey &&
+                    id == other.id &&
+                    keys == other.keys &&
+                    enabled == other.enabled &&
+                    actions == other.actions &&
+                    params == other.params &&
+                    scenes == other.scenes &&
+                    useOwnSettings == other.useOwnSettings
+            )
+
+    override fun hashCode(): Int {
+        var result = id.hashCode()
+        result = 31 * result + keys.hashCode()
+        result = 31 * result + enabled.hashCode()
+        result = 31 * result + actions.hashCode()
+        result = 31 * result + params.hashCode()
+        result = 31 * result + scenes.hashCode()
+        result = 31 * result + useOwnSettings.hashCode()
+        return result
+    }
+
+    override fun toString(): String =
+        "ComboKey(id=$id, keys=$keys, enabled=$enabled, mode=$mode, actions=$actions, params=${params.toMap()})"
+
+    /**
+     * 与 data class 那一版 `copy` 逐参数同名同义：没传的字段保持原值（调用点零改动）。
+     *
+     * 长度与复杂度**就是参数个数的线性叠加**（每个参数一句 `if (x != null)`），不是纠缠的分支：
+     * 拆成「按 map 收集」只会给上百个调用点背后多一层壳，读起来更绕。
+     */
+    @Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
+    fun copy(
+        id: String? = null,
+        keys: List<String>? = null,
+        enabled: Boolean? = null,
+        useOwnSettings: Boolean? = null,
+        scenes: List<SceneRule>? = null,
+        actions: Map<GestureTrigger, Action>? = null,
+        params: Params? = null,
+        single: Action? = null,
+        long: Action? = null,
+        longRelease: Action? = null,
+        memberDouble: Action? = null,
+        memberClicks: Map<Int, Action>? = null,
+        memberClickThenLong: Action? = null,
+        memberClickThenLongRelease: Action? = null,
+        memberDoubleThenLong: Action? = null,
+        memberDoubleThenLongRelease: Action? = null,
+        memberTripleThenLong: Action? = null,
+        memberTripleThenLongRelease: Action? = null,
+        mode: Int? = null,
+        ordered: Boolean? = null,
+        longPressMs: Int? = null,
+        longRepeat: Boolean? = null,
+        longRepeatIntervalMs: Int? = null,
+        longRepeatVibrate: Boolean? = null,
+        longFireOnRelease: Boolean? = null,
+        longReleaseOn: Boolean? = null,
+        colorOsApi: Boolean? = null,
+        vibrate: Boolean? = null,
+        vibrateStrength: Int? = null,
+        vibrateOnNone: Boolean? = null,
+        toastOnRun: Boolean? = null,
+        toastFluid: Boolean? = null,
+        toastNotify: Boolean? = null,
+        toastTemplate: String? = null,
+        stepNotice: Boolean? = null,
+        waitWindowMs: Int? = null,
+        waitPairMs: Int? = null,
+        holdWindowMs: Int? = null,
+        holdFollowerMs: Int? = null,
+        holdMinMs: Int? = null,
+        sceneOnStarter: Boolean? = null,
+        starterKeepLong: Boolean? = null,
+        fixedWindowStart: Boolean? = null,
+        holdFixedWindowStart: Boolean? = null,
+        memberDoubleOn: Boolean? = null,
+        memberClicksOn: Set<Int>? = null,
+        memberClickThenLongOn: Boolean? = null,
+        memberClickThenLongPressMs: Int? = null,
+        memberClickThenLongFireOnRelease: Boolean? = null,
+        memberClickThenLongRepeat: Boolean? = null,
+        memberClickThenLongRepeatIntervalMs: Int? = null,
+        memberClickThenLongRepeatVibrate: Boolean? = null,
+        memberClickThenLongReleaseOn: Boolean? = null,
+        memberClickThenLongIsSerial: Boolean? = null,
+        memberDoubleThenLongOn: Boolean? = null,
+        memberTripleThenLongOn: Boolean? = null,
+        memberDoubleThenLongRepeat: Boolean? = null,
+        memberDoubleThenLongRepeatIntervalMs: Int? = null,
+        memberDoubleThenLongRepeatVibrate: Boolean? = null,
+        memberDoubleThenLongReleaseOn: Boolean? = null,
+        memberDoubleThenLongFireOnRelease: Boolean? = null,
+        memberDoubleThenLongIsSerial: Boolean? = null,
+        memberTripleThenLongRepeat: Boolean? = null,
+        memberTripleThenLongRepeatIntervalMs: Int? = null,
+        memberTripleThenLongRepeatVibrate: Boolean? = null,
+        memberTripleThenLongReleaseOn: Boolean? = null,
+        memberTripleThenLongFireOnRelease: Boolean? = null,
+        memberTripleThenLongIsSerial: Boolean? = null,
+    ): ComboKey {
+        var a = actions ?: this.actions
+        if (single != null) a = a + (GestureTrigger.Click(1) to single)
+        if (long != null) a = a + (GestureTrigger.LongPress to long)
+        if (longRelease != null) a = a + (GestureTrigger.Release to longRelease)
+        if (memberDouble != null) a = a + (GestureTrigger.Click(2) to memberDouble)
+        if (memberClickThenLong != null) a = a + (GestureTrigger.ClickThenLong(1) to memberClickThenLong)
+        if (memberClickThenLongRelease != null) {
+            a = a + (GestureTrigger.ClickThenLongRelease(1) to memberClickThenLongRelease)
+        }
+        if (memberDoubleThenLong != null) a = a + (GestureTrigger.ClickThenLong(2) to memberDoubleThenLong)
+        if (memberDoubleThenLongRelease != null) {
+            a = a + (GestureTrigger.ClickThenLongRelease(2) to memberDoubleThenLongRelease)
+        }
+        if (memberTripleThenLong != null) a = a + (GestureTrigger.ClickThenLong(3) to memberTripleThenLong)
+        if (memberTripleThenLongRelease != null) {
+            a = a + (GestureTrigger.ClickThenLongRelease(3) to memberTripleThenLongRelease)
+        }
+        if (memberClicks != null) {
+            a =
+                a.filterKeys { !(it is GestureTrigger.Click && it.count >= 3) } +
+                memberClicks.map { (count, action) -> GestureTrigger.Click(count) to action }
+        }
+
+        var p = params ?: this.params
+        if (mode != null) p = p.with(ComboParams.MODE, mode)
+        if (ordered != null) p = p.with(ComboParams.ORDERED, ordered)
+        if (longPressMs != null) p = p.with(ComboParams.LONG_PRESS_MS, longPressMs)
+        if (longRepeat != null) p = p.with(ComboParams.LONG_REPEAT, longRepeat)
+        if (longRepeatIntervalMs != null) p = p.with(ComboParams.LONG_REPEAT_INTERVAL_MS, longRepeatIntervalMs)
+        if (longRepeatVibrate != null) p = p.with(ComboParams.LONG_REPEAT_VIBRATE, longRepeatVibrate)
+        if (longFireOnRelease != null) p = p.with(ComboParams.LONG_FIRE_ON_RELEASE, longFireOnRelease)
+        if (longReleaseOn != null) p = p.with(ComboParams.LONG_RELEASE_ON, longReleaseOn)
+        if (colorOsApi != null) p = p.with(ComboParams.COLOR_OS_API, colorOsApi)
+        if (vibrate != null) p = p.with(ComboParams.VIBRATE, vibrate)
+        if (vibrateStrength != null) p = p.with(ComboParams.VIBRATE_STRENGTH, vibrateStrength)
+        if (vibrateOnNone != null) p = p.with(ComboParams.VIBRATE_ON_NONE, vibrateOnNone)
+        if (toastOnRun != null) p = p.with(ComboParams.TOAST_ON_RUN, toastOnRun)
+        if (toastFluid != null) p = p.with(ComboParams.TOAST_FLUID, toastFluid)
+        if (toastNotify != null) p = p.with(ComboParams.TOAST_NOTIFY, toastNotify)
+        if (toastTemplate != null) p = p.with(ComboParams.TOAST_TEMPLATE, toastTemplate)
+        if (stepNotice != null) p = p.with(ComboParams.STEP_NOTICE, stepNotice)
+        if (waitWindowMs != null) p = p.with(ComboParams.WAIT_WINDOW_MS, waitWindowMs)
+        if (waitPairMs != null) p = p.with(ComboParams.WAIT_PAIR_MS, waitPairMs)
+        if (holdWindowMs != null) p = p.with(ComboParams.HOLD_WINDOW_MS, holdWindowMs)
+        if (holdFollowerMs != null) p = p.with(ComboParams.HOLD_FOLLOWER_MS, holdFollowerMs)
+        if (holdMinMs != null) p = p.with(ComboParams.HOLD_MIN_MS, holdMinMs)
+        if (sceneOnStarter != null) p = p.with(ComboParams.SCENE_ON_STARTER, sceneOnStarter)
+        if (starterKeepLong != null) p = p.with(ComboParams.STARTER_KEEP_LONG, starterKeepLong)
+        if (fixedWindowStart != null) p = p.with(ComboParams.FIXED_WINDOW_START, fixedWindowStart)
+        if (holdFixedWindowStart != null) p = p.with(ComboParams.HOLD_FIXED_WINDOW_START, holdFixedWindowStart)
+        if (memberDoubleOn != null) p = p.with(ComboParams.MEMBER_DOUBLE_ON, memberDoubleOn)
+        if (memberClicksOn != null) p = p.with(ComboParams.MEMBER_CLICKS_ON, memberClicksOn)
+        if (memberClickThenLongOn != null) p = p.with(ComboParams.MEMBER_CLICK_THEN_LONG_ON, memberClickThenLongOn)
+        if (memberClickThenLongPressMs != null) {
+            p = p.with(ComboParams.MEMBER_CLICK_THEN_LONG_PRESS_MS, memberClickThenLongPressMs)
+        }
+        if (memberClickThenLongFireOnRelease != null) {
+            p = p.with(ComboParams.MEMBER_CLICK_THEN_LONG_FIRE_ON_RELEASE, memberClickThenLongFireOnRelease)
+        }
+        if (memberClickThenLongRepeat != null) {
+            p = p.with(ComboParams.MEMBER_CLICK_THEN_LONG_REPEAT, memberClickThenLongRepeat)
+        }
+        if (memberClickThenLongRepeatIntervalMs != null) {
+            p = p.with(ComboParams.MEMBER_CLICK_THEN_LONG_REPEAT_INTERVAL_MS, memberClickThenLongRepeatIntervalMs)
+        }
+        if (memberClickThenLongRepeatVibrate != null) {
+            p = p.with(ComboParams.MEMBER_CLICK_THEN_LONG_REPEAT_VIBRATE, memberClickThenLongRepeatVibrate)
+        }
+        if (memberClickThenLongReleaseOn != null) {
+            p = p.with(ComboParams.MEMBER_CLICK_THEN_LONG_RELEASE_ON, memberClickThenLongReleaseOn)
+        }
+        if (memberClickThenLongIsSerial != null) {
+            p = p.with(ComboParams.MEMBER_CLICK_THEN_LONG_IS_SERIAL, memberClickThenLongIsSerial)
+        }
+        if (memberDoubleThenLongOn != null) p = p.with(ComboParams.MEMBER_DOUBLE_THEN_LONG_ON, memberDoubleThenLongOn)
+        if (memberTripleThenLongOn != null) p = p.with(ComboParams.MEMBER_TRIPLE_THEN_LONG_ON, memberTripleThenLongOn)
+        if (memberDoubleThenLongRepeat != null) {
+            p = p.with(ComboParams.MEMBER_DOUBLE_THEN_LONG_REPEAT, memberDoubleThenLongRepeat)
+        }
+        if (memberDoubleThenLongRepeatIntervalMs != null) {
+            p = p.with(ComboParams.MEMBER_DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS, memberDoubleThenLongRepeatIntervalMs)
+        }
+        if (memberDoubleThenLongRepeatVibrate != null) {
+            p = p.with(ComboParams.MEMBER_DOUBLE_THEN_LONG_REPEAT_VIBRATE, memberDoubleThenLongRepeatVibrate)
+        }
+        if (memberDoubleThenLongReleaseOn != null) {
+            p = p.with(ComboParams.MEMBER_DOUBLE_THEN_LONG_RELEASE_ON, memberDoubleThenLongReleaseOn)
+        }
+        if (memberDoubleThenLongFireOnRelease != null) {
+            p = p.with(ComboParams.MEMBER_DOUBLE_THEN_LONG_FIRE_ON_RELEASE, memberDoubleThenLongFireOnRelease)
+        }
+        if (memberDoubleThenLongIsSerial != null) {
+            p = p.with(ComboParams.MEMBER_DOUBLE_THEN_LONG_IS_SERIAL, memberDoubleThenLongIsSerial)
+        }
+        if (memberTripleThenLongRepeat != null) {
+            p = p.with(ComboParams.MEMBER_TRIPLE_THEN_LONG_REPEAT, memberTripleThenLongRepeat)
+        }
+        if (memberTripleThenLongRepeatIntervalMs != null) {
+            p = p.with(ComboParams.MEMBER_TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS, memberTripleThenLongRepeatIntervalMs)
+        }
+        if (memberTripleThenLongRepeatVibrate != null) {
+            p = p.with(ComboParams.MEMBER_TRIPLE_THEN_LONG_REPEAT_VIBRATE, memberTripleThenLongRepeatVibrate)
+        }
+        if (memberTripleThenLongReleaseOn != null) {
+            p = p.with(ComboParams.MEMBER_TRIPLE_THEN_LONG_RELEASE_ON, memberTripleThenLongReleaseOn)
+        }
+        if (memberTripleThenLongFireOnRelease != null) {
+            p = p.with(ComboParams.MEMBER_TRIPLE_THEN_LONG_FIRE_ON_RELEASE, memberTripleThenLongFireOnRelease)
+        }
+        if (memberTripleThenLongIsSerial != null) {
+            p = p.with(ComboParams.MEMBER_TRIPLE_THEN_LONG_IS_SERIAL, memberTripleThenLongIsSerial)
+        }
+
+        return ComboKey(
+            id = id ?: this.id,
+            keys = keys ?: this.keys,
+            enabled = enabled ?: this.enabled,
+            actions = a,
+            params = p,
+            scenes = scenes ?: this.scenes,
+            useOwnSettings = useOwnSettings ?: this.useOwnSettings,
+        )
+    }
+
     /** 这一档现在算不算数 —— 关掉了、或成员不足两键（配置文件被手改坏）都不算。 */
     val isUsable: Boolean
         get() = enabled && keys.size >= MIN_KEYS

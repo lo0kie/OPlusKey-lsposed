@@ -255,15 +255,6 @@ internal fun gridColumnCount(
     return ((availableWidth.value + gap.value) / step).toInt().coerceAtLeast(1)
 }
 
-/**
- * 首页「按键行为」卡里「前台转小窗时使用动画」那一行**是否露出来** —— 现行 `false`（先隐藏）。
- *
- *  收起来的理由是这一档还没收敛：动画终点几何是竖屏标定值、横屏播不了，竖屏落点也还没定。
- *  只收**入口**：配置字段（`GlobalConfig.miniWindowAnim`）与执行侧（`MiniWindowLauncher`）
- *  都原样留着，默认值本来就是关 —— 改回 `true` 那一行立刻回来，不必动别处。
- */
-internal const val SHOW_HOME_MINI_ANIM = false
-
 // 「一张卡有几行」不再写成常量：行的位置（首行 / 中间 / 末行）与分隔线现在由 `CardList`
 // 遍历时自己算（见 `ui/CardRow`），条件行用 `buildList { if (…) add(…) }` 组出来就是真相 ——
 // 数错了会让卡片首尾圆角错位的那一类账，整类消失了。

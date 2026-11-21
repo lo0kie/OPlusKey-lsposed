@@ -20,7 +20,6 @@ import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.kit.NameDialog
 import com.lookie.opluskey.ui.kit.SectionTitle
 import com.lookie.opluskey.ui.model.icon.PageIcons
-import com.lookie.opluskey.ui.model.page.SHOW_HOME_MINI_ANIM
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SliderRow
@@ -122,6 +121,24 @@ private fun SettingsPage.InterfaceCard(pageEnabled: Boolean) {
                         setColorOsApi(it)
                     },
                 )
+                //  「前台转小窗时使用动画」：`zoom:mini` 那一下要不要播缩小动画。
+                //  关（默认）= 原地收、无动画；开 = 调框架自己的切换（`toggleFlexibleWindow`，
+                //  落点与动画都由服务端算，配方见 `docs/features/zoom-window/notes.md` §六之二），
+                //  没受理才退「先原地收、再补播框架动画」那一档。
+                //  放在这一张卡里而不是「按键行为」：它与「走哪套系统接口」同一类（决定命令怎么落地），
+                //  与振动 / 提示那几项不是一件事。
+                add(
+                    CardRow.Switch(
+                        title = I18n.get(Strings.HOME_MINI_ANIM_TITLE),
+                        summaryOn = I18n.get(Strings.HOME_MINI_ANIM_DESC_ON),
+                        summaryOff = I18n.get(Strings.HOME_MINI_ANIM_DESC_OFF),
+                        icon = PageIcons.MiniAnim,
+                        checked = cfg.global.miniWindowAnim,
+                        enabled = pageEnabled,
+                    ) {
+                        setMiniWindowAnim(it)
+                    },
+                )
                 //  「管理常用命令」—— 进清单页（收录哪几条、每条叫什么、换哪颗图标）。
                 //  **不再配一颗「显示常用命令」**：常用命令本来就只是快捷方式，露不露由清单里
                 //  有没有东西决定（空清单那一段只剩一行「去添加」），多一颗开关只是让人去关一个
@@ -213,25 +230,6 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                     },
                 )
                 add(toastTemplateRow(cfg.global, pageEnabled) { editingToastTemplate = true })
-                // 「前台转小窗时使用动画」：`zoom:mini` 那一下要不要播缩小动画。
-                //  关（默认）= 原地收、无动画；开 = 原地收成小窗后紧接着让框架自己的动画器播那一段
-                //  （插值 / 矩阵 / spring 全是框架在跑，模块只交起止参数，配方见 `docs/features/zoom-window/notes.md` §十二）。
-                //  **现行隐藏**（[SHOW_HOME_MINI_ANIM] = false）：这一档还没收敛（终点几何是竖屏标定值、
-                //  横屏播不了），先把入口收起来 —— 配置字段与执行侧都留着，改回 true 即恢复。
-                if (SHOW_HOME_MINI_ANIM) {
-                    add(
-                        CardRow.Switch(
-                            title = I18n.get(Strings.HOME_MINI_ANIM_TITLE),
-                            summaryOn = I18n.get(Strings.HOME_MINI_ANIM_DESC_ON),
-                            summaryOff = I18n.get(Strings.HOME_MINI_ANIM_DESC_OFF),
-                            icon = PageIcons.MiniWindow,
-                            checked = cfg.global.miniWindowAnim,
-                            enabled = pageEnabled,
-                        ) {
-                            setMiniWindowAnim(it)
-                        },
-                    )
-                }
             },
     )
     toastTemplateDialog(cfg.global.toastTemplate, editingToastTemplate) { editingToastTemplate = it }

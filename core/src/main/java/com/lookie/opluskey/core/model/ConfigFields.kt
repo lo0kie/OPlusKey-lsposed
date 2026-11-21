@@ -53,6 +53,24 @@ object ConfigFields {
     /** 每颗键一条，实际 extra 名 = `<id>_code`。 */
     const val KEY_CODE_EXTRA = "code"
 
+    /**
+     * 每颗键的**设置项值包**（`Map<String, String>`）—— 键是 `KeyParams.ALL` 里那些 `Param.id`。
+     *
+     *  从前这里是几十列 `F_*`（一格一个 extra）：加一项设置要在字段表、发送、接收三处各加一行。
+     *  收成一个 map 之后，加一项设置**广播这一层不用动** —— 同一次构建里宿主与注入侧一起变，
+     *  不存在跨版本兼容问题。
+     */
+    const val KEY_PARAMS_EXTRA = "params"
+
+    /** 每颗键的**动作表**（档位 id → 动作 token）—— 加一档手势同样不用动这一层。 */
+    const val KEY_ACTIONS_EXTRA = "actions"
+
+    /** 这一颗键归不归模块管（原来在逐列字段里，改成 map 之后单独走一位）。 */
+    const val KEY_ENABLED_EXTRA = "enabled"
+
+    /** 这一颗键用不用自己那套公共项（总闸，不进值包）。 */
+    const val KEY_OWN_EXTRA = "own"
+
     /** 每颗键一条，实际 extra 名 = `<id>_name`。 */
     const val KEY_NAME_EXTRA = "name"
 

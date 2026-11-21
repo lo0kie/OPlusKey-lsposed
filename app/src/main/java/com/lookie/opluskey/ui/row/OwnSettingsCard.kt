@@ -26,7 +26,8 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
  * ## 它是什么
  *
  *  公共设置页（`Screen.GENERAL`）里那几项「按键怎么工作」的开关，这一档可以自己另设一份：
- *  走不走 ColorOS 专有接口、振不振、振多重、弹不弹提示、提示写什么。
+ *  振不振、振多重、弹不弹提示、提示写什么。
+ *  「使用 ColorOS 接口」不在此列 —— 它决定命令走哪套系统接口，只在公共页调一次。
  *  顶上那颗总开关（[OwnSettings.useOwnSettings]，默认关）决定用哪份 —— 关着就是跟随公共设置。
  *
  * ## 显示的是**这一档自己那份**，不跟总开关跳
@@ -63,7 +64,7 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
  *
  * @param owner 这一档当前的独立设置（只读；改由 [onWrite] 交回去）
  * @param gate 页面的闸门（整页 / 单键手势 / 总开关）—— 卡里不再自己拼这几个条件
- * @param titles 三张卡各自的小标题（见 [OwnCardTitles]）
+ * @param titles 两张卡各自的小标题（见 [OwnCardTitles]）
  * @param onWrite 改完之后的新值 + **这次改的是哪一项**（后者决定调用方只覆盖哪一格，
  *   见 [OwnField]），调用方负责落到自己那段配置上
  */
@@ -78,7 +79,7 @@ internal fun SettingsPage.OwnSettingsCard(
     //  「执行时提示」四档菜单开着没有 —— 与常规页那一份同一套（见 `NoticeModeRow`）
     val noticeMenu = rememberNoticeModeMenu()
     //  一个小标题带一张卡（与「按键设置」页同构）。间距由 `SectionTitle` 自带，不再自己补间距。
-    //  三张卡的标题与「按键设置」页**逐字相同**（同一个字典键）：两页读到的是一套分类，
+    //  「按键行为」那张的标题与「按键设置」页**逐字相同**（同一个字典键）：两页读到的是一套分类，
     //  只是这一页改的是「这一档自己那份」。总开关那张是这一页独有的，所以单独给了个标题。
     val rowsEnabled = gate.ownRows
     //  灰着时点一下该说的话：整页闸门关着 ⇒ `null`（用整页那句：主开关 / 链路 / 只读）；
@@ -96,8 +97,6 @@ internal fun SettingsPage.OwnSettingsCard(
     SectionTitle(titles.master)
     //  总开关**另起一张卡**：它管的是「下面那几张卡算不算数」，不是「调成什么样」。
     CardList(rows = listOf(useOwnRow(owner, gate.page, onWrite)))
-    SectionTitle(titles.interfaceTitle)
-    CardList(rows = listOf(interfaceRow(owner, rowsEnabled, ownHint, ::edit)))
     SectionTitle(titles.behavior)
     CardList(
         rows =
@@ -151,20 +150,21 @@ internal fun SettingsPage.OwnSettingsCard(
 }
 
 /**
- * 「独立设置」页三张卡的小标题。
+ * 「独立设置」页两张卡的小标题。
  *
- *  **后两个由页面按公共那一页的同一个字典键给**（`GENERAL_SECTION_INTERFACE` /
- *  `HOME_BINDING_CARD_TITLE`）：两页读到的分类名逐字相同，用户不会觉得「同一件事换了个说法」。
+ *  **后一个由页面按公共那一页的同一个字典键给**（`HOME_BINDING_CARD_TITLE`）：
+ *  两页读到的分类名逐字相同，用户不会觉得「同一件事换了个说法」。
  *  [master] 是这一页独有的 —— 公共页没有「这一档算不算数」这件事。
  *
- *  为什么不直接摊成三个 `String` 参数：`LongParameterList` 在 6 个参数上就报，而这三个天生是一组
+ *  这里不再有「接口与显示」那一张：「使用 ColorOS 接口」只在公共页调，这一档不再单独列
+ *  （它决定的是命令走哪套系统接口，不该逐键分叉）。
+ *
+ *  为什么不直接摊成两个 `String` 参数：`LongParameterList` 在 6 个参数上就报，而这两个天生是一组
  *  （回答同一件事：这一页有哪几张卡）。
  */
 internal class OwnCardTitles(
     /** 总开关那张卡（这一页独有）。 */
     val master: String,
-    /** 「接口选择」那张卡 —— 与按键设置页同一个字典键。 */
-    val interfaceTitle: String,
     /** 「按键行为」那张卡 —— 与按键设置页同一个字典键。 */
     val behavior: String,
 )
@@ -188,28 +188,6 @@ private fun SettingsPage.useOwnRow(
         enabled = enabled,
     ) { on ->
         onEdit(owner.values().copy(useOwn = on), OwnField.USE_OWN)
-    }
-
-/**
- * 「接口选择」那张卡的行表 —— 与公共页同一张卡同一个标题，这里只有「使用 ColorOS 接口」一行。
- *
- * @param show 这一档自己那份（见 [OwnSettingsCard]：总开关只管能不能改，不管显示什么）
- */
-@Composable
-private fun SettingsPage.interfaceRow(
-    show: OwnSettings,
-    rowsEnabled: Boolean,
-    ownHint: String?,
-    edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
-): CardRow =
-    CardRow.Switch(
-        title = I18n.get(Strings.HOME_COLOROS_TITLE),
-        icon = PageIcons.ColorOsLink,
-        checked = show.colorOsApi,
-        enabled = rowsEnabled,
-        disabledHint = ownHint,
-    ) {
-        edit(OwnField.COLOR_OS) { v -> v.copy(colorOsApi = it) }
     }
 
 /** 「按键行为」那张卡的第一行 —— 振动反馈（强度那一行只在它开着时出现，见 [strengthRow]）。 */

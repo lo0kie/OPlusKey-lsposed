@@ -190,7 +190,7 @@ internal fun SettingsPage.WaitComboCard(source: ComboParamSource) {
                                 title = I18n.get(Strings.COMBO_WINDOW_TITLE),
                                 //  **不画副标题**：这一格管「整串」还是「相邻两颗」由上面那颗开关说清，
                                 //  这一根只回答「等多久」
-                                //  「等一段时间再继续」那一颗钟 + 暂停（与「命令间隔时长」的播放记号分开）
+                                //  「等一段时间再继续」那一颗钟 + 暂停（与「命令执行间隔」的播放记号分开）
                                 icon = PageIcons.ComboWait,
                                 min = GlobalConfig.COMBO_WINDOW_MIN_MS,
                                 //  上限按**当前写哪一格**取：固定等 1000 / 逐次等 500

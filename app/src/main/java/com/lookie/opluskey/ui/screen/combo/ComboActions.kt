@@ -453,7 +453,9 @@ internal fun SettingsPage.writeNewCombo(
     //  序号只增不减：删掉中间一档之后再加，不会复用那个 id（复用会让「在编哪一档」指到别人身上）
     val seq =
         (cfg.combos.mapNotNull { it.id.removePrefix(ComboKey.ID_PREFIX).toIntOrNull() }.maxOrNull() ?: 0) + 1
-    val combo = ComboKey(id = ComboKey.idOf(seq), keys = ids, enabled = comboEnableByDefault(cfg, ids), mode = resolved, ordered = ordered)
+    val combo =
+        ComboKey(id = ComboKey.idOf(seq), keys = ids, enabled = comboEnableByDefault(cfg, ids))
+            .copy(mode = resolved, ordered = ordered)
     val label = comboLabel(cfg, combo)
     //  `cfg.keys` 是按 `KeyId` 索引的，所以这一份集合也用 `KeyId`（与 `writeComboMode` 同一条）
     val release = releaseKeys.toHashSet()

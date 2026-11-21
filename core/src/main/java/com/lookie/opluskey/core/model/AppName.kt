@@ -469,6 +469,18 @@ object MiniWindowGeometry {
         val right: Int,
         val bottom: Int,
         val scale: Float,
+        /**
+         * 收起档（右上角那条最小化窗）的**屏幕**矩形四边与缩放。
+         *
+         * 这一组只给「先收、再补播」那一段动画用：框架的 `updateAnimationLayer` 只读 rect 的
+         * `left/top`、尺寸走 scale，所以四边里真正起作用的是左上角那两个数。
+         * 全部为 0 表示这台机器没量过收起档 —— 收起照常发生，只是不补播动画。
+         */
+        val collapsedLeft: Int = 0,
+        val collapsedTop: Int = 0,
+        val collapsedRight: Int = 0,
+        val collapsedBottom: Int = 0,
+        val collapsedScale: Float = 0f,
     ) {
         /**
          * 应用配置矩形 —— **不是**屏幕矩形。
@@ -481,9 +493,14 @@ object MiniWindowGeometry {
          * 落点（left / top）是**直接照搬到屏幕坐标**的、不含缩放，所以两头是同一个数。
          *
          * 不要拿 `getMiniFlexibleTaskInfo` 的值代替 —— 那是**收起档**的几何
-         *（约 `Rect(898,168-1203,710)` / `0.2397`），会把窗口缩成右上角一条。
+         *（约 `Rect(898,168-1203,710)` / `0.2397`），会把窗口缩成右上角一条；收起档自己那一组
+         *  在 [collapsedLeft] 起的五个参数里。
          */
         val bounds: android.graphics.Rect get() = android.graphics.Rect(left, top, right, bottom)
+
+        /** 收起档的屏幕矩形；[collapsedScale] 为 0 时调用方不该用它播动画。 */
+        val collapsedBounds: android.graphics.Rect
+            get() = android.graphics.Rect(collapsedLeft, collapsedTop, collapsedRight, collapsedBottom)
     }
 
     /** **各机型的小窗几何 —— 加一台机器就在这里加一个 [Slot]**。 */
@@ -498,6 +515,12 @@ object MiniWindowGeometry {
                 right = 1398,
                 bottom = 2580,
                 scale = 0.8017f,
+                //  收起档：真机原生「最小化」那条的屏幕矩形与缩放（`getMiniFlexibleTaskInfo` 同源）。
+                collapsedLeft = 898,
+                collapsedTop = 168,
+                collapsedRight = 1203,
+                collapsedBottom = 710,
+                collapsedScale = 0.2397f,
             ),
         )
 

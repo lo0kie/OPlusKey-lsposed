@@ -72,12 +72,12 @@ internal class MiniWindowLauncher(
     internal val context: () -> Context?,
     internal val onFailure: (CommandFailure) -> Unit,
     /** 小窗两条通道（收起 / 缩小动画）由接入方发 —— 见 [CommandPlatform]。 */
-    private val platform: CommandPlatform,
+    internal val platform: CommandPlatform,
     /**
      * 「前台转小窗时使用动画」（`GlobalConfig.miniWindowAnim`）—— 宿主进程执行时现读配置
      * （与 `ActionRunner` 读 `colorOsApi` 同一条口径：拨完开关立刻生效，不必重启）。
      */
-    private val isMiniAnim: () -> Boolean = { ConfigStore.read().global.miniWindowAnim },
+    internal val isMiniAnim: () -> Boolean = { ConfigStore.read().global.miniWindowAnim },
 ) {
     /**
      * 小窗这一族的执行线程 —— **反射 + binder 不占主线程**。
@@ -201,6 +201,12 @@ internal class MiniWindowLauncher(
             XLog.w("window:$target 已经是小窗（任务 #$foregroundTask），不动它")
             return
         }
+        //  「前台转小窗时使用动画」打开时，和 `zoom:mini` 走同一条动画档（原生切换 / 先转换再补播）
+        //  —— 目标就在最前面时**不新起实例**，与下面那条 recents 正门收的是同一份任务。
+        if (foregroundTask > 0 && animIntoMiniIfEnabled(ctx, foregroundTask)) {
+            XLog.w("window:$target 已在前台，按动画档收成小窗（任务 #$foregroundTask）")
+            return
+        }
         if (foregroundTask > 0 &&
             startFlexibleFromRecents(foregroundTask, ZOOM_LAUNCH_FLAG_USER_POSITION) == RecentsStart.ACCEPTED
         ) {
@@ -315,7 +321,8 @@ internal class MiniWindowLauncher(
      *
      *  · **展开档**（默认）：**原地收**（应用侧 recents 正门 + `mZoomLaunchFlags = 2`、
      *    **不改显示方向** ⇒ 横屏应用拿到横屏帧的比例）。「前台转小窗时使用动画」打开时，
-     *    收成之后紧接着让框架自己的动画器播那一段缩小动画（[animateIntoMini]）。
+     *    先走动画档（[animIntoMiniIfEnabled]：框架自己的切换 → 先收再让框架动画器补播），
+     *    它没接手才落到 recents 正门。
      *    另有一条「伪造成柔性全屏态 + `switchState`」的路，窗口只是个半成品，默认关着 ——
      *    见 [USE_FORGED_ANIMATION_ROUTE]。
      *  · **收起档**：recents 正门配 `mZoomLaunchFlags = 32`（服务端 `fullToMini` 分支）——
@@ -356,14 +363,21 @@ internal class MiniWindowLauncher(
             return
         }
         if (collapsed) {
-            // 收起档没有动画那条配方：框架那支动画只有「展开档」的落点与缩放
+            //  收起档走 recents 正门（`flags = 32`），动画由 [playCollapsedMiniAnim] 补播。
+            //  准入闸与展开档同一把 —— 旧 recents 正门那条「服务端自己拒掉不支持的应用」的
+            //  保护对 `flags=32` 并不成立（真机：不支持小窗的应用照样被收起来了）。
+            if (!appSupportsMini(taskId)) {
+                onFailure(CommandFailure.APP_NO_MINI_WINDOW)
+                return
+            }
             putInCollapsedMini(taskId)
             return
         }
         if (!USE_FORGED_ANIMATION_ROUTE) {
-            // 「前台转小窗时使用动画」打开时走**先真转换、再播框架动画**那条（[animateIntoMini]）。
-            // 它没接手（当前不是竖屏）就落到下面的原地收 —— 用户至少还能进小窗。
-            if (isMiniAnim() && animateIntoMini(ctx, taskId)) return
+            // 「前台转小窗时使用动画」打开时走动画档（原生切换 → 先转换再补播，见
+            // [animIntoMiniIfEnabled]；准入闸也在那儿）。它没接手（开关关着 / 当前不是竖屏）
+            // 就落到下面的原地收 —— 用户至少还能进小窗。
+            if (animIntoMiniIfEnabled(ctx, taskId)) return
             // 默认档：**recents 正门原地收**（`startActivityFromRecentsForFlexible` + flags=2）。
             // 这是「进得去小窗」的那条 —— 它不改显示方向，窗口完整，代价只是没有动画。
             // 注意：它有一个已知的几何缺陷：目标本身是全屏任务时，服务端会走
@@ -381,6 +395,8 @@ internal class MiniWindowLauncher(
 
     /**
      * 「前台转小窗时使用动画」那一档：**先真转换、再播框架自己的缩小动画**。
+     *
+     * 它是 [toggleIntoMini] 的退路 —— 原生切换没受理时才走到这里。
      *
      * 这里**不是「自己画动画」** —— 插值、矩阵、`apply()`、以及那条 spring 全是框架的
      * `FlexibleWindowAnimator` 在跑，我们只交起止参数（`FlexibleWindowBridge.CMD_MINI_ANIM`，
@@ -405,6 +421,16 @@ internal class MiniWindowLauncher(
                 "zoom:mini → 当前不是竖屏，动画的终点几何（竖屏标定值）对不上 —— " +
                     "这一下只做真转换、不播动画",
             )
+            return false
+        }
+        //  **受理 ≠ 转换成功**：不可调尺寸的任务，服务端会受理（返回 2）却不真转。
+        //  真机（com.oplus.gesture 的设置页，任务标 `nonResizable`）上这一档补播动画的表现是
+        //  「画面缩一下又弹回全屏」—— 看着就像被强制转成了小窗。所以先判尺寸可调性，
+        //  不可调就**只尝试转换、不补播**（返回 false，外层继续走无动画的 recents 正门）。
+        //  注意这里只用来决定「播不播动画」，不是用来决定「试不试」—— 打开 `MINI_SKIP_UNRESIZEABLE`
+        //  才是后者（见那个常量的注释：resizeMode=0 的游戏其实也能进小窗）。
+        if (!canEnterMiniWindow(taskId)) {
+            XLog.w("zoom:mini → 任务 #$taskId 不可调尺寸，这一下只尝试转换、不补播动画")
             return false
         }
         if (!retryViaRecents(taskId)) return true
@@ -550,29 +576,31 @@ internal class MiniWindowLauncher(
     /**
      * 收起档：把任务原地收成右上角那条最小化窗。
      *
-     * 只有 recents 正门这一条 —— 服务端凭 `mZoomLaunchFlags == 32` 走 `fullToMini` 分支，
+     * 转换只有 recents 正门这一条 —— 服务端凭 `mZoomLaunchFlags == 32` 走 `fullToMini` 分支，
      * 用 `getMiniFlexibleTaskInfo` 那套几何（真机约 `Rect(898,168-1203,710)` / scale `0.2397`）。
      * 收不起就报失败 —— **不退回「按包名另起一份实例」**（那会多出一份全屏实例，见 [startFlexibleFromRecents]）。
+     *
+     * 「前台转小窗时使用动画」打开时，转换完再补播一段框架动画（[playCollapsedMiniAnim]）：
+     * 收起这一支在框架里没有对外的「一键 + 动画」入口（最小化的动画挂在拖拽与内部过渡上），
+     * 所以只能走和展开档同一套两段式。
      */
     internal fun putInCollapsedMini(taskId: Int) {
         when (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_FULL_TO_MINI)) {
             RecentsStart.ACCEPTED -> {
+                //  转换是同步 binder 调用，返回时任务已是柔性任务 ⇒ 紧接着就能补播（与展开档同因）。
+                //  但「受理 ≠ 真转」：不可调尺寸的任务只受理、不真转，那时补播就是「缩一下又弹回」
+                //  —— 所以这里同样先判尺寸可调性（详见 [animateIntoMini] 里的那段说明）。
+                if (isMiniAnim() && canEnterMiniWindow(taskId)) playCollapsedMiniAnim(taskId)
                 postDelayedGuarded("zoom:mini:collapse 的验收", MINI_VERIFY_MS, fresh = true) {
-                    when (zoomStateOf(taskId)) {
-                        true -> {
-                            XLog.w("zoom:mini:collapse → 任务 #$taskId 已进入小窗态（收起/展开以截图为准）")
-                        }
-
-                        // 读不到 ≠ 没收起来：报「不支持小窗」就是拿一个读不到的事实怪应用
-                        null -> {
-                            XLog.w("zoom:mini:collapse → 读不到任务 #$taskId 的窗口信息，无法验收")
-                        }
-
-                        false -> {
-                            XLog.w("zoom:mini:collapse → 任务 #$taskId 没变成小窗，什么都不做")
-                            onFailure(CommandFailure.APP_NO_MINI_WINDOW)
-                        }
-                    }
+                    //  收起档**不能**用 `windowingMode == 100` 判成败：minimized 那一态读出来仍是
+                    //  全屏模式（窗口的收起由柔性态另算）。真机后果：窗口已经收起了，这里读到 false，
+                    //  旧版据此弹「前台应用不支持小窗」，而用户眼前就是那条小窗。
+                    //  ⇒ 受理（返回 2）就算成功，这一趟只把读到的事实写进日志，不回退、不报失败。
+                    val mode = windowModeOf(taskId)
+                    XLog.w(
+                        "zoom:mini:collapse → 验收：任务 #$taskId 报的窗口模式=${mode ?: "读不到"}" +
+                            "（收起档不一定报 $WINDOWING_MODE_ZOOM，这只是诊断）",
+                    )
                 }
                 return
             }
@@ -1152,11 +1180,20 @@ internal fun MiniWindowLauncher.zoomFitsOnScreen(
  *  `verifyMiniOrFallback` 的注释里记着这个坑，AppShortcut / 收起档 / 原地收三处也同一个道理）。
  */
 internal fun MiniWindowLauncher.zoomStateOf(taskId: Int): Boolean? {
+    val mode = windowModeOf(taskId) ?: return null
+    return mode == WINDOWING_MODE_ZOOM
+}
+
+/**
+ * 那个任务现在报的 `windowingMode` 原始值；`null` = 读不到。
+ *
+ * 单列出来是给**收起档**用的：收起（minimized）那一态读出来**不是** `100`
+ * （真机读到的仍是全屏模式，窗口的收起由柔性态另算），所以 `zoomStateOf` 对它恒为 `false` ——
+ * 拿它判收起档的成败会把「已经收起了」报成「不支持小窗」。
+ */
+internal fun MiniWindowLauncher.windowModeOf(taskId: Int): Int? {
     val info = zoomInfoOf(taskId) ?: return null
-    val mode =
-        Reflect.fieldValue(info, info.javaClass, MiniWindowFacts.TOP_APP_WINDOWING_MODE_FIELD) as? Int
-            ?: return null
-    return mode == MiniWindowFacts.WINDOWING_MODE_ZOOM
+    return Reflect.fieldValue(info, info.javaClass, MiniWindowFacts.TOP_APP_WINDOWING_MODE_FIELD) as? Int
 }
 
 /**
@@ -1212,6 +1249,20 @@ internal object MiniWindowFacts {
 
     /** ColorOS 小窗接口的类名 —— 按名字反射，不直接引用（注入侧不许碰宿主框架的私有类型）。 */
     val ZOOM_MANAGER = ROM.zoomManager
+
+    /**
+     * `com.oplus.flexiblewindow.FlexibleWindowManager` —— 应用侧的「全屏 ↔ 小窗」切换门面。
+     *
+     *  与 [ZOOM_MANAGER]（`OplusActivityManager`）不是一族：这一支是计算器首页那颗按钮用的，
+     *  服务端自己算落点、自己播切换动画（见 [MiniWindowLauncher.toggleIntoMini]）。
+     */
+    val FLEXIBLE_APP_MANAGER = ROM.flexibleAppManager
+
+    /** `toggleFlexibleWindow(Activity, int, boolean, boolean)` 的方法名。 */
+    val FLEXIBLE_TOGGLE_METHOD = ROM.flexibleToggleMethod
+
+    /** 上面那个方法的形参个数。 */
+    const val FLEXIBLE_TOGGLE_ARGS = 4
 
     /** `OplusZoomWindowManager#getCurrentZoomWindowState()` → `OplusZoomWindowInfo`。 */
     val CURRENT_ZOOM_STATE_METHOD = ROM.zoomStateMethod
@@ -1281,6 +1332,9 @@ internal object MiniWindowFacts {
      */
     const val MINI_SKIP_UNRESIZEABLE = false
 
+    /** 小窗动作只对**主用户**生效（与「结束应用」「打开应用」那一族同口径）。 */
+    const val MAIN_USER = 0
+
     /**
      * `OplusAppInfo.appBounds` —— 小窗的**应用配置矩形**（不含显示缩放）。
      *
@@ -1316,6 +1370,16 @@ internal object MiniWindowFacts {
     val EXPANDED_CONFIG_BOUNDS: android.graphics.Rect get() = MiniWindowGeometry.effective.bounds
 
     val EXPANDED_SCALE: Float get() = MiniWindowGeometry.effective.scale
+
+    /**
+     * 收起档（右上角那条）动画的**终点**：屏幕矩形与缩放，同样按机型走。
+     *
+     * 只给「先收、再补播」那一段用 —— 收起本身照旧是 `startActivityFromRecentsForFlexible(…, 32)`，
+     * 这两个值只决定补播动画停在哪儿。缩放为 0 表示这台机器没量过收起档，那就只收不播。
+     */
+    val COLLAPSED_BOUNDS: android.graphics.Rect get() = MiniWindowGeometry.effective.collapsedBounds
+
+    val COLLAPSED_SCALE: Float get() = MiniWindowGeometry.effective.collapsedScale
 
     /**
      * 动画起点：**全屏外观** —— `startScale=1.0` 配 `startRect` 的 `(0,0)` 就是恒等变换，

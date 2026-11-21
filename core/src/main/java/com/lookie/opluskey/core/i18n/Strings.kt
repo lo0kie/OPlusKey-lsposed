@@ -1000,7 +1000,7 @@ object Strings {
     /** 表单第一条小标题：名称输入框（原先这里写的是「修改命令 / 新增命令」）。 */
     const val COMMAND_NAME_TITLE = "command.name_title"
 
-    /** 多条命令那条小标题：命令间隔时长那张卡（这一组是「跑这条命令时的设置」）。 */
+    /** 多条命令那条小标题：命令执行间隔那张卡（这一组是「跑这条命令时的设置」）。 */
     const val COMMAND_SETTINGS_TITLE = "command.settings_title"
 
     /** 表单第二条小标题：命令正文（单条命令那个输入框）。 */
@@ -2205,4 +2205,6 @@ object Strings {
     const val KEY_SETTINGS_TRIPLE_THEN_LONG = "key_settings.triple_then_long"
 
     const val STATUS_THEN_LONG_NOT_ENABLED = "status.then_long_not_enabled"
+
+    const val COMMAND_NEED_TWO_STEPS = "command.need_two_steps"
 }

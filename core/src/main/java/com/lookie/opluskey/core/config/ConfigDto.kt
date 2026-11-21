@@ -14,12 +14,12 @@ import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.trigger
+import com.lookie.opluskey.core.param.ComboParams
+import com.lookie.opluskey.core.param.KeyParams
+import com.lookie.opluskey.core.param.Params
+import com.lookie.opluskey.core.param.encodeFrom
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 
 /**
  * 配置文件的**线格式模型**（`@Serializable`）—— 与 `Config` 那套数据类分开。
@@ -90,15 +90,12 @@ internal data class ConfigDto(
         if (orphans.isNotEmpty()) {
             XLog.w("配置：${orphans.size} 个按键条目认不出（已丢弃）：${orphans.joinToString()}")
         }
-        //  **额外档位的丢弃也在这里记账**（真正的丢弃在 [KeyDto.toKeyConfig] 的 `mapNotNull` 里）：
-        //  连击次数不是「≥ 3 的整数」的条目会整条消失，而用户只会看到「第 3 击那一档没了」。
+        //  **认不出的档位 id 也在这里记账**（真正的丢弃在 [KeyDto.toKeyConfig] 的 `mapNotNull` 里）：
         //  按**整份文件**聚合一次计数，不逐条刷。
-        val droppedClicks = keys.values.sumOf { key -> key.extraClicks.keys.count { extraClickCount(it) == null } }
-        if (droppedClicks > 0) {
-            XLog.w("配置：$droppedClicks 条额外档位认不出（已丢弃）")
+        val droppedTiers = keys.values.sumOf { key -> key.actions.keys.count { GestureTrigger.ofId(it) == null } }
+        if (droppedTiers > 0) {
+            XLog.w("配置：$droppedTiers 个认不出的档位（已丢弃）")
         }
-        // 老文件把「单击延迟」放在 `global` 里：逐键字段缺失时拿它兜底（迁移用）
-        val legacyDouble = global.doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS
         //  —— 总闸的迁移 ——
         //  拆开之前没有 `global.enabled`：那时「主开关」就是 `keys.plus.enabled`，侧键那一份
         //  同时当「总闸」与「这一颗键」两个用。老文件里那一位要读成**总闸**（用户当时的意图），
@@ -109,7 +106,7 @@ internal data class ConfigDto(
         val master = masterFromFile ?: keys[KeyId.PLUS.id]?.enabled ?: false
         val keyConfigs =
             allKeys.associateWith { id ->
-                val key = (keys[id.id] ?: KeyDto()).toKeyConfig(id, legacyDouble)
+                val key = (keys[id.id] ?: KeyDto()).toKeyConfig(id)
                 if (legacyMaster && id.id == KeyId.PLUS.id) key.copy(enabled = true) else key
             }
         //  「常用命令」清单不进字段表（它不参与广播，注入侧不认识它）——
@@ -178,394 +175,70 @@ internal data class ConfigDto(
 /** 一颗键的绑定。 */
 @Serializable
 internal data class KeyDto(
+    /**
+     * 键 id（`plus` / `custom:名字` …）。
+     *
+     *  老格式里这一格不存在（id 是外层表的键）；新格式写出来，读的时候以它为准。
+     */
+    val id: String? = null,
+    //  **默认停用**：与改造前那一格逐字相同 —— 文件里缺这一格的键按「不接管」读，
+    //  写成 true 会让「缺一段的文件」静默多接管一颗键。
     val enabled: Boolean = false,
-    val single: String = Action.NONE,
-    val double: String = Action.NONE,
-    val long: String = Action.NONE,
-    val longPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
-    val longRepeat: Boolean = false,
-    val longRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-    /** 连续触发时是否每一次重复都振动（关 = 只在长按那一下振一次）。 */
-    val longRepeatVibrate: Boolean = false,
     /**
-     * 「松手执行额外动作」—— 长按之后松手那一刻要执行的**另一个**动作（动作 token，与长按那档分开）。
+     * 档位 id → 动作 token（`single` / `click3` / `click_then_long` …）—— **缺一档 = 无操作**。
      *
-     *  老文件没有这一格 ⇒ `none`（无操作）⇒ 行为与这一项出现之前完全一致，不需要迁移。
-     *
-     *  **类型故意收成 [JsonElement] 而不是 `String`**：这一档中间有过一版把它当**布尔开关**写进过
-     *  别人的配置文件（`"longRelease": false`）。字段类型写成 `String` 时，那种文件一读就抛
-     *  「Expected quotation mark」⇒ 整份配置判「读不懂」⇒ 页面只读、注入侧不接管（真机踩到）。
-     *  收成 [JsonElement] 之后，布尔一律按「未设置」读（见 [releaseToken]），下次写盘自然变成
-     *  动作 token。
+     *  键就是 `GestureTrigger.id`，所以加一档手势**不用改这个 DTO**：表里多一行，这里多一个键。
      */
-    val longRelease: JsonElement = JsonPrimitive(Action.NONE),
-    /** 「松手执行额外动作」的开关 —— 与动作分开（见 `KeyConfig.longReleaseOn`）。 */
-    val longReleaseOn: Boolean = false,
-    /** 「松手才触发」—— 长按动作本身等抬手才执行（与连续触发、松手执行额外动作互斥）。 */
-    val longFireOnRelease: Boolean = false,
+    val actions: Map<String, String> = emptyMap(),
     /**
-     * 「单击延迟」—— **每颗键各一份**（以前在 `global` 段里）。
+     * `Param.id` → 值 —— 设置项（延迟、开关、独立设置十格、注入侧派生位）全在这里。
      *
-     *  `null` = 这份文件里没写（老文件 / 手写）：读的时候退回 `global` 那份，见 [ConfigDto.toConfig]。
-     *  新写出来的文件一定是具体值。
+     *  写出时按 `KeyParams.ALL` **全量写**（含默认值），见 `ConfigCodec.digestMatches` 的口径。
+     *  加一项设置**不用改这个 DTO**：注册表里多一行，这里多一个键。
      */
-    val doubleClickMs: Int? = null,
-    /**
-     * 「这颗键只参与非首键的按住组合」—— 单键手势交还系统，模块只用它凑组合（见 `KeyConfig.comboOnly`）。
-     *
-     *  `null` = 老文件没有这一项 ⇒ 关（与这一位出现之前一致，不需要迁移）。
-     */
-    @SerialName("combo_only") val comboOnly: Boolean? = null,
-    /**
-     * 「双击这一档开着没有」（`KeyConfig.doubleClickOn`）。
-     *
-     *  `null` = 老文件没有这一项 ⇒ **开**（与这一位出现之前一致，不需要迁移）。
-     */
-    @SerialName("double_click_on") val doubleClickOn: Boolean? = null,
-    /** 「多击窗口内逐次等满」—— 到档也等窗口走完再判（`KeyConfig.waitMultiWindow`）。 */
-    @SerialName("wait_multi_window") val waitMultiWindow: Boolean? = null,
-    /**
-     * 「逐次等满」那一档的窗口（`KeyConfig.multiWaitMs`）。
-     *
-     *  `null`（老文件没有这一项）与写 `0` **同义**：跟随「单击延迟」——
-     *  见 `KeyConfig.multiWaitMs` 的 KDoc，回落是为了让升级前后手感一字不差。
-     */
-    @SerialName("multi_wait_ms") val multiWaitMs: Int? = null,
-    /**
-     * 「按键单独设置」—— 这一颗键要不要用自己那套公共项（接口 / 振动 / 提示）。
-     *
-     *  `null` = 老文件没有这一项 ⇒ 跟随公共设置（与新装默认一致，不需要迁移）。
-     *  下面四项只在它为 `true` 时算数，所以老文件缺它们也没有影响。
-     */
-    val useOwnSettings: Boolean? = null,
-    /** 这颗键自己的「使用 ColorOS 接口」。 */
-    val colorOsApi: Boolean? = null,
-    /** 这颗键自己的「振动反馈」/「振动强度」。 */
-    val vibrate: Boolean? = null,
-    val vibrateStrength: Int? = null,
-    /** 这颗键自己的「无操作时振动」。 */
-    @SerialName("vibrate_on_none")
-    val vibrateOnNone: Boolean? = null,
-    /** 这颗键自己的「执行时提示」/「提示走流体云」/「提示走通知」/「提示文案」/「逐条提示」。 */
-    val toastOnRun: Boolean? = null,
-    val toastFluid: Boolean? = null,
-    val toastNotify: Boolean? = null,
-    val toastTemplate: String? = null,
-    val stepNotice: Boolean? = null,
-    /**
-     * **老的「一条规则一个手势」那一列** —— 只读：新写的文件不再写它，读到就迁移（见 [mergeScenes]）。
-     *
-     *  留着它只为把已经存在的配置读上来：删掉这一格的话，老文件里那一整批条件分支会在升级
-     *  那一刻凭空消失。
-     */
-    val rules: List<StateRuleDto> = emptyList(),
-    /**
-     * **系统场景**（`KeyConfig.scenes`）—— 只走落盘：它是列表，进不了 `ConfigFields` 的字段表。
-     *
-     *  一块 = 一组条件 + 三档动作（见 `SceneRule`）。老文件没有这一段 ⇒ 空 ⇒ 由 [rules] 迁移出来。
-     */
+    val params: Map<String, String> = emptyMap(),
+    val useOwnSettings: Boolean = false,
+    /** 系统场景那张表 —— 结构沿用 v36 之后那一份（一块 = 条件 + 各档动作）。 */
     val scenes: List<SceneRuleDto> = emptyList(),
-    /**
-     * 第 3 击起的额外档位（`KeyConfig.extraClicks`）—— 键是连击次数、值是动作 token。
-     *
-     *  与 [rules] 同一套：表结构进不了 `ConfigFields`，所以只走落盘。老文件没有这一段 ⇒ 空表 ⇒
-     *  行为与这一项出现之前完全一致。
-     */
-    @SerialName("extra_clicks") val extraClicks: Map<String, String> = emptyMap(),
-    /**
-     * **哪几档多击开着**（`KeyConfig.extraClicksOn`）—— 只管 [extraClicks] 那张表里哪几档算数。
-     *
-     *  写出来是**击数数组**（`[3]` / `[3,4]`）。读的时候认三种历史形态：
-     *  · 数组（本版）；
-     *  · 布尔（上一版只收成一个开关：`true` = 表里那几档全算）；
-     *  · 缺这一格（老文件）⇒ 按「表里有什么」倒推（见 [clicksOn]）。
-     *
-     *  为什么老文件要倒推：这一格出现之前**手改 `extra_clicks` 是能用的**（判定侧那时直接
-     *  按表算最高击数，没有开关这一道）。缺格就判「没有」，升级上来的人会发现三击突然不灵了，
-     *  而配置里那几个动作还好端端躺着 —— 最难查的一种。
-     *
-     *  反过来，**新写出来的文件一定带这一格**（[of] 同步写出）：用户在界面上把它关掉时表还在、
-     *  但这一格已经是明确的空数组，不会再被倒推回去。
-     */
-    @SerialName("extra_clicks_on") val extraClicksOn: JsonElement? = null,
-    /**
-     * **「单击后长按」这一档启用没有**（`KeyConfig.clickThenLongOn`、[KeyConfig.clickThenLong]）。
-     *
-     *  动作与开关分两格（与「松手执行额外动作」同一条口径）：开关打开、动作还没挑时是
-     *  「开着但没设置」，此时这一档什么都不做；若把「有没有动作」直接当开关，用户打开那一刻
-     *  就会执行一个他没挑过的动作。
-     *
-     *  老文件没有这两格 ⇒ 默认关 + `none`，行为与这一位出现之前完全一致。
-     */
-    @SerialName("click_then_long_on") val clickThenLongOn: Boolean? = null,
-    @SerialName("click_then_long") val clickThenLong: String = Action.NONE,
-    /**
-     * 「双击后长按」/「三击后长按」—— 与 [clickThenLongOn] / [clickThenLong] 同一对口径，
-     *  只差前面那几击的击数。老文件没有这四格 ⇒ 默认关 + `none`，行为与这两档出现之前一致。
-     */
-    @SerialName("double_then_long_on") val doubleThenLongOn: Boolean? = null,
-    @SerialName("double_then_long") val doubleThenLong: String = Action.NONE,
-    @SerialName("triple_then_long_on") val tripleThenLongOn: Boolean? = null,
-    @SerialName("triple_then_long") val tripleThenLong: String = Action.NONE,
-    @SerialName("double_then_long_repeat") val doubleThenLongRepeat: Boolean = false,
-    @SerialName("double_then_long_repeat_interval_ms") val doubleThenLongRepeatIntervalMs: Int =
-        KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-    @SerialName("double_then_long_repeat_vibrate") val doubleThenLongRepeatVibrate: Boolean = false,
-    @SerialName("double_then_long_release_on") val doubleThenLongReleaseOn: Boolean = false,
-    @SerialName("double_then_long_release") val doubleThenLongRelease: String = Action.NONE,
-    @SerialName("double_then_long_fire_on_release") val doubleThenLongFireOnRelease: Boolean = false,
-    @SerialName("double_then_long_is_serial") val doubleThenLongIsSerial: Boolean = false,
-    @SerialName("triple_then_long_repeat") val tripleThenLongRepeat: Boolean = false,
-    @SerialName("triple_then_long_repeat_interval_ms") val tripleThenLongRepeatIntervalMs: Int =
-        KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-    @SerialName("triple_then_long_repeat_vibrate") val tripleThenLongRepeatVibrate: Boolean = false,
-    @SerialName("triple_then_long_release_on") val tripleThenLongReleaseOn: Boolean = false,
-    @SerialName("triple_then_long_release") val tripleThenLongRelease: String = Action.NONE,
-    @SerialName("triple_then_long_fire_on_release") val tripleThenLongFireOnRelease: Boolean = false,
-    @SerialName("triple_then_long_is_serial") val tripleThenLongIsSerial: Boolean = false,
-    /**
-     * 「单击后长按」那一档自己的参数 —— 与长按那几格（`long_press_ms` / `long_repeat` …）
-     *  **同名不同槽**：调这一档不会动普通长按。
-     *
-     *  老文件没有这几格 ⇒ 走默认值（与长按那一档的默认相同），行为只会出现在用户
-     *  主动打开这一档之后。
-     */
-    @SerialName("click_then_long_press_ms") val clickThenLongPressMs: Int? = null,
-    @SerialName("click_then_long_repeat") val clickThenLongRepeat: Boolean? = null,
-    @SerialName("click_then_long_repeat_interval_ms") val clickThenLongRepeatIntervalMs: Int? = null,
-    @SerialName("click_then_long_repeat_vibrate") val clickThenLongRepeatVibrate: Boolean? = null,
-    @SerialName("click_then_long_release_on") val clickThenLongReleaseOn: Boolean? = null,
-    @SerialName("click_then_long_release") val clickThenLongRelease: String = Action.NONE,
-    /**
-     * 「单击后长按」的「松手时触发」—— 与长按那一档的 `long_fire_on_release` 同义、各自一格。
-     *
-     *  老文件没有这一格 ⇒ `null` ⇒ 走 false：与这一位出现之前一致（到点即执行）。
-     */
-    @SerialName("click_then_long_fire_on_release") val clickThenLongFireOnRelease: Boolean? = null,
 ) {
     /**
-     * [longRelease] 那一格的**动作 token** —— 布尔（上一版把这一档当开关写过）一律当「未设置」。
+     * 线格式 → 运行时。
      *
-     *  只认字符串：其他类型（`false` / `null` / 数字）都退回 [Action.NONE]，与「没有这一格」同一个结果。
+     *  认不出的档位 id 单独丢掉（与场景块对认不出的档位同一个口径）：丢掉只影响那一档，
+     *  整份丢掉会把用户其余几档一起抹了。
      */
-    private val releaseToken: String
-        get() = (longRelease as? JsonPrimitive)?.takeIf { it.isString }?.content ?: Action.NONE
-
-    /**
-     * [extraClicksOn] 真正读成什么 —— 三种历史形态收成同一份集合。
-     *
-     *  「缺这一格」与「上一版的布尔 `true`」都落到**表里配着的那几档**（[tableClicks]）：
-     *  那正是这两种配置写下时的语义（表里的东西会执行）。
-     */
-    private val clicksOn: Set<Int>
-        get() =
-            when (val raw = extraClicksOn) {
-                null -> {
-                    tableClicks
-                }
-
-                //  上一版写的是布尔：`true` = 表里那几档全算；`false` 或别的状态值一律当没有
-                is JsonPrimitive -> {
-                    if (raw.booleanOrNull == true) {
-                        tableClicks
-                    } else {
-                        KeyConfig.clicksOnOf(raw.content)
-                    }
-                }
-
-                is JsonArray -> {
-                    KeyConfig.clicksOnOf(raw.mapNotNull { (it as? JsonPrimitive)?.content?.toIntOrNull() })
-                }
-
-                else -> {
-                    emptySet()
-                }
-            }
-
-    /** [extraClicks] 那张表里认得出的档位（`click3` / `click4` …）—— 老配置倒推用。 */
-    private val tableClicks: Set<Int>
-        get() = KeyConfig.clicksOnOf(extraClicks.keys.mapNotNull { extraClickCount(it) })
-
-    /** 按 [ConfigFields] 那张表把取值钳进各自的上下限 —— 上下限只定义在表里。 */
-    fun toValues(legacyDoubleClickMs: Int): ConfigFields.Values =
-        ConfigFields.Values(
-            mapOf(
-                ConfigFields.F_ENABLED to enabled,
-                ConfigFields.F_SINGLE to single,
-                ConfigFields.F_DOUBLE to double,
-                ConfigFields.F_LONG to long,
-                ConfigFields.F_LONG_PRESS_MS to clamp(ConfigFields.F_LONG_PRESS_MS, longPressMs),
-                ConfigFields.F_LONG_REPEAT to longRepeat,
-                ConfigFields.F_LONG_RELEASE to releaseToken,
-                ConfigFields.F_LONG_RELEASE_ON to longReleaseOn,
-                ConfigFields.F_LONG_FIRE_ON_RELEASE to longFireOnRelease,
-                ConfigFields.F_REPEAT_INTERVAL_MS to clamp(ConfigFields.F_REPEAT_INTERVAL_MS, longRepeatIntervalMs),
-                ConfigFields.F_REPEAT_VIBRATE to longRepeatVibrate,
-                ConfigFields.F_DOUBLE_CLICK_MS to
-                    clamp(ConfigFields.F_DOUBLE_CLICK_MS, doubleClickMs ?: legacyDoubleClickMs),
-                ConfigFields.F_COMBO_ONLY to (comboOnly ?: false),
-                ConfigFields.F_DOUBLE_CLICK_ON to (doubleClickOn ?: true),
-                ConfigFields.F_WAIT_MULTI_WINDOW to (waitMultiWindow ?: true),
-                //  **与上面几档同一条纪律：上下限只定义在 `ConfigFields` 里**。不钳的话，手改出来的
-                //  `600000` 会原样成为判定窗口 —— 那颗键此后每按一次都要等十分钟才回落。
-                ConfigFields.F_MULTI_WAIT_MS to
-                    clamp(ConfigFields.F_MULTI_WAIT_MS, multiWaitMs ?: KeyConfig.FOLLOW_DOUBLE_CLICK_MS),
-                ConfigFields.F_OWN_SETTINGS to (useOwnSettings ?: false),
-                ConfigFields.F_KEY_COLOR_OS_API to (colorOsApi ?: GlobalConfig.DEFAULT_COLOR_OS_API),
-                ConfigFields.F_KEY_VIBRATE to (vibrate ?: false),
-                ConfigFields.F_KEY_VIBRATE_STRENGTH to
-                    clamp(ConfigFields.F_KEY_VIBRATE_STRENGTH, vibrateStrength ?: GlobalConfig.DEFAULT_VIBRATE_STRENGTH),
-                ConfigFields.F_KEY_VIBRATE_ON_NONE to (vibrateOnNone ?: GlobalConfig.DEFAULT_VIBRATE_ON_NONE),
-                ConfigFields.F_KEY_TOAST_ON_RUN to (toastOnRun ?: GlobalConfig.DEFAULT_TOAST_ON_RUN),
-                ConfigFields.F_KEY_TOAST_FLUID to (toastFluid ?: GlobalConfig.DEFAULT_TOAST_FLUID),
-                ConfigFields.F_KEY_TOAST_NOTIFY to (toastNotify ?: GlobalConfig.DEFAULT_TOAST_NOTIFY),
-                ConfigFields.F_KEY_TOAST_TEMPLATE to (toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE),
-                ConfigFields.F_KEY_STEP_NOTICE to (stepNotice ?: GlobalConfig.DEFAULT_STEP_NOTICE),
-                //  「哪几档多击开着」也要走这张表：`toValues` 是两条通道共用的入口，
-                //  这里给文本（`Kind` 只有 Bool / Number / Text），与 `fieldValues()` 同一个编码
-                ConfigFields.F_EXTRA_CLICKS to clicksOn.sorted().joinToString(","),
-                ConfigFields.F_CLICK_THEN_LONG_ON to (clickThenLongOn ?: false),
-            ) + ctlValuesMap(),
-        )
-
-    /**
-     * 「单击后长按」那一族字段（这一档的动作 / 长按延迟 / 连发 / 间隔 / 每次振动 / 松手开关与动作）。
-     *
-     *  单独一支只为让 [toValues] 的圈复杂度留在 detekt 的线内 —— 这一族有七个 `?:`，
-     *  摊在主线上等于给那个函数再加七条分支。
-     */
-    private fun ctlValuesMap(): Map<ConfigFields.Field, Any> =
-        mapOf(
-            //  动作那一格也在表里：**落盘与广播读同一个字段**，两处各写一套时
-            //  「广播里带、文件里不带」这种半通的状态必然出现（`click_then_long` 就是那样丢过）。
-            ConfigFields.F_CTL to clickThenLong,
-            ConfigFields.F_DOUBLE_THEN_LONG_ON to (doubleThenLongOn ?: false),
-            ConfigFields.F_DOUBLE_THEN_LONG to doubleThenLong,
-            ConfigFields.F_TRIPLE_THEN_LONG_ON to (tripleThenLongOn ?: false),
-            ConfigFields.F_TRIPLE_THEN_LONG to tripleThenLong,
-            ConfigFields.F_DOUBLE_THEN_LONG_REPEAT to doubleThenLongRepeat,
-            ConfigFields.F_DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS to
-                clamp(ConfigFields.F_DOUBLE_THEN_LONG_REPEAT_INTERVAL_MS, doubleThenLongRepeatIntervalMs),
-            ConfigFields.F_DOUBLE_THEN_LONG_REPEAT_VIBRATE to doubleThenLongRepeatVibrate,
-            ConfigFields.F_DOUBLE_THEN_LONG_RELEASE_ON to doubleThenLongReleaseOn,
-            ConfigFields.F_DOUBLE_THEN_LONG_RELEASE to doubleThenLongRelease,
-            ConfigFields.F_DOUBLE_THEN_LONG_FIRE_ON_RELEASE to doubleThenLongFireOnRelease,
-            ConfigFields.F_DOUBLE_THEN_LONG_SERIAL to doubleThenLongIsSerial,
-            ConfigFields.F_TRIPLE_THEN_LONG_REPEAT to tripleThenLongRepeat,
-            ConfigFields.F_TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS to
-                clamp(ConfigFields.F_TRIPLE_THEN_LONG_REPEAT_INTERVAL_MS, tripleThenLongRepeatIntervalMs),
-            ConfigFields.F_TRIPLE_THEN_LONG_REPEAT_VIBRATE to tripleThenLongRepeatVibrate,
-            ConfigFields.F_TRIPLE_THEN_LONG_RELEASE_ON to tripleThenLongReleaseOn,
-            ConfigFields.F_TRIPLE_THEN_LONG_RELEASE to tripleThenLongRelease,
-            ConfigFields.F_TRIPLE_THEN_LONG_FIRE_ON_RELEASE to tripleThenLongFireOnRelease,
-            ConfigFields.F_TRIPLE_THEN_LONG_SERIAL to tripleThenLongIsSerial,
-            ConfigFields.F_CTL_PRESS_MS to
-                clamp(ConfigFields.F_CTL_PRESS_MS, clickThenLongPressMs ?: KeyConfig.DEFAULT_LONG_PRESS_MS),
-            ConfigFields.F_CTL_REPEAT to (clickThenLongRepeat ?: false),
-            ConfigFields.F_CTL_REPEAT_INTERVAL_MS to
-                clamp(
-                    ConfigFields.F_CTL_REPEAT_INTERVAL_MS,
-                    clickThenLongRepeatIntervalMs ?: KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-                ),
-            ConfigFields.F_CTL_REPEAT_VIBRATE to (clickThenLongRepeatVibrate ?: false),
-            ConfigFields.F_CTL_RELEASE_ON to (clickThenLongReleaseOn ?: false),
-            ConfigFields.F_CTL_RELEASE to clickThenLongRelease,
-            ConfigFields.F_CTL_FIRE_ON_RELEASE to (clickThenLongFireOnRelease ?: false),
-        )
-
-    /** 线格式 → 一颗键的配置（含状态分支）。几个 `legacy*` 是迁移兜底，见 [ConfigDto.toConfig]。 */
     fun toKeyConfig(
         id: KeyId,
-        legacyDoubleClickMs: Int,
+        scenes: List<SceneRule> = this.scenes.mapNotNull { it.toScene() },
     ): KeyConfig =
-        KeyConfig
-            .ofFields(id, toValues(legacyDoubleClickMs), mergeScenes(scenes, rules))
-            .copy(
-                //  认不出的次数 / 动作整条丢掉（与 `rules`、`custom_keys` 同一条纪律：丢东西要留账，
-                //  账在 `ConfigDto.toConfig` 那一层按整份文件打一次）
-                extraClicks =
-                    extraClicks
-                        .mapNotNull { (clicks, token) ->
-                            extraClickCount(clicks)?.let { it to Action.parse(token) }
-                        }.toMap(),
-                //  只补**那张表**：它是一个字段表装不下的结构（`extraClicks`），别的扁平字段
-                //  （含「单击后长按」的动作与它的松手）一律走 `toValues` / `ofFields` 那一对 ——
-                //  在这里再抄一遍动作等于给同一条规则第二份实现，漏抄就是「广播里有、文件里没有」。
-            )
+        KeyConfig(
+            id = id,
+            enabled = enabled,
+            actions =
+                actions.entries
+                    .mapNotNull { (triggerId, token) ->
+                        GestureTrigger.ofId(triggerId)?.let { it to Action.parse(token) }
+                    }.toMap(),
+            params = Params.of(params).normalized(KeyParams.ALL),
+            scenes = scenes,
+            useOwnSettings = useOwnSettings,
+        )
 
     companion object {
         fun from(key: KeyConfig): KeyDto =
             KeyDto(
+                id = key.id.id,
                 enabled = key.enabled,
-                single = key.single.token,
-                double = key.double.token,
-                long = key.long.token,
-                longPressMs = key.longPressMs,
-                longRepeat = key.longRepeat,
-                longRepeatIntervalMs = key.longRepeatIntervalMs,
-                longRepeatVibrate = key.longRepeatVibrate,
-                longRelease = JsonPrimitive(key.longRelease.token),
-                longReleaseOn = key.longReleaseOn,
-                longFireOnRelease = key.longFireOnRelease,
-                doubleClickMs = key.doubleClickMs,
-                comboOnly = key.comboOnly,
-                doubleClickOn = key.doubleClickOn,
-                waitMultiWindow = key.waitMultiWindow,
-                multiWaitMs = key.multiWaitMs,
+                actions = key.actions.entries.associate { (trigger, action) -> trigger.id to action.token },
+                //  **全量写**（含默认值）：写出必须能被同一份 DTO 逐字节重编码复现，
+                //  否则「按当前 DTO 重新编码算 md5」会假红，存量配置被判读不懂。
+                params = KeyParams.ALL.associate { it.id to it.encodeFrom(key.params) },
                 useOwnSettings = key.useOwnSettings,
-                colorOsApi = key.colorOsApi,
-                vibrate = key.vibrate,
-                vibrateStrength = key.vibrateStrength,
-                vibrateOnNone = key.vibrateOnNone,
-                toastOnRun = key.toastOnRun,
-                toastFluid = key.toastFluid,
-                toastNotify = key.toastNotify,
-                toastTemplate = key.toastTemplate,
-                stepNotice = key.stepNotice,
-                scenes = key.scenes.map { SceneRuleDto.of(it) },
-                extraClicks = key.extraClicks.mapKeys { it.key.toString() }.mapValues { it.value.token },
-                //  写侧一律给具体值：给 `null` 的话下次读回来会走「按表倒推」那条老路
-                extraClicksOn = JsonArray(key.extraClicksOn.sorted().map { JsonPrimitive(it) }),
-                clickThenLongOn = key.clickThenLongOn,
-                clickThenLong = key.clickThenLong.token,
-                doubleThenLongOn = key.doubleThenLongOn,
-                doubleThenLong = key.doubleThenLong.token,
-                tripleThenLongOn = key.tripleThenLongOn,
-                tripleThenLong = key.tripleThenLong.token,
-                doubleThenLongRepeat = key.doubleThenLongRepeat,
-                doubleThenLongRepeatIntervalMs = key.doubleThenLongRepeatIntervalMs,
-                doubleThenLongRepeatVibrate = key.doubleThenLongRepeatVibrate,
-                doubleThenLongReleaseOn = key.doubleThenLongReleaseOn,
-                doubleThenLongRelease = key.doubleThenLongRelease.token,
-                doubleThenLongFireOnRelease = key.doubleThenLongFireOnRelease,
-                doubleThenLongIsSerial = key.doubleThenLongIsSerial,
-                tripleThenLongRepeat = key.tripleThenLongRepeat,
-                tripleThenLongRepeatIntervalMs = key.tripleThenLongRepeatIntervalMs,
-                tripleThenLongRepeatVibrate = key.tripleThenLongRepeatVibrate,
-                tripleThenLongReleaseOn = key.tripleThenLongReleaseOn,
-                tripleThenLongRelease = key.tripleThenLongRelease.token,
-                tripleThenLongFireOnRelease = key.tripleThenLongFireOnRelease,
-                tripleThenLongIsSerial = key.tripleThenLongIsSerial,
-                clickThenLongPressMs = key.clickThenLongPressMs,
-                clickThenLongRepeat = key.clickThenLongRepeat,
-                clickThenLongRepeatIntervalMs = key.clickThenLongRepeatIntervalMs,
-                clickThenLongRepeatVibrate = key.clickThenLongRepeatVibrate,
-                clickThenLongReleaseOn = key.clickThenLongReleaseOn,
-                clickThenLongRelease = key.clickThenLongRelease.token,
-                clickThenLongFireOnRelease = key.clickThenLongFireOnRelease,
+                scenes = key.scenes.map(SceneRuleDto::of),
             )
     }
 }
 
-/**
- * **老的**「一条规则一个手势」那一项 —— **只读**：新写的文件不再写这一列（见 [KeyDto.scenes]）。
- *
- *  留着它只为把已经存在的配置读上来：[mergeLegacy] 会把「条件完全相同的那几条」并成一块。
- *  删掉这一格的话，老文件里那一整批条件分支会在升级那一刻凭空消失。
- *
- *  两格条件字段：老文件只有 [condition]（单条），后一版的文件还写了 [conditions]（全量）。
- *  读的时候优先看 [conditions]，它空着才回落到 [condition]。
- */
 @Serializable
 internal data class StateRuleDto(
     /** 手势取 `Gesture.id`（`single` / `double` / `long`），不是枚举名。 */
@@ -718,7 +391,7 @@ internal data class SceneRuleDto(
  *  两条同时存在只可能是「新版写过一次、但某个旧版又存过一次」那种混杂文件：
  *  那时新列是上一次的完整结果，比老列（可能只覆盖部分手势）更可信。
  */
-private fun mergeScenes(
+internal fun mergeScenes(
     scenes: List<SceneRuleDto>,
     rules: List<StateRuleDto>,
 ): List<SceneRule> = if (scenes.isNotEmpty()) scenes.mapNotNull { it.toScene() } else mergeLegacy(rules)
@@ -734,7 +407,7 @@ private fun mergeScenes(
  *  老列里的手势 id 只有 `single` / `double` / `long` 三种（`Gesture.ofId` 认的那三个）——
  *  多击是后来才有的档位，老列里写不出来。
  */
-private fun mergeLegacy(rules: List<StateRuleDto>): List<SceneRule> {
+internal fun mergeLegacy(rules: List<StateRuleDto>): List<SceneRule> {
     val merged = LinkedHashMap<List<String>, SceneRule>()
     for (rule in rules) {
         //  三样都可能让这一条进不了表：停用、档位认不出、条件认不出。合成一条判据，
@@ -755,235 +428,30 @@ private fun mergeLegacy(rules: List<StateRuleDto>): List<SceneRule> {
 @Serializable
 internal data class ComboDto(
     val id: String = "",
-    /** 参与的键（`KeyId.id`）。 */
     val keys: List<String> = emptyList(),
     val enabled: Boolean = true,
-    val single: String = Action.NONE,
-    val long: String = Action.NONE,
-    val longPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
-    /** 长按连续触发与其两个参数 —— 老文件没有这一段，读回来就是「不连发」。 */
-    val longRepeat: Boolean = false,
-    val longRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-    val longRepeatVibrate: Boolean = false,
-    /** 「长按松手才触发」—— 与单键那一档同名同义（老文件没有 ⇒ 关着）。 */
-    val longFireOnRelease: Boolean = false,
-    /** 「松手执行额外动作」的开关（老文件没有 ⇒ 关着）。 */
-    val longReleaseOn: Boolean = false,
-    /** 松手那一档的动作 token。 */
-    val longRelease: String = Action.NONE,
-    /**
-     * **成员连击**（按住首键、唯一成员键连击）—— 动作 token 与开关分两格（与单键多击同族）。
-     *  老文件没有这一段 ⇒ 全关着 / 无操作，与这一位出现之前一致，不需要迁移。
-     */
-    @SerialName("member_double")
-    val memberDouble: String = Action.NONE,
-    @SerialName("member_double_on")
-    val memberDoubleOn: Boolean = true,
-    @SerialName("member_clicks")
-    val memberClicks: Map<Int, String> = emptyMap(),
-    @SerialName("member_clicks_on")
-    val memberClicksOn: List<Int> = emptyList(),
-    @SerialName("member_click_then_long")
-    val memberClickThenLong: String = Action.NONE,
-    @SerialName("member_click_then_long_on")
-    val memberClickThenLongOn: Boolean = false,
-    /** 成员「双击后长按」/「三击后长按」—— 与上一对同一口径，只差前面那几击的击数。 */
-    @SerialName("member_double_then_long")
-    val memberDoubleThenLong: String = Action.NONE,
-    @SerialName("member_double_then_long_on")
-    val memberDoubleThenLongOn: Boolean = false,
-    @SerialName("member_triple_then_long")
-    val memberTripleThenLong: String = Action.NONE,
-    @SerialName("member_triple_then_long_on")
-    val memberTripleThenLongOn: Boolean = false,
-    @SerialName("member_double_then_long_repeat")
-    val memberDoubleThenLongRepeat: Boolean = false,
-    @SerialName("member_double_then_long_repeat_interval_ms")
-    val memberDoubleThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-    @SerialName("member_double_then_long_repeat_vibrate")
-    val memberDoubleThenLongRepeatVibrate: Boolean = false,
-    @SerialName("member_double_then_long_release_on")
-    val memberDoubleThenLongReleaseOn: Boolean = false,
-    @SerialName("member_double_then_long_release")
-    val memberDoubleThenLongRelease: String = Action.NONE,
-    @SerialName("member_double_then_long_fire_on_release")
-    val memberDoubleThenLongFireOnRelease: Boolean = false,
-    @SerialName("member_double_then_long_is_serial")
-    val memberDoubleThenLongIsSerial: Boolean = false,
-    @SerialName("member_triple_then_long_repeat")
-    val memberTripleThenLongRepeat: Boolean = false,
-    @SerialName("member_triple_then_long_repeat_interval_ms")
-    val memberTripleThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-    @SerialName("member_triple_then_long_repeat_vibrate")
-    val memberTripleThenLongRepeatVibrate: Boolean = false,
-    @SerialName("member_triple_then_long_release_on")
-    val memberTripleThenLongReleaseOn: Boolean = false,
-    @SerialName("member_triple_then_long_release")
-    val memberTripleThenLongRelease: String = Action.NONE,
-    @SerialName("member_triple_then_long_fire_on_release")
-    val memberTripleThenLongFireOnRelease: Boolean = false,
-    @SerialName("member_triple_then_long_is_serial")
-    val memberTripleThenLongIsSerial: Boolean = false,
-    /**
-     * 成员那三档「后长按」共用的按住时长（毫秒，`ComboKey.memberClickThenLongPressMs`）；
-     * `0` = 跟随公共设置（`global_combo_member_then_long_press_ms`）。
-     *
-     *  老文件缺这一项 ⇒ 0 ⇒ 跟随公共（与 [holdMinMs] 同一条哨兵）。
-     */
-    @SerialName("member_click_then_long_press_ms")
-    val memberClickThenLongPressMs: Int = ComboKey.MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL,
-    /**
-     * 成员「单击后长按」的**时序与收尾** —— 与组合长按那一套（`long_fire_on_release` /
-     * `long_repeat` / `long_release*`）各自一份：它们挂在两个不同的档位上。
-     *
-     *  老文件缺这一段 ⇒ 全关着 / 默认间隔 / 无操作，与这一位出现之前一致，不需要迁移。
-     */
-    @SerialName("member_click_then_long_fire_on_release")
-    val memberClickThenLongFireOnRelease: Boolean = false,
-    @SerialName("member_click_then_long_repeat")
-    val memberClickThenLongRepeat: Boolean = false,
-    @SerialName("member_click_then_long_repeat_interval_ms")
-    val memberClickThenLongRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-    @SerialName("member_click_then_long_repeat_vibrate")
-    val memberClickThenLongRepeatVibrate: Boolean = false,
-    @SerialName("member_click_then_long_release_on")
-    val memberClickThenLongReleaseOn: Boolean = false,
-    @SerialName("member_click_then_long_release")
-    val memberClickThenLongRelease: String = Action.NONE,
-    /**
-     * 这一档的**系统场景在什么时候定下来** —— `true` = 首键按下，`false` = 成员键按下。
-     *
-     *  老文件缺这一格 ⇒ `null` = 跟随公共设置（布尔没有第三个值，靠 `null` 表达「跟随」）。
-     */
-    val sceneOnStarter: Boolean? = null,
-    /**
-     * 这一档自己的「首键松手后仍执行它自己的长按」；`null` = 跟随公共设置。
-     *
-     *  老文件没有这一项 ⇒ `null` ⇒ 行为与这一位出现之前完全一致，不需要迁移。
-     */
-    val starterKeepLong: Boolean? = null,
-    /**
-     * **按顺序触发**（`ComboKey.ordered`）—— 老文件没有这一项 ⇒ `false`（只看集合），
-     *  行为与这一位出现之前完全一致。`keys` 的顺序在这一位为真时就是「按下的先后」。
-     */
-    val ordered: Boolean = false,
-    /**
-     * 等待档的**固定窗口起点**（`ComboKey.fixedWindowStart`）；`null` = 跟随公共设置。
-     *
-     *  老文件没有这一项 ⇒ `null` ⇒ 跟随公共（默认逐次等满）。
-     */
-    val fixedWindowStart: Boolean? = null,
-    /**
-     * 按住档的**固定窗口起点**（`ComboKey.holdFixedWindowStart`）；`null` = 跟随公共设置。
-     *
-     *  与上面那一位是**两个变量**（两张卡各管一种按法）。老文件没有这一项 ⇒ `null`
-     *  ⇒ 跟随公共（默认逐次等满），与这一位出现之前一致，不需要迁移。
-     */
-    @SerialName("hold_fixed_window_start")
-    val holdFixedWindowStart: Boolean? = null,
-    /**
-     * **老的「一条规则一个手势」那一列** —— 只读，读到就迁移（见 [mergeScenes]）；与单键那份同型。
-     */
-    val rules: List<StateRuleDto> = emptyList(),
-    /**
-     * **系统场景**（`ComboKey.scenes`）—— 与单键那份同一个 [SceneRuleDto]，只是挂在不同对象上。
-     *
-     *  组合键只用得到单击 / 长按两档，块里的 `double` 在这条路上不会被读到。
-     */
+    /** 档位 id → 动作 token —— 与 `KeyDto.actions` 同一套键（`Click(n)` 两边同编号）。 */
+    val actions: Map<String, String> = emptyMap(),
+    /** `Param.id` → 值（`ComboParams.ALL`），全量写。 */
+    val params: Map<String, String> = emptyMap(),
+    val useOwnSettings: Boolean = false,
     val scenes: List<SceneRuleDto> = emptyList(),
-    /**
-     * 「按键单独设置」—— 与单键 `KeyDto` 那几项**同一套**（`OwnSettings` 契约）：
-     * 这一组组合要不要自己决定接口 / 振动 / 提示。老文件缺它们 ⇒ 跟随公共设置。
-     */
-    val useOwnSettings: Boolean? = null,
-    val colorOsApi: Boolean? = null,
-    val vibrate: Boolean? = null,
-    val vibrateStrength: Int? = null,
-    @SerialName("vibrate_on_none")
-    val vibrateOnNone: Boolean? = null,
-    val toastOnRun: Boolean? = null,
-    val toastFluid: Boolean? = null,
-    val toastNotify: Boolean? = null,
-    val toastTemplate: String? = null,
-    val stepNotice: Boolean? = null,
-    /**
-     * **这一档自己的**四格窗口（毫秒，等待 / 按住 × 固定窗口起点 开 / 关）；`0` = 没写过 ⇒ 出厂默认。
-     *
-     *  v74 起分开存（见 `ComboWindows`）；老文件只有 [windowMs] 一个数，由 [toCombo] 铺到前三格。
-     */
-    val waitWindowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
-    @SerialName("wait_pair_ms")
-    val waitPairMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
-    val holdWindowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
-    @SerialName("hold_follower_ms")
-    val holdFollowerMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
-    /**
-     * **遗留（v73 及以前）**：那一个「等待窗口」。
-     *
-     *  v74 之前叫 `windowMs`（`window_ms`）；现在只在读老文件时给前三格铺底，写出去永远是 0。
-     */
-    @SerialName("window_ms")
-    val legacyWindowMs: Int = 0,
-    /**
-     * **遗留（v72 及以前）**：那一版把窗口拆成两笔账，这是「固定窗口起点下整串的窗口」那一份。
-     *
-     *  文件里若只有它（更老的那版），同样拿来铺底。写回永远是 0。
-     */
-    @SerialName("fixed_window_ms")
-    val fixedWindowMs: Int = 0,
-    /**
-     * **触发方式**（`ComboKey.mode`）—— `0` 窗口内先后按下 / `1` 按住（首键 = `keys` 第一颗）。
-     *
-     *  `2` 是**旧编号**（= 先按住第二颗），现在只剩读旧文件时出现：见 [toCombo] 里那条迁移。
-     *  `null` = **更老的文件**（v57 及以前没有这一位），由 [toCombo] 按下面那几个遗留字段推出来。
-     */
-    val mode: Int? = null,
-    /**
-     * 这一档自己的「起点键要先按住多久」（毫秒，`ComboKey.holdMinMs`）；`0` = 跟随公共设置。
-     *
-     *  老文件没有这一项 ⇒ 0 ⇒ 跟随公共（默认 100ms）。
-     */
-    val holdMinMs: Int = ComboKey.HOLD_MIN_FOLLOW_GLOBAL,
-    /**
-     * **遗留（v58 以前）**：那两条触发方式的开关与手动加过的顺序 —— 现在只剩迁移时读一次
-     * （推演在 `LegacyCombo.kt`），写回永远是 `null` / 空表。
-     *
-     *  留着是因为 `ignoreUnknownKeys` 会把不认识的键直接丢掉：字段一删，老文件里那几位就再也
-     *  读不到，「用户配过按住手势」这件事会静默变成「这一档只是等窗口」。
-     */
-    val windowOn: Boolean? = null,
-    val holdOn: Boolean? = null,
-    val holdOrders: List<Int> = emptyList(),
-    /** **遗留（v58 以前）**：按住那两套动作槽 —— 同上，只在迁移时读一次。 */
-    val singleA: String = Action.NONE,
-    val longA: String = Action.NONE,
-    val singleB: String = Action.NONE,
-    val longB: String = Action.NONE,
 ) {
     /**
      * 线格式 → 一档组合键；id 空、或成员不足两颗的读不懂（返回 `null`）。
      *
-     *  前者当不了身份（界面上选中哪一行、删哪一行都靠它），后者判不出来（一颗不叫组合）。
+     *  前者当不了身份（界面选中哪一行、删哪一行都靠它），后者判不出来（一颗不叫组合）。
      *  成员去重之后按 [ComboKey.MAX_JUDGE_KEYS] 截断 —— 手改文件写进几十颗也不该让它进来。
-     *
-     *  截断用**判定侧**那个上限而不是界面的 `MAX_KEYS`：界面最多造三颗，
-     *  但手改文件写进来的三颗组合判定侧认（判定 / 执行 / 日志都跑得通），读配置时截成两颗
-     *  等于让那条链路永远收不到多成员形态。
      */
     fun toCombo(): ComboKey? {
         val members = keys.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (id.isEmpty() || members.size < ComboKey.MIN_KEYS) return null
-        //  老文件没有 `mode`：触发方式与它当年用的那对动作槽由 `LegacyCombo` 推一次（`null` = 新文件）
-        val legacy = legacySlot()
-        val resolved = legacy?.mode ?: mode ?: ComboKey.MODE_WAIT
-        //  ## 旧编号 2（= 先按住第二颗）的迁移
+        val raw = Params.of(params)
+        val resolved = raw[ComboParams.MODE]
+        //  ## 旧编号 2（= 先按住第二颗）的兜底
         //
-        //  现在「谁先按住」由 `keys` 的第一位表达，不再有第二个模式位。所以读到 2 就把**第二颗提到
-        //  首位**、模式归一成 [ComboKey.MODE_HOLD] —— 于是 `[A, B]` + 2 与 `[B, A]` + 1 变成同一份
-        //  数据，界面、判定、日志三处都不必再各分一次叉。
-        //
-        //  `LegacyCombo` 也可能给出 2（它把 v57 的「加过哪种顺序」推成这一位）：那条路一并在这里
-        //  归一。它算出来的动作槽（`singleA` / `singleB`）与键序无关，所以先取动作、后动键序是安全的。
+        //  新格式写的是归一后的 1，但手改 / 降级写进来的 2 仍要认：读到 2 就把第二颗提到首位、
+        //  模式归一成 [ComboKey.MODE_HOLD]，于是 `[A, B]` + 2 与 `[B, A]` + 1 是同一份数据。
         val ordered =
             if (resolved == ComboKey.MODE_HOLD_SECOND) {
                 members.take(2).reversed() + members.drop(2)
@@ -994,102 +462,17 @@ internal data class ComboDto(
             id = id,
             keys = ordered.take(ComboKey.MAX_JUDGE_KEYS),
             enabled = enabled,
-            //  触发方式：成员够两颗就两种都认（按住那一档不再限于两颗，见 `ComboKey.modeFor`）
-            mode = ComboKey.modeFor(resolved, ordered.size),
-            //  老文件把按住那一套动作放在 `singleA`/`longA`（或 B）上，已在 `LegacyCombo` 里搬进
-            //  这一对通用槽；新文件（`mode` 有值）一律读通用的那两位 —— 不看遗留槽，就不会两套同时生效。
-            single = legacy?.single ?: Action.parse(single),
-            long = legacy?.long ?: Action.parse(long),
-            // 长按阈值与单键共用同一个区间（`ConfigFields.F_LONG_PRESS_MS`）：它量的是同一件事。
-            longPressMs = clamp(ConfigFields.F_LONG_PRESS_MS, longPressMs),
-            longRepeat = longRepeat,
-            longRepeatIntervalMs = clamp(ConfigFields.F_REPEAT_INTERVAL_MS, longRepeatIntervalMs),
-            longRepeatVibrate = longRepeatVibrate,
-            //  「松手」那两位与单键同一个口径（老文件没有这一段 ⇒ 关着 + 无操作）。
-            longFireOnRelease = longFireOnRelease,
-            longReleaseOn = longReleaseOn,
-            longRelease = Action.parse(longRelease),
-            //  **成员连击**：与单键多击同一个读法（开关 + 动作分两格，表里只留认得出的）。
-            memberDouble = Action.parse(memberDouble),
-            memberDoubleOn = memberDoubleOn,
-            memberClicks =
-                memberClicks.entries
-                    .mapNotNull { (n, token) ->
-                        val action = Action.parse(token)
-                        if (n < 3 || action is Action.None) null else n to action
+            actions =
+                actions.entries
+                    .mapNotNull { (triggerId, token) ->
+                        GestureTrigger.ofId(triggerId)?.let { it to Action.parse(token) }
                     }.toMap(),
-            memberClicksOn = memberClicksOn.filter { it >= 3 }.toSet(),
-            memberClickThenLong = Action.parse(memberClickThenLong),
-            memberClickThenLongOn = memberClickThenLongOn,
-            memberDoubleThenLong = Action.parse(memberDoubleThenLong),
-            memberDoubleThenLongOn = memberDoubleThenLongOn,
-            memberTripleThenLong = Action.parse(memberTripleThenLong),
-            memberTripleThenLongOn = memberTripleThenLongOn,
-            memberDoubleThenLongRepeat = memberDoubleThenLongRepeat,
-            memberDoubleThenLongRepeatIntervalMs = memberDoubleThenLongRepeatIntervalMs,
-            memberDoubleThenLongRepeatVibrate = memberDoubleThenLongRepeatVibrate,
-            memberDoubleThenLongReleaseOn = memberDoubleThenLongReleaseOn,
-            memberDoubleThenLongRelease = Action.parse(memberDoubleThenLongRelease),
-            memberDoubleThenLongFireOnRelease = memberDoubleThenLongFireOnRelease,
-            memberDoubleThenLongIsSerial = memberDoubleThenLongIsSerial,
-            memberTripleThenLongRepeat = memberTripleThenLongRepeat,
-            memberTripleThenLongRepeatIntervalMs = memberTripleThenLongRepeatIntervalMs,
-            memberTripleThenLongRepeatVibrate = memberTripleThenLongRepeatVibrate,
-            memberTripleThenLongReleaseOn = memberTripleThenLongReleaseOn,
-            memberTripleThenLongRelease = Action.parse(memberTripleThenLongRelease),
-            memberTripleThenLongFireOnRelease = memberTripleThenLongFireOnRelease,
-            memberTripleThenLongIsSerial = memberTripleThenLongIsSerial,
-            //  成员「后长按」那三档的按住时长：与 [holdMinMs] 同一条 —— 0 是「跟随公共」，
-            //  不能被 `clamp` 抬到下限（那就成了「这一档显式设了 200ms」，界面上再也回不到跟随）。
-            memberClickThenLongPressMs =
-                if (memberClickThenLongPressMs <= 0) {
-                    ComboKey.MEMBER_CTL_PRESS_MS_FOLLOW_GLOBAL
-                } else {
-                    clamp(ConfigFields.F_LONG_PRESS_MS, memberClickThenLongPressMs)
-                },
-            //  这一档的时序与收尾：与组合长按那一套各自一份（老文件缺 ⇒ 全关着 / 无操作）
-            memberClickThenLongFireOnRelease = memberClickThenLongFireOnRelease,
-            memberClickThenLongRepeat = memberClickThenLongRepeat,
-            memberClickThenLongRepeatIntervalMs =
-                clamp(ConfigFields.F_REPEAT_INTERVAL_MS, memberClickThenLongRepeatIntervalMs),
-            memberClickThenLongRepeatVibrate = memberClickThenLongRepeatVibrate,
-            memberClickThenLongReleaseOn = memberClickThenLongReleaseOn,
-            memberClickThenLongRelease = Action.parse(memberClickThenLongRelease),
-            //  条件表：认不出的条目整条丢掉（与单键那条同一个 `mapNotNull` 口径）——
-            //  一条读不懂的规则如果兜成「永远成立」，会把这一档的动作整个抢走。
-            scenes = mergeScenes(scenes, rules),
-            //  「按键单独设置」：缺项一律按「跟随公共设置」，与新装的默认一致
-            useOwnSettings = useOwnSettings ?: false,
-            colorOsApi = colorOsApi ?: GlobalConfig.DEFAULT_COLOR_OS_API,
-            vibrate = vibrate ?: false,
-            vibrateStrength = clamp(ConfigFields.F_KEY_VIBRATE_STRENGTH, vibrateStrength ?: GlobalConfig.DEFAULT_VIBRATE_STRENGTH),
-            vibrateOnNone = vibrateOnNone ?: GlobalConfig.DEFAULT_VIBRATE_ON_NONE,
-            toastOnRun = toastOnRun ?: GlobalConfig.DEFAULT_TOAST_ON_RUN,
-            toastFluid = toastFluid ?: GlobalConfig.DEFAULT_TOAST_FLUID,
-            toastNotify = toastNotify ?: GlobalConfig.DEFAULT_TOAST_NOTIFY,
-            toastTemplate = toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE,
-            stepNotice = stepNotice ?: GlobalConfig.DEFAULT_STEP_NOTICE,
-            //  **四格窗口**：v74 起分开存。老文件只有一个数（`window_ms`，更老的还有
-            //  `fixed_window_ms`）—— 拿它给前三格铺底，第四格留给出厂值。
-            //  0 表示没写过（取出厂默认），必须原样留着 —— `clamp` 会把它抬到下限 20，
-            //  那就成了「这一组显式设了 20ms」，界面上再也回不到默认。
-            waitWindowMs = clampOrFollow(waitWindowMs, legacyWindowMs, fixedWindowMs),
-            waitPairMs = clampOrFollow(waitPairMs, legacyWindowMs, fixedWindowMs),
-            holdWindowMs = clampOrFollow(holdWindowMs, legacyWindowMs, fixedWindowMs),
-            holdFollowerMs = clampOrFollow(holdFollowerMs, legacyWindowMs, fixedWindowMs),
-            //  「首键要先按住多久」：与上面那个窗口同一条 —— 0 是「跟随公共」，不能被 `clamp`
-            //  抬到下限 40（那就成了「这一组显式设了 40ms」）。
-            holdMinMs =
-                if (holdMinMs <= 0) {
-                    ComboKey.HOLD_MIN_FOLLOW_GLOBAL
-                } else {
-                    clamp(ConfigFields.F_COMBO_HOLD_MIN_MS, holdMinMs)
-                },
-            sceneOnStarter = sceneOnStarter,
-            starterKeepLong = starterKeepLong,
-            ordered = this.ordered,
-            fixedWindowStart = fixedWindowStart,
-            holdFixedWindowStart = holdFixedWindowStart,
+            params =
+                raw
+                    .normalized(ComboParams.ALL)
+                    .with(ComboParams.MODE, ComboKey.modeFor(resolved, ordered.size)),
+            scenes = scenes.mapNotNull { it.toScene() },
+            useOwnSettings = useOwnSettings,
         )
     }
 
@@ -1099,73 +482,14 @@ internal data class ComboDto(
                 id = combo.id,
                 keys = combo.keys,
                 enabled = combo.enabled,
-                single = combo.single.token,
-                long = combo.long.token,
-                longPressMs = combo.longPressMs,
-                longRepeat = combo.longRepeat,
-                longRepeatIntervalMs = combo.longRepeatIntervalMs,
-                longRepeatVibrate = combo.longRepeatVibrate,
-                longFireOnRelease = combo.longFireOnRelease,
-                longReleaseOn = combo.longReleaseOn,
-                longRelease = combo.longRelease.token,
-                memberDouble = combo.memberDouble.token,
-                memberDoubleOn = combo.memberDoubleOn,
-                memberClicks = combo.memberClicks.mapValues { it.value.token },
-                memberClicksOn = combo.memberClicksOn.sorted(),
-                memberClickThenLong = combo.memberClickThenLong.token,
-                memberClickThenLongOn = combo.memberClickThenLongOn,
-                memberDoubleThenLong = combo.memberDoubleThenLong.token,
-                memberDoubleThenLongOn = combo.memberDoubleThenLongOn,
-                memberTripleThenLong = combo.memberTripleThenLong.token,
-                memberTripleThenLongOn = combo.memberTripleThenLongOn,
-                memberDoubleThenLongRepeat = combo.memberDoubleThenLongRepeat,
-                memberDoubleThenLongRepeatIntervalMs = combo.memberDoubleThenLongRepeatIntervalMs,
-                memberDoubleThenLongRepeatVibrate = combo.memberDoubleThenLongRepeatVibrate,
-                memberDoubleThenLongReleaseOn = combo.memberDoubleThenLongReleaseOn,
-                memberDoubleThenLongRelease = combo.memberDoubleThenLongRelease.token,
-                memberDoubleThenLongFireOnRelease = combo.memberDoubleThenLongFireOnRelease,
-                memberDoubleThenLongIsSerial = combo.memberDoubleThenLongIsSerial,
-                memberTripleThenLongRepeat = combo.memberTripleThenLongRepeat,
-                memberTripleThenLongRepeatIntervalMs = combo.memberTripleThenLongRepeatIntervalMs,
-                memberTripleThenLongRepeatVibrate = combo.memberTripleThenLongRepeatVibrate,
-                memberTripleThenLongReleaseOn = combo.memberTripleThenLongReleaseOn,
-                memberTripleThenLongRelease = combo.memberTripleThenLongRelease.token,
-                memberTripleThenLongFireOnRelease = combo.memberTripleThenLongFireOnRelease,
-                memberTripleThenLongIsSerial = combo.memberTripleThenLongIsSerial,
-                memberClickThenLongPressMs = combo.memberClickThenLongPressMs,
-                memberClickThenLongFireOnRelease = combo.memberClickThenLongFireOnRelease,
-                memberClickThenLongRepeat = combo.memberClickThenLongRepeat,
-                memberClickThenLongRepeatIntervalMs = combo.memberClickThenLongRepeatIntervalMs,
-                memberClickThenLongRepeatVibrate = combo.memberClickThenLongRepeatVibrate,
-                memberClickThenLongReleaseOn = combo.memberClickThenLongReleaseOn,
-                memberClickThenLongRelease = combo.memberClickThenLongRelease.token,
-                sceneOnStarter = combo.sceneOnStarter,
-                starterKeepLong = combo.starterKeepLong,
-                ordered = combo.ordered,
-                fixedWindowStart = combo.fixedWindowStart,
-                holdFixedWindowStart = combo.holdFixedWindowStart,
-                scenes = combo.scenes.map { SceneRuleDto.of(it) },
+                actions = combo.actions.entries.associate { (trigger, action) -> trigger.id to action.token },
+                params = ComboParams.ALL.associate { it.id to it.encodeFrom(combo.params) },
                 useOwnSettings = combo.useOwnSettings,
-                colorOsApi = combo.colorOsApi,
-                vibrate = combo.vibrate,
-                vibrateStrength = combo.vibrateStrength,
-                vibrateOnNone = combo.vibrateOnNone,
-                toastOnRun = combo.toastOnRun,
-                toastFluid = combo.toastFluid,
-                toastNotify = combo.toastNotify,
-                toastTemplate = combo.toastTemplate,
-                stepNotice = combo.stepNotice,
-                waitWindowMs = combo.waitWindowMs,
-                waitPairMs = combo.waitPairMs,
-                holdWindowMs = combo.holdWindowMs,
-                holdFollowerMs = combo.holdFollowerMs,
-                mode = combo.mode,
-                holdMinMs = combo.holdMinMs,
+                scenes = combo.scenes.map(SceneRuleDto::of),
             )
     }
 }
 
-/** 全局配置。 */
 @Serializable
 internal data class GlobalDto(
     /**
@@ -1465,7 +789,7 @@ private const val LEGACY_THEME_LIGHT_MONET = "light_monet"
 private const val LEGACY_THEME_DARK_MONET = "dark_monet"
 
 /** 老主题值 → 三档里的那一档（不认识的、以及三档本身的，原样返回）。 */
-private fun legacyThemeCode(code: String): String =
+internal fun legacyThemeCode(code: String): String =
     when (code) {
         LEGACY_THEME_MONET -> GlobalConfig.THEME_AUTO
         LEGACY_THEME_LIGHT_MONET -> GlobalConfig.THEME_LIGHT
@@ -1474,7 +798,7 @@ private fun legacyThemeCode(code: String): String =
     }
 
 /** 老主题值自己带的那一位「用 Monet 配色」—— 只有那三个旧值会返回 `true`。 */
-private fun legacyThemeMonet(code: String): Boolean =
+internal fun legacyThemeMonet(code: String): Boolean =
     code == LEGACY_THEME_MONET || code == LEGACY_THEME_LIGHT_MONET || code == LEGACY_THEME_DARK_MONET
 
 /** 「常用命令」清单的一项（`global.common_commands`）。 */
@@ -1532,7 +856,7 @@ internal data class CommonCommandDto(
  *  坏条目丢掉并报一行 —— 不声不响消失的清单项最难查（用户在页面上看不到某一条，
  *  却没有任何线索）。
  */
-private fun List<CommonCommandDto>.parsed(): List<CommonCommand> {
+internal fun List<CommonCommandDto>.parsed(): List<CommonCommand> {
     val parsed = mapNotNull { it.toCommonCommand() }
     if (parsed.size != size) {
         XLog.w("配置：${size - parsed.size} 条常用命令认不出（已丢弃）")
@@ -1555,7 +879,7 @@ internal data class CustomKeyDto(
 }
 
 /** 按字段表钳一个整数字段的取值范围。 */
-private fun clamp(
+internal fun clamp(
     field: ConfigFields.Field,
     value: Int,
 ): Int {
@@ -1569,7 +893,7 @@ private fun clamp(
  *  @param own 这一格的值（`0` = 跟随公共设置）
  *  @param legacy 老文件里的那一个数（v73 的 `window_ms`、v72 更早的 `fixed_window_ms`，按优先级）
  */
-private fun clampOrFollow(
+internal fun clampOrFollow(
     own: Int,
     vararg legacy: Int,
 ): Int {
@@ -1583,4 +907,4 @@ private fun clampOrFollow(
  *  收在一个函数里：读的时候（[KeyDto.toKeyConfig]）与记账的时候（[ConfigDto.toConfig]）
  *  必须用同一套判据，两处各写一遍会演进成「日志说丢了一条、实际丢的是另一条」。
  */
-private fun extraClickCount(raw: String): Int? = raw.toIntOrNull()?.takeIf { it >= 3 }
+internal fun extraClickCount(raw: String): Int? = raw.toIntOrNull()?.takeIf { it >= 3 }

@@ -206,6 +206,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ThinkingLow
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Tooltip
+import io.github.lyxnx.compose.ui.tablericons.outline.TransitionTop
 import io.github.lyxnx.compose.ui.tablericons.outline.Trash
 import io.github.lyxnx.compose.ui.tablericons.outline.UserScreen
 import io.github.lyxnx.compose.ui.tablericons.outline.Variable
@@ -448,6 +449,7 @@ internal object FluidIcons {
             "toggleright" to TablerIcons.Outline.ToggleRight,
             "tooltip" to TablerIcons.Outline.Tooltip,
             "trash" to TablerIcons.Outline.Trash,
+            "transitiontop" to TablerIcons.Outline.TransitionTop,
             "userscreen" to TablerIcons.Outline.UserScreen,
             "variable" to TablerIcons.Outline.Variable,
             "versions" to TablerIcons.Outline.Versions,

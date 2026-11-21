@@ -324,7 +324,7 @@ private fun SettingsPage.CustomTile(
             // 与内置网格同一判据。
             enabled = enabled && linkReady,
             // 标题下面那行小字 —— **每一档都有一句要说的**，只是内容不同：
-            //  · 多条命令：命令间隔时长（`stepDelayMs`）—— 只有它有多步，单条用不到；
+            //  · 多条命令：命令执行间隔（`stepDelayMs`）—— 只有它有多步，单条用不到；
             //  · 单条命令：执行身份（「以 root 执行」/「以 Shizuku 执行」），两样都不是时不画。
             //  两条通道的口径在 `commandExecIdentity` 一处（与命令详情浮层同源）：
             //  这里再判一遍，改口径时就会漏掉一处。

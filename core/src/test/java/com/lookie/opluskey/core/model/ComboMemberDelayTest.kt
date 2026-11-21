@@ -23,8 +23,9 @@ class ComboMemberDelayTest {
         ComboKey(
             id = "cmb1",
             keys = listOf(KeyId.PLUS.id, "other"),
-            mode = ComboKey.MODE_HOLD,
             useOwnSettings = own,
+        ).copy(
+            mode = ComboKey.MODE_HOLD,
             memberClickThenLongPressMs = ms,
         )
 

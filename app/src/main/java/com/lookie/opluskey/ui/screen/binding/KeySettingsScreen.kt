@@ -596,10 +596,6 @@ private fun ownSwitchNotice(
             switchNotice(I18n.get(Strings.SETTING_USE_OWN), values.useOwnSettings)
         }
 
-        OwnField.COLOR_OS -> {
-            switchNotice(I18n.get(Strings.HOME_COLOROS_TITLE), values.colorOsApi)
-        }
-
         OwnField.VIBRATE -> {
             switchNotice(I18n.get(Strings.HOME_VIBRATE_TITLE), values.vibrate)
         }
@@ -662,15 +658,16 @@ private fun SettingsPage.commitOwnField(
 }
 
 /**
- * 三张小标题 —— **后两个与「按键设置」页用同一个字典键**（`GENERAL_SECTION_INTERFACE` /
- * `HOME_BINDING_CARD_TITLE`）：两页读到的是同一套分类名，用户不会觉得「同一件事换了个说法」。
+ * 两张小标题 —— 「按键行为」与「按键设置」页用同一个字典键（`HOME_BINDING_CARD_TITLE`）：
+ * 两页读到的是同一套分类名，用户不会觉得「同一件事换了个说法」。
  * 「总开关」是这一页独有的（公共页没有「这一档算不算数」这件事）。
+ *
+ *  「使用 ColorOS 接口」不在这张页里（它只在公共页调一次），所以这里没有「接口与显示」那一节。
  *
  *  收成一支 —— 把「这一页有哪几张卡」摊在主线上不值当。
  */
 private fun ownCardTitles(): OwnCardTitles =
     OwnCardTitles(
         master = I18n.get(Strings.KEY_SETTINGS_SECTION),
-        interfaceTitle = I18n.get(Strings.GENERAL_SECTION_INTERFACE),
         behavior = I18n.get(Strings.HOME_BINDING_CARD_TITLE),
     )

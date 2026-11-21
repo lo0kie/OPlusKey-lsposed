@@ -39,11 +39,16 @@
 | 还没跑过             | `startZoomWindow`（只 `NEW_TASK`）                  | 新起一份、落小窗          |
 | 有现成任务（非前台） | 同上，服务端**复用**那份任务，1 → 100               | **taskId 不变**，无新实例 |
 | 已是小窗             | 同上，返回 `0`/`2`，无第三份                        | 不变                      |
-| **就在前台**         | 会被栈顶实例消化（返 `3`）→ 改走 recents 正门原地收 | 不变                      |
+| **就在前台**         | 会被栈顶实例消化（返 `3`）→ 不新起实例，原地收同一份任务：动画档开着时走与 `zoom:mini` 同一条（`animIntoMiniIfEnabled`），否则 recents 正门 | 不变                      |
 
 降级链：`startZoomWindow`
 反射路不通 → 自由窗口（`ActivityOptions`）→ 普通打开 —— 宁可开成普通界面，也不能按下去什么都不发生。`FLAG_ACTIVITY_MULTIPLE_TASK`
 **已整个删掉**（§四）。
+
+「就在前台」那一档分两条：设置里「前台转小窗时使用动画」开着就走**动画档**
+（`MiniWindowLauncher.animIntoMiniIfEnabled` —— 与 `zoom:mini` **共用同一段**，见 §2.2 ①），
+否则才是 recents 正门。两条收的是**同一份任务**、都不新起实例；动画档没接手
+（开关关着 / 横屏 / 框架判不支持 / 原生切换没受理且补播也不成立）时才落到正门。
 
 ### 2.2 `zoom:mini` —— 把前台应用收成小窗
 
@@ -52,16 +57,25 @@
 «展开档»（默认，`zoom:mini`）：
 
 ```
-① 应用侧 recents 正门（startActivityFromRecentsForFlexible，flags=2）← **唯一一条**
-   `XLog: 走 recents 正门（原地收、无动画）`
-     ↓ 服务端受理、设置里「前台转小窗时使用动画」开着、且当前是竖屏
-② 原生缩小动画：宿主发 `CMD_MINI_ANIM` → 注入侧调 `startFlexibleSpringAnimation`（§十二）
-     转换是同步的 binder 调用，返回时任务已是柔性任务 ⇒ 立刻播，不必先露出一个静止的小窗
-     ↓ 700ms（MINI_VERIFY_MS）后 windowingMode != 100，或 ① 那一步服务端没受理
+① 框架自己的切换（设置里「前台转小窗时使用动画」开着时先试这一条；
+   这一段是 `animIntoMiniIfEnabled`，`window:包名` 的「目标就在前台」那支共用它）
+   FlexibleWindowManager#toggleFlexibleWindow(null, taskId, true, true)
+   `XLog: 原生切换已受理（任务 #N，落点与动画都由框架算）`
+   服务端自己 calcFlexibleTaskBounds 算落点、startChangeAnim 播切换、toggleToFlexibleTask 真转换
+     ↓ 没受理（任务在过渡中 / 分屏内嵌 / 正在拖拽），或 700ms 后没进小窗
+② 应用侧 recents 正门（startActivityFromRecentsForFlexible，flags=2）+ 补播 `CMD_MINI_ANIM`
+     ↓ 服务端没受理，或 700ms（MINI_VERIFY_MS）后 windowingMode != 100
 ③ **什么都不做 + Toast「前台应用不支持小窗」**   ← 2026-10-14 用户口径
 ```
 
-«收起档»同理：`flags = 32` 收不成就 Toast，**不再**另想办法。
+«收起档»：`flags = 32` 收成右上角那条；动画开着时转换完补播「全屏 → 收起落点」那一段
+（落点按机型在 `MiniWindowGeometry` 的 `collapsed*`，没量过的机器只收不播）。服务端不受理就 Toast，
+**不再**另想办法。
+
+⚠️ 收起档的验收**不能**看 `windowingMode == 100`：minimized 那一态读出来仍是全屏模式（收起由柔性态另算），
+真机读到过「窗口已经收起、判据说 false」，于是弹了一句「前台应用不支持小窗」——用户眼前就是那条小窗。
+受理（返回 2）就算成功，验收只写诊断。准入闸与展开档同一把（`appSupportsMini`）：`flags=32` 这条
+服务端**不**替我们拒掉不支持的应用。
 
 ⚠️ **③ 以前不是这样，是「退 launch 配方 → 再退按包名另起一份实例」—— 两条都删了**
 （2026-10-14 用户口径：「有些应用不支持小窗，你应该什么都不做，toast 提示，现在会返回桌面重开」）。被删掉的那条链有两个毛病，真机日志都留了证：
@@ -305,7 +319,8 @@ android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int tas
 | `startActivityFromRecentsForFlexible`                           | ✓    | ✗    | 过渡无 root → abort                                                 |
 | 公开 `ATS#startActivityFromRecents(taskId, opts)`               | ✓    | ✗    | 同上                                                                |
 | `notifyFlexibleTaskEvent(taskId, 2002)`                         | ✓    | —    | 只对**已是柔性**的任务；普通全屏任务只打 `exitTo:5`                 |
-| `toggleFlexibleWindow(toType)` / `OplusFlexibleAnimationRunner` | —    | ✓    | `ToggleTaskRunnable` 取的是 `embeddedTasks` —— 只对已存在的柔性任务 |
+| `toggleFlexibleWindow(String)` / `OplusFlexibleAnimationRunner` | —    | ✓    | `ToggleTaskRunnable` 取的是 `embeddedTasks` —— 只对已存在的柔性任务 |
+| **`toggleFlexibleWindow(Activity, int, Z, Z)`（应用侧门面）** | ✓ | ✓ | **无阻断**：普通前台全屏任务也受理（§六之二） |
 | `notifyFlexibleTaskEvent(taskId, 2004)`「交换」                 | ✓    | ✓    | 要求另一份**不同包**的小窗在场（§八）                               |
 | 拖拽手势（`onInputEvent` → `initializeDragZoomAnimation`）      | ✓    | ✓    | 驱动方是桌面/SystemUI 的输入接收器，应用侧没有一步到位的调法        |
 | **`switchState(task, 1, reason)`（system_server）**             | ✓    | ✓    | 前置 `flexibleZoomState == 2` —— **可以伪造**（§七）                |
@@ -314,6 +329,53 @@ android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int tas
 `NEW_TASK|RESET_TASK_IF_NEEDED`，目标在前台时直接放弃（`isAlreadyOpenedInTop`）—— 与我们的结论一致，没有新入口。（⚠️
 2026-10-14 订正：原先这里写的是 `CLEAR_TASK`，拉 `SmartSideBar.apk` 反编译看是
 `RESET_TASK_IF_NEEDED`（`0x00200000`），见 §十三。）
+
+---
+
+## 六之二、应用侧门面的 `toggleFlexibleWindow` 才是「一键 + 动画」的正解（2026-11-21，PLK110 / ColorOS 17.0.0）
+
+计算器首页左上角那颗按钮走的就是它（`Calculator.F2`，日志前缀 `startZoom`）：
+
+```java
+com.oplus.flexiblewindow.FlexibleWindowManager.getInstance()
+    .toggleFlexibleWindow(activity, taskId, /* 播切换动画 */ true, /* 已是小窗就拒绝 */ true);
+```
+
+`taskId` 由计算器用 `ActivityManager.getRunningTasks(1)[0].taskId` 取。门面里
+`token = activity != null ? activity.getActivityToken() : null`，再转
+`OplusActivityTaskManager#toggleFlexibleWindowByApp(token, taskId, b1, b2)` ——
+**Activity 传 null 合法**，只靠 taskId 定位任务，所以宿主 / 注入侧都不需要目标的 Activity。
+
+服务端 `OplusActivityTaskManagerServiceEnhance#toggleFlexibleWindowByApp` 第一句是
+`enforceCallingPermission("com.oplus.permission.safe.WINDOW")`（宿主持有），然后交给
+`FlexibleTaskController#toggleFlexibleWindow`：
+
+1. token 非空按 token 找 root task，否则 `anyTaskForId(taskId, MATCH_ATTACHED_ONLY)`；
+2. `shouldSkipToggleFlexibleWindow`：任务为空 / `isTaskEmbedded` / `isInTransition` / DC 为空 /
+   正在拖拽或正切换 → 跳过（返回 false，只打 `Slog`，不抛）；
+3. 已是柔性小窗 → `notifyFlexibleTaskEvent(taskId, 2001)` 回全屏；
+4. 普通全屏任务 → `calcFlexibleTaskBounds(baseIntent, orientation, dc, info)`（策略按当前方向算落点）→
+   `startChangeAnim(task, rect, 2048)`（b1 为 true 才走）→ `resetFlexibleTaskAfterChangeAnim(…, 1, 18)`：
+   `setFlexibleZoomState(18)`、`updateFlexibleTaskCaptionVisibleIfNeeded(task, true)`（操作条）、
+   `toggleToFlexibleTask(task, record, options, info)`、`moveToFront("toggle-flexible-window-by-app")`。
+
+⇒ 这一支**不需要伪造态**（§七那套 `switchState`），转出来是真小窗：圆角、操作条、拖拽全由
+`toggleToFlexibleTask` 那一步配好。落点按当前方向算，**横屏也对** —— §12.4 那条「终点几何是竖屏标定值」
+的妥协在这里不存在。
+
+⚠️ **它不按应用声明拦人**：`shouldSkipToggleFlexibleWindow` 只看任务状态，不看应用支不支持小窗 ——
+真机上声明「不支持小窗」的应用照样被强行收起来（旧 recents 正门没这个问题，是服务端
+`startFreeFormFromRecent` 自己判 `invalid flexibleTaskInfo` 挡的）。所以走这一支**必须自己加准入闸**，
+判据用框架自己的 `OplusZoomWindowManager#isSupportZoomMode`（`MiniWindowSupport.isSupported`，注意它会弹
+系统 toast；`null` = 判不出来，不拦）。
+
+判据（真机）：`XLog: zoom:mini → 原生切换已受理（任务 #N…）`，随后 `dumpsys activity` 里
+`windowingMode=100`、窗口带 caption。
+
+收起档（右上角那条）**没有**对应的对外入口：最小化的动画挂在拖拽
+（`initDragFullScreenToMinimizedAnimation`）与内部过渡（`adjustEndAbsForFlexibleMinimizeIfNeed`）上，
+参数是输入事件而不是 taskId。所以收起档走两段式：`startActivityFromRecentsForFlexible(taskId, 32)` 收起之后，
+再补播一段「全屏 → 收起落点」（终点取 `MiniWindowGeometry` 的 `collapsed*`）。真机确认动画可见（2026-11-21）。
 
 ---
 

@@ -159,7 +159,7 @@ internal fun SettingsPage.CommandPage(
 
             // `keyevent:` 注入同毫秒生效，而「最近任务 / 通知中心 / 控制中心」要跨四个进程、`shell:` 更
             // 是另起进程 —— 不等待的话连续几步会乱。只有多条命令有这个值，所以只在这一栏显示。
-            //  它自己那条行标题（「命令间隔时长」）说的是**这一行是什么**，小标题说的是**这一组是什么**
+            //  它自己那条行标题（「命令执行间隔」）说的是**这一行是什么**，小标题说的是**这一组是什么**
             //  —— 以后这一组还会长（比如「失败后停止」），先按「命令设置」归拢。
             if (kind == CommandKind.SERIAL) {
                 CommandSettingsSection(sorting = sorting, tick = tick)
@@ -471,11 +471,13 @@ internal fun SettingsPage.DetailMenu(
 }
 
 /**
- * 「命令设置」那一栏 —— 目前只有「命令间隔时长」一张卡。
+ * 「命令设置」那一栏 —— 目前只有「命令执行间隔」一张卡。
  *
- *  编辑列表（排序态）时它整块禁用，且禁用态那句话要换成本页的：页面那条
+ *  **步骤不足两步时整块禁用**：间隔是两条命令之间的那一段，没有下一步可等时这一根没有意义
+ *  （门槛与保存同一处：`Command.MIN_STEPS`，见 `payloadBlockedReason`）。
+ *  编辑列表（排序态）时它同样整块禁用，且禁用态那句话要换成本页的：页面那条
  *  （`disabledClickReason`）讲的是宿主 / 旧版（给「模块没生效」用的），
- *  与「正在编辑列表」完全不是一回事。
+ *  与「正在编辑列表」「还没加够步骤」完全不是一回事。
  *
  */
 @Composable
@@ -484,9 +486,16 @@ private fun SettingsPage.CommandSettingsSection(
     tick: () -> Unit,
 ) {
     SectionTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE))
-    if (sorting) {
-        //  整块共用一句「编辑中…」—— 投递与槽位都在 `DisabledHint` 里
-        DisabledHint(I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED)) {
+    val enoughSteps = commandDraft.draft.serialForm.steps.size >= Command.MIN_STEPS
+    if (sorting || !enoughSteps) {
+        //  整块共用一句原因 —— 投递与槽位都在 `DisabledHint` 里；排序态优先说「编辑中」
+        DisabledHint(
+            if (sorting) {
+                I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED)
+            } else {
+                I18n.get(Strings.COMMAND_NEED_TWO_STEPS)
+            },
+        ) {
             StepDelayCard(tick, enabled = false)
         }
     } else {
@@ -717,7 +726,7 @@ private fun singleFormatError(raw: String): String =
 /** 单条命令能输入多少字（超出的部分在输入框里直接吃掉）—— 取 1024，够放下一条带好几个参数的长命令。 */
 internal const val MAX_SINGLE_LENGTH = 1024
 
-/** 多条命令的「命令间隔时长」卡 —— 只有一行：等多久再派发下一条。 */
+/** 多条命令的「命令执行间隔」卡 —— 只有一行：等多久再派发下一条。 */
 @Composable
 private fun SettingsPage.StepDelayCard(
     tick: () -> Unit,

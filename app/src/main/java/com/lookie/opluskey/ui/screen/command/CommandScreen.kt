@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui.screen.command
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -11,6 +12,7 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -44,6 +46,7 @@ import com.lookie.opluskey.ui.kit.codePointLength
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.text.commandKindLabel
+import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.screen.configWritable
 import com.lookie.opluskey.ui.state.command.CommandListEditState
 import com.lookie.opluskey.ui.state.command.CommandUiState
@@ -277,18 +280,55 @@ private fun SettingsPage.CommandFloatingButton(
     val sortingSteps = commandDraft.stepEditing
     //  列表编辑态那颗「删除」：**勾了任意一条就滑进**（与「按键功能」页同一套，见 `KeysScreen`）
     val listEditing = onListPage && CommandListEditState.editing && CommandListEditState.count > 0
+    //  「保存」这一档在**步骤不足两步**时压暗 —— 那一档点下去本来就只会得到那句原因
+    //  （见 [saveBlockedReason]），先把它画出来，免得一颗亮着的按钮读作「能存」。
+    val dimmed = !onListPage && !sortingSteps && saveFabDimmed
+    //  出现条件按页分开：单条页仍是「有没有值得保存的东西」（`commandDraftHasContent`）；
+    //  多条页看**步数**与**是不是在改一条已存的** —— 新写一条只有一步时那颗是灰的、按了也只有
+    //  一句「至少两步才能保存」，摆着只会让人反复去点，不如不画（用户口径）。
+    val saveShown =
+        if (commandDraft.draft.kind == CommandKind.SERIAL) {
+            commandDraft.draft.steps.size >= Command.MIN_STEPS ||
+                commandDraft.draft.editingName != null
+        } else {
+            commandDraftHasContent()
+        }
     with(scope) {
         //  与其它页那颗 FAB 同一档滑入滑出（[PageCornerFab] 的默认规格）：硬切在真机上像「闪了一下」，
         //  页脚那颗按钮本来就在同一角落，进出不带过渡会读成两次不同的东西。
-        PageCornerFab(visible = listEditing || (!onListPage && (commandDraftHasContent() || sortingSteps))) {
+        PageCornerFab(visible = listEditing || (!onListPage && (saveShown || sortingSteps))) {
+            //  压暗**换底色与字形色**，不在外面套 `Modifier.alpha` —— 那一层会把阴影裁进按钮方框
+            //  （见 `PageFabButton` 的注释）。两段都跟着状态渐变：加上第二步时是「亮回来」，
+            //  直接切过去读作闪了一下。
+            val containerColor by animateColorAsState(
+                targetValue =
+                    if (dimmed) {
+                        COUITheme.colorScheme.surfaceContainerHighest
+                    } else {
+                        COUITheme.colorScheme.primary
+                    },
+                animationSpec = COLOR_TRANSITION_SPEC,
+                label = "CommandFabContainer",
+            )
+            val iconTint by animateColorAsState(
+                targetValue =
+                    if (dimmed) {
+                        COUITheme.colorScheme.disabledOnSecondaryVariant
+                    } else {
+                        COUITheme.colorScheme.onPrimary
+                    },
+                animationSpec = COLOR_TRANSITION_SPEC,
+                label = "CommandFabIcon",
+            )
             PageFabButton(
                 onClick = {
                     tick()
                     onFabTap(listEditing, sortingSteps, ui)
                 },
+                containerColor = containerColor,
             ) {
                 val face = fabFace(listEditing, sortingSteps)
-                PageFabIcon(face.first, contentDescription = face.second)
+                PageFabIcon(face.first, contentDescription = face.second, tint = iconTint)
             }
         }
     }
@@ -330,6 +370,17 @@ private fun SettingsPage.onFabTap(
         }
     }
 }
+
+/**
+ * 「保存」这一档现在要不要压暗 —— 多条命令页的步骤不足 [Command.MIN_STEPS] 时。
+ *
+ *  判据与保存门槛同源（`payloadBlockedReason` 的 SERIAL 那一支）：这里只把同一件事画出来，
+ *  不另立一条规则。列表页与排序态由调用点排除 —— 那时这颗是「删除」/「完成」，不是「保存」。
+ */
+private val SettingsPage.saveFabDimmed: Boolean
+    get() =
+        commandDraft.draft.kind == CommandKind.SERIAL &&
+            commandDraft.draft.steps.size < Command.MIN_STEPS
 
 /**
  * 这颗 FAB 此刻长什么样：字形 + 无障碍文案（两样同一个判据，拆开写容易改一处忘一处）。

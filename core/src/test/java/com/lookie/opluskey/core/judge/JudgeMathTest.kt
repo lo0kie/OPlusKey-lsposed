@@ -149,8 +149,8 @@ class JudgeMathTest {
 
     @Test
     fun orderMatchDropsOrderedCombosThatDoNotFitTheSequence() {
-        val forward = ComboKey(id = "cmb1", keys = listOf(a.id, b.id), ordered = true)
-        val backward = ComboKey(id = "cmb2", keys = listOf(b.id, a.id), ordered = true)
+        val forward = ComboKey(id = "cmb1", keys = listOf(a.id, b.id)).copy(ordered = true)
+        val backward = ComboKey(id = "cmb2", keys = listOf(b.id, a.id)).copy(ordered = true)
         val anyOrder = ComboKey(id = "cmb3", keys = listOf(a.id, b.id))
         val matched =
             orderMatch(listOf(forward, backward, anyOrder), listOf(a.id, b.id), ordered = { it.ordered }) { k, s -> k.matchesOrdered(s) }
@@ -159,7 +159,7 @@ class JudgeMathTest {
 
     @Test
     fun orderedComboIgnoresAnEarlierUnrelatedKey() {
-        val ordered = ComboKey(id = "cmb1", keys = listOf(a.id, b.id, c.id), ordered = true)
+        val ordered = ComboKey(id = "cmb1", keys = listOf(a.id, b.id, c.id)).copy(ordered = true)
         //  这一组开始之前先点过一下 c（还在同一个扫描窗口里），真实顺序是 c → a → b → c
         val matched = orderMatch(listOf(ordered), listOf(c.id, a.id, b.id, c.id), ordered = { it.ordered }) { k, s -> k.matchesOrdered(s) }
         assertEquals("开头多一颗不该把有序组合判掉", listOf(ordered), matched)
@@ -167,7 +167,7 @@ class JudgeMathTest {
 
     @Test
     fun orderedComboStillRejectsAKeyBetweenMembers() {
-        val ordered = ComboKey(id = "cmb1", keys = listOf(a.id, b.id, c.id), ordered = true)
+        val ordered = ComboKey(id = "cmb1", keys = listOf(a.id, b.id, c.id)).copy(ordered = true)
         //  成员之间夹了一颗别的键：结尾三位是 c → b → c，与 a → b → c 不同
         assertTrue(
             orderMatch(listOf(ordered), listOf(a.id, c.id, b.id, c.id), ordered = { it.ordered }) { k, s -> k.matchesOrdered(s) }.isEmpty(),

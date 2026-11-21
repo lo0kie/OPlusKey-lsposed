@@ -456,6 +456,7 @@ object ComboWire {
             id = id,
             keys = members.take(ComboKey.MAX_JUDGE_KEYS),
             enabled = enabled,
+        ).copy(
             single = Action.parse(single),
             long = Action.parse(long),
             longPressMs = clampLongPress(longPressMs),

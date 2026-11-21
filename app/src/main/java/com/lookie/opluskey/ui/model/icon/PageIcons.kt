@@ -154,6 +154,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
 import io.github.lyxnx.compose.ui.tablericons.outline.TestPipe
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Tooltip
+import io.github.lyxnx.compose.ui.tablericons.outline.TransitionTop
 import io.github.lyxnx.compose.ui.tablericons.outline.Trash
 import io.github.lyxnx.compose.ui.tablericons.outline.UserScreen
 import io.github.lyxnx.compose.ui.tablericons.outline.Versions
@@ -250,6 +251,9 @@ internal object PageIcons {
      * 见 `actionIcon` 里 `zoom:mini` 那两行）。
      */
     val MiniWindow: ImageVector get() = TablerIcons.Outline.PictureInPictureOn
+
+    /** 「前台转小窗时使用动画」—— Tabler 的 `transition-top`（窗口从全屏落下来那一下）。 */
+    val MiniAnim: ImageVector get() = TablerIcons.Outline.TransitionTop
 
     /**
      * 「用哪条接口接管侧键」—— 首页那行开关的行首图标（Tabler 的 `plug-connected`）。
@@ -1119,7 +1123,7 @@ internal object PageIcons {
      */
     val ComboKeepLong: ImageVector get() = TablerIcons.Outline.PointerShare
 
-    /** 「命令间隔时长」—— `clock-play`（钟 + 播放：等这么久再走下一步）。 */
+    /** 「命令执行间隔」—— `clock-play`（钟 + 播放：等这么久再走下一步）。 */
     val DelayStep: ImageVector get() = TablerIcons.Outline.ClockPlay
 
     /**

@@ -3,12 +3,16 @@ package com.lookie.opluskey.core.wire
 import android.content.Intent
 import android.os.Bundle
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.param.KeyParams
+import com.lookie.opluskey.core.param.Params
 
 /** 配置的广播线格式：宿主 / 设置页发往注入侧（system_server）的编解码。 */
 object ConfigBroadcast {
@@ -148,31 +152,40 @@ object ConfigBroadcast {
         for (k in keys) {
             intent.putExtra(extraName(k.id, ConfigFields.KEY_CODE_EXTRA), k.keyCode)
             intent.putExtra(extraName(k.id, ConfigFields.KEY_NAME_EXTRA), k.label)
-            //  传 `global`：单击那三项没开「使用独立设置」时读公共那一份（见 `fieldValues` 的 KDoc）
-            val stored = config.key(k).fieldValues(config.global)
-            // `longIsSerial` 是发送侧**现算**的一位，**每颗键都要算**：自定义键同样能绑
-            //  `cmd:名字`，只算侧键那一份的话，注入侧会把它的串行命令当成单条动作，
-            //  连发闸门（`longIsSerial`）对自定义键恒不生效。
-            //
-            //  `sceneRelease` 同理：场景表**不走广播**（见 `KeyConfig.scenes`），而注入侧要靠这一位
-            //  决定抬手发不发 `Release` —— 所以在这里扫一遍这颗键的场景表，把结论带过去。
-            val v =
-                ConfigFields.Values(
-                    stored.raw() +
-                        (ConfigFields.F_LONG_SERIAL to longSerialOf(k)) +
-                        (ConfigFields.F_CTL_SERIAL to chainSerialOf(k)) +
-                        (ConfigFields.F_SCENE_RELEASE to config.key(k).scenes.any { it.hasRelease }) +
-                        (ConfigFields.F_SCENE_CHAIN_RELEASE to config.key(k).scenes.any { it.hasChainRelease }) +
-                        //  「单击后长按这一档有没有人配」：同上，注入侧看不到场景表，而它要靠这一位
-                        //  回答「这一档是不是无操作」（见 `KeyConfig.clickThenLongCounts`）。
-                        //  **只认启用中的块**（`SceneRule.chainBound`）：停用的块命中不了，
-                        //  它配的动作不该让这一档在判定侧「算数」。
-                        (ConfigFields.F_SCENE_CHAIN to config.key(k).scenes.any { it.chainBound }) +
-                        //  「长按这一档有没有人要」：注入侧看不到场景表，而
-                        //  「长按无操作时松手那一刀没有主语」要靠它判（见 `KeyConfig.longActionExists`）
-                        (ConfigFields.F_SCENE_LONG to config.key(k).scenes.any { it.longBound }),
-                )
-            putFields(intent, v, ConfigFields.KEY_FIELDS, keyPrefix(k.id))
+            //  每颗键发两个 map：设置项与动作表。加一项设置 / 加一档手势都不用再动这一层
+            //  （从前是几十列 `F_*`，每加一格要改三处）。
+            val key = config.key(k)
+            //  **生效值**：没开「使用独立设置」时，单击那三项与后长按按住时长取公共那一份
+            //  —— 注入侧读不到 `GlobalConfig`，必须在发送侧解析好。
+            var p = key.params
+            if (!key.useOwnSettings) {
+                p =
+                    p
+                        .with(KeyParams.DOUBLE_CLICK_MS, config.global.doubleClickMs)
+                        .with(KeyParams.WAIT_MULTI_WINDOW, config.global.waitMultiWindow)
+                        .with(KeyParams.MULTI_WAIT_MS, config.global.multiWaitMs)
+                        .with(KeyParams.CLICK_THEN_LONG_PRESS_MS, config.global.clickThenLongPressMs)
+            }
+            //  下面这一批是**发送侧现算**的派生位（注入侧读不到命令库 / 场景表）：
+            //  · `longIsSerial` / `clickThenLongIsSerial`：串行命令排连发要用；
+            //  · `scene*`：抬手那一刻发不发 `Release` / 这一档算不算「有人要」；
+            //  · `judgeClicks`：数到第几击封顶（含场景里绑的那几档）。
+            p =
+                p
+                    .with(KeyParams.LONG_IS_SERIAL, longSerialOf(k))
+                    .with(KeyParams.CLICK_THEN_LONG_IS_SERIAL, chainSerialOf(k))
+                    .with(KeyParams.SCENE_RELEASE, key.scenes.any { it.hasRelease })
+                    .with(KeyParams.SCENE_LONG, key.scenes.any { it.longBound })
+                    .with(KeyParams.SCENE_CHAIN, key.scenes.any { it.chainBound })
+                    .with(KeyParams.SCENE_CHAIN_RELEASE, key.scenes.any { it.hasChainRelease })
+                    .with(KeyParams.JUDGE_CLICKS, key.judgeLimit)
+            intent.putExtra(extraName(k.id, ConfigFields.KEY_PARAMS_EXTRA), HashMap(p.toMap()))
+            intent.putExtra(
+                extraName(k.id, ConfigFields.KEY_ACTIONS_EXTRA),
+                HashMap(key.actions.entries.associate { (trigger, action) -> trigger.id to action.token }),
+            )
+            intent.putExtra(extraName(k.id, ConfigFields.KEY_ENABLED_EXTRA), key.enabled)
+            intent.putExtra(extraName(k.id, ConfigFields.KEY_OWN_EXTRA), key.useOwnSettings)
         }
         putFields(intent, config.global.fieldValues(), ConfigFields.GLOBAL_FIELDS)
         // 组合键是**必须**广播的少数几张表之一（理由见 [ComboWire]）：判「这两颗键凑成哪一档」
@@ -293,7 +306,20 @@ object ConfigBroadcast {
                 val name = intent.getStringExtra(extraName(id, ConfigFields.KEY_NAME_EXTRA)) ?: id
                 KeyId.custom(id, name, code)
             }
-        return key to KeyConfig.ofFields(key, readFields(intent, ConfigFields.KEY_FIELDS, keyPrefix(id)))
+        return key to
+            KeyConfig(
+                id = key,
+                enabled = intent.getBooleanExtra(extraName(id, ConfigFields.KEY_ENABLED_EXTRA), true),
+                actions =
+                    stringMap(intent, extraName(id, ConfigFields.KEY_ACTIONS_EXTRA))
+                        .mapNotNull { (triggerId, token) ->
+                            GestureTrigger.ofId(triggerId)?.let { it to Action.parse(token) }
+                        }.toMap(),
+                params = Params.of(stringMap(intent, extraName(id, ConfigFields.KEY_PARAMS_EXTRA))),
+                //  场景表**不走广播**（见 `KeyConfig.scenes`）：注入侧只认那几位 `scene*` 派生位。
+                scenes = emptyList(),
+                useOwnSettings = intent.getBooleanExtra(extraName(id, ConfigFields.KEY_OWN_EXTRA), false),
+            )
     }
 
     /**
@@ -303,6 +329,18 @@ object ConfigBroadcast {
      *  与「这条广播本来就不带它」的语义一致），而 JSON 那边是 `optBoolean(key)`（缺项得 `false`，
      *  见 `ConfigCodec.readFields` 那个坑的说明）。
      */
+
+    @Suppress("DEPRECATION")
+    private fun stringMap(
+        intent: Intent,
+        name: String,
+    ): Map<String, String> =
+        (intent.getSerializableExtra(name) as? Map<*, *>)
+            ?.entries
+            ?.mapNotNull { (k, v) -> if (k is String && v is String) k to v else null }
+            ?.toMap()
+            .orEmpty()
+
     private fun readFields(
         intent: Intent,
         fields: List<ConfigFields.Field>,

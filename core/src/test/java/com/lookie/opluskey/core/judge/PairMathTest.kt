@@ -16,7 +16,7 @@ import org.junit.Test
  */
 class PairMathTest {
     private val wait = ComboKey(id = "cmb1", keys = listOf("k1", "k2"))
-    private val hold = ComboKey(id = "cmb2", keys = listOf("k1", "k2"), mode = ComboKey.MODE_HOLD)
+    private val hold = ComboKey(id = "cmb2", keys = listOf("k1", "k2")).copy(mode = ComboKey.MODE_HOLD)
 
     // ---- 等窗口那一档 ----
 

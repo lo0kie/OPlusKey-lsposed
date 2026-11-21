@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.security.MessageDigest
 
@@ -335,7 +336,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 97
+    const val VERSION = 99
 
     /**
      * 「提示走流体云」由「可选增强」变成「默认落点」的那一版 —— 迁移只看「文件是不是比它旧」。
@@ -378,51 +379,66 @@ object ConfigCodec {
      */
     fun parseOrNull(text: String): Config? =
         try {
-            val dto = json.decodeFromString<ConfigDto>(text)
-            when {
-                // 老文件（v0..VERSION-1）：md5 口径按当前 DTO 算，老文件重编码必然不同 —— 不校验
-                dto.version < VERSION -> {
-                    if (dto.isStructurallySound()) dto.toConfig() else null
-                }
+            //  **v98 及更早的文件整份按旧类型读**：新 DTO 只有 `actions` + `params` 两层，
+            //  拿它读老文件会把每颗键读成「全默认」—— 那是静默丢配置，比判「读不懂」危险得多。
+            val headVersion =
+                runCatching {
+                    json
+                        .parseToJsonElement(text)
+                        .jsonObject["version"]
+                        ?.jsonPrimitive
+                        ?.intOrNull
+                }.getOrNull() ?: 0
+            if (headVersion < VERSION) {
+                val legacy = json.decodeFromString<LegacyConfigDto>(text)
+                if (legacy.isStructurallySound()) legacy.toConfig() else null
+            } else {
+                val dto = json.decodeFromString<ConfigDto>(text)
+                when {
+                    // 老文件（v0..VERSION-1）：md5 口径按当前 DTO 算，老文件重编码必然不同 —— 不校验
+                    dto.version < VERSION -> {
+                        if (dto.isStructurallySound()) dto.toConfig() else null
+                    }
 
-                // **更新的版本写下的文件**（装回旧包之后就是这一档）：同样不校验 md5 ——
-                //  它比本版多出来的字段本版不认识，重编码时会被丢掉，那份摘要必然对不上。
-                //  判成「读不懂」的代价是整条链断掉：页面只读、切换与新建全被 `canWriteConfig` 拦下、
-                //  每一份配置在列表里都显示成「（读不出来）」并能被当成坏文件删掉 —— 而文件本身好端端的，
-                //  只是版本号更大。所以按「本版能认的字段读入」处理，只保留「能解析 + 键段完整」这道闸。
-                //  代价说清楚：本版下一次写盘会按本版 DTO 重编码，新版本那些字段就此不再出现在主文件里
-                //  （写盘前留的 `.prev` 快照是那份原文，重装新版本时可以取回）。
-                dto.version > VERSION -> {
-                    if (!dto.isStructurallySound()) {
+                    // **更新的版本写下的文件**（装回旧包之后就是这一档）：同样不校验 md5 ——
+                    //  它比本版多出来的字段本版不认识，重编码时会被丢掉，那份摘要必然对不上。
+                    //  判成「读不懂」的代价是整条链断掉：页面只读、切换与新建全被 `canWriteConfig` 拦下、
+                    //  每一份配置在列表里都显示成「（读不出来）」并能被当成坏文件删掉 —— 而文件本身好端端的，
+                    //  只是版本号更大。所以按「本版能认的字段读入」处理，只保留「能解析 + 键段完整」这道闸。
+                    //  代价说清楚：本版下一次写盘会按本版 DTO 重编码，新版本那些字段就此不再出现在主文件里
+                    //  （写盘前留的 `.prev` 快照是那份原文，重装新版本时可以取回）。
+                    dto.version > VERSION -> {
+                        if (!dto.isStructurallySound()) {
+                            null
+                        } else {
+                            warnNewerVersion(dto.version)
+                            dto.toConfig()
+                        }
+                    }
+
+                    !digestMatches(dto) -> {
+                        // 把版本一起报出来：md5 对不上有两种来路，报出版本才能立刻分辨 ——
+                        //  · `dto.version < VERSION`：压根进不来这里（上面那条拦住了），所以只要走到这一支，
+                        //    版本就一定是**相等**的。相等还对不上，只可能是这两件之一：
+                        //      ① 正文真被改过（手改 / 写到一半被杀 / 编码变了）；
+                        //      ② **加了 DTO 字段却没抬 VERSION** —— 校验口径是「拿当前 DTO 重新编码再算 md5」，
+                        //         多一个键，重编码的字节就与旧文件不同，于是存量配置整批判死。
+                        //    ② 的现场看起来像「文件坏了」，排查方向会被带到文件系统 / 权限 / 编码上去
+                        //    （真机上就这么绕过一次），所以日志直接把两个假设都摆出来。
+                        XLog.w(
+                            "配置正文与 md5 对不上（version=${dto.version} / 本版 $VERSION）—— 判为读不懂。" +
+                                "两者相等 ⇒ 要么正文被改过，要么给 DTO 加了字段却忘了抬 VERSION（见 ConfigDto 注释）",
+                        )
                         null
-                    } else {
-                        warnNewerVersion(dto.version)
+                    }
+
+                    !dto.isStructurallySound() -> {
+                        null
+                    }
+
+                    else -> {
                         dto.toConfig()
                     }
-                }
-
-                !digestMatches(dto) -> {
-                    // 把版本一起报出来：md5 对不上有两种来路，报出版本才能立刻分辨 ——
-                    //  · `dto.version < VERSION`：压根进不来这里（上面那条拦住了），所以只要走到这一支，
-                    //    版本就一定是**相等**的。相等还对不上，只可能是这两件之一：
-                    //      ① 正文真被改过（手改 / 写到一半被杀 / 编码变了）；
-                    //      ② **加了 DTO 字段却没抬 VERSION** —— 校验口径是「拿当前 DTO 重新编码再算 md5」，
-                    //         多一个键，重编码的字节就与旧文件不同，于是存量配置整批判死。
-                    //    ② 的现场看起来像「文件坏了」，排查方向会被带到文件系统 / 权限 / 编码上去
-                    //    （真机上就这么绕过一次），所以日志直接把两个假设都摆出来。
-                    XLog.w(
-                        "配置正文与 md5 对不上（version=${dto.version} / 本版 $VERSION）—— 判为读不懂。" +
-                            "两者相等 ⇒ 要么正文被改过，要么给 DTO 加了字段却忘了抬 VERSION（见 ConfigDto 注释）",
-                    )
-                    null
-                }
-
-                !dto.isStructurallySound() -> {
-                    null
-                }
-
-                else -> {
-                    dto.toConfig()
                 }
             }
         } catch (e: Throwable) {
@@ -460,7 +476,11 @@ object ConfigCodec {
                     .toSortedMap()
                     //  键内还有一层 `extra_clicks`：那一层同样只按书写顺序排，漏了它等于
                     //  「只把两行次数换个位置」也会让 md5 失配（正是这里要消灭的那种）。
-                    .mapValues { (_, key) -> key.copy(extraClicks = key.extraClicks.toSortedMap()) },
+                    //  值包与动作表也要排序：bag 那一层的书写顺序同样不能被当成内容
+                    //  （否则「只把两行参数换个位置」也会让 md5 失配，正是这一支要消灭的）。
+                    .mapValues { (_, key) ->
+                        key.copy(params = key.params.toSortedMap(), actions = key.actions.toSortedMap())
+                    },
             appNames = dto.appNames.toSortedMap(),
         )
 
@@ -471,6 +491,12 @@ object ConfigCodec {
      * 按默认值补等于静默把主开关 / 三个绑定 / 振动全抹成默认，比判「读不懂」危险得多。
      */
     private fun ConfigDto.isStructurallySound(): Boolean =
+        keys.size >= KeyId.builtins.size &&
+            KeyId.builtins.all { keys.containsKey(it.id) } &&
+            customKeys.all { keys.containsKey(it.id) }
+
+    /** 同上，旧格式那一份（字段名与旧版逐字相同，判据一字不差）。 */
+    private fun LegacyConfigDto.isStructurallySound(): Boolean =
         keys.size >= KeyId.builtins.size &&
             KeyId.builtins.all { keys.containsKey(it.id) } &&
             customKeys.all { keys.containsKey(it.id) }
@@ -623,14 +649,14 @@ internal class LegacyComboSlot(
  *
  * @return `null` = 新文件（[ComboDto.mode] 有值），调用点照常读 `single` / `long`
  */
-internal fun ComboDto.legacySlot(): LegacyComboSlot? {
+internal fun LegacyComboDto.legacySlot(): LegacyComboSlot? {
     //  新文件：不用迁移，调用点照常读通用那两位
     if (mode != null) return null
     return built()
 }
 
 /** 老文件那一档的推演 —— 与 [legacySlot] 同一条规则，只是不必再判 `mode` 有没有值。 */
-private fun ComboDto.built(): LegacyComboSlot {
+private fun LegacyComboDto.built(): LegacyComboSlot {
     val resolved =
         when {
             //  认窗口 ⇒ 窗口那条（`null` / `true` 同解）

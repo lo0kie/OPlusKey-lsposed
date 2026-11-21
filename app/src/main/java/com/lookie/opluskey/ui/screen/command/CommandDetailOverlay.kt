@@ -197,7 +197,8 @@ private fun SettingsPage.CommandDetailBody(cmd: Command) {
  *
  *  单条那一档三句话各自对应一种真实的半成品：没写 / 没写对格式 / 写了前缀没写正文。最后那档
  *  （`shell:` 这种只有前缀的）没有一句在说它 —— 保存按钮灰着、点一下只回一句
- *  「这一项现在不可用」，说不出是哪一种。多条那一档只差「有没有步骤」。
+ *  「这一项现在不可用」，说不出是哪一种。多条那一档要求**至少两步**：只有一步的多条命令与
+ *  单条没有区别，存下去只是多一条要维护的「多条」。
  *
  *  **这一支必须能在填好之后返回 `null`**：`saveBlockedReason()` 拿它当唯一判据，
  *  永远非空就等于「保存」按钮永远点不动。
@@ -209,7 +210,7 @@ private fun SettingsPage.payloadBlockedReason(): String? =
         }
 
         CommandKind.SERIAL -> {
-            if (commandDraft.draft.steps.isEmpty()) I18n.get(Strings.COMMAND_NEED_STEP) else null
+            if (commandDraft.draft.steps.size < Command.MIN_STEPS) I18n.get(Strings.COMMAND_NEED_TWO_STEPS) else null
         }
     }
 
@@ -297,8 +298,9 @@ internal fun SettingsPage.resetCommandDraft() {
 }
 
 /**
- * 「这一页现在有没有值得保存的东西」—— 右下角那颗 FAB 出不出现看它，顶栏那颗「重置」也看它
- * （同一个判据，不会出现「FAB 在、重置不在」这种半套）。
+ * 「这一页现在有没有值得保存的东西」—— 单条页那颗 FAB 与顶栏那颗「重置」共用。
+ * 多条页的 FAB **不走这里**：它按「步数 / 是否在改一条已存的」判（见 `CommandFloatingButton`，
+ * 新写一条只有一步时干脆不画），「重置」仍按本判据。
  *
  *  排序态（`stepEditing`）下 FAB 仍在，只是换了文案（「完成」，见 `CommandFloatingButton`）：
  *  那时改的是步骤顺序、不是命令内容，保存没有意义，出路只有那一颗。顶栏那颗「重置」不画。

@@ -198,6 +198,7 @@ private fun SettingsPage.applyDebugCombo(
                 ComboKey(
                     id = ComboKey.idOf(1),
                     keys = members,
+                ).copy(
                     single = Action.parse(single ?: Action.NONE),
                     long = Action.parse(long ?: Action.NONE),
                 ),

@@ -120,7 +120,7 @@ internal fun SettingsPage.ActionTile(
     title: String = spec?.label.orEmpty(),
     /**
      * 标题下面那行**小字**（空则不画）：内置的「打开应用」格放绑定的应用名、
-     * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。
+     * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令执行间隔**。
      */
     subtitle: String? = null,
     /**
@@ -308,7 +308,7 @@ internal fun SettingsPage.ActionTile(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令间隔时长），
+                        // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令执行间隔），
                         // 这行就是那个值。格子高 52dp、BasicComponent 最小高 48dp：两行（14sp + 12sp）装得下。
                         //  注意：这里**不能**用 [AnimatedFade]（只淡、不动高度）：那样这行字的
                         //  **布局高度是立刻占上的**，上面那行标题会**瞬间**被顶上去 ——

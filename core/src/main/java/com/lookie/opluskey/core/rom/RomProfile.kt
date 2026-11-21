@@ -215,6 +215,13 @@ object RomProfile {
         /** `ActivityInfo` 上的尺寸可调性字段（编译期 stub 里没有，只能按名字读）。 */
         val resizeModeField: String = "",
         /**
+         * `com.oplus.flexiblewindow.FlexibleWindowManager` —— 应用侧「全屏 ↔ 小窗」切换的门面
+         * （计算器首页那颗按钮走的就是它）。
+         */
+        val flexibleAppManager: String = "",
+        /** 上面那支的切换方法名（`toggleFlexibleWindow(Activity, int, boolean, boolean)`）。 */
+        val flexibleToggleMethod: String = "",
+        /**
          * 小窗服务门面。
          *
          *  下面到 [taskExtZoomStateField] 为止是**注入侧**（system_server）用的那一组。
@@ -867,6 +874,8 @@ object RomProfile {
                     zoomRecentsArgs = 2,
                     zoomTopAppInfosMethod = "getAllTopAppInfos",
                     resizeModeField = "resizeMode",
+                    flexibleAppManager = "com.oplus.flexiblewindow.FlexibleWindowManager",
+                    flexibleToggleMethod = "toggleFlexibleWindow",
                     flexibleWindowService = "com.android.server.wm.FlexibleWindowManagerService",
                     flexibleControllerGetter = "getFlexibleTaskController",
                     flexibleSwitchStateMethod = "switchState",

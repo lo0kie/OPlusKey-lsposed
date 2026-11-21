@@ -15,7 +15,7 @@ package com.lookie.opluskey.core.model
  *  执行时提示，那一颗自己又关回去了」）。按字段合并之后，**只有手指真点到的那一项会变**，
  *  别的项有多旧都不影响。
  */
-enum class OwnField { USE_OWN, COLOR_OS, VIBRATE, VIBRATE_ON_NONE, STRENGTH, MODE, TEMPLATE, STEP_NOTICE }
+enum class OwnField { USE_OWN, VIBRATE, VIBRATE_ON_NONE, STRENGTH, MODE, TEMPLATE, STEP_NOTICE }
 
 /** 用 [src] 里那一项的值替换自己这一项（其余字段不动）。 */
 fun OwnSettingsValues.withField(
@@ -25,10 +25,6 @@ fun OwnSettingsValues.withField(
     when (field) {
         OwnField.USE_OWN -> {
             copy(useOwn = src.useOwnSettings)
-        }
-
-        OwnField.COLOR_OS -> {
-            copy(colorOsApi = src.colorOsApi)
         }
 
         OwnField.VIBRATE -> {
